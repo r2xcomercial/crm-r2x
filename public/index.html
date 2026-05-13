@@ -31,6 +31,8 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--navy); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+  #main::before { content: ''; position: fixed; inset: 0; background: url('/icon-512.png') center center / 420px no-repeat; opacity: .03; pointer-events: none; z-index: 0; }
+  #content { position: relative; z-index: 1; }
 
   /* ── SIDEBAR ── */
   #sidebar {
