@@ -2,8 +2,14 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>CRM R2X</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#0D1B2E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="R2X CRM">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <style>
   :root {
     --navy: #0D1B2E;
@@ -1146,6 +1152,11 @@ function toast(msg, type = 'success') {
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 
 renderPage('dashboard');
+
+// PWA — registra service worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
 </script>
 </body>
 </html>
