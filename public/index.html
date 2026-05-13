@@ -1163,7 +1163,7 @@ async function renderRanking() {
         <tbody id="ranking-body">
           ${rows.length ? rows.map((r, i) => `
             <tr>
-              <td><span style="font-weight:700;color:${i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'var(--text2)';}">${i+1}º</span></td>
+              <td><span style="font-weight:700;color:${i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'var(--text2)'}">${i+1}º</span></td>
               <td><strong>${r.nome}</strong></td>
               <td>${r.imobiliaria||'—'}</td>
               <td style="text-align:center"><span class="badge badge-blue">${r.vendas}</span></td>
