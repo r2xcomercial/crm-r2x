@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM R2X</title>
+<style>
+  :root {
+    --navy: #0D1B2E;
+    --navy2: #142236;
+    --navy3: #1E3352;
+    --accent: #00C4B4;
+    --accent2: #0099CC;
+    --success: #22C55E;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --text: #E8EDF5;
+    --text2: #94A3B8;
+    --border: #243650;
+    --card: #162032;
+    --card2: #1A2840;
+    --white: #FFFFFF;
+    --sidebar-w: 240px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--navy); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+
+  /* ── SIDEBAR ── */
+  #sidebar {
+    width: var(--sidebar-w); background: var(--navy2); display: flex; flex-direction: column;
+    border-right: 1px solid var(--border); flex-shrink: 0; transition: width .25s;
+  }
+  .sidebar-logo {
+    padding: 20px 16px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .logo-mark { width: 36px; height: 36px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 900; color: var(--navy); font-size: 16px; flex-shrink: 0; }
+  .logo-text { font-size: 15px; font-weight: 700; color: var(--white); line-height: 1.2; }
+  .logo-sub { font-size: 10px; color: var(--text2); font-weight: 400; }
+  nav { flex: 1; overflow-y: auto; padding: 10px 0; }
+  .nav-section { padding: 14px 16px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text2); font-weight: 600; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+    cursor: pointer; color: var(--text2); font-size: 13.5px; border-radius: 0;
+    transition: all .15s; position: relative; border-left: 3px solid transparent;
+  }
+  .nav-item:hover { background: var(--navy3); color: var(--text); }
+  .nav-item.active { background: rgba(0,196,180,.1); color: var(--accent); border-left-color: var(--accent); }
+  .nav-item .icon { font-size: 17px; width: 20px; text-align: center; }
+  .nav-badge { background: var(--accent); color: var(--navy); font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; margin-left: auto; }
+
+  /* ── MAIN ── */
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #topbar {
+    height: 56px; background: var(--navy2); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 24px; gap: 16px; flex-shrink: 0;
+  }
+  #page-title { font-size: 17px; font-weight: 600; flex: 1; }
+  .topbar-btn {
+    background: var(--accent); color: var(--navy); border: none; padding: 7px 16px;
+    border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;
+    transition: opacity .15s;
+  }
+  .topbar-btn:hover { opacity: .85; }
+  .topbar-search {
+    background: var(--navy3); border: 1px solid var(--border); color: var(--text);
+    padding: 7px 12px; border-radius: 6px; font-size: 13px; width: 200px; outline: none;
+  }
+  .topbar-search:focus { border-color: var(--accent); }
+  #content { flex: 1; overflow-y: auto; padding: 24px; }
+
+  /* ── CARDS ── */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 16px; margin-bottom: 24px; }
+  .kpi-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .kpi-label { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; }
+  .kpi-value { font-size: 26px; font-weight: 700; color: var(--white); }
+  .kpi-sub { font-size: 12px; color: var(--text2); }
+  .kpi-icon { font-size: 22px; margin-bottom: 4px; }
+
+  /* ── TABLES ── */
+  .table-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
+  .table-header { padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+  .table-title { font-size: 14px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 10px 16px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text2); background: var(--card2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.03); }
+  .empty-row td { text-align: center; color: var(--text2); padding: 32px; }
+
+  /* ── BADGES ── */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge-green { background: rgba(34,197,94,.15); color: #4ade80; }
+  .badge-blue { background: rgba(0,153,204,.15); color: #38bdf8; }
+  .badge-yellow { background: rgba(245,158,11,.15); color: #fbbf24; }
+  .badge-red { background: rgba(239,68,68,.15); color: #f87171; }
+  .badge-gray { background: rgba(148,163,184,.12); color: var(--text2); }
+  .badge-accent { background: rgba(0,196,180,.15); color: var(--accent); }
+
+  /* ── ACTION BUTTONS ── */
+  .btn-icon { background: none; border: none; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 15px; transition: background .15s; }
+  .btn-icon:hover { background: var(--navy3); }
+  .btn-edit { color: var(--accent2); }
+  .btn-delete { color: var(--danger); }
+  .btn { padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: opacity .15s; }
+  .btn:hover { opacity: .85; }
+  .btn-primary { background: var(--accent); color: var(--navy); }
+  .btn-secondary { background: var(--navy3); color: var(--text); border: 1px solid var(--border); }
+  .btn-danger { background: var(--danger); color: white; }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 1000;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    width: 100%; max-width: 560px; max-height: 90vh; display: flex; flex-direction: column;
+    transform: translateY(20px); transition: transform .2s;
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-head { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .modal-title { font-size: 16px; font-weight: 700; }
+  .modal-close { background: none; border: none; color: var(--text2); font-size: 20px; cursor: pointer; padding: 4px; line-height: 1; }
+  .modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+  .modal-foot { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
+
+  /* ── FORM ── */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-grid.cols1 { grid-template-columns: 1fr; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group.span2 { grid-column: span 2; }
+  label { font-size: 12px; color: var(--text2); font-weight: 500; }
+  input, select, textarea {
+    background: var(--navy3); border: 1px solid var(--border); color: var(--text);
+    padding: 9px 12px; border-radius: 6px; font-size: 13px; outline: none; width: 100%;
+    transition: border-color .15s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  select option { background: var(--navy2); }
+  textarea { resize: vertical; min-height: 72px; }
+
+  /* ── DASHBOARD EXTRAS ── */
+  .dash-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  .dash-row.cols3 { grid-template-columns: 1fr 1fr 1fr; }
+  .mini-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; }
+  .mini-card h4 { font-size: 13px; color: var(--text2); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .funil-bar { display: flex; flex-direction: column; gap: 8px; }
+  .funil-item { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .funil-track { flex: 1; background: var(--navy3); border-radius: 4px; height: 8px; overflow: hidden; }
+  .funil-fill { height: 100%; border-radius: 4px; background: var(--accent); transition: width .5s; }
+  .funil-count { font-size: 12px; color: var(--text2); min-width: 28px; text-align: right; }
+  .aniv-list { display: flex; flex-direction: column; gap: 8px; }
+  .aniv-item { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .aniv-item:last-child { border-bottom: none; }
+  .aniv-avatar { width: 32px; height: 32px; background: var(--navy3); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .launch-list { display: flex; flex-direction: column; gap: 10px; }
+  .launch-item { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+  .launch-date { background: var(--navy3); border-radius: 6px; padding: 4px 8px; font-size: 11px; color: var(--accent); white-space: nowrap; font-weight: 600; }
+
+  /* ── FINANCEIRO ── */
+  .fin-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+  .fin-tab { padding: 8px 18px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); color: var(--text2); background: none; transition: all .15s; }
+  .fin-tab.active { background: var(--accent); color: var(--navy); border-color: var(--accent); }
+
+  /* ── TOAST ── */
+  #toast { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+  .toast-item { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; font-size: 13px; display: flex; align-items: center; gap: 10px; min-width: 240px; animation: slideIn .25s ease; box-shadow: 0 8px 32px rgba(0,0,0,.4); }
+  .toast-item.success { border-left: 3px solid var(--success); }
+  .toast-item.error { border-left: 3px solid var(--danger); }
+  @keyframes slideIn { from { transform: translateX(30px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── RESPONSIVE ── */
+  @media(max-width: 768px) {
+    #sidebar { display: none; }
+    .form-grid { grid-template-columns: 1fr; }
+    .form-group.span2 { grid-column: span 1; }
+    .dash-row, .dash-row.cols3 { grid-template-columns: 1fr; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">R2</div>
+    <div>
+      <div class="logo-text">R2X CRM</div>
+      <div class="logo-sub">Aceleradora de Vendas</div>
+    </div>
+  </div>
+  <nav>
+    <div class="nav-section">Principal</div>
+    <div class="nav-item active" onclick="navigate('dashboard')"><span class="icon">📊</span> Dashboard</div>
+    <div class="nav-item" onclick="navigate('calendario')"><span class="icon">📅</span> Calendário</div>
+
+    <div class="nav-section">Comercial</div>
+    <div class="nav-item" onclick="navigate('leads')"><span class="icon">🎯</span> Leads <span class="nav-badge" id="badge-leads">0</span></div>
+    <div class="nav-item" onclick="navigate('vendas')"><span class="icon">🏆</span> Vendas</div>
+    <div class="nav-item" onclick="navigate('ranking')"><span class="icon">⭐</span> Ranking</div>
+
+    <div class="nav-section">Cadastros</div>
+    <div class="nav-item" onclick="navigate('clientes')"><span class="icon">🏢</span> Clientes</div>
+    <div class="nav-item" onclick="navigate('empreendimentos')"><span class="icon">🏗️</span> Empreendimentos</div>
+    <div class="nav-item" onclick="navigate('corretores')"><span class="icon">👥</span> Corretores</div>
+
+    <div class="nav-section">Financeiro</div>
+    <div class="nav-item" onclick="navigate('financeiro')"><span class="icon">💰</span> Financeiro</div>
+  </nav>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <div id="topbar">
+    <div id="page-title">Dashboard</div>
+    <input class="topbar-search" type="text" id="search-box" placeholder="🔍  Buscar..." oninput="handleSearch(this.value)">
+    <button class="topbar-btn" id="add-btn" onclick="handleAdd()" style="display:none">+ Novo</button>
+  </div>
+  <div id="content"><!-- rendered by JS --></div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModalOutside(event)">
+  <div class="modal" id="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="modal-title">Título</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+const API = '';
+let currentPage = 'dashboard';
+let currentData = {};
+
+// ─── NAVIGATION ───────────────────────────────────────────────────────────────
+
+function navigate(page) {
+  currentPage = page;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.nav-item[onclick="navigate('${page}')"]`)?.classList.add('active');
+  document.getElementById('page-title').textContent = pageTitles[page] || page;
+  document.getElementById('search-box').value = '';
+  document.getElementById('add-btn').style.display = addablePages.includes(page) ? 'flex' : 'none';
+  renderPage(page);
+}
+
+const pageTitles = {
+  dashboard: 'Dashboard', leads: 'Leads', vendas: 'Vendas',
+  clientes: 'Clientes', empreendimentos: 'Empreendimentos', corretores: 'Corretores',
+  financeiro: 'Financeiro', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores'
+};
+const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario'];
+
+async function renderPage(page) {
+  const c = document.getElementById('content');
+  c.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text2)">Carregando...</div>`;
+  try {
+    switch(page) {
+      case 'dashboard': await renderDashboard(); break;
+      case 'leads': await renderLeads(); break;
+      case 'vendas': await renderVendas(); break;
+      case 'clientes': await renderClientes(); break;
+      case 'empreendimentos': await renderEmpreendimentos(); break;
+      case 'corretores': await renderCorretores(); break;
+      case 'financeiro': await renderFinanceiro(); break;
+      case 'calendario': await renderCalendario(); break;
+      case 'ranking': await renderRanking(); break;
+    }
+  } catch(e) {
+    c.innerHTML = `<div style="color:var(--danger);padding:24px">Erro ao carregar: ${e.message}</div>`;
+  }
+}
+
+// ─── API HELPERS ──────────────────────────────────────────────────────────────
+
+async function api(method, path, body) {
+  const r = await fetch(API + path, {
+    method, headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  return r.json();
+}
+const get = p => api('GET', p);
+const post = (p, b) => api('POST', p, b);
+const put = (p, b) => api('PUT', p, b);
+const del = p => api('DELETE', p);
+
+// ─── DASHBOARD ───────────────────────────────────────────────────────────────
+
+async function renderDashboard() {
+  const { data } = await get('/api/dashboard');
+  const { kpis, aniversarios_mes, proximos_lancamentos, funil } = data;
+
+  // Update badge
+  document.getElementById('badge-leads').textContent = kpis.leads_novos;
+
+  const statusLabel = { novo: 'Novo', qualificado: 'Qualificado', visitou: 'Visitou', proposta: 'Proposta', vendido: 'Vendido', perdido: 'Perdido' };
+  const totalLeads = funil.reduce((s, f) => s + f.n, 0) || 1;
+
+  document.getElementById('content').innerHTML = `
+    <div class="kpi-grid">
+      ${kpi('🎯', 'Leads Novos', kpis.leads_novos, `${kpis.leads_total} total`)}
+      ${kpi('🏆', 'Vendas no Mês', fmt(kpis.vendas_mes), `${kpis.vendas_total} negócios ativos`)}
+      ${kpi('💰', 'Recebíveis Pendentes', fmt(kpis.entradas_pendentes), 'a receber')}
+      ${kpi('🏗️', 'Empreendimentos', kpis.empreendimentos, '')}
+      ${kpi('🏢', 'Clientes', kpis.clientes_total, 'loteadores/incorporadores')}
+      ${kpi('👥', 'Corretores Ativos', kpis.corretores_ativos, '')}
+    </div>
+    <div class="dash-row">
+      <div class="mini-card">
+        <h4>🎯 Funil de Leads</h4>
+        <div class="funil-bar">
+          ${funil.map(f => `
+            <div class="funil-item">
+              <span style="min-width:90px;font-size:12px;color:var(--text2)">${statusLabel[f.status]||f.status}</span>
+              <div class="funil-track"><div class="funil-fill" style="width:${Math.round(f.n/totalLeads*100)}%"></div></div>
+              <span class="funil-count">${f.n}</span>
+            </div>
+          `).join('') || '<div style="color:var(--text2);font-size:13px">Sem leads ainda</div>'}
+        </div>
+      </div>
+      <div class="mini-card">
+        <h4>🎂 Aniversários do Mês</h4>
+        <div class="aniv-list">
+          ${aniversarios_mes.length ? aniversarios_mes.slice(0,6).map(a => `
+            <div class="aniv-item">
+              <div class="aniv-avatar">${a.tipo === 'corretor' ? '👤' : a.tipo === 'cliente' ? '🏢' : '🎯'}</div>
+              <div><div style="font-weight:500">${a.nome||'—'}</div><div style="font-size:11px;color:var(--text2)">${a.tipo} · ${fmtDate(a.aniversario)}</div></div>
+            </div>
+          `).join('') : '<div style="color:var(--text2);font-size:13px">Nenhum aniversário este mês</div>'}
+        </div>
+      </div>
+    </div>
+    <div class="mini-card" style="margin-bottom:20px">
+      <h4>📅 Próximos Lançamentos</h4>
+      <div class="launch-list" style="margin-top:4px">
+        ${proximos_lancamentos.length ? proximos_lancamentos.map(l => `
+          <div class="launch-item">
+            <div class="launch-date">${fmtDate(l.data)}</div>
+            <div>
+              <span style="font-weight:500">${l.titulo}</span>
+              ${l.empreendimento_nome ? `<span style="color:var(--text2);font-size:12px"> · ${l.empreendimento_nome}</span>` : ''}
+            </div>
+            <span class="badge ${badgeCalendario(l.tipo)}">${l.tipo}</span>
+          </div>
+        `).join('') : '<div style="color:var(--text2);font-size:13px">Nenhum evento agendado</div>'}
+      </div>
+    </div>
+  `;
+}
+
+function kpi(icon, label, value, sub) {
+  return `<div class="kpi-card"><div class="kpi-icon">${icon}</div><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ''}</div>`;
+}
+
+// ─── LEADS ───────────────────────────────────────────────────────────────────
+
+let leadsData = [], corretoresData = [], empData = [];
+
+async function renderLeads(filter = '') {
+  const [lr, cr, er] = await Promise.all([get('/api/leads'), get('/api/corretores'), get('/api/empreendimentos')]);
+  leadsData = lr.data; corretoresData = cr.data; empData = er.data;
+  const leads = filter ? leadsData.filter(l => (l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter) || (l.cidade||'').toLowerCase().includes(filter)) : leadsData;
+  document.getElementById('badge-leads').textContent = leadsData.filter(l => l.status==='novo').length;
+
+  const statusColors = { novo:'badge-accent', qualificado:'badge-blue', visitou:'badge-yellow', proposta:'badge-yellow', vendido:'badge-green', perdido:'badge-red' };
+
+  document.getElementById('content').innerHTML = `
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">🎯 Leads (${leads.length})</div>
+        <div style="display:flex;gap:8px">
+          <select onchange="filterLeadStatus(this.value)" style="font-size:12px;padding:6px 10px">
+            <option value="">Todos os status</option>
+            <option value="novo">Novo</option>
+            <option value="qualificado">Qualificado</option>
+            <option value="visitou">Visitou</option>
+            <option value="proposta">Proposta</option>
+            <option value="vendido">Vendido</option>
+            <option value="perdido">Perdido</option>
+          </select>
+        </div>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Nome</th><th>Telefone</th><th>Cidade</th><th>Objetivo</th>
+          <th>Faixa</th><th>Status</th><th>Corretor</th><th>Empreendimento</th><th>Origem</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${leads.length ? leads.map(l => `
+            <tr>
+              <td><strong>${l.nome||'—'}</strong></td>
+              <td><a href="https://wa.me/55${l.telefone}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${fmtPhone(l.telefone)}</a></td>
+              <td>${l.cidade||'—'}</td>
+              <td>${l.objetivo||'—'}</td>
+              <td>${l.faixa_investimento||'—'}</td>
+              <td><span class="badge ${statusColors[l.status]||'badge-gray'}">${l.status}</span></td>
+              <td>${l.corretor_nome||'<span style="color:var(--text2)">—</span>'}</td>
+              <td>${l.empreendimento_nome||l.empreendimento_interesse||'—'}</td>
+              <td><span class="badge ${l.origem==='whatsapp'?'badge-green':'badge-gray'}">${l.origem}</span></td>
+              <td style="white-space:nowrap">
+                <button class="btn-icon btn-edit" onclick="editLead(${l.id})">✏️</button>
+                <button class="btn-icon btn-delete" onclick="deleteLead(${l.id})">🗑️</button>
+              </td>
+            </tr>
+          `).join('') : '<tr class="empty-row"><td colspan="10">Nenhum lead encontrado</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function filterLeadStatus(status) {
+  const leads = status ? leadsData.filter(l => l.status === status) : leadsData;
+  // re-render with filtered
+  renderLeadsFiltered(leads);
+}
+
+function renderLeadsFiltered(leads) {
+  const statusColors = { novo:'badge-accent', qualificado:'badge-blue', visitou:'badge-yellow', proposta:'badge-yellow', vendido:'badge-green', perdido:'badge-red' };
+  document.querySelector('#content tbody').innerHTML = leads.length ? leads.map(l => `
+    <tr>
+      <td><strong>${l.nome||'—'}</strong></td>
+      <td><a href="https://wa.me/55${l.telefone}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${fmtPhone(l.telefone)}</a></td>
+      <td>${l.cidade||'—'}</td>
+      <td>${l.objetivo||'—'}</td>
+      <td>${l.faixa_investimento||'—'}</td>
+      <td><span class="badge ${statusColors[l.status]||'badge-gray'}">${l.status}</span></td>
+      <td>${l.corretor_nome||'—'}</td>
+      <td>${l.empreendimento_nome||l.empreendimento_interesse||'—'}</td>
+      <td><span class="badge ${l.origem==='whatsapp'?'badge-green':'badge-gray'}">${l.origem}</span></td>
+      <td><button class="btn-icon btn-edit" onclick="editLead(${l.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteLead(${l.id})">🗑️</button></td>
+    </tr>
+  `).join('') : '<tr class="empty-row"><td colspan="10">Nenhum lead</td></tr>';
+}
+
+function openLeadModal(lead = {}) {
+  openModal(lead.id ? 'Editar Lead' : 'Novo Lead', `
+    <div class="form-grid">
+      <div class="form-group"><label>Nome</label><input id="f-nome" value="${lead.nome||''}" placeholder="Nome do lead"></div>
+      <div class="form-group"><label>Telefone</label><input id="f-tel" value="${lead.telefone||''}" placeholder="48999999999"></div>
+      <div class="form-group"><label>Email</label><input id="f-email" type="email" value="${lead.email||''}"></div>
+      <div class="form-group"><label>Cidade</label><input id="f-cidade" value="${lead.cidade||''}"></div>
+      <div class="form-group"><label>Objetivo</label>
+        <select id="f-obj"><option value="">—</option><option ${lead.objetivo==='morar'?'selected':''}>morar</option><option ${lead.objetivo==='investir'?'selected':''}>investir</option><option ${lead.objetivo==='ambos'?'selected':''}>ambos</option></select>
+      </div>
+      <div class="form-group"><label>Faixa de Investimento</label><input id="f-faixa" value="${lead.faixa_investimento||''}" placeholder="ex: R$ 300k - R$ 500k"></div>
+      <div class="form-group"><label>Prazo</label>
+        <select id="f-prazo"><option value="">—</option><option ${lead.prazo==='imediato'?'selected':''}>imediato</option><option ${lead.prazo==='curto'?'selected':''}>curto</option><option ${lead.prazo==='longo'?'selected':''}>longo</option></select>
+      </div>
+      <div class="form-group"><label>Status</label>
+        <select id="f-status">
+          ${['novo','qualificado','visitou','proposta','vendido','perdido'].map(s => `<option value="${s}" ${lead.status===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Corretor</label>
+        <select id="f-corretor">
+          <option value="">— Sem corretor —</option>
+          ${corretoresData.map(c => `<option value="${c.id}" ${lead.corretor_id==c.id?'selected':''}>${c.nome}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Empreendimento</label>
+        <select id="f-emp">
+          <option value="">— Não definido —</option>
+          ${empData.map(e => `<option value="${e.id}" ${lead.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${lead.observacoes||''}</textarea></div>
+    </div>
+  `, async () => {
+    const body = { nome: v('f-nome'), telefone: v('f-tel'), email: v('f-email'), cidade: v('f-cidade'), objetivo: v('f-obj'), faixa_investimento: v('f-faixa'), prazo: v('f-prazo'), status: v('f-status'), corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, observacoes: v('f-obs') };
+    const r = lead.id ? await put(`/api/leads/${lead.id}`, body) : await post('/api/leads', body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast(lead.id ? 'Lead atualizado!' : 'Lead criado!');
+    closeModal(); renderLeads();
+  });
+}
+
+async function editLead(id) {
+  const lead = leadsData.find(l => l.id === id);
+  openLeadModal(lead);
+}
+async function deleteLead(id) {
+  if (!confirm('Excluir este lead?')) return;
+  await del(`/api/leads/${id}`);
+  toast('Lead excluído'); renderLeads();
+}
+
+// ─── VENDAS ───────────────────────────────────────────────────────────────────
+
+async function renderVendas(filter = '') {
+  const [vr, cr, er, lr, clr] = await Promise.all([get('/api/vendas'), get('/api/corretores'), get('/api/empreendimentos'), get('/api/leads'), get('/api/clientes')]);
+  currentData.vendas = vr.data; currentData.corretores = cr.data; currentData.emp = er.data; currentData.leads = lr.data; currentData.clientes = clr.data;
+  let vendas = vr.data;
+  if (filter) vendas = vendas.filter(v => (v.lead_nome||'').toLowerCase().includes(filter) || (v.empreendimento_nome||'').toLowerCase().includes(filter) || (v.corretor_nome||'').toLowerCase().includes(filter));
+
+  const totalVGV = vendas.filter(v => v.status==='ativo').reduce((s, v) => s + v.valor, 0);
+
+  document.getElementById('content').innerHTML = `
+    <div class="kpi-grid" style="margin-bottom:20px">
+      ${kpi('💵', 'VGV Total', fmt(totalVGV), `${vendas.filter(v=>v.status==='ativo').length} vendas ativas`)}
+    </div>
+    <div class="table-card">
+      <div class="table-header"><div class="table-title">🏆 Vendas (${vendas.length})</div></div>
+      <table>
+        <thead><tr><th>Data</th><th>Lead</th><th>Imóvel</th><th>Valor</th><th>Corretor</th><th>Empreendimento</th><th>Cliente</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${vendas.length ? vendas.map(v => `
+            <tr>
+              <td>${fmtDate(v.data_venda)}</td>
+              <td>${v.lead_nome||'—'}</td>
+              <td>${v.imovel||'—'}</td>
+              <td style="font-weight:600;color:var(--success)">${fmt(v.valor)}</td>
+              <td>${v.corretor_nome||'—'}</td>
+              <td>${v.empreendimento_nome||'—'}</td>
+              <td>${v.cliente_nome||'—'}</td>
+              <td><span class="badge ${v.status==='ativo'?'badge-green':'badge-red'}">${v.status}</span></td>
+              <td><button class="btn-icon btn-edit" onclick="editVenda(${v.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteVenda(${v.id})">🗑️</button></td>
+            </tr>
+          `).join('') : '<tr class="empty-row"><td colspan="9">Nenhuma venda registrada</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function openVendaModal(venda = {}) {
+  const { vendas, corretores, emp, leads, clientes } = currentData;
+  openModal(venda.id ? 'Editar Venda' : 'Nova Venda', `
+    <div class="form-grid">
+      <div class="form-group"><label>Data da Venda *</label><input id="f-data" type="date" value="${venda.data_venda||today()}"></div>
+      <div class="form-group"><label>Valor (R$) *</label><input id="f-valor" type="number" value="${venda.valor||''}" placeholder="350000"></div>
+      <div class="form-group"><label>Imóvel (Lote/Unidade)</label><input id="f-imovel" value="${venda.imovel||''}" placeholder="Lote 42 - Quadra 5"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="f-status"><option value="ativo" ${venda.status==='ativo'?'selected':''}>Ativo</option><option value="distrato" ${venda.status==='distrato'?'selected':''}>Distrato</option></select>
+      </div>
+      <div class="form-group"><label>Lead</label>
+        <select id="f-lead"><option value="">— Sem lead —</option>${(leads||[]).map(l => `<option value="${l.id}" ${venda.lead_id==l.id?'selected':''}>${l.nome||l.telefone}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Corretor</label>
+        <select id="f-corretor"><option value="">—</option>${(corretores||[]).map(c => `<option value="${c.id}" ${venda.corretor_id==c.id?'selected':''}>${c.nome}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Empreendimento</label>
+        <select id="f-emp"><option value="">—</option>${(emp||[]).map(e => `<option value="${e.id}" ${venda.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Cliente (Loteador)</label>
+        <select id="f-cliente"><option value="">—</option>${(clientes||[]).map(c => `<option value="${c.id}" ${venda.cliente_id==c.id?'selected':''}>${c.razao_social}</option>`).join('')}</select>
+      </div>
+      <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${venda.observacoes||''}</textarea></div>
+    </div>
+  `, async () => {
+    const body = { data_venda: v('f-data'), valor: parseFloat(v('f-valor')), imovel: v('f-imovel'), status: v('f-status'), lead_id: v('f-lead')||null, corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, cliente_id: v('f-cliente')||null, observacoes: v('f-obs') };
+    if (!body.valor || !body.data_venda) return toast('Valor e data são obrigatórios', 'error');
+    const r = venda.id ? await put(`/api/vendas/${venda.id}`, body) : await post('/api/vendas', body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast(venda.id ? 'Venda atualizada!' : 'Venda registrada!');
+    closeModal(); renderVendas();
+  });
+}
+async function editVenda(id) { openVendaModal(currentData.vendas.find(v => v.id === id)); }
+async function deleteVenda(id) { if(!confirm('Excluir esta venda?')) return; await del(`/api/vendas/${id}`); toast('Venda excluída'); renderVendas(); }
+
+// ─── CLIENTES ────────────────────────────────────────────────────────────────
+
+async function renderClientes(filter = '') {
+  const r = await get('/api/clientes');
+  currentData.clientes = r.data;
+  let rows = r.data;
+  if (filter) rows = rows.filter(c => c.razao_social.toLowerCase().includes(filter) || (c.cidade||'').toLowerCase().includes(filter));
+  document.getElementById('content').innerHTML = `
+    <div class="table-card">
+      <div class="table-header"><div class="table-title">🏢 Clientes (${rows.length})</div></div>
+      <table>
+        <thead><tr><th>Razão Social</th><th>CNPJ</th><th>Contato</th><th>Telefone</th><th>Cidade</th><th>Empreend.</th><th></th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(c => `
+            <tr>
+              <td><strong>${c.razao_social}</strong></td>
+              <td>${c.cnpj||'—'}</td>
+              <td>${c.nome_contato||'—'}</td>
+              <td>${c.telefone ? `<a href="https://wa.me/55${c.telefone}" target="_blank" style="color:var(--accent)">📱 ${fmtPhone(c.telefone)}</a>` : '—'}</td>
+              <td>${c.cidade||'—'}${c.estado?'/'+c.estado:''}</td>
+              <td><span class="badge badge-blue">${c.total_empreendimentos}</span></td>
+              <td><button class="btn-icon btn-edit" onclick="editCliente(${c.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteCliente(${c.id})">🗑️</button></td>
+            </tr>
+          `).join('') : '<tr class="empty-row"><td colspan="7">Nenhum cliente cadastrado</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function openClienteModal(c = {}) {
+  openModal(c.id ? 'Editar Cliente' : 'Novo Cliente', `
+    <div class="form-grid">
+      <div class="form-group span2"><label>Razão Social *</label><input id="f-rs" value="${c.razao_social||''}"></div>
+      <div class="form-group"><label>CNPJ</label><input id="f-cnpj" value="${c.cnpj||''}" placeholder="00.000.000/0001-00"></div>
+      <div class="form-group"><label>Nome do Contato</label><input id="f-contato" value="${c.nome_contato||''}"></div>
+      <div class="form-group"><label>Telefone</label><input id="f-tel" value="${c.telefone||''}"></div>
+      <div class="form-group"><label>Email</label><input id="f-email" type="email" value="${c.email||''}"></div>
+      <div class="form-group"><label>Cidade</label><input id="f-cidade" value="${c.cidade||''}"></div>
+      <div class="form-group"><label>Estado</label><input id="f-estado" value="${c.estado||''}" placeholder="SC" maxlength="2"></div>
+      <div class="form-group"><label>Data de Aniversário</label><input id="f-aniv" type="date" value="${c.aniversario||''}"></div>
+      <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${c.observacoes||''}</textarea></div>
+    </div>
+  `, async () => {
+    const body = { razao_social: v('f-rs'), cnpj: v('f-cnpj'), nome_contato: v('f-contato'), telefone: v('f-tel'), email: v('f-email'), cidade: v('f-cidade'), estado: v('f-estado'), aniversario: v('f-aniv'), observacoes: v('f-obs') };
+    if (!body.razao_social) return toast('Razão social obrigatória', 'error');
+    const r = c.id ? await put(`/api/clientes/${c.id}`, body) : await post('/api/clientes', body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast(c.id ? 'Cliente atualizado!' : 'Cliente criado!');
+    closeModal(); renderClientes();
+  });
+}
+async function editCliente(id) { openClienteModal(currentData.clientes.find(c => c.id === id)); }
+async function deleteCliente(id) { if(!confirm('Excluir este cliente?')) return; await del(`/api/clientes/${id}`); toast('Excluído'); renderClientes(); }
+
+// ─── EMPREENDIMENTOS ──────────────────────────────────────────────────────────
+
+async function renderEmpreendimentos(filter = '') {
+  const [er, cr] = await Promise.all([get('/api/empreendimentos'), get('/api/clientes')]);
+  currentData.emp = er.data; currentData.clientes = cr.data;
+  let rows = er.data;
+  if (filter) rows = rows.filter(e => e.nome.toLowerCase().includes(filter) || (e.cidade||'').toLowerCase().includes(filter));
+
+  const statusBadge = { prospecto: 'badge-gray', planejamento: 'badge-blue', pre_lancamento: 'badge-yellow', lancamento: 'badge-accent', vendas: 'badge-green', encerrado: 'badge-red' };
+
+  document.getElementById('content').innerHTML = `
+    <div class="table-card">
+      <div class="table-header"><div class="table-title">🏗️ Empreendimentos (${rows.length})</div></div>
+      <table>
+        <thead><tr><th>Nome</th><th>Cliente</th><th>Cidade</th><th>Unidades</th><th>VGV Estimado</th><th>Status</th><th>Lançamento</th><th></th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(e => `
+            <tr>
+              <td><strong>${e.nome}</strong></td>
+              <td>${e.cliente_nome||'—'}</td>
+              <td>${e.cidade||'—'}${e.estado?'/'+e.estado:''}</td>
+              <td>${e.num_unidades||'—'}</td>
+              <td style="color:var(--success)">${e.vgv_estimado ? fmt(e.vgv_estimado) : '—'}</td>
+              <td><span class="badge ${statusBadge[e.status]||'badge-gray'}">${e.status}</span></td>
+              <td>${e.data_lancamento ? fmtDate(e.data_lancamento) : '—'}</td>
+              <td><button class="btn-icon btn-edit" onclick="editEmp(${e.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteEmp(${e.id})">🗑️</button></td>
+            </tr>
+          `).join('') : '<tr class="empty-row"><td colspan="8">Nenhum empreendimento cadastrado</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function openEmpModal(e = {}) {
+  openModal(e.id ? 'Editar Empreendimento' : 'Novo Empreendimento', `
+    <div class="form-grid">
+      <div class="form-group span2"><label>Nome *</label><input id="f-nome" value="${e.nome||''}"></div>
+      <div class="form-group"><label>Cliente (Loteador)</label>
+        <select id="f-cliente"><option value="">—</option>${(currentData.clientes||[]).map(c => `<option value="${c.id}" ${e.cliente_id==c.id?'selected':''}>${c.razao_social}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Status</label>
+        <select id="f-status">${['prospecto','planejamento','pre_lancamento','lancamento','vendas','encerrado'].map(s => `<option value="${s}" ${e.status===s?'selected':''}>${s}</option>`).join('')}</select>
+      </div>
+      <div class="form-group span2"><label>Endereço</label><input id="f-end" value="${e.endereco||''}"></div>
+      <div class="form-group"><label>Cidade</label><input id="f-cidade" value="${e.cidade||''}"></div>
+      <div class="form-group"><label>Estado</label><input id="f-estado" value="${e.estado||''}" placeholder="SC" maxlength="2"></div>
+      <div class="form-group"><label>Nº de Unidades</label><input id="f-units" type="number" value="${e.num_unidades||''}"></div>
+      <div class="form-group"><label>VGV Estimado (R$)</label><input id="f-vgv" type="number" value="${e.vgv_estimado||''}"></div>
+      <div class="form-group"><label>Data de Lançamento</label><input id="f-launch" type="date" value="${e.data_lancamento||''}"></div>
+      <div class="form-group"><label>Início das Vendas</label><input id="f-vendas" type="date" value="${e.data_inicio_vendas||''}"></div>
+      <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${e.observacoes||''}</textarea></div>
+    </div>
+  `, async () => {
+    const body = { nome: v('f-nome'), cliente_id: v('f-cliente')||null, status: v('f-status'), endereco: v('f-end'), cidade: v('f-cidade'), estado: v('f-estado'), num_unidades: parseInt(v('f-units'))||null, vgv_estimado: parseFloat(v('f-vgv'))||null, data_lancamento: v('f-launch'), data_inicio_vendas: v('f-vendas'), observacoes: v('f-obs') };
+    if (!body.nome) return toast('Nome obrigatório', 'error');
+    const r = e.id ? await put(`/api/empreendimentos/${e.id}`, body) : await post('/api/empreendimentos', body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast(e.id ? 'Atualizado!' : 'Empreendimento criado!');
+    closeModal(); renderEmpreendimentos();
+  });
+}
+async function editEmp(id) { openEmpModal(currentData.emp.find(e => e.id === id)); }
+async function deleteEmp(id) { if(!confirm('Excluir?')) return; await del(`/api/empreendimentos/${id}`); toast('Excluído'); renderEmpreendimentos(); }
+
+// ─── CORRETORES ───────────────────────────────────────────────────────────────
+
+async function renderCorretores(filter = '') {
+  const r = await get('/api/corretores');
+  currentData.corretores = r.data;
+  let rows = r.data;
+  if (filter) rows = rows.filter(c => c.nome.toLowerCase().includes(filter) || (c.imobiliaria||'').toLowerCase().includes(filter) || (c.cidade||'').toLowerCase().includes(filter));
+
+  const linkCadastro = `${window.location.origin}/cadastro-corretor`;
+
+  document.getElementById('content').innerHTML = `
+    <div class="mini-card" style="margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:4px">🔗 Link público de cadastro de corretor</div>
+        <code style="background:var(--navy3);padding:6px 12px;border-radius:6px;font-size:12px;color:var(--accent)">${linkCadastro}</code>
+      </div>
+      <button class="btn btn-secondary" onclick="copyLink('${linkCadastro}')">📋 Copiar Link</button>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><div class="table-title">👥 Corretores (${rows.length})</div></div>
+      <table>
+        <thead><tr><th>Nome</th><th>CRECI</th><th>Telefone</th><th>Imobiliária</th><th>Cidade</th><th>Vendas</th><th>VGV Vendido</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(c => `
+            <tr>
+              <td><strong>${c.nome}</strong></td>
+              <td>${c.creci||'—'}</td>
+              <td>${c.telefone ? `<a href="https://wa.me/55${c.telefone}" target="_blank" style="color:var(--accent)">📱 ${fmtPhone(c.telefone)}</a>` : '—'}</td>
+              <td>${c.imobiliaria||'—'}</td>
+              <td>${c.cidade||'—'}</td>
+              <td style="text-align:center"><span class="badge badge-blue">${c.total_vendas}</span></td>
+              <td style="color:var(--success)">${fmt(c.vgv_vendido)}</td>
+              <td><span class="badge ${c.ativo?'badge-green':'badge-red'}">${c.ativo?'Ativo':'Inativo'}</span></td>
+              <td><button class="btn-icon btn-edit" onclick="editCorretor(${c.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteCorretor(${c.id})">🗑️</button></td>
+            </tr>
+          `).join('') : '<tr class="empty-row"><td colspan="9">Nenhum corretor cadastrado</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function openCorretorModal(c = {}) {
+  openModal(c.id ? 'Editar Corretor' : 'Novo Corretor', `
+    <div class="form-grid">
+      <div class="form-group span2"><label>Nome *</label><input id="f-nome" value="${c.nome||''}"></div>
+      <div class="form-group"><label>CPF</label><input id="f-cpf" value="${c.cpf||''}" placeholder="000.000.000-00"></div>
+      <div class="form-group"><label>CRECI</label><input id="f-creci" value="${c.creci||''}"></div>
+      <div class="form-group"><label>Telefone</label><input id="f-tel" value="${c.telefone||''}"></div>
+      <div class="form-group"><label>Email</label><input id="f-email" type="email" value="${c.email||''}"></div>
+      <div class="form-group"><label>Imobiliária</label><input id="f-imob" value="${c.imobiliaria||''}"></div>
+      <div class="form-group"><label>Cidade</label><input id="f-cidade" value="${c.cidade||''}"></div>
+      <div class="form-group"><label>Estado</label><input id="f-estado" value="${c.estado||''}" placeholder="SC" maxlength="2"></div>
+      <div class="form-group"><label>Aniversário</label><input id="f-aniv" type="date" value="${c.aniversario||''}"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="f-ativo"><option value="1" ${c.ativo!=0?'selected':''}>Ativo</option><option value="0" ${c.ativo==0?'selected':''}>Inativo</option></select>
+      </div>
+    </div>
+  `, async () => {
+    const body = { nome: v('f-nome'), cpf: v('f-cpf'), creci: v('f-creci'), telefone: v('f-tel'), email: v('f-email'), imobiliaria: v('f-imob'), cidade: v('f-cidade'), estado: v('f-estado'), aniversario: v('f-aniv'), ativo: parseInt(v('f-ativo')) };
+    if (!body.nome) return toast('Nome obrigatório', 'error');
+    const r = c.id ? await put(`/api/corretores/${c.id}`, body) : await post('/api/corretores', body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast(c.id ? 'Corretor atualizado!' : 'Corretor cadastrado!');
+    closeModal(); renderCorretores();
+  });
+}
+async function editCorretor(id) { openCorretorModal(currentData.corretores.find(c => c.id === id)); }
+async function deleteCorretor(id) { if(!confirm('Excluir?')) return; await del(`/api/corretores/${id}`); toast('Excluído'); renderCorretores(); }
+function copyLink(link) { navigator.clipboard.writeText(link); toast('Link copiado! 📋'); }
+
+// ─── FINANCEIRO ───────────────────────────────────────────────────────────────
+
+let finTab = 'entradas';
+
+async function renderFinanceiro(filter = '') {
+  const [er, sr, dr, empr, resr] = await Promise.all([get('/api/financeiro/entradas'), get('/api/financeiro/saidas'), get('/api/financeiro/distribuicoes'), get('/api/empreendimentos'), get('/api/financeiro/resumo')]);
+  currentData.entradas = er.data; currentData.saidas = sr.data; currentData.distribuicoes = dr.data; currentData.emp = empr.data;
+  const resumo = resr.data;
+
+  const totalEntradas = er.data.filter(e => e.status==='recebido').reduce((s,e) => s+e.valor, 0);
+  const totalSaidas = sr.data.filter(e => e.status==='pago').reduce((s,e) => s+e.valor, 0);
+  const totalDist = dr.data.reduce((s,d) => s+d.valor, 0);
+  const saldo = totalEntradas - totalSaidas - totalDist;
+
+  document.getElementById('content').innerHTML = `
+    <div class="kpi-grid" style="margin-bottom:20px">
+      ${kpi('📥', 'Total Recebido', fmt(totalEntradas), 'entradas confirmadas')}
+      ${kpi('📤', 'Total Pago', fmt(totalSaidas), 'saídas pagas')}
+      ${kpi('💸', 'Distribuído Ramon', fmt(totalDist), 'retiradas')}
+      ${kpi('💰', 'Saldo Líquido', fmt(saldo), 'recebido - pago - distribuído')}
+    </div>
+    <div class="fin-tabs">
+      <button class="fin-tab ${finTab==='entradas'?'active':''}" onclick="setFinTab('entradas')">📥 Entradas</button>
+      <button class="fin-tab ${finTab==='saidas'?'active':''}" onclick="setFinTab('saidas')">📤 Saídas</button>
+      <button class="fin-tab ${finTab==='distribuicoes'?'active':''}" onclick="setFinTab('distribuicoes')">💸 Distribuição</button>
+      <button class="fin-tab ${finTab==='resumo'?'active':''}" onclick="setFinTab('resumo')">📊 Por Empreendimento</button>
+    </div>
+    <div id="fin-content"></div>
+  `;
+  renderFinTab();
+}
+
+function setFinTab(tab) {
+  finTab = tab;
+  document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(tab==='entradas'?'Entrada':tab==='saidas'?'Saída':tab==='distribuicoes'?'Distrib':'Empreend')));
+  renderFinTab();
+}
+
+function renderFinTab() {
+  const el = document.getElementById('fin-content');
+  if (!el) return;
+  if (finTab === 'entradas') {
+    const rows = currentData.entradas || [];
+    el.innerHTML = `
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">📥 Entradas (${rows.length})</div><button class="btn btn-primary" onclick="openEntradaModal()">+ Nova Entrada</button></div>
+        <table>
+          <thead><tr><th>Descrição</th><th>Tipo</th><th>Empreendimento</th><th>Valor</th><th>Previsto</th><th>Recebido</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${rows.length ? rows.map(e => `
+              <tr>
+                <td>${e.descricao}</td><td>${e.tipo||'—'}</td><td>${e.empreendimento_nome||'Institucional'}</td>
+                <td style="color:var(--success);font-weight:600">${fmt(e.valor)}</td>
+                <td>${e.data_prevista?fmtDate(e.data_prevista):'—'}</td>
+                <td>${e.data_recebimento?fmtDate(e.data_recebimento):'—'}</td>
+                <td><span class="badge ${e.status==='recebido'?'badge-green':'badge-yellow'}">${e.status}</span></td>
+                <td><button class="btn-icon btn-edit" onclick="editEntrada(${e.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteEntrada(${e.id})">🗑️</button></td>
+              </tr>
+            `).join('') : '<tr class="empty-row"><td colspan="8">Nenhuma entrada</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+  } else if (finTab === 'saidas') {
+    const rows = currentData.saidas || [];
+    el.innerHTML = `
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">📤 Saídas (${rows.length})</div><button class="btn btn-primary" onclick="openSaidaModal()">+ Nova Saída</button></div>
+        <table>
+          <thead><tr><th>Descrição</th><th>Categoria</th><th>Empreendimento</th><th>Valor</th><th>Data</th><th>Recorrente</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${rows.length ? rows.map(e => `
+              <tr>
+                <td>${e.descricao}</td><td>${e.categoria||'—'}</td><td>${e.empreendimento_nome||'Institucional'}</td>
+                <td style="color:var(--danger);font-weight:600">${fmt(e.valor)}</td>
+                <td>${e.data_pagamento?fmtDate(e.data_pagamento):'—'}</td>
+                <td>${e.recorrente?'<span class="badge badge-blue">Sim</span>':'—'}</td>
+                <td><span class="badge ${e.status==='pago'?'badge-green':'badge-yellow'}">${e.status}</span></td>
+                <td><button class="btn-icon btn-edit" onclick="editSaida(${e.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteSaida(${e.id})">🗑️</button></td>
+              </tr>
+            `).join('') : '<tr class="empty-row"><td colspan="8">Nenhuma saída</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+  } else if (finTab === 'distribuicoes') {
+    const rows = currentData.distribuicoes || [];
+    const total = rows.reduce((s,d) => s+d.valor, 0);
+    el.innerHTML = `
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">💸 Distribuições para Ramon — Total: ${fmt(total)}</div><button class="btn btn-primary" onclick="openDistModal()">+ Nova Distribuição</button></div>
+        <table>
+          <thead><tr><th>Descrição</th><th>Valor</th><th>Data</th><th>Obs</th><th></th></tr></thead>
+          <tbody>
+            ${rows.length ? rows.map(d => `
+              <tr>
+                <td>${d.descricao}</td>
+                <td style="color:var(--accent);font-weight:600">${fmt(d.valor)}</td>
+                <td>${fmtDate(d.data)}</td>
+                <td>${d.observacoes||'—'}</td>
+                <td><button class="btn-icon btn-delete" onclick="deleteDist(${d.id})">🗑️</button></td>
+              </tr>
+            `).join('') : '<tr class="empty-row"><td colspan="5">Nenhuma distribuição</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+  } else {
+    // resumo por empreendimento
+    const rows = (currentData.emp || []);
+    el.innerHTML = `
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">📊 Resumo por Empreendimento</div></div>
+        <table>
+          <thead><tr><th>Empreendimento</th><th>VGV Vendido</th><th>Entradas Recebidas</th><th>Pendente</th><th>Saídas Pagas</th><th>Saldo</th></tr></thead>
+          <tbody id="resumo-tbody"><tr class="empty-row"><td colspan="6">Carregando...</td></tr></tbody>
+        </table>
+      </div>`;
+    get('/api/financeiro/resumo').then(r => {
+      const rows = r.data.empreendimentos;
+      document.getElementById('resumo-tbody').innerHTML = rows.length ? rows.map(e => {
+        const saldo = e.entradas_recebidas - e.saidas_pagas;
+        return `<tr>
+          <td><strong>${e.nome}</strong></td>
+          <td style="color:var(--success)">${fmt(e.vgv_vendido)}</td>
+          <td style="color:var(--success)">${fmt(e.entradas_recebidas)}</td>
+          <td style="color:var(--warning)">${fmt(e.entradas_pendentes)}</td>
+          <td style="color:var(--danger)">${fmt(e.saidas_pagas)}</td>
+          <td style="font-weight:700;color:${saldo>=0?'var(--success)':'var(--danger)'}">${fmt(saldo)}</td>
+        </tr>`;
+      }).join('') : '<tr class="empty-row"><td colspan="6">Nenhum empreendimento</td></tr>';
+    });
+  }
+}
+
+function openEntradaModal(e = {}) {
+  openModal(e.id ? 'Editar Entrada' : 'Nova Entrada', `
+    <div class="form-grid">
+      <div class="form-group span2"><label>Descrição *</label><input id="f-desc" value="${e.descricao||''}" placeholder="Ex: Comissão Belvedere Março"></div>
+      <div class="form-group"><label>Tipo</label>
+        <select id="f-tipo">${['comissão','setup','bônus','outro'].map(t => `<option ${e.tipo===t?'selected':''}>${t}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Empreendimento</label>
+        <select id="f-emp"><option value="">Institucional</option>${(currentData.emp||[]).map(ep => `<option value="${ep.id}" ${e.empreendimento_id==ep.id?'selected':''}>${ep.nome}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Valor (R$) *</label><input id="f-valor" type="number" value="${e.valor||''}"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="f-status"><option value="pendente" ${e.status==='pendente'?'selected':''}>Pendente</option><option value="recebido" ${e.status==='recebido'?'selected':''}>Recebido</option></select>
+      </div>
+      <div class="form-group"><label>Data Prevista</label><input id="f-prev" type="date" value="${e.data_prevista||''}"></div>
+      <div class="form-group"><label>Data Recebimento</label><input id="f-rec" type="date" value="${e.data_recebimento||''}"></div>
+      <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${e.observacoes||''}</textarea></div>
+    </div>
+  `, async () => {
+    const body = { descricao: v('f-desc'), tipo: v('f-tipo'), empreendimento_id: v('f-emp')||null, valor: parseFloat(v('f-valor')), status: v('f-status'), data_prevista: v('f-prev'), data_recebimento: v('f-rec'), observacoes: v('f-obs') };
+    if (!body.descricao || !body.valor) return toast('Descrição e valor obrigatórios', 'error');
+    const r = e.id ? await put(`/api/financeiro/entradas/${e.id}`, body) : await post('/api/financeiro/entradas', body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Salvo!'); closeModal(); renderFinanceiro();
+  });
+}
+async function editEntrada(id) { openEntradaModal(currentData.entradas.find(e => e.id === id)); }
+async function deleteEntrada(id) { if(!confirm('Excluir?')) return; await del(`/api/financeiro/entradas/${id}`); toast('Excluído'); renderFinanceiro(); }
+
+function openSaidaModal(e = {}) {
+  openModal(e.id ? 'Editar Saída' : 'Nova Saída', `
+    <div class="form-grid">
+      <div class="form-group span2"><label>Descrição *</label><input id="f-desc" value="${e.descricao||''}" placeholder="Ex: Tráfego pago Google Ads"></div>
+      <div class="form-group"><label>Categoria</label>
+        <select id="f-cat">${['marketing','pessoal','operacional','evento','tecnologia','outro'].map(t => `<option ${e.categoria===t?'selected':''}>${t}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Empreendimento</label>
+        <select id="f-emp"><option value="">Institucional</option>${(currentData.emp||[]).map(ep => `<option value="${ep.id}" ${e.empreendimento_id==ep.id?'selected':''}>${ep.nome}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Valor (R$) *</label><input id="f-valor" type="number" value="${e.valor||''}"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="f-status"><option value="pendente" ${e.status==='pendente'?'selected':''}>Pendente</option><option value="pago" ${e.status==='pago'?'selected':''}>Pago</option></select>
+      </div>
+      <div class="form-group"><label>Data Pagamento</label><input id="f-data" type="date" value="${e.data_pagamento||''}"></div>
+      <div class="form-group"><label>Recorrente?</label>
+        <select id="f-rec"><option value="0" ${!e.recorrente?'selected':''}>Não</option><option value="1" ${e.recorrente?'selected':''}>Sim</option></select>
+      </div>
+      <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${e.observacoes||''}</textarea></div>
+    </div>
+  `, async () => {
+    const body = { descricao: v('f-desc'), categoria: v('f-cat'), empreendimento_id: v('f-emp')||null, valor: parseFloat(v('f-valor')), status: v('f-status'), data_pagamento: v('f-data'), recorrente: v('f-rec')==='1', observacoes: v('f-obs') };
+    if (!body.descricao || !body.valor) return toast('Descrição e valor obrigatórios', 'error');
+    const r = e.id ? await put(`/api/financeiro/saidas/${e.id}`, body) : await post('/api/financeiro/saidas', body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Salvo!'); closeModal(); renderFinanceiro();
+  });
+}
+async function editSaida(id) { openSaidaModal(currentData.saidas.find(e => e.id === id)); }
+async function deleteSaida(id) { if(!confirm('Excluir?')) return; await del(`/api/financeiro/saidas/${id}`); toast('Excluído'); renderFinanceiro(); }
+
+function openDistModal() {
+  openModal('Nova Distribuição para Ramon', `
+    <div class="form-grid cols1">
+      <div class="form-group"><label>Descrição</label><input id="f-desc" placeholder="Ex: Pró-labore Maio"></div>
+      <div class="form-group"><label>Valor (R$) *</label><input id="f-valor" type="number"></div>
+      <div class="form-group"><label>Data *</label><input id="f-data" type="date" value="${today()}"></div>
+      <div class="form-group"><label>Observações</label><textarea id="f-obs"></textarea></div>
+    </div>
+  `, async () => {
+    const body = { descricao: v('f-desc')||'Distribuição', valor: parseFloat(v('f-valor')), data: v('f-data'), observacoes: v('f-obs') };
+    if (!body.valor || !body.data) return toast('Valor e data obrigatórios', 'error');
+    const r = await post('/api/financeiro/distribuicoes', body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Distribuição registrada!'); closeModal(); renderFinanceiro();
+  });
+}
+async function deleteDist(id) { if(!confirm('Excluir?')) return; await del(`/api/financeiro/distribuicoes/${id}`); toast('Excluído'); renderFinanceiro(); }
+
+// ─── CALENDÁRIO ───────────────────────────────────────────────────────────────
+
+async function renderCalendario() {
+  const [cr, er] = await Promise.all([get('/api/calendario'), get('/api/empreendimentos')]);
+  currentData.calendario = cr.data; currentData.emp = er.data;
+  const rows = cr.data;
+
+  document.getElementById('content').innerHTML = `
+    <div class="table-card">
+      <div class="table-header"><div class="table-title">📅 Calendário de Lançamentos</div><button class="btn btn-primary" onclick="openCalModal()">+ Novo Evento</button></div>
+      <table>
+        <thead><tr><th>Data</th><th>Título</th><th>Tipo</th><th>Empreendimento</th><th>Descrição</th><th></th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(e => `
+            <tr>
+              <td style="font-weight:600;color:var(--accent)">${fmtDate(e.data)}</td>
+              <td><strong>${e.titulo}</strong></td>
+              <td><span class="badge ${badgeCalendario(e.tipo)}">${e.tipo}</span></td>
+              <td>${e.empreendimento_nome||'—'}</td>
+              <td>${e.descricao||'—'}</td>
+              <td><button class="btn-icon btn-delete" onclick="deleteCal(${e.id})">🗑️</button></td>
+            </tr>
+          `).join('') : '<tr class="empty-row"><td colspan="6">Nenhum evento agendado</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function openCalModal() {
+  openModal('Novo Evento', `
+    <div class="form-grid">
+      <div class="form-group span2"><label>Título *</label><input id="f-titulo" placeholder="Ex: Lançamento Belvedere II"></div>
+      <div class="form-group"><label>Data *</label><input id="f-data" type="date" value="${today()}"></div>
+      <div class="form-group"><label>Tipo</label>
+        <select id="f-tipo">${['lançamento','pré-lançamento','evento','reunião','outro'].map(t => `<option>${t}</option>`).join('')}</select>
+      </div>
+      <div class="form-group span2"><label>Empreendimento</label>
+        <select id="f-emp"><option value="">—</option>${(currentData.emp||[]).map(e => `<option value="${e.id}">${e.nome}</option>`).join('')}</select>
+      </div>
+      <div class="form-group span2"><label>Descrição</label><textarea id="f-desc"></textarea></div>
+    </div>
+  `, async () => {
+    const body = { titulo: v('f-titulo'), data: v('f-data'), tipo: v('f-tipo'), empreendimento_id: v('f-emp')||null, descricao: v('f-desc') };
+    if (!body.titulo || !body.data) return toast('Título e data obrigatórios', 'error');
+    const r = await post('/api/calendario', body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Evento criado!'); closeModal(); renderCalendario();
+  });
+}
+async function deleteCal(id) { if(!confirm('Excluir?')) return; await del(`/api/calendario/${id}`); toast('Excluído'); renderCalendario(); }
+
+// ─── RANKING ──────────────────────────────────────────────────────────────────
+
+async function renderRanking() {
+  const [rr, er] = await Promise.all([get('/api/vendas/ranking'), get('/api/empreendimentos')]);
+  currentData.emp = er.data;
+  const rows = rr.data;
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <select onchange="filterRanking(this.value,'emp')" style="font-size:13px;padding:8px 12px">
+        <option value="">Todos os empreendimentos</option>
+        ${er.data.map(e => `<option value="${e.id}">${e.nome}</option>`).join('')}
+      </select>
+      <select onchange="filterRanking(this.value,'periodo')" style="font-size:13px;padding:8px 12px">
+        <option value="">Todo o período</option>
+        <option value="mes">Este mês</option>
+      </select>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><div class="table-title">⭐ Ranking de Corretores</div></div>
+      <table>
+        <thead><tr><th>#</th><th>Corretor</th><th>Imobiliária</th><th>Vendas</th><th>VGV</th></tr></thead>
+        <tbody id="ranking-body">
+          ${rows.length ? rows.map((r, i) => `
+            <tr>
+              <td><span style="font-weight:700;color:${i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'var(--text2)';}">${i+1}º</span></td>
+              <td><strong>${r.nome}</strong></td>
+              <td>${r.imobiliaria||'—'}</td>
+              <td style="text-align:center"><span class="badge badge-blue">${r.vendas}</span></td>
+              <td style="color:var(--success);font-weight:600">${fmt(r.vgv)}</td>
+            </tr>
+          `).join('') : '<tr class="empty-row"><td colspan="5">Nenhuma venda registrada</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function filterRanking(val, tipo) {
+  const params = new URLSearchParams();
+  if (tipo === 'emp' && val) params.set('empreendimento_id', val);
+  if (tipo === 'periodo' && val) params.set('periodo', val);
+  const r = await get(`/api/vendas/ranking?${params}`);
+  document.getElementById('ranking-body').innerHTML = r.data.length ? r.data.map((row, i) => `
+    <tr>
+      <td><span style="font-weight:700;color:${i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'var(--text2)'}">${i+1}º</span></td>
+      <td><strong>${row.nome}</strong></td><td>${row.imobiliaria||'—'}</td>
+      <td style="text-align:center"><span class="badge badge-blue">${row.vendas}</span></td>
+      <td style="color:var(--success);font-weight:600">${fmt(row.vgv)}</td>
+    </tr>
+  `).join('') : '<tr class="empty-row"><td colspan="5">Nenhuma venda</td></tr>';
+}
+
+// ─── SEARCH ───────────────────────────────────────────────────────────────────
+
+function handleSearch(q) {
+  const f = q.toLowerCase().trim();
+  switch(currentPage) {
+    case 'leads': renderLeads(f); break;
+    case 'vendas': renderVendas(f); break;
+    case 'clientes': renderClientes(f); break;
+    case 'empreendimentos': renderEmpreendimentos(f); break;
+    case 'corretores': renderCorretores(f); break;
+  }
+}
+
+function handleAdd() {
+  switch(currentPage) {
+    case 'leads': openLeadModal(); break;
+    case 'vendas': openVendaModal(); break;
+    case 'clientes': openClienteModal(); break;
+    case 'empreendimentos': openEmpModal(); break;
+    case 'corretores': openCorretorModal(); break;
+    case 'financeiro': finTab==='entradas' ? openEntradaModal() : finTab==='saidas' ? openSaidaModal() : finTab==='distribuicoes' ? openDistModal() : openCalModal(); break;
+    case 'calendario': openCalModal(); break;
+  }
+}
+
+// ─── MODAL UTILS ─────────────────────────────────────────────────────────────
+
+function openModal(title, bodyHtml, onSave) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = bodyHtml;
+  document.getElementById('modal-foot').innerHTML = `
+    <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-primary" onclick="modalSave()">Salvar</button>
+  `;
+  window._modalSave = onSave;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function modalSave() { window._modalSave && window._modalSave(); }
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+function closeModalOutside(e) { if (e.target === document.getElementById('modal-overlay')) closeModal(); }
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+function v(id) { return document.getElementById(id)?.value || ''; }
+function fmt(n) { return (n||0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
+function fmtDate(d) { if (!d) return '—'; const [y,m,day] = d.split('T')[0].split('-'); return `${day}/${m}/${y}`; }
+function fmtPhone(p) { if (!p) return '—'; const n = p.replace(/\D/g,''); return n.length===11 ? `(${n.slice(0,2)}) ${n.slice(2,7)}-${n.slice(7)}` : p; }
+function today() { return new Date().toISOString().split('T')[0]; }
+function badgeCalendario(tipo) { const m = {'lançamento':'badge-accent','pré-lançamento':'badge-yellow','evento':'badge-blue','reunião':'badge-gray'}; return m[tipo]||'badge-gray'; }
+
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `toast-item ${type}`;
+  el.innerHTML = `${type==='success'?'✅':'❌'} ${msg}`;
+  document.getElementById('toast').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+
+renderPage('dashboard');
+</script>
+</body>
+</html>
