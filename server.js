@@ -13,23 +13,18 @@ app.use(express.json());
 const CRM_USER = process.env.CRM_USER || "r2x";
 const CRM_PASS = process.env.CRM_PASS || "r2x2026";
 
-const ROTAS_PUBLICAS = ["/login.html", "/login", "/cadastro-corretor", "/manifest.json", "/sw.js"];
 const APIs_PUBLICAS = ["/api/corretores/publico", "/api/leads/whatsapp"];
 
 function autenticar(req, res, next) {
-  // Libera rotas públicas e assets estáticos
-  if (ROTAS_PUBLICAS.includes(req.path)) return next();
-  if (req.path.startsWith("/icon") || req.path.endsWith(".png") || req.path.endsWith(".css") || req.path.endsWith(".js") && !req.path.startsWith("/api/")) return next();
+  // Páginas HTML e assets são servidos livremente — o frontend gerencia o redirecionamento
+  if (!req.path.startsWith("/api/")) return next();
+  // APIs públicas não precisam de token
   if (APIs_PUBLICAS.some(p => req.path.startsWith(p))) return next();
-
-  // Verifica token
+  // Demais APIs exigem token
   const token = req.headers["x-crm-token"] || req.query.token;
   const esperado = Buffer.from(`${CRM_USER}:${CRM_PASS}`).toString("base64");
   if (token === esperado) return next();
-
-  // API → 401, páginas → redireciona para login
-  if (req.path.startsWith("/api/")) return res.status(401).json({ ok: false, error: "Não autorizado" });
-  return res.redirect("/login.html");
+  return res.status(401).json({ ok: false, error: "Não autorizado" });
 }
 
 app.use(autenticar);
