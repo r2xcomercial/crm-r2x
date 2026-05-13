@@ -7,6 +7,25 @@ const db = require("./database");
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ─── AUTENTICAÇÃO SIMPLES ────────────────────────────────────────────────────
+
+const CRM_USER = process.env.CRM_USER || "r2x";
+const CRM_PASS = process.env.CRM_PASS || "r2x2026";
+
+function autenticar(req, res, next) {
+  // Libera login page e assets públicos
+  if (req.path === "/login" || req.path === "/login.html") return next();
+  // Verifica sessão via cookie simples
+  const token = req.headers["x-crm-token"] || req.query.token;
+  if (token === Buffer.from(`${CRM_USER}:${CRM_PASS}`).toString("base64")) return next();
+  // Rotas de API retornam 401
+  if (req.path.startsWith("/api/")) return res.status(401).json({ ok: false, error: "Não autorizado" });
+  // Demais rotas redirecionam para login
+  res.redirect("/login");
+}
+
+app.use(autenticar);
 app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 4000;

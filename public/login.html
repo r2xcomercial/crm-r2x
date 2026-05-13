@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>R2X CRM — Login</title>
+<style>
+  :root { --navy: #0D1B2E; --accent: #00C4B4; --border: #243650; --card: #162032; --text: #E8EDF5; --text2: #94A3B8; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--navy); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 380px; padding: 40px 36px; }
+  .logo { text-align: center; margin-bottom: 32px; }
+  .logo-mark { width: 56px; height: 56px; background: var(--accent); border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-weight: 900; color: var(--navy); font-size: 22px; margin-bottom: 12px; }
+  h1 { font-size: 22px; font-weight: 700; text-align: center; }
+  .subtitle { font-size: 13px; color: var(--text2); text-align: center; margin-top: 4px; }
+  .form-group { margin-top: 20px; }
+  label { display: block; font-size: 12px; color: var(--text2); font-weight: 500; margin-bottom: 6px; }
+  input { width: 100%; background: #1A2840; border: 1px solid var(--border); color: var(--text); padding: 12px 14px; border-radius: 8px; font-size: 14px; outline: none; transition: border-color .15s; }
+  input:focus { border-color: var(--accent); }
+  .btn { width: 100%; padding: 13px; background: var(--accent); color: var(--navy); border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 24px; transition: opacity .15s; }
+  .btn:hover { opacity: .88; }
+  .error { background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); color: #f87171; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-top: 16px; display: none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-mark">R2</div>
+    <h1>R2X CRM</h1>
+    <p class="subtitle">Aceleradora de Vendas</p>
+  </div>
+  <form onsubmit="login(event)">
+    <div class="form-group">
+      <label>Usuário</label>
+      <input id="user" type="text" placeholder="usuário" autocomplete="username" required>
+    </div>
+    <div class="form-group">
+      <label>Senha</label>
+      <input id="pass" type="password" placeholder="••••••••" autocomplete="current-password" required>
+    </div>
+    <div class="error" id="error">Usuário ou senha incorretos.</div>
+    <button type="submit" class="btn">Entrar</button>
+  </form>
+</div>
+
+<script>
+  // Se já tem token salvo, vai direto
+  const saved = localStorage.getItem('crm_token');
+  if (saved) {
+    fetch('/api/dashboard', { headers: { 'x-crm-token': saved } })
+      .then(r => r.ok ? window.location.href = '/' : null)
+      .catch(() => {});
+  }
+
+  async function login(e) {
+    e.preventDefault();
+    const user = document.getElementById('user').value;
+    const pass = document.getElementById('pass').value;
+    const token = btoa(user + ':' + pass);
+
+    const r = await fetch('/api/dashboard', { headers: { 'x-crm-token': token } });
+    if (r.ok) {
+      localStorage.setItem('crm_token', token);
+      window.location.href = '/';
+    } else {
+      document.getElementById('error').style.display = 'block';
+    }
+  }
+</script>
+</body>
+</html>
