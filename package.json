@@ -1,13 +1,14 @@
 {
   "name": "crm-r2x",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "CRM R2X Aceleradora de Vendas",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
+  "engines": {
+    "node": ">=20"
+  },
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
