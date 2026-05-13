@@ -13,16 +13,23 @@ app.use(express.json());
 const CRM_USER = process.env.CRM_USER || "r2x";
 const CRM_PASS = process.env.CRM_PASS || "r2x2026";
 
+const ROTAS_PUBLICAS = ["/login.html", "/login", "/cadastro-corretor", "/manifest.json", "/sw.js"];
+const APIs_PUBLICAS = ["/api/corretores/publico", "/api/leads/whatsapp"];
+
 function autenticar(req, res, next) {
-  // Libera login page e assets públicos
-  if (req.path === "/login" || req.path === "/login.html" || req.path === "/cadastro-corretor" || req.path.startsWith("/icon") || req.path === "/manifest.json" || req.path === "/sw.js") return next();
-  // Verifica sessão via cookie simples
+  // Libera rotas públicas e assets estáticos
+  if (ROTAS_PUBLICAS.includes(req.path)) return next();
+  if (req.path.startsWith("/icon") || req.path.endsWith(".png") || req.path.endsWith(".css") || req.path.endsWith(".js") && !req.path.startsWith("/api/")) return next();
+  if (APIs_PUBLICAS.some(p => req.path.startsWith(p))) return next();
+
+  // Verifica token
   const token = req.headers["x-crm-token"] || req.query.token;
-  if (token === Buffer.from(`${CRM_USER}:${CRM_PASS}`).toString("base64")) return next();
-  // Rotas de API retornam 401
-  if (req.path.startsWith("/api/") && !req.path.startsWith("/api/corretores/publico")) return res.status(401).json({ ok: false, error: "Não autorizado" });
-  // Demais rotas redirecionam para login.html
-  if (!req.path.startsWith("/api/")) res.redirect("/login.html");
+  const esperado = Buffer.from(`${CRM_USER}:${CRM_PASS}`).toString("base64");
+  if (token === esperado) return next();
+
+  // API → 401, páginas → redireciona para login
+  if (req.path.startsWith("/api/")) return res.status(401).json({ ok: false, error: "Não autorizado" });
+  return res.redirect("/login.html");
 }
 
 app.use(autenticar);
