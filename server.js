@@ -47,7 +47,23 @@ app.get("/api/dashboard", (req, res) => {
   const entradas_pendentes = db.prepare("SELECT COALESCE(SUM(valor),0) as total FROM financeiro_entradas WHERE status='pendente'").get().total;
   const clientes_total = db.prepare("SELECT COUNT(*) as n FROM clientes").get().n;
   const corretores_ativos = db.prepare("SELECT COUNT(*) as n FROM corretores WHERE ativo=1").get().n;
+  const corretores_total = db.prepare("SELECT COUNT(*) as n FROM corretores").get().n;
+  const corretores_com_vendas = db.prepare("SELECT COUNT(DISTINCT corretor_id) as n FROM vendas WHERE status='ativo' AND corretor_id IS NOT NULL").get().n;
   const empreendimentos = db.prepare("SELECT COUNT(*) as n FROM empreendimentos").get().n;
+
+  const ranking_vgv = db.prepare(`
+    SELECT c.nome, COALESCE(SUM(v.valor),0) as vgv, COUNT(v.id) as qtd
+    FROM corretores c
+    JOIN vendas v ON v.corretor_id = c.id AND v.status = 'ativo'
+    GROUP BY c.id ORDER BY vgv DESC LIMIT 5
+  `).all();
+
+  const ranking_qtd = db.prepare(`
+    SELECT c.nome, COUNT(v.id) as qtd, COALESCE(SUM(v.valor),0) as vgv
+    FROM corretores c
+    JOIN vendas v ON v.corretor_id = c.id AND v.status = 'ativo'
+    GROUP BY c.id ORDER BY qtd DESC LIMIT 5
+  `).all();
 
   const aniversarios_mes = db.prepare(`
     SELECT nome, telefone, aniversario, 'lead' as tipo FROM leads
@@ -71,10 +87,12 @@ app.get("/api/dashboard", (req, res) => {
   `).all();
 
   ok(res, {
-    kpis: { leads_total, leads_novos, vendas_mes, vendas_total, entradas_pendentes, clientes_total, corretores_ativos, empreendimentos },
+    kpis: { leads_total, leads_novos, vendas_mes, vendas_total, entradas_pendentes, clientes_total, corretores_ativos, corretores_total, corretores_com_vendas, empreendimentos },
     aniversarios_mes,
     proximos_lancamentos,
     funil,
+    ranking_vgv,
+    ranking_qtd,
   });
 });
 

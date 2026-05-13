@@ -188,19 +188,24 @@
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
   /* ── RESPONSIVE ── */
-  #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 99; }
+  #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 200; }
   #sidebar-overlay.open { display: block; }
-  #menu-btn { display: none; background: none; border: none; color: var(--text); font-size: 22px; cursor: pointer; padding: 4px 8px; margin-right: 8px; }
+  #menu-btn { display: none; background: none; border: none; color: var(--text); font-size: 24px; cursor: pointer; padding: 0 10px 0 0; line-height: 1; }
   @media(max-width: 768px) {
-    #sidebar { position: fixed; left: -260px; top: 0; bottom: 0; z-index: 100; transition: left .25s; width: 240px; }
-    #sidebar.open { left: 0; }
-    #menu-btn { display: block; }
+    body { overflow: auto; }
+    #sidebar { position: fixed; left: -280px; top: 0; bottom: 0; z-index: 300; transition: left .25s ease; width: 260px; overflow-y: auto; }
+    #sidebar.open { left: 0; box-shadow: 4px 0 24px rgba(0,0,0,.5); }
+    #menu-btn { display: inline-block; }
+    #main { width: 100%; overflow: auto; }
+    #content { overflow: auto; }
     .form-grid { grid-template-columns: 1fr; }
     .form-group.span2 { grid-column: span 1; }
     .dash-row, .dash-row.cols3 { grid-template-columns: 1fr; }
     .kpi-grid { grid-template-columns: repeat(2, 1fr); }
-    #topbar { gap: 8px; }
-    .topbar-search { min-width: 0; flex: 1; }
+    #topbar { gap: 6px; padding: 0 12px; }
+    .topbar-search { min-width: 0; flex: 1; font-size: 13px; }
+    table { font-size: 12px; }
+    th, td { padding: 8px 6px; }
   }
 </style>
 </head>
