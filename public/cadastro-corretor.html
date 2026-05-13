@@ -33,9 +33,9 @@
 <body>
 <div class="card">
   <div class="logo">
-    <div class="logo-mark">R2</div>
+    <img src="/icon-192.png" style="width:56px;height:56px;border-radius:14px;margin-bottom:10px">
     <h1>Cadastro de Corretor</h1>
-    <p class="subtitle">R2X Aceleradora de Vendas — Preencha seus dados para integrar nossa rede</p>
+    <p class="subtitle">Inteligência Comercial em Lançamentos Imobiliários — Preencha seus dados para integrar nossa rede</p>
   </div>
 
   <form id="form" onsubmit="enviar(event)">
@@ -74,7 +74,13 @@
         <label>Estado</label>
         <select id="estado">
           <option value="">—</option>
-          ${['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map(s => `<option value="${s}"${s==='SC'?' selected':''}>${s}</option>`).join('')}
+          <option>AC</option><option>AL</option><option>AP</option><option>AM</option>
+          <option>BA</option><option>CE</option><option>DF</option><option>ES</option>
+          <option>GO</option><option>MA</option><option>MT</option><option>MS</option>
+          <option>MG</option><option>PA</option><option>PB</option><option>PR</option>
+          <option>PE</option><option>PI</option><option>RJ</option><option>RN</option>
+          <option>RS</option><option>RO</option><option>RR</option><option selected>SC</option>
+          <option>SP</option><option>SE</option><option>TO</option>
         </select>
       </div>
     </div>

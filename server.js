@@ -15,14 +15,14 @@ const CRM_PASS = process.env.CRM_PASS || "r2x2026";
 
 function autenticar(req, res, next) {
   // Libera login page e assets públicos
-  if (req.path === "/login" || req.path === "/login.html") return next();
+  if (req.path === "/login" || req.path === "/login.html" || req.path === "/cadastro-corretor" || req.path.startsWith("/icon") || req.path === "/manifest.json" || req.path === "/sw.js") return next();
   // Verifica sessão via cookie simples
   const token = req.headers["x-crm-token"] || req.query.token;
   if (token === Buffer.from(`${CRM_USER}:${CRM_PASS}`).toString("base64")) return next();
   // Rotas de API retornam 401
-  if (req.path.startsWith("/api/")) return res.status(401).json({ ok: false, error: "Não autorizado" });
-  // Demais rotas redirecionam para login
-  res.redirect("/login");
+  if (req.path.startsWith("/api/") && !req.path.startsWith("/api/corretores/publico")) return res.status(401).json({ ok: false, error: "Não autorizado" });
+  // Demais rotas redirecionam para login.html
+  if (!req.path.startsWith("/api/")) res.redirect("/login.html");
 }
 
 app.use(autenticar);
