@@ -136,4 +136,14 @@ db.exec(`
   );
 `);
 
+// Migrations: adiciona colunas que podem estar faltando em bancos antigos
+const migrations = [
+  "ALTER TABLE leads ADD COLUMN aniversario TEXT",
+  "ALTER TABLE leads ADD COLUMN cpf TEXT",
+  "ALTER TABLE clientes ADD COLUMN aniversario TEXT",
+];
+for (const sql of migrations) {
+  try { db.exec(sql); } catch (_) { /* coluna já existe */ }
+}
+
 module.exports = db;
