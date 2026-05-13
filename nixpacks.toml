@@ -1,2 +1,5 @@
 [phases.setup]
 nixPkgs = ["python3", "gcc", "gnumake"]
+
+[variables]
+NIXPACKS_NODE_VERSION = "20"
