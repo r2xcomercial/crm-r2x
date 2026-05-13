@@ -188,12 +188,19 @@
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
   /* ── RESPONSIVE ── */
+  #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 99; }
+  #sidebar-overlay.open { display: block; }
+  #menu-btn { display: none; background: none; border: none; color: var(--text); font-size: 22px; cursor: pointer; padding: 4px 8px; margin-right: 8px; }
   @media(max-width: 768px) {
-    #sidebar { display: none; }
+    #sidebar { position: fixed; left: -260px; top: 0; bottom: 0; z-index: 100; transition: left .25s; width: 240px; }
+    #sidebar.open { left: 0; }
+    #menu-btn { display: block; }
     .form-grid { grid-template-columns: 1fr; }
     .form-group.span2 { grid-column: span 1; }
     .dash-row, .dash-row.cols3 { grid-template-columns: 1fr; }
     .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    #topbar { gap: 8px; }
+    .topbar-search { min-width: 0; flex: 1; }
   }
 </style>
 </head>
@@ -228,9 +235,13 @@
   </nav>
 </div>
 
+<!-- OVERLAY MOBILE -->
+<div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
 <!-- MAIN -->
 <div id="main">
   <div id="topbar">
+    <button id="menu-btn" onclick="toggleSidebar()">☰</button>
     <div id="page-title">Dashboard</div>
     <input class="topbar-search" type="text" id="search-box" placeholder="🔍  Buscar..." oninput="handleSearch(this.value)">
     <button class="topbar-btn" id="add-btn" onclick="handleAdd()" style="display:none">+ Novo</button>
@@ -260,8 +271,18 @@ let currentData = {};
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+}
+
 function navigate(page) {
   currentPage = page;
+  closeSidebar();
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   document.querySelector(`.nav-item[onclick="navigate('${page}')"]`)?.classList.add('active');
   document.getElementById('page-title').textContent = pageTitles[page] || page;
