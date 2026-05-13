@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="R2X CRM">
 <link rel="apple-touch-icon" href="/icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --navy: #0D1B2E;
@@ -218,7 +219,7 @@
     <div class="nav-item" onclick="navigate('ranking')"><span class="icon">⭐</span> Ranking</div>
 
     <div class="nav-section">Cadastros</div>
-    <div class="nav-item" onclick="navigate('clientes')"><span class="icon">🏢</span> Clientes</div>
+    <div class="nav-item" onclick="navigate('clientes')"><span class="icon">🏢</span> Incorporadores</div>
     <div class="nav-item" onclick="navigate('empreendimentos')"><span class="icon">🏗️</span> Empreendimentos</div>
     <div class="nav-item" onclick="navigate('corretores')"><span class="icon">👥</span> Corretores</div>
 
@@ -271,7 +272,7 @@ function navigate(page) {
 
 const pageTitles = {
   dashboard: 'Dashboard', leads: 'Leads', vendas: 'Vendas',
-  clientes: 'Clientes', empreendimentos: 'Empreendimentos', corretores: 'Corretores',
+  clientes: 'Incorporadores', empreendimentos: 'Empreendimentos', corretores: 'Corretores',
   financeiro: 'Financeiro', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores'
 };
 const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario'];
@@ -316,15 +317,32 @@ const del = p => api('DELETE', p);
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 
+let _dashCharts = {};
+
 async function renderDashboard() {
-  const { data } = await get('/api/dashboard');
+  const [{ data }, vendasR, finR] = await Promise.all([
+    get('/api/dashboard'), get('/api/vendas'), get('/api/financeiro/entradas')
+  ]);
   const { kpis, aniversarios_mes, proximos_lancamentos, funil } = data;
 
-  // Update badge
   document.getElementById('badge-leads').textContent = kpis.leads_novos;
 
   const statusLabel = { novo: 'Novo', qualificado: 'Qualificado', visitou: 'Visitou', proposta: 'Proposta', vendido: 'Vendido', perdido: 'Perdido' };
-  const totalLeads = funil.reduce((s, f) => s + f.n, 0) || 1;
+  const statusColors = { novo:'#00C4B4', qualificado:'#0099CC', visitou:'#F59E0B', proposta:'#A855F7', vendido:'#22C55E', perdido:'#EF4444' };
+
+  // Agrupa vendas por mês (últimos 6 meses)
+  const vendas = vendasR.data || [];
+  const meses = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(); d.setMonth(d.getMonth() - i);
+    meses.push({ label: d.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}), key: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` });
+  }
+  const vendasPorMes = meses.map(m => vendas.filter(v => v.data_venda?.startsWith(m.key) && v.status==='ativo').reduce((s,v) => s+v.valor,0));
+
+  // Entradas por status
+  const entradas = finR.data || [];
+  const recebido = entradas.filter(e => e.status==='recebido').reduce((s,e) => s+e.valor, 0);
+  const pendente = entradas.filter(e => e.status==='pendente').reduce((s,e) => s+e.valor, 0);
 
   document.getElementById('content').innerHTML = `
     <div class="kpi-grid">
@@ -332,50 +350,101 @@ async function renderDashboard() {
       ${kpi('🏆', 'Vendas no Mês', fmt(kpis.vendas_mes), `${kpis.vendas_total} negócios ativos`)}
       ${kpi('💰', 'Recebíveis Pendentes', fmt(kpis.entradas_pendentes), 'a receber')}
       ${kpi('🏗️', 'Empreendimentos', kpis.empreendimentos, '')}
-      ${kpi('🏢', 'Clientes', kpis.clientes_total, 'loteadores/incorporadores')}
+      ${kpi('🏢', 'Incorporadores', kpis.clientes_total, 'loteadores/incorporadores')}
       ${kpi('👥', 'Corretores Ativos', kpis.corretores_ativos, '')}
     </div>
-    <div class="dash-row">
+
+    <div class="dash-row" style="margin-bottom:20px">
+      <div class="mini-card">
+        <h4>📈 VGV Vendido — Últimos 6 meses</h4>
+        <div style="position:relative;height:180px;margin-top:12px">
+          <canvas id="chart-vendas"></canvas>
+        </div>
+      </div>
       <div class="mini-card">
         <h4>🎯 Funil de Leads</h4>
-        <div class="funil-bar">
-          ${funil.map(f => `
-            <div class="funil-item">
-              <span style="min-width:90px;font-size:12px;color:var(--text2)">${statusLabel[f.status]||f.status}</span>
-              <div class="funil-track"><div class="funil-fill" style="width:${Math.round(f.n/totalLeads*100)}%"></div></div>
-              <span class="funil-count">${f.n}</span>
-            </div>
-          `).join('') || '<div style="color:var(--text2);font-size:13px">Sem leads ainda</div>'}
+        <div style="position:relative;height:180px;margin-top:12px">
+          <canvas id="chart-funil"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="dash-row" style="margin-bottom:20px">
+      <div class="mini-card">
+        <h4>💰 Financeiro — Entradas</h4>
+        <div style="position:relative;height:160px;margin-top:12px">
+          <canvas id="chart-fin"></canvas>
         </div>
       </div>
       <div class="mini-card">
         <h4>🎂 Aniversários do Mês</h4>
         <div class="aniv-list">
-          ${aniversarios_mes.length ? aniversarios_mes.slice(0,6).map(a => `
+          ${aniversarios_mes.length ? aniversarios_mes.slice(0,5).map(a => `
             <div class="aniv-item">
-              <div class="aniv-avatar">${a.tipo === 'corretor' ? '👤' : a.tipo === 'cliente' ? '🏢' : '🎯'}</div>
+              <div class="aniv-avatar">${a.tipo==='corretor'?'👤':a.tipo==='cliente'?'🏢':'🎯'}</div>
               <div><div style="font-weight:500">${a.nome||'—'}</div><div style="font-size:11px;color:var(--text2)">${a.tipo} · ${fmtDate(a.aniversario)}</div></div>
             </div>
-          `).join('') : '<div style="color:var(--text2);font-size:13px">Nenhum aniversário este mês</div>'}
+          `).join('') : '<div style="color:var(--text2);font-size:13px;padding-top:8px">Nenhum aniversário este mês</div>'}
         </div>
       </div>
     </div>
+
     <div class="mini-card" style="margin-bottom:20px">
       <h4>📅 Próximos Lançamentos</h4>
-      <div class="launch-list" style="margin-top:4px">
+      <div class="launch-list" style="margin-top:8px">
         ${proximos_lancamentos.length ? proximos_lancamentos.map(l => `
           <div class="launch-item">
             <div class="launch-date">${fmtDate(l.data)}</div>
-            <div>
-              <span style="font-weight:500">${l.titulo}</span>
-              ${l.empreendimento_nome ? `<span style="color:var(--text2);font-size:12px"> · ${l.empreendimento_nome}</span>` : ''}
-            </div>
+            <div><span style="font-weight:500">${l.titulo}</span>${l.empreendimento_nome?`<span style="color:var(--text2);font-size:12px"> · ${l.empreendimento_nome}</span>`:''}</div>
             <span class="badge ${badgeCalendario(l.tipo)}">${l.tipo}</span>
           </div>
         `).join('') : '<div style="color:var(--text2);font-size:13px">Nenhum evento agendado</div>'}
       </div>
     </div>
   `;
+
+  // Destrói charts anteriores se existirem
+  Object.values(_dashCharts).forEach(c => c.destroy());
+  _dashCharts = {};
+
+  const chartDefaults = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94A3B8', font: { size: 11 } } } } };
+
+  // Gráfico VGV por mês
+  _dashCharts.vendas = new Chart(document.getElementById('chart-vendas'), {
+    type: 'bar',
+    data: {
+      labels: meses.map(m => m.label),
+      datasets: [{ label: 'VGV (R$)', data: vendasPorMes, backgroundColor: 'rgba(0,196,180,0.7)', borderColor: '#00C4B4', borderWidth: 1, borderRadius: 4 }]
+    },
+    options: { ...chartDefaults, scales: {
+      x: { ticks: { color: '#94A3B8', font:{size:10} }, grid: { color: '#243650' } },
+      y: { ticks: { color: '#94A3B8', font:{size:10}, callback: v => v>=1000000?`${(v/1000000).toFixed(1)}M`:v>=1000?`${(v/1000).toFixed(0)}k`:v }, grid: { color: '#243650' } }
+    }}
+  });
+
+  // Gráfico Funil (rosca)
+  _dashCharts.funil = new Chart(document.getElementById('chart-funil'), {
+    type: 'doughnut',
+    data: {
+      labels: funil.map(f => statusLabel[f.status]||f.status),
+      datasets: [{ data: funil.map(f => f.n), backgroundColor: funil.map(f => statusColors[f.status]||'#94A3B8'), borderWidth: 0 }]
+    },
+    options: { ...chartDefaults, cutout: '65%' }
+  });
+
+  // Gráfico Financeiro (rosca)
+  _dashCharts.fin = new Chart(document.getElementById('chart-fin'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Recebido', 'Pendente'],
+      datasets: [{ data: [recebido, pendente], backgroundColor: ['#22C55E','#F59E0B'], borderWidth: 0 }]
+    },
+    options: { ...chartDefaults, cutout: '65%',
+      plugins: { legend: { labels: { color: '#94A3B8', font:{size:11} } },
+        tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.raw)}` } }
+      }
+    }
+  });
 }
 
 function kpi(icon, label, value, sub) {
@@ -532,7 +601,7 @@ async function renderVendas(filter = '') {
     <div class="table-card">
       <div class="table-header"><div class="table-title">🏆 Vendas (${vendas.length})</div></div>
       <table>
-        <thead><tr><th>Data</th><th>Lead</th><th>Imóvel</th><th>Valor</th><th>Corretor</th><th>Empreendimento</th><th>Cliente</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Data</th><th>Lead</th><th>Imóvel</th><th>Valor</th><th>Corretor</th><th>Empreendimento</th><th>Incorporador</th><th>Status</th><th></th></tr></thead>
         <tbody>
           ${vendas.length ? vendas.map(v => `
             <tr>
@@ -572,7 +641,7 @@ function openVendaModal(venda = {}) {
       <div class="form-group"><label>Empreendimento</label>
         <select id="f-emp"><option value="">—</option>${(emp||[]).map(e => `<option value="${e.id}" ${venda.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('')}</select>
       </div>
-      <div class="form-group"><label>Cliente (Loteador)</label>
+      <div class="form-group"><label>Incorporador (Loteador)</label>
         <select id="f-cliente"><option value="">—</option>${(clientes||[]).map(c => `<option value="${c.id}" ${venda.cliente_id==c.id?'selected':''}>${c.razao_social}</option>`).join('')}</select>
       </div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${venda.observacoes||''}</textarea></div>
@@ -598,7 +667,7 @@ async function renderClientes(filter = '') {
   if (filter) rows = rows.filter(c => c.razao_social.toLowerCase().includes(filter) || (c.cidade||'').toLowerCase().includes(filter));
   document.getElementById('content').innerHTML = `
     <div class="table-card">
-      <div class="table-header"><div class="table-title">🏢 Clientes (${rows.length})</div></div>
+      <div class="table-header"><div class="table-title">🏢 Incorporadores (${rows.length})</div></div>
       <table>
         <thead><tr><th>Razão Social</th><th>CNPJ</th><th>Contato</th><th>Telefone</th><th>Cidade</th><th>Empreend.</th><th></th></tr></thead>
         <tbody>
@@ -620,7 +689,7 @@ async function renderClientes(filter = '') {
 }
 
 function openClienteModal(c = {}) {
-  openModal(c.id ? 'Editar Cliente' : 'Novo Cliente', `
+  openModal(c.id ? 'Editar Incorporador' : 'Novo Incorporador', `
     <div class="form-grid">
       <div class="form-group span2"><label>Razão Social *</label><input id="f-rs" value="${c.razao_social||''}"></div>
       <div class="form-group"><label>CNPJ</label><input id="f-cnpj" value="${c.cnpj||''}" placeholder="00.000.000/0001-00"></div>
@@ -637,7 +706,7 @@ function openClienteModal(c = {}) {
     if (!body.razao_social) return toast('Razão social obrigatória', 'error');
     const r = c.id ? await put(`/api/clientes/${c.id}`, body) : await post('/api/clientes', body);
     if (!r.ok) return toast(r.error, 'error');
-    toast(c.id ? 'Cliente atualizado!' : 'Cliente criado!');
+    toast(c.id ? 'Incorporador atualizado!' : 'Incorporador criado!');
     closeModal(); renderClientes();
   });
 }
@@ -658,7 +727,7 @@ async function renderEmpreendimentos(filter = '') {
     <div class="table-card">
       <div class="table-header"><div class="table-title">🏗️ Empreendimentos (${rows.length})</div></div>
       <table>
-        <thead><tr><th>Nome</th><th>Cliente</th><th>Cidade</th><th>Unidades</th><th>VGV Estimado</th><th>Status</th><th>Lançamento</th><th></th></tr></thead>
+        <thead><tr><th>Nome</th><th>Incorporador</th><th>Cidade</th><th>Unidades</th><th>VGV Estimado</th><th>Status</th><th>Lançamento</th><th></th></tr></thead>
         <tbody>
           ${rows.length ? rows.map(e => `
             <tr>
@@ -682,7 +751,7 @@ function openEmpModal(e = {}) {
   openModal(e.id ? 'Editar Empreendimento' : 'Novo Empreendimento', `
     <div class="form-grid">
       <div class="form-group span2"><label>Nome *</label><input id="f-nome" value="${e.nome||''}"></div>
-      <div class="form-group"><label>Cliente (Loteador)</label>
+      <div class="form-group"><label>Incorporador (Loteador)</label>
         <select id="f-cliente"><option value="">—</option>${(currentData.clientes||[]).map(c => `<option value="${c.id}" ${e.cliente_id==c.id?'selected':''}>${c.razao_social}</option>`).join('')}</select>
       </div>
       <div class="form-group"><label>Status</label>
