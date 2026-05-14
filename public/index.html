@@ -842,12 +842,15 @@ async function deleteEmp(id) { if(!confirm('Excluir?')) return; await del(`/api/
 
 // ─── CORRETORES ───────────────────────────────────────────────────────────────
 
-async function renderCorretores(filter = '') {
+async function renderCorretores(filter = '', cidadeFilter = '', sortByVendas = false) {
   const r = await get('/api/corretores');
   currentData.corretores = r.data;
   let rows = r.data;
   if (filter) rows = rows.filter(c => c.nome.toLowerCase().includes(filter) || (c.imobiliaria||'').toLowerCase().includes(filter) || (c.cidade||'').toLowerCase().includes(filter));
+  if (cidadeFilter) rows = rows.filter(c => (c.cidade||'').toLowerCase() === cidadeFilter.toLowerCase());
+  if (sortByVendas) rows = [...rows].sort((a, b) => (b.total_vendas - a.total_vendas) || (b.vgv_vendido - a.vgv_vendido));
 
+  const cidades = [...new Set(r.data.map(c => c.cidade).filter(Boolean))].sort();
   const linkCadastro = `${window.location.origin}/cadastro-corretor`;
 
   document.getElementById('content').innerHTML = `
@@ -859,12 +862,24 @@ async function renderCorretores(filter = '') {
       <button class="btn btn-secondary" onclick="copyLink('${linkCadastro}')">📋 Copiar Link</button>
     </div>
     <div class="table-card">
-      <div class="table-header"><div class="table-title">👥 Corretores (${rows.length})</div></div>
+      <div class="table-header">
+        <div class="table-title">👥 Corretores (${rows.length})</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="filtro-cidade" onchange="renderCorretores('','this.value',document.getElementById('sort-vendas').dataset.ativo==='1')" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text1);font-size:13px">
+            <option value="">Todas as cidades</option>
+            ${cidades.map(ci => `<option value="${ci}" ${ci.toLowerCase()===cidadeFilter.toLowerCase()&&cidadeFilter?'selected':''}>${ci}</option>`).join('')}
+          </select>
+          <button id="sort-vendas" data-ativo="${sortByVendas?'1':'0'}" onclick="(function(){const s=document.getElementById('sort-vendas');const ativo=s.dataset.ativo==='1';const cidade=document.getElementById('filtro-cidade').value;renderCorretores('',cidade,!ativo);})()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:${sortByVendas?'var(--accent)':'var(--navy3)'};color:${sortByVendas?'#fff':'var(--text1)'};font-size:13px;cursor:pointer">
+            🏆 ${sortByVendas ? 'Ranking ativo' : 'Ordenar por vendas'}
+          </button>
+        </div>
+      </div>
       <table>
-        <thead><tr><th>Nome</th><th>CRECI</th><th>Telefone</th><th>Imobiliária</th><th>Cidade</th><th>Vendas</th><th>VGV Vendido</th><th>Status</th><th></th></tr></thead>
+        <thead><tr>${sortByVendas?'<th>#</th>':''}<th>Nome</th><th>CRECI</th><th>Telefone</th><th>Imobiliária</th><th>Cidade</th><th>Vendas</th><th>VGV Vendido</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          ${rows.length ? rows.map(c => `
+          ${rows.length ? rows.map((c, i) => `
             <tr>
+              ${sortByVendas ? `<td style="text-align:center;font-weight:700;color:${i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'var(--text2)'}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}</td>` : ''}
               <td><strong>${c.nome}</strong></td>
               <td>${c.creci||'—'}</td>
               <td>${c.telefone ? `<a href="https://wa.me/55${c.telefone}" target="_blank" style="color:var(--accent)">📱 ${fmtPhone(c.telefone)}</a>` : '—'}</td>
@@ -875,11 +890,17 @@ async function renderCorretores(filter = '') {
               <td><span class="badge ${c.ativo?'badge-green':'badge-red'}">${c.ativo?'Ativo':'Inativo'}</span></td>
               <td><button class="btn-icon btn-edit" onclick="editCorretor(${c.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteCorretor(${c.id})">🗑️</button></td>
             </tr>
-          `).join('') : '<tr class="empty-row"><td colspan="9">Nenhum corretor cadastrado</td></tr>'}
+          `).join('') : `<tr class="empty-row"><td colspan="${sortByVendas?10:9}">Nenhum corretor cadastrado</td></tr>`}
         </tbody>
       </table>
     </div>
   `;
+
+  // fix select onchange after render
+  document.getElementById('filtro-cidade').addEventListener('change', function() {
+    const sortAtivo = document.getElementById('sort-vendas').dataset.ativo === '1';
+    renderCorretores('', this.value, sortAtivo);
+  });
 }
 
 function openCorretorModal(c = {}) {
