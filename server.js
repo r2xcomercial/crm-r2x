@@ -361,43 +361,69 @@ app.get("/api/vendas", (req, res) => {
   ok(res, rows);
 });
 
+// Helper: gera/atualiza entrada financeira de comissão de uma venda
+function sincronizarComissaoVenda(vendaId) {
+  const v = db.prepare("SELECT * FROM vendas WHERE id=?").get(vendaId);
+  if (!v) return null;
+
+  // Remove entrada antiga vinculada
+  db.prepare("DELETE FROM financeiro_entradas WHERE venda_id=? AND tipo='comissao_venda'").run(vendaId);
+
+  if (v.status === 'distrato' || !v.empreendimento_id) return null;
+  const emp = db.prepare("SELECT percentual_r2x, nome FROM empreendimentos WHERE id=?").get(v.empreendimento_id);
+  if (!emp?.percentual_r2x) return null;
+
+  const comissao = parseFloat(((v.valor * emp.percentual_r2x) / 100).toFixed(2));
+  const imovelDesc = v.imovel ? ` — ${v.imovel}` : '';
+  db.prepare(`INSERT INTO financeiro_entradas (empreendimento_id,venda_id,descricao,tipo,valor,data_prevista,status) VALUES (?,?,?,?,?,?,?)`).run(
+    v.empreendimento_id, vendaId,
+    `Comissão R2X ${emp.percentual_r2x}% — ${emp.nome}${imovelDesc}`,
+    'comissao_venda', comissao, v.data_venda, 'pendente'
+  );
+
+  // Atualiza valores na venda também
+  db.prepare("UPDATE vendas SET percentual_r2x=?, comissao_r2x=? WHERE id=?").run(emp.percentual_r2x, comissao, vendaId);
+  return comissao;
+}
+
 app.post("/api/vendas", (req, res) => {
   const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, observacoes } = req.body;
   if (!valor || !data_venda) return err(res, "Valor e data obrigatórios");
 
-  // Busca percentual R2X do empreendimento
-  const emp = empreendimento_id ? db.prepare("SELECT percentual_r2x, nome FROM empreendimentos WHERE id=?").get(empreendimento_id) : null;
-  const percentual = emp?.percentual_r2x || null;
-  const comissao = percentual ? parseFloat(((valor * percentual) / 100).toFixed(2)) : null;
-
-  const r = db.prepare(`INSERT INTO vendas (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,valor,data_venda,observacoes,percentual_r2x,comissao_r2x) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, valor, data_venda, observacoes, percentual, comissao);
+  const r = db.prepare(`INSERT INTO vendas (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,valor,data_venda,observacoes,status) VALUES (?,?,?,?,?,?,?,?,?,'ativo')`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, valor, data_venda, observacoes);
 
   if (lead_id) db.prepare("UPDATE leads SET status='vendido' WHERE id=?").run(lead_id);
-
-  // Marca unidade como vendida
   if (unidade_id) db.prepare("UPDATE unidades SET status='vendido' WHERE id=?").run(unidade_id);
 
-  // Gera entrada financeira automática de comissão R2X
-  if (comissao && empreendimento_id) {
-    const empNome = emp?.nome || 'Empreendimento';
-    const imovelDesc = imovel ? ` — ${imovel}` : '';
-    db.prepare(`INSERT INTO financeiro_entradas (empreendimento_id,venda_id,descricao,tipo,valor,data_prevista,status) VALUES (?,?,?,?,?,?,?)`).run(
-      empreendimento_id, r.lastInsertRowid,
-      `Comissão R2X ${percentual}% — ${empNome}${imovelDesc}`,
-      'comissao_venda', comissao, data_venda, 'pendente'
-    );
-  }
+  const comissao = sincronizarComissaoVenda(r.lastInsertRowid);
+  const aviso = (empreendimento_id && !comissao) ? 'Atenção: empreendimento sem % R2X cadastrado. Comissão não foi gerada.' : null;
 
-  ok(res, { id: r.lastInsertRowid, comissao_r2x: comissao });
+  ok(res, { id: r.lastInsertRowid, comissao_r2x: comissao, aviso });
 });
 
 app.put("/api/vendas/:id", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, valor, data_venda, status, observacoes } = req.body;
-  db.prepare(`UPDATE vendas SET lead_id=?,empreendimento_id=?,corretor_id=?,cliente_id=?,imovel=?,valor=?,data_venda=?,status=?,observacoes=? WHERE id=?`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, valor, data_venda, status, observacoes, req.params.id);
-  ok(res, {});
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, status, observacoes } = req.body;
+  const vendaAntiga = db.prepare("SELECT unidade_id, status FROM vendas WHERE id=?").get(req.params.id);
+
+  db.prepare(`UPDATE vendas SET lead_id=?,empreendimento_id=?,corretor_id=?,cliente_id=?,imovel=?,unidade_id=?,valor=?,data_venda=?,status=?,observacoes=? WHERE id=?`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, valor, data_venda, status, observacoes, req.params.id);
+
+  // Se mudou unidade, libera a anterior e marca a nova
+  if (vendaAntiga?.unidade_id && vendaAntiga.unidade_id != unidade_id) {
+    db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(vendaAntiga.unidade_id);
+  }
+  if (unidade_id) db.prepare("UPDATE unidades SET status=? WHERE id=?").run(status === 'distrato' ? 'disponivel' : 'vendido', unidade_id);
+
+  // Recalcula comissão (cria, atualiza ou remove dependendo do estado)
+  const comissao = sincronizarComissaoVenda(req.params.id);
+  ok(res, { comissao_r2x: comissao });
 });
 
 app.delete("/api/vendas/:id", (req, res) => {
+  const v = db.prepare("SELECT unidade_id FROM vendas WHERE id=?").get(req.params.id);
+  // Remove entradas financeiras vinculadas
+  db.prepare("DELETE FROM financeiro_entradas WHERE venda_id=?").run(req.params.id);
+  // Libera unidade
+  if (v?.unidade_id) db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(v.unidade_id);
   db.prepare("DELETE FROM vendas WHERE id=?").run(req.params.id);
   ok(res, {});
 });

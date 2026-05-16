@@ -760,7 +760,8 @@ function openVendaModal(venda = {}) {
     if (!body.valor || !body.data_venda) return toast('Valor e data são obrigatórios', 'error');
     const r = venda.id ? await put(`/api/vendas/${venda.id}`, body) : await post('/api/vendas', body);
     if (!r.ok) return toast(r.error, 'error');
-    if (!venda.id && r.data?.comissao_r2x) toast(`Venda registrada! Comissão R2X gerada: R$ ${r.data.comissao_r2x.toLocaleString('pt-BR', {minimumFractionDigits:2})}`);
+    if (r.data?.aviso) toast(r.data.aviso, 'error');
+    if (r.data?.comissao_r2x) toast(`Comissão R2X gerada: R$ ${r.data.comissao_r2x.toLocaleString('pt-BR', {minimumFractionDigits:2})} (pendente no financeiro)`);
     else toast(venda.id ? 'Venda atualizada!' : 'Venda registrada!');
     closeModal(); renderVendas();
   });
