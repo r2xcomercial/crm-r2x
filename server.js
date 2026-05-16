@@ -191,8 +191,12 @@ app.post("/api/empreendimentos/:id/unidades/upload", upload.single("arquivo"), (
     });
     insertMany(rows);
 
-    const total = db.prepare("SELECT COUNT(*) as n FROM unidades WHERE empreendimento_id=?").get(empId).n;
-    ok(res, { importadas: rows.length, total });
+    const stats = db.prepare("SELECT COUNT(*) as total, COALESCE(SUM(preco),0) as vgv FROM unidades WHERE empreendimento_id=?").get(empId);
+
+    // Atualiza VGV e nº de unidades do empreendimento automaticamente
+    db.prepare("UPDATE empreendimentos SET vgv_estimado=?, num_unidades=? WHERE id=?").run(stats.vgv, stats.total, empId);
+
+    ok(res, { importadas: rows.length, total: stats.total, vgv_total: stats.vgv });
   } catch (e) {
     err(res, "Erro ao processar arquivo: " + e.message);
   }
