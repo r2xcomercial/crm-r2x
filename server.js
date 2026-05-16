@@ -171,7 +171,39 @@ app.post("/api/empreendimentos/:id/unidades/upload", upload.single("arquivo"), (
   try {
     const wb = XLSX.read(req.file.buffer, { type: "buffer" });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { defval: null });
+
+    // Lê como array de arrays e detecta linha de cabeçalho automaticamente
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+    const norm = s => String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+
+    let headerRow = -1;
+    for (let i = 0; i < Math.min(aoa.length, 10); i++) {
+      const row = (aoa[i] || []).map(norm);
+      const hasLote = row.some(c => c === 'lote' || c === 'lt');
+      const hasArea = row.some(c => c.startsWith('area') || c.startsWith('rea'));
+      const hasPreco = row.some(c => c.includes('preco') || c.includes('valor'));
+      if (hasLote && (hasArea || hasPreco)) { headerRow = i; break; }
+    }
+    if (headerRow === -1) return err(res, "Cabeçalho não encontrado. Use o modelo padrão com colunas QUADRA, LOTE, AREA_M2, PRECO.");
+
+    const headers = aoa[headerRow].map(norm);
+    const idx = (...names) => {
+      for (const n of names) {
+        const i = headers.indexOf(norm(n));
+        if (i !== -1) return i;
+      }
+      // busca parcial
+      for (const n of names) {
+        const i = headers.findIndex(h => h && h.includes(norm(n)));
+        if (i !== -1) return i;
+      }
+      return -1;
+    };
+
+    const iLote = idx('LOTE', 'LT');
+    const iQuadra = idx('QUADRA', 'QD');
+    const iArea = idx('AREA_M2', 'AREA', 'ÁREA');
+    const iPreco = idx('PRECO', 'PREÇO DO LOTE', 'PRECO DO LOTE', 'VALOR', 'PREÇO');
 
     const empId = parseInt(req.params.id);
     const insert = db.prepare(`INSERT INTO unidades (empreendimento_id,quadra,lote,area_m2,preco,status) VALUES (?,?,?,?,?,?)`);
@@ -179,17 +211,22 @@ app.post("/api/empreendimentos/:id/unidades/upload", upload.single("arquivo"), (
     // Limpa unidades disponíveis existentes antes de reimportar
     db.prepare("DELETE FROM unidades WHERE empreendimento_id=? AND status='disponivel'").run(empId);
 
-    const insertMany = db.transaction((rows) => {
-      for (const row of rows) {
-        const quadra = String(row['QD'] || row['quadra'] || row['Quadra'] || '').trim();
-        const lote = String(row['LT'] || row['lote'] || row['Lote'] || row['LOTE'] || '').trim();
-        const area = parseFloat(row['AREA'] || row['area_m2'] || row['Área'] || 0) || null;
-        const preco = parseFloat(String(row['VALOR'] || row['preco'] || row['Preço'] || row['Valor'] || '0').replace(/[R$\s.]/g, '').replace(',', '.')) || null;
-        if (!lote) continue;
+    let importadas = 0;
+    const insertMany = db.transaction(() => {
+      for (let i = headerRow + 1; i < aoa.length; i++) {
+        const row = aoa[i] || [];
+        const lote = iLote >= 0 ? String(row[iLote]||'').trim() : '';
+        if (!lote || lote === 'null') continue;
+        const quadra = iQuadra >= 0 ? String(row[iQuadra]||'').trim() : null;
+        const area = iArea >= 0 ? parseFloat(row[iArea]) || null : null;
+        const precoRaw = iPreco >= 0 ? row[iPreco] : null;
+        const preco = precoRaw === null ? null : (typeof precoRaw === 'number' ? precoRaw : parseFloat(String(precoRaw).replace(/[R$\s]/g,'').replace(/\./g,'').replace(',','.')) || null);
         insert.run(empId, quadra || null, lote, area, preco, 'disponivel');
+        importadas++;
       }
     });
-    insertMany(rows);
+    insertMany();
+    const rows = { length: importadas };
 
     const stats = db.prepare("SELECT COUNT(*) as total, COALESCE(SUM(preco),0) as vgv FROM unidades WHERE empreendimento_id=?").get(empId);
 

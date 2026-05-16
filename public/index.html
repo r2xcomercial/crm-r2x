@@ -870,6 +870,10 @@ function openEmpModal(e = {}) {
       ${e.id ? `
       <div class="form-group span2" style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
         <label>📊 Importar Tabela de Unidades (Excel)</label>
+        <div style="font-size:12px;color:var(--text2);margin:6px 0">
+          Use o modelo padrão com as colunas: <strong>QUADRA, LOTE, AREA_M2, PRECO</strong>
+          — <a href="/modelo-unidades.xlsx" download style="color:var(--accent);text-decoration:underline">📥 Baixar modelo</a>
+        </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
           <input type="file" id="f-excel" accept=".xlsx,.xls,.csv" style="flex:1;font-size:13px">
           <button type="button" onclick="uploadUnidades(${e.id})" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap">⬆️ Importar</button>
