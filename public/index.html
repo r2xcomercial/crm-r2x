@@ -951,8 +951,16 @@ async function uploadUnidades(empId) {
     const res = await fetch(`/api/empreendimentos/${empId}/unidades/upload`, { method: 'POST', headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' }, body: fd });
     const data = await res.json();
     if (data.ok) {
+      // Atualiza os campos do formulário com VGV e nº de unidades calculados
+      const fUnits = document.getElementById('f-units');
+      const fVgv = document.getElementById('f-vgv');
+      if (fUnits) fUnits.value = data.data.total || '';
+      if (fVgv) fVgv.value = data.data.vgv_total || '';
       status.style.color = 'var(--success)';
-      status.textContent = `✅ ${data.data.importadas} unidades importadas com sucesso! Total: ${data.data.total}`;
+      status.innerHTML = `✅ ${data.data.importadas} unidades importadas! VGV total: <strong>R$ ${(data.data.vgv_total||0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</strong>`;
+      // Atualiza a memória local também
+      const emp = (currentData.emp||[]).find(e => e.id == empId);
+      if (emp) { emp.num_unidades = data.data.total; emp.vgv_estimado = data.data.vgv_total; }
     } else {
       status.style.color = 'var(--danger)';
       status.textContent = '❌ Erro: ' + data.error;
