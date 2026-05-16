@@ -73,14 +73,17 @@ app.get("/api/dashboard", (req, res) => {
   `).all();
 
   const aniversarios_mes = db.prepare(`
-    SELECT nome, telefone, aniversario, 'lead' as tipo FROM leads
-    WHERE strftime('%m', aniversario) = strftime('%m','now') AND aniversario IS NOT NULL
-    UNION ALL
-    SELECT nome, telefone, aniversario, 'corretor' as tipo FROM corretores
-    WHERE strftime('%m', aniversario) = strftime('%m','now') AND aniversario IS NOT NULL
-    UNION ALL
-    SELECT nome_contato as nome, telefone, aniversario, 'cliente' as tipo FROM clientes
-    WHERE strftime('%m', aniversario) = strftime('%m','now') AND aniversario IS NOT NULL
+    SELECT * FROM (
+      SELECT nome, telefone, aniversario, 'lead' as tipo FROM leads
+      WHERE strftime('%m', aniversario) = strftime('%m','now') AND aniversario IS NOT NULL
+      UNION ALL
+      SELECT nome, telefone, aniversario, 'corretor' as tipo FROM corretores
+      WHERE strftime('%m', aniversario) = strftime('%m','now') AND aniversario IS NOT NULL
+      UNION ALL
+      SELECT nome_contato as nome, telefone, aniversario, 'cliente' as tipo FROM clientes
+      WHERE strftime('%m', aniversario) = strftime('%m','now') AND aniversario IS NOT NULL
+    )
+    ORDER BY strftime('%d', aniversario) ASC
   `).all();
 
   const proximos_lancamentos = db.prepare(`
@@ -140,6 +143,27 @@ app.delete("/api/clientes/:id", (req, res) => {
 });
 
 // ─── EMPREENDIMENTOS ──────────────────────────────────────────────────────────
+
+// Lucratividade por empreendimento (receitas - despesas)
+app.get("/api/empreendimentos/lucratividade", (req, res) => {
+  const rows = db.prepare(`
+    SELECT e.id, e.nome, e.cidade, e.estado, e.status,
+      (SELECT COALESCE(SUM(valor),0) FROM financeiro_entradas WHERE empreendimento_id=e.id AND status='recebido') as receita_recebida,
+      (SELECT COALESCE(SUM(valor),0) FROM financeiro_entradas WHERE empreendimento_id=e.id AND status!='recebido') as receita_pendente,
+      (SELECT COALESCE(SUM(valor),0) FROM financeiro_saidas WHERE empreendimento_id=e.id AND status='pago') as despesa_paga,
+      (SELECT COALESCE(SUM(valor),0) FROM financeiro_saidas WHERE empreendimento_id=e.id AND status!='pago') as despesa_pendente
+    FROM empreendimentos e
+    ORDER BY e.nome
+  `).all();
+  const result = rows.map(r => ({
+    ...r,
+    receita_total: r.receita_recebida + r.receita_pendente,
+    despesa_total: r.despesa_paga + r.despesa_pendente,
+    lucro_realizado: r.receita_recebida - r.despesa_paga,
+    lucro_total: (r.receita_recebida + r.receita_pendente) - (r.despesa_paga + r.despesa_pendente),
+  }));
+  ok(res, result);
+});
 
 app.get("/api/empreendimentos", (req, res) => {
   const rows = db.prepare(`

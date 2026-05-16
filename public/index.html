@@ -407,13 +407,23 @@ async function renderDashboard() {
       </div>
       <div class="mini-card">
         <h4>🎂 Aniversários do Mês</h4>
-        <div class="aniv-list">
-          ${aniversarios_mes.length ? aniversarios_mes.slice(0,5).map(a => `
-            <div class="aniv-item">
-              <div class="aniv-avatar">${a.tipo==='corretor'?'👤':a.tipo==='cliente'?'🏢':'🎯'}</div>
-              <div><div style="font-weight:500">${a.nome||'—'}</div><div style="font-size:11px;color:var(--text2)">${a.tipo} · ${fmtDate(a.aniversario)}</div></div>
-            </div>
-          `).join('') : '<div style="color:var(--text2);font-size:13px;padding-top:8px">Nenhum aniversário este mês</div>'}
+        <div class="aniv-list" style="max-height:280px;overflow-y:auto">
+          ${aniversarios_mes.length ? aniversarios_mes.map(a => {
+            const dia = a.aniversario ? a.aniversario.slice(8,10) : '—';
+            const mensagem = encodeURIComponent(`Feliz Aniversário ${a.nome ? a.nome.split(' ')[0] : ''}! Que Deus continue abençoando você, sua família e seus negócios. Muitas felicidades, saúde e vendas! 🎉🎂`);
+            const tel = (a.telefone||'').replace(/\D/g,'');
+            const wppLink = tel ? `https://wa.me/55${tel}?text=${mensagem}` : null;
+            return `
+              <div class="aniv-item" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+                <div style="background:var(--accent);color:#fff;border-radius:8px;padding:4px 8px;font-weight:700;font-size:13px;min-width:34px;text-align:center">${dia}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.nome||'—'}</div>
+                  <div style="font-size:11px;color:var(--text2)">${a.tipo==='corretor'?'👤 Corretor':a.tipo==='cliente'?'🏢 Incorporador':'🎯 Lead'}</div>
+                </div>
+                ${wppLink ? `<a href="${wppLink}" target="_blank" title="Enviar mensagem de aniversário" style="background:#25D366;color:#fff;border-radius:6px;padding:4px 10px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap">📱 Parabenizar</a>` : '<span style="font-size:11px;color:var(--text2)">sem tel.</span>'}
+              </div>
+            `;
+          }).join('') : '<div style="color:var(--text2);font-size:13px;padding-top:8px">Nenhum aniversário este mês</div>'}
         </div>
       </div>
     </div>
@@ -863,14 +873,76 @@ async function deleteCliente(id) { if(!confirm('Excluir este cliente?')) return;
 // ─── EMPREENDIMENTOS ──────────────────────────────────────────────────────────
 
 async function renderEmpreendimentos(filter = '') {
-  const [er, cr] = await Promise.all([get('/api/empreendimentos'), get('/api/clientes')]);
+  const [er, cr, lr] = await Promise.all([get('/api/empreendimentos'), get('/api/clientes'), get('/api/empreendimentos/lucratividade')]);
   currentData.emp = er.data; currentData.clientes = cr.data;
   let rows = er.data;
   if (filter) rows = rows.filter(e => e.nome.toLowerCase().includes(filter) || (e.cidade||'').toLowerCase().includes(filter));
 
   const statusBadge = { prospecto: 'badge-gray', planejamento: 'badge-blue', pre_lancamento: 'badge-yellow', lancamento: 'badge-accent', vendas: 'badge-green', encerrado: 'badge-red' };
 
+  // KPIs agregados
+  const vgvTotal = rows.reduce((s,e) => s + (e.vgv_estimado||0), 0);
+  const unidadesTotal = rows.reduce((s,e) => s + (e.num_unidades||0), 0);
+  const ativos = rows.filter(e => !['encerrado','prospecto'].includes(e.status)).length;
+
+  // Mapa de cidades — agrupar empreendimentos por cidade
+  const cidadeMap = {};
+  rows.forEach(e => {
+    if (!e.cidade) return;
+    const k = `${e.cidade}${e.estado?'/'+e.estado:''}`;
+    cidadeMap[k] = (cidadeMap[k]||0) + 1;
+  });
+  const cidades = Object.entries(cidadeMap).sort((a,b) => b[1]-a[1]);
+
+  // Lucratividade ordenada
+  const lucros = [...(lr.data||[])].sort((a,b) => b.lucro_total - a.lucro_total);
+
   document.getElementById('content').innerHTML = `
+    <div class="kpi-grid" style="margin-bottom:20px">
+      ${kpi('🏗️', 'Total de Empreendimentos', rows.length, `${ativos} em andamento`)}
+      ${kpi('🏠', 'Total de Unidades', unidadesTotal.toLocaleString('pt-BR'), 'soma de todos os empreendimentos')}
+      ${kpi('💎', 'VGV Total Estimado', fmt(vgvTotal), 'soma de todos os VGVs')}
+      ${kpi('📍', 'Cidades com Lançamentos', cidades.length, cidades.slice(0,3).map(c=>c[0]).join(', ')||'—')}
+    </div>
+
+    <div class="dash-row" style="margin-bottom:20px">
+      <div class="mini-card">
+        <h4>📍 Mapa de Lançamentos</h4>
+        <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px">
+          ${cidades.length ? cidades.map(([c,n]) => `
+            <div style="background:linear-gradient(135deg, rgba(79,142,247,0.15), rgba(79,142,247,0.05));border:1px solid rgba(79,142,247,0.3);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;min-width:160px">
+              <div style="font-size:22px">📍</div>
+              <div>
+                <div style="font-weight:600;font-size:13px">${c}</div>
+                <div style="font-size:11px;color:var(--text2)">${n} empreendimento${n>1?'s':''}</div>
+              </div>
+            </div>
+          `).join('') : '<div style="color:var(--text2);font-size:13px">Nenhuma cidade cadastrada</div>'}
+        </div>
+      </div>
+      <div class="mini-card">
+        <h4>🏆 Ranking de Lucratividade R2X</h4>
+        <div style="margin-top:8px;max-height:280px;overflow-y:auto">
+          ${lucros.length ? lucros.map((l,i) => {
+            const lucroClasse = l.lucro_total >= 0 ? 'var(--success)' : 'var(--danger)';
+            const medalha = i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
+            return `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+                <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+                  <div style="font-weight:700;font-size:13px;color:${i<3?'var(--accent)':'var(--text2)'};width:30px">${medalha}</div>
+                  <div style="min-width:0;flex:1">
+                    <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${l.nome}</div>
+                    <div style="font-size:11px;color:var(--text2)">Receita: ${fmt(l.receita_total)} · Despesa: ${fmt(l.despesa_total)}</div>
+                  </div>
+                </div>
+                <div style="font-weight:700;color:${lucroClasse};font-size:14px;white-space:nowrap">${fmt(l.lucro_total)}</div>
+              </div>
+            `;
+          }).join('') : '<div style="color:var(--text2);font-size:13px;padding:8px 0">Sem dados financeiros ainda</div>'}
+        </div>
+      </div>
+    </div>
+
     <div class="table-card">
       <div class="table-header"><div class="table-title">🏗️ Empreendimentos (${rows.length})</div></div>
       <table>
