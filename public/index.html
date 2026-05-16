@@ -1075,6 +1075,7 @@ async function renderFinanceiro(filter = '') {
   const resumo = resr.data;
 
   const totalEntradas = er.data.filter(e => e.status==='recebido').reduce((s,e) => s+e.valor, 0);
+  const totalPendente = er.data.filter(e => e.status!=='recebido').reduce((s,e) => s+e.valor, 0);
   const totalSaidas = sr.data.filter(e => e.status==='pago').reduce((s,e) => s+e.valor, 0);
   const totalDist = dr.data.reduce((s,d) => s+d.valor, 0);
   const saldo = totalEntradas - totalSaidas - totalDist;
@@ -1082,6 +1083,7 @@ async function renderFinanceiro(filter = '') {
   document.getElementById('content').innerHTML = `
     <div class="kpi-grid" style="margin-bottom:20px">
       ${kpi('📥', 'Total Recebido', fmt(totalEntradas), 'entradas confirmadas')}
+      ${kpi('⏳', 'A Receber', fmt(totalPendente), 'recebíveis pendentes')}
       ${kpi('📤', 'Total Pago', fmt(totalSaidas), 'saídas pagas')}
       ${kpi('💸', 'Distribuído Ramon', fmt(totalDist), 'retiradas')}
       ${kpi('💰', 'Saldo Líquido', fmt(saldo), 'recebido - pago - distribuído')}
