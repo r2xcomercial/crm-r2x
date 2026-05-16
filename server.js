@@ -179,12 +179,12 @@ app.post("/api/empreendimentos/:id/unidades/upload", upload.single("arquivo"), (
     let headerRow = -1;
     for (let i = 0; i < Math.min(aoa.length, 10); i++) {
       const row = (aoa[i] || []).map(norm);
-      const hasLote = row.some(c => c === 'lote' || c === 'lt');
+      const hasUnidade = row.some(c => c === 'lote' || c === 'lt' || c === 'apartamento' || c === 'apto' || c === 'unidade');
       const hasArea = row.some(c => c.startsWith('area') || c.startsWith('rea'));
       const hasPreco = row.some(c => c.includes('preco') || c.includes('valor'));
-      if (hasLote && (hasArea || hasPreco)) { headerRow = i; break; }
+      if (hasUnidade && (hasArea || hasPreco)) { headerRow = i; break; }
     }
-    if (headerRow === -1) return err(res, "Cabeçalho não encontrado. Use o modelo padrão com colunas QUADRA, LOTE, AREA_M2, PRECO.");
+    if (headerRow === -1) return err(res, "Cabeçalho não encontrado. Use o modelo padrão (lotes: QUADRA/LOTE/AREA_M2/PRECO — prédios: ANDAR/APARTAMENTO/TIPOLOGIA/AREA_M2/PRECO).");
 
     const headers = aoa[headerRow].map(norm);
     const idx = (...names) => {
@@ -200,10 +200,11 @@ app.post("/api/empreendimentos/:id/unidades/upload", upload.single("arquivo"), (
       return -1;
     };
 
-    const iLote = idx('LOTE', 'LT');
-    const iQuadra = idx('QUADRA', 'QD');
-    const iArea = idx('AREA_M2', 'AREA', 'ÁREA');
+    const iLote = idx('LOTE', 'LT', 'APARTAMENTO', 'APTO', 'UNIDADE');
+    const iQuadra = idx('QUADRA', 'QD', 'ANDAR');
+    const iArea = idx('AREA_M2', 'AREA', 'ÁREA', 'AREA PRIVATIVA');
     const iPreco = idx('PRECO', 'PREÇO DO LOTE', 'PRECO DO LOTE', 'VALOR', 'PREÇO');
+    const iTipologia = idx('TIPOLOGIA', 'TIPO');
 
     const empId = parseInt(req.params.id);
     const insert = db.prepare(`INSERT INTO unidades (empreendimento_id,quadra,lote,area_m2,preco,status) VALUES (?,?,?,?,?,?)`);
@@ -215,8 +216,10 @@ app.post("/api/empreendimentos/:id/unidades/upload", upload.single("arquivo"), (
     const insertMany = db.transaction(() => {
       for (let i = headerRow + 1; i < aoa.length; i++) {
         const row = aoa[i] || [];
-        const lote = iLote >= 0 ? String(row[iLote]||'').trim() : '';
+        let lote = iLote >= 0 ? String(row[iLote]||'').trim() : '';
         if (!lote || lote === 'null') continue;
+        // Acrescenta tipologia ao lote (ex: "401 - 2 dorms")
+        if (iTipologia >= 0 && row[iTipologia]) lote = `${lote} - ${String(row[iTipologia]).trim()}`;
         const quadra = iQuadra >= 0 ? String(row[iQuadra]||'').trim() : null;
         const area = iArea >= 0 ? parseFloat(row[iArea]) || null : null;
         const precoRaw = iPreco >= 0 ? row[iPreco] : null;
