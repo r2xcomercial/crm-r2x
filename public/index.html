@@ -1055,12 +1055,19 @@ function renderFinTab() {
           <tbody>
             ${rows.length ? rows.map(e => `
               <tr>
-                <td>${e.descricao}</td><td>${e.tipo||'—'}</td><td>${e.empreendimento_nome||'Institucional'}</td>
+                <td>${e.descricao}${e.parcela_num?` <span style="font-size:11px;color:var(--text2)">(${e.parcela_num}/${e.parcela_total})</span>`:''}</td>
+                <td>${e.tipo||'—'}</td>
+                <td>${e.empreendimento_nome||'Institucional'}</td>
                 <td style="color:var(--success);font-weight:600">${fmt(e.valor)}</td>
                 <td>${e.data_prevista?fmtDate(e.data_prevista):'—'}</td>
                 <td>${e.data_recebimento?fmtDate(e.data_recebimento):'—'}</td>
                 <td><span class="badge ${e.status==='recebido'?'badge-green':'badge-yellow'}">${e.status}</span></td>
-                <td><button class="btn-icon btn-edit" onclick="editEntrada(${e.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteEntrada(${e.id})">🗑️</button></td>
+                <td style="display:flex;gap:4px;flex-wrap:wrap">
+                  ${e.status!=='recebido'?`<button class="btn-icon" title="Marcar recebido" onclick="marcarRecebido(${e.id})">✅</button>`:''}
+                  <button class="btn-icon" title="Emitir recibo" onclick="emitirRecibo(${e.id})">🧾</button>
+                  <button class="btn-icon btn-edit" onclick="editEntrada(${e.id})">✏️</button>
+                  <button class="btn-icon btn-delete" onclick="deleteEntrada(${e.id})">🗑️</button>
+                </td>
               </tr>
             `).join('') : '<tr class="empty-row"><td colspan="8">Nenhuma entrada</td></tr>'}
           </tbody>
@@ -1136,32 +1143,129 @@ function renderFinTab() {
   }
 }
 
+const TIPOS_ENTRADA = ['comissao_venda','fee_fixo_mensal','consultoria','bonus','outro'];
+const TIPOS_ENTRADA_LABEL = { comissao_venda:'Comissão Venda', fee_fixo_mensal:'Fee Fixo Mensal', consultoria:'Consultoria', bonus:'Bônus', outro:'Outro' };
+
 function openEntradaModal(e = {}) {
+  const isNew = !e.id;
   openModal(e.id ? 'Editar Entrada' : 'Nova Entrada', `
     <div class="form-grid">
-      <div class="form-group span2"><label>Descrição *</label><input id="f-desc" value="${e.descricao||''}" placeholder="Ex: Comissão Belvedere Março"></div>
+      <div class="form-group span2"><label>Descrição *</label><input id="f-desc" value="${e.descricao||''}" placeholder="Ex: Comissão Belvedere — Qd A Lt 01"></div>
       <div class="form-group"><label>Tipo</label>
-        <select id="f-tipo">${['comissão','setup','bônus','outro'].map(t => `<option ${e.tipo===t?'selected':''}>${t}</option>`).join('')}</select>
+        <select id="f-tipo">${TIPOS_ENTRADA.map(t => `<option value="${t}" ${(e.tipo||'comissao_venda')===t?'selected':''}>${TIPOS_ENTRADA_LABEL[t]}</option>`).join('')}</select>
       </div>
       <div class="form-group"><label>Empreendimento</label>
         <select id="f-emp"><option value="">Institucional</option>${(currentData.emp||[]).map(ep => `<option value="${ep.id}" ${e.empreendimento_id==ep.id?'selected':''}>${ep.nome}</option>`).join('')}</select>
       </div>
-      <div class="form-group"><label>Valor (R$) *</label><input id="f-valor" type="number" value="${e.valor||''}"></div>
+      <div class="form-group"><label>Valor Total (R$) *</label><input id="f-valor" type="number" value="${e.valor||''}" placeholder="0"></div>
       <div class="form-group"><label>Status</label>
-        <select id="f-status"><option value="pendente" ${e.status==='pendente'?'selected':''}>Pendente</option><option value="recebido" ${e.status==='recebido'?'selected':''}>Recebido</option></select>
+        <select id="f-status"><option value="pendente" ${(e.status||'pendente')==='pendente'?'selected':''}>Pendente</option><option value="recebido" ${e.status==='recebido'?'selected':''}>Recebido</option></select>
       </div>
       <div class="form-group"><label>Data Prevista</label><input id="f-prev" type="date" value="${e.data_prevista||''}"></div>
       <div class="form-group"><label>Data Recebimento</label><input id="f-rec" type="date" value="${e.data_recebimento||''}"></div>
+      ${isNew ? `
+      <div class="form-group span2" style="background:var(--navy3);border-radius:8px;padding:12px">
+        <label style="margin-bottom:8px;display:block">📆 Parcelamento (opcional)</label>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:13px;display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="f-parcelar" onchange="toggleParcelamento(this.checked)"> Parcelar recebimento
+          </label>
+          <div id="parcela-fields" style="display:none;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <label style="font-size:13px">Nº de parcelas:</label>
+            <input id="f-nparcelas" type="number" min="2" max="60" value="2" style="width:70px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1)">
+            <label style="font-size:13px">1ª parcela em:</label>
+            <input id="f-data-ini" type="date" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1)">
+          </div>
+        </div>
+      </div>` : ''}
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${e.observacoes||''}</textarea></div>
     </div>
   `, async () => {
     const body = { descricao: v('f-desc'), tipo: v('f-tipo'), empreendimento_id: v('f-emp')||null, valor: parseFloat(v('f-valor')), status: v('f-status'), data_prevista: v('f-prev'), data_recebimento: v('f-rec'), observacoes: v('f-obs') };
     if (!body.descricao || !body.valor) return toast('Descrição e valor obrigatórios', 'error');
+
+    const parcelar = document.getElementById('f-parcelar')?.checked;
+    if (isNew && parcelar) {
+      const n = parseInt(document.getElementById('f-nparcelas')?.value) || 2;
+      const dataIni = document.getElementById('f-data-ini')?.value;
+      if (!dataIni) return toast('Informe a data da 1ª parcela', 'error');
+      const valorParcela = parseFloat((body.valor / n).toFixed(2));
+      for (let i = 0; i < n; i++) {
+        const d = new Date(dataIni + 'T12:00:00');
+        d.setMonth(d.getMonth() + i);
+        const dataStr = d.toISOString().slice(0,10);
+        await post('/api/financeiro/entradas', { ...body, valor: valorParcela, data_prevista: dataStr, parcela_num: i+1, parcela_total: n, descricao: `${body.descricao} (${i+1}/${n})` });
+      }
+      toast(`${n} parcelas criadas!`); closeModal(); renderFinanceiro(); return;
+    }
+
     const r = e.id ? await put(`/api/financeiro/entradas/${e.id}`, body) : await post('/api/financeiro/entradas', body);
     if (!r.ok) return toast(r.error, 'error');
     toast('Salvo!'); closeModal(); renderFinanceiro();
   });
 }
+
+function toggleParcelamento(checked) {
+  const el = document.getElementById('parcela-fields');
+  if (el) el.style.display = checked ? 'flex' : 'none';
+}
+
+async function marcarRecebido(id) {
+  const hoje = new Date().toISOString().slice(0,10);
+  const r = await put(`/api/financeiro/entradas/${id}`, { ...currentData.entradas.find(e=>e.id===id), status:'recebido', data_recebimento: hoje });
+  if (r.ok) { toast('Marcado como recebido! ✅'); renderFinanceiro(); }
+}
+
+function emitirRecibo(id) {
+  const e = currentData.entradas.find(e => e.id === id);
+  if (!e) return;
+  const emp = (currentData.emp||[]).find(ep => ep.id === e.empreendimento_id);
+  const incorporador = emp ? (currentData.clientes||[]).find(c => c.id === emp.cliente_id) : null;
+  const num = String(id).padStart(4,'0');
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Recibo R2X #${num}</title>
+  <style>
+    body{font-family:Arial,sans-serif;max-width:720px;margin:40px auto;color:#1a1a2e;font-size:14px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1a1a2e;padding-bottom:16px;margin-bottom:24px}
+    .logo{font-size:28px;font-weight:900;letter-spacing:-1px}
+    .logo span{color:#4f8ef7}
+    .recibo-num{text-align:right;font-size:13px;color:#555}
+    .recibo-num strong{font-size:20px;color:#1a1a2e;display:block}
+    .titulo{text-align:center;font-size:18px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin-bottom:28px;color:#1a1a2e}
+    .campo{display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:10px 0;font-size:14px}
+    .campo label{color:#555;font-weight:600;min-width:180px}
+    .valor-destaque{text-align:center;background:#f0f4ff;border:2px solid #1a1a2e;border-radius:8px;padding:20px;margin:24px 0}
+    .valor-destaque .v{font-size:32px;font-weight:900;color:#1a1a2e}
+    .footer{margin-top:48px;display:flex;justify-content:space-between;align-items:flex-end}
+    .assinatura{text-align:center;border-top:1px solid #1a1a2e;padding-top:8px;width:220px;font-size:12px}
+    .status-badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:${e.status==='recebido'?'#e6f9ee;color:#1a8a4a':'#fff8e6;color:#b07d00'}}
+    @media print{body{margin:20px}}
+  </style></head><body>
+  <div class="header">
+    <div class="logo">R<span>2</span>X<div style="font-size:11px;font-weight:400;color:#555;margin-top:4px">Inteligência Comercial em Lançamentos</div></div>
+    <div class="recibo-num">RECIBO<strong>#${num}</strong><div style="margin-top:4px"><span class="status-badge">${e.status==='recebido'?'RECEBIDO':'PENDENTE'}</span></div></div>
+  </div>
+  <div class="titulo">Recibo de ${TIPOS_ENTRADA_LABEL[e.tipo]||e.tipo||'Serviço'}</div>
+  <div class="campo"><label>Empreendimento</label><span>${emp?.nome||'—'}</span></div>
+  <div class="campo"><label>Incorporador / Loteador</label><span>${incorporador?.razao_social||'—'}</span></div>
+  <div class="campo"><label>Descrição</label><span>${e.descricao}</span></div>
+  <div class="campo"><label>Data Prevista</label><span>${e.data_prevista?fmtDate(e.data_prevista):'—'}</span></div>
+  <div class="campo"><label>Data Recebimento</label><span>${e.data_recebimento?fmtDate(e.data_recebimento):'—'}</span></div>
+  ${e.parcela_num?`<div class="campo"><label>Parcela</label><span>${e.parcela_num} de ${e.parcela_total}</span></div>`:''}
+  <div class="valor-destaque">
+    <div style="font-size:13px;color:#555;margin-bottom:6px">VALOR</div>
+    <div class="v">${fmt(e.valor)}</div>
+  </div>
+  <div class="footer">
+    <div style="font-size:12px;color:#888">Emitido em ${new Date().toLocaleDateString('pt-BR')}<br>R2X Inteligência Comercial • comercial@r2xlancamentos.com.br</div>
+    <div class="assinatura">R2X Inteligência Comercial<br>Ramon Beza</div>
+  </div>
+  <script>window.onload=()=>window.print()</script>
+  </body></html>`;
+  const w = window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
 async function editEntrada(id) { openEntradaModal(currentData.entradas.find(e => e.id === id)); }
 async function deleteEntrada(id) { if(!confirm('Excluir?')) return; await del(`/api/financeiro/entradas/${id}`); toast('Excluído'); renderFinanceiro(); }
 
