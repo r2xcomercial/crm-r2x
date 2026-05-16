@@ -915,6 +915,13 @@ function openEmpModal(e = {}) {
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${e.observacoes||''}</textarea></div>
       ${e.id ? `
       <div class="form-group span2" style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
+        <label>📄 Contrato de Prestação de Serviços</label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
+          <button type="button" onclick="gerarContrato(${e.id})" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">📥 Gerar Contrato (.docx)</button>
+          <span style="font-size:12px;color:var(--text2)">Preenche automaticamente os dados do incorporador, empreendimento e % R2X</span>
+        </div>
+      </div>
+      <div class="form-group span2" style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
         <label>📊 Importar Tabela de Unidades (Excel)</label>
         <div style="font-size:12px;color:var(--text2);margin:6px 0;line-height:1.6">
           📥 Modelos padrão:
@@ -938,6 +945,26 @@ function openEmpModal(e = {}) {
     toast(e.id ? 'Atualizado!' : 'Empreendimento criado!');
     closeModal(); renderEmpreendimentos();
   });
+}
+
+async function gerarContrato(empId) {
+  const url = `/api/empreendimentos/${empId}/contrato`;
+  try {
+    const res = await fetch(url, { headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' } });
+    if (!res.ok) {
+      const data = await res.json();
+      return toast('Erro: ' + (data.error || 'falha'), 'error');
+    }
+    const blob = await res.blob();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'contrato.docx';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast('Contrato gerado! 📄');
+  } catch(e) {
+    toast('Falha ao gerar contrato', 'error');
+  }
 }
 
 async function uploadUnidades(empId) {

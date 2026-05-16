@@ -4,6 +4,9 @@ const cors = require("cors");
 const path = require("path");
 const multer = require("multer");
 const XLSX = require("xlsx");
+const fs = require("fs");
+const PizZip = require("pizzip");
+const Docxtemplater = require("docxtemplater");
 const db = require("./database");
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -239,6 +242,54 @@ app.post("/api/empreendimentos/:id/unidades/upload", upload.single("arquivo"), (
     ok(res, { importadas: rows.length, total: stats.total, vgv_total: stats.vgv });
   } catch (e) {
     err(res, "Erro ao processar arquivo: " + e.message);
+  }
+});
+
+// Gera contrato DOCX preenchido com dados do empreendimento e incorporador
+app.get("/api/empreendimentos/:id/contrato", (req, res) => {
+  try {
+    const empId = parseInt(req.params.id);
+    const emp = db.prepare("SELECT * FROM empreendimentos WHERE id=?").get(empId);
+    if (!emp) return err(res, "Empreendimento não encontrado");
+    const cliente = emp.cliente_id ? db.prepare("SELECT * FROM clientes WHERE id=?").get(emp.cliente_id) : {};
+
+    // Converte valor para texto por extenso (simplificado para percentuais usuais)
+    const extensoPct = { 1: 'um', 1.5: 'um e meio', 2: 'dois', 2.5: 'dois e meio', 3: 'três', 4: 'quatro', 5: 'cinco' };
+    const pctValue = emp.percentual_r2x || 0;
+    const pctExtenso = extensoPct[pctValue] || pctValue.toString().replace('.',',');
+
+    const fmtMoney = v => v ? `${Number(v).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '';
+
+    const dados = {
+      RAZAO_SOCIAL: cliente.razao_social || '____________________',
+      CNPJ: cliente.cnpj || '____________________',
+      ENDERECO_CLIENTE: cliente.endereco_completo || [cliente.cidade, cliente.estado].filter(Boolean).join(' - ') || '____________________',
+      EMAIL: cliente.email || '____________________',
+      TELEFONE: cliente.telefone || '____________________',
+      NOME_EMPREENDIMENTO: emp.nome || '____________________',
+      ENDERECO_EMPREENDIMENTO: [emp.endereco, emp.cidade, emp.estado].filter(Boolean).join(' - ') || '____________________',
+      NUM_UNIDADES: emp.num_unidades || '____',
+      VGV_ESTIMADO: fmtMoney(emp.vgv_estimado),
+      PERCENTUAL_R2X: pctValue.toString().replace('.',',') + '%',
+      PERCENTUAL_EXTENSO: pctExtenso,
+      NOME_REPRESENTANTE: cliente.nome_contato || '____________________',
+      CIDADE_CLIENTE: cliente.cidade || '____________________',
+      CIDADE_ASSINATURA: 'Braço do Norte',
+    };
+
+    const content = fs.readFileSync(path.join(__dirname, "templates", "contrato-template.docx"), "binary");
+    const zip = new PizZip(content);
+    const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+    doc.render(dados);
+    const buf = doc.getZip().generate({ type: "nodebuffer" });
+
+    const filename = `Contrato_R2X_${(emp.nome||'empreendimento').replace(/[^a-zA-Z0-9]/g,'_')}.docx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buf);
+  } catch (e) {
+    console.error("[contrato]", e);
+    err(res, "Erro ao gerar contrato: " + e.message);
   }
 });
 
