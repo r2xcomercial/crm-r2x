@@ -651,6 +651,11 @@ async function renderVendas(filter = '') {
   `;
 }
 
+function toggleNovoLead(value) {
+  const el = document.getElementById('novo-lead-fields');
+  if (el) el.style.display = value === '__novo__' ? 'block' : 'none';
+}
+
 function preencherUnidade(sel) {
   const o = sel.options[sel.selectedIndex];
   if (o.dataset.preco) document.getElementById('f-valor').value = o.dataset.preco;
@@ -699,7 +704,21 @@ function openVendaModal(venda = {}) {
         <span id="info-comissao" style="color:var(--text2)">Selecione o empreendimento para ver o % R2X</span>
       </div>
       <div class="form-group"><label>Lead</label>
-        <select id="f-lead"><option value="">— Sem lead —</option>${(leads||[]).map(l => `<option value="${l.id}" ${venda.lead_id==l.id?'selected':''}>${l.nome||l.telefone}</option>`).join('')}</select>
+        <select id="f-lead" onchange="toggleNovoLead(this.value)">
+          <option value="">— Sem lead —</option>
+          <option value="__novo__">➕ Cadastrar novo lead</option>
+          ${(leads||[]).map(l => `<option value="${l.id}" ${venda.lead_id==l.id?'selected':''}>${l.nome||l.telefone}</option>`).join('')}
+        </select>
+      </div>
+      <div id="novo-lead-fields" class="form-group span2" style="display:none;background:var(--navy3);border-radius:8px;padding:12px">
+        <label style="margin-bottom:8px;display:block;font-weight:600">➕ Dados do novo lead</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <input id="nl-nome" placeholder="Nome do lead *" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          <input id="nl-tel" placeholder="Telefone" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          <input id="nl-email" type="email" placeholder="Email" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          <input id="nl-cidade" placeholder="Cidade" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:6px">O lead será criado com status "vendido" e faixa de investimento igual ao valor da venda.</div>
       </div>
       <div class="form-group"><label>Corretor</label>
         <select id="f-corretor"><option value="">—</option>${(corretores||[]).map(c => `<option value="${c.id}" ${venda.corretor_id==c.id?'selected':''}>${c.nome}</option>`).join('')}</select>
@@ -711,7 +730,33 @@ function openVendaModal(venda = {}) {
     </div>
   `, async () => {
     const unidadeId = v('f-unidade') || null;
-    const body = { data_venda: v('f-data'), valor: parseFloat(v('f-valor')), imovel: v('f-imovel'), status: v('f-status'), lead_id: v('f-lead')||null, corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, cliente_id: v('f-cliente')||null, unidade_id: unidadeId, observacoes: v('f-obs') };
+    let leadId = v('f-lead') || null;
+    const valor = parseFloat(v('f-valor'));
+
+    // Se for novo lead, cria primeiro
+    if (leadId === '__novo__') {
+      const nome = v('nl-nome');
+      if (!nome) return toast('Nome do novo lead é obrigatório', 'error');
+      const empId = v('f-emp') || null;
+      const empNome = empId ? (currentData.emp||[]).find(e => e.id == empId)?.nome : null;
+      const novoLead = {
+        nome,
+        telefone: v('nl-tel'),
+        email: v('nl-email'),
+        cidade: v('nl-cidade'),
+        empreendimento_id: empId,
+        empreendimento_interesse: empNome,
+        corretor_id: v('f-corretor') || null,
+        faixa_investimento: valor ? `R$ ${valor.toLocaleString('pt-BR')}` : null,
+        status: 'vendido',
+        origem: 'venda_direta'
+      };
+      const lr = await post('/api/leads', novoLead);
+      if (!lr.ok) return toast('Erro ao criar lead: ' + lr.error, 'error');
+      leadId = lr.data.id;
+    }
+
+    const body = { data_venda: v('f-data'), valor, imovel: v('f-imovel'), status: v('f-status'), lead_id: leadId, corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, cliente_id: v('f-cliente')||null, unidade_id: unidadeId, observacoes: v('f-obs') };
     if (!body.valor || !body.data_venda) return toast('Valor e data são obrigatórios', 'error');
     const r = venda.id ? await put(`/api/vendas/${venda.id}`, body) : await post('/api/vendas', body);
     if (!r.ok) return toast(r.error, 'error');
