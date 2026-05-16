@@ -651,15 +651,52 @@ async function renderVendas(filter = '') {
   `;
 }
 
+function preencherUnidade(sel) {
+  const o = sel.options[sel.selectedIndex];
+  if (o.dataset.preco) document.getElementById('f-valor').value = o.dataset.preco;
+  if (o.dataset.label) document.getElementById('f-imovel').value = o.dataset.label;
+}
+
+async function carregarUnidadesVenda(empId) {
+  const sel = document.getElementById('f-unidade');
+  const infoComissao = document.getElementById('info-comissao');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">⏳ Carregando...</option>';
+  if (!empId) { sel.innerHTML = '<option value="">— Sem unidade —</option>'; return; }
+  const r = await get(`/api/empreendimentos/${empId}/unidades`);
+  const units = (r.data || []).filter(u => u.status === 'disponivel');
+  sel.innerHTML = '<option value="">— Selecione a unidade —</option>' + units.map(u => `<option value="${u.id}" data-preco="${u.preco||''}" data-label="Qd ${u.quadra||'?'} Lt ${u.lote}">${u.quadra ? `Qd ${u.quadra} - ` : ''}Lote ${u.lote}${u.area_m2 ? ` (${u.area_m2}m²)` : ''}${u.preco ? ` — R$ ${u.preco.toLocaleString('pt-BR')}` : ''}</option>`).join('');
+  if (!units.length) sel.innerHTML = '<option value="">Nenhuma unidade disponível</option>';
+
+  // Atualiza preview de comissão quando muda empreendimento
+  const emp = (currentData.emp||[]).find(e => e.id == empId);
+  if (emp?.percentual_r2x && infoComissao) {
+    infoComissao.textContent = `% R2X: ${emp.percentual_r2x}% — comissão calculada automaticamente ao salvar`;
+    infoComissao.style.color = 'var(--accent)';
+  } else if (infoComissao) {
+    infoComissao.textContent = 'Este empreendimento não tem % R2X configurado.';
+    infoComissao.style.color = 'var(--text2)';
+  }
+}
+
 function openVendaModal(venda = {}) {
   const { vendas, corretores, emp, leads, clientes } = currentData;
   openModal(venda.id ? 'Editar Venda' : 'Nova Venda', `
     <div class="form-grid">
       <div class="form-group"><label>Data da Venda *</label><input id="f-data" type="date" value="${venda.data_venda||today()}"></div>
-      <div class="form-group"><label>Valor (R$) *</label><input id="f-valor" type="number" value="${venda.valor||''}" placeholder="350000"></div>
-      <div class="form-group"><label>Imóvel (Lote/Unidade)</label><input id="f-imovel" value="${venda.imovel||''}" placeholder="Lote 42 - Quadra 5"></div>
       <div class="form-group"><label>Status</label>
         <select id="f-status"><option value="ativo" ${venda.status==='ativo'?'selected':''}>Ativo</option><option value="distrato" ${venda.status==='distrato'?'selected':''}>Distrato</option></select>
+      </div>
+      <div class="form-group"><label>Empreendimento</label>
+        <select id="f-emp" onchange="carregarUnidadesVenda(this.value)"><option value="">—</option>${(emp||[]).map(e => `<option value="${e.id}" ${venda.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Unidade</label>
+        <select id="f-unidade" onchange="preencherUnidade(this)"><option value="">— Selecione o empreendimento —</option></select>
+      </div>
+      <div class="form-group"><label>Valor (R$) *</label><input id="f-valor" type="number" value="${venda.valor||''}" placeholder="350000"></div>
+      <div class="form-group"><label>Imóvel (descrição)</label><input id="f-imovel" value="${venda.imovel||''}" placeholder="Lote 42 - Quadra 5"></div>
+      <div class="form-group span2" style="font-size:12px;padding:8px 12px;background:var(--navy3);border-radius:6px">
+        <span id="info-comissao" style="color:var(--text2)">Selecione o empreendimento para ver o % R2X</span>
       </div>
       <div class="form-group"><label>Lead</label>
         <select id="f-lead"><option value="">— Sem lead —</option>${(leads||[]).map(l => `<option value="${l.id}" ${venda.lead_id==l.id?'selected':''}>${l.nome||l.telefone}</option>`).join('')}</select>
@@ -667,22 +704,24 @@ function openVendaModal(venda = {}) {
       <div class="form-group"><label>Corretor</label>
         <select id="f-corretor"><option value="">—</option>${(corretores||[]).map(c => `<option value="${c.id}" ${venda.corretor_id==c.id?'selected':''}>${c.nome}</option>`).join('')}</select>
       </div>
-      <div class="form-group"><label>Empreendimento</label>
-        <select id="f-emp"><option value="">—</option>${(emp||[]).map(e => `<option value="${e.id}" ${venda.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('')}</select>
-      </div>
       <div class="form-group"><label>Incorporador (Loteador)</label>
         <select id="f-cliente"><option value="">—</option>${(clientes||[]).map(c => `<option value="${c.id}" ${venda.cliente_id==c.id?'selected':''}>${c.razao_social}</option>`).join('')}</select>
       </div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${venda.observacoes||''}</textarea></div>
     </div>
   `, async () => {
-    const body = { data_venda: v('f-data'), valor: parseFloat(v('f-valor')), imovel: v('f-imovel'), status: v('f-status'), lead_id: v('f-lead')||null, corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, cliente_id: v('f-cliente')||null, observacoes: v('f-obs') };
+    const unidadeId = v('f-unidade') || null;
+    const body = { data_venda: v('f-data'), valor: parseFloat(v('f-valor')), imovel: v('f-imovel'), status: v('f-status'), lead_id: v('f-lead')||null, corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, cliente_id: v('f-cliente')||null, unidade_id: unidadeId, observacoes: v('f-obs') };
     if (!body.valor || !body.data_venda) return toast('Valor e data são obrigatórios', 'error');
     const r = venda.id ? await put(`/api/vendas/${venda.id}`, body) : await post('/api/vendas', body);
     if (!r.ok) return toast(r.error, 'error');
-    toast(venda.id ? 'Venda atualizada!' : 'Venda registrada!');
+    if (!venda.id && r.data?.comissao_r2x) toast(`Venda registrada! Comissão R2X gerada: R$ ${r.data.comissao_r2x.toLocaleString('pt-BR', {minimumFractionDigits:2})}`);
+    else toast(venda.id ? 'Venda atualizada!' : 'Venda registrada!');
     closeModal(); renderVendas();
   });
+
+  // Carrega unidades se empreendimento já estiver selecionado
+  if (venda.empreendimento_id) setTimeout(() => carregarUnidadesVenda(venda.empreendimento_id), 100);
 }
 async function editVenda(id) { openVendaModal(currentData.vendas.find(v => v.id === id)); }
 async function deleteVenda(id) { if(!confirm('Excluir esta venda?')) return; await del(`/api/vendas/${id}`); toast('Venda excluída'); renderVendas(); }
@@ -824,18 +863,51 @@ function openEmpModal(e = {}) {
       <div class="form-group"><label>Estado</label><input id="f-estado" value="${e.estado||''}" placeholder="SC" maxlength="2"></div>
       <div class="form-group"><label>Nº de Unidades</label><input id="f-units" type="number" value="${e.num_unidades||''}"></div>
       <div class="form-group"><label>VGV Estimado (R$)</label><input id="f-vgv" type="number" value="${e.vgv_estimado||''}"></div>
+      <div class="form-group"><label>% Comissão R2X</label><input id="f-pct" type="number" step="0.01" min="0" max="100" value="${e.percentual_r2x||''}" placeholder="ex: 1.5"></div>
       <div class="form-group"><label>Data de Lançamento</label><input id="f-launch" type="date" value="${e.data_lancamento||''}"></div>
       <div class="form-group"><label>Início das Vendas</label><input id="f-vendas" type="date" value="${e.data_inicio_vendas||''}"></div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${e.observacoes||''}</textarea></div>
+      ${e.id ? `
+      <div class="form-group span2" style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
+        <label>📊 Importar Tabela de Unidades (Excel)</label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
+          <input type="file" id="f-excel" accept=".xlsx,.xls,.csv" style="flex:1;font-size:13px">
+          <button type="button" onclick="uploadUnidades(${e.id})" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap">⬆️ Importar</button>
+        </div>
+        <div id="upload-status" style="font-size:12px;color:var(--text2);margin-top:6px"></div>
+      </div>` : '<div class="form-group span2" style="font-size:12px;color:var(--text2)">💡 Salve o empreendimento primeiro para importar a tabela de unidades.</div>'}
     </div>
   `, async () => {
-    const body = { nome: v('f-nome'), cliente_id: v('f-cliente')||null, status: v('f-status'), endereco: v('f-end'), cidade: v('f-cidade'), estado: v('f-estado'), num_unidades: parseInt(v('f-units'))||null, vgv_estimado: parseFloat(v('f-vgv'))||null, data_lancamento: v('f-launch'), data_inicio_vendas: v('f-vendas'), observacoes: v('f-obs') };
+    const body = { nome: v('f-nome'), cliente_id: v('f-cliente')||null, status: v('f-status'), endereco: v('f-end'), cidade: v('f-cidade'), estado: v('f-estado'), num_unidades: parseInt(v('f-units'))||null, vgv_estimado: parseFloat(v('f-vgv'))||null, percentual_r2x: parseFloat(v('f-pct'))||null, data_lancamento: v('f-launch'), data_inicio_vendas: v('f-vendas'), observacoes: v('f-obs') };
     if (!body.nome) return toast('Nome obrigatório', 'error');
     const r = e.id ? await put(`/api/empreendimentos/${e.id}`, body) : await post('/api/empreendimentos', body);
     if (!r.ok) return toast(r.error, 'error');
     toast(e.id ? 'Atualizado!' : 'Empreendimento criado!');
     closeModal(); renderEmpreendimentos();
   });
+}
+
+async function uploadUnidades(empId) {
+  const input = document.getElementById('f-excel');
+  const status = document.getElementById('upload-status');
+  if (!input.files.length) { status.textContent = '⚠️ Selecione um arquivo primeiro.'; return; }
+  status.textContent = '⏳ Importando...';
+  const fd = new FormData();
+  fd.append('arquivo', input.files[0]);
+  try {
+    const res = await fetch(`/api/empreendimentos/${empId}/unidades/upload`, { method: 'POST', headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' }, body: fd });
+    const data = await res.json();
+    if (data.ok) {
+      status.style.color = 'var(--success)';
+      status.textContent = `✅ ${data.data.importadas} unidades importadas com sucesso! Total: ${data.data.total}`;
+    } else {
+      status.style.color = 'var(--danger)';
+      status.textContent = '❌ Erro: ' + data.error;
+    }
+  } catch(e) {
+    status.style.color = 'var(--danger)';
+    status.textContent = '❌ Falha na importação.';
+  }
 }
 async function editEmp(id) { openEmpModal(currentData.emp.find(e => e.id === id)); }
 async function deleteEmp(id) { if(!confirm('Excluir?')) return; await del(`/api/empreendimentos/${id}`); toast('Excluído'); renderEmpreendimentos(); }

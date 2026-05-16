@@ -2,7 +2,11 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const multer = require("multer");
+const XLSX = require("xlsx");
 const db = require("./database");
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const app = express();
 app.use(cors());
@@ -144,15 +148,58 @@ app.get("/api/empreendimentos", (req, res) => {
 });
 
 app.post("/api/empreendimentos", (req, res) => {
-  const { cliente_id, nome, endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes } = req.body;
+  const { cliente_id, nome, endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x } = req.body;
   if (!nome) return err(res, "Nome obrigatório");
-  const r = db.prepare(`INSERT INTO empreendimentos (cliente_id,nome,endereco,cidade,estado,num_unidades,vgv_estimado,status,data_lancamento,data_inicio_vendas,observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(cliente_id, nome, endereco, cidade, estado, num_unidades, vgv_estimado, status || 'prospecto', data_lancamento, data_inicio_vendas, observacoes);
+  const r = db.prepare(`INSERT INTO empreendimentos (cliente_id,nome,endereco,cidade,estado,num_unidades,vgv_estimado,status,data_lancamento,data_inicio_vendas,observacoes,percentual_r2x) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(cliente_id, nome, endereco, cidade, estado, num_unidades, vgv_estimado, status || 'prospecto', data_lancamento, data_inicio_vendas, observacoes, percentual_r2x || null);
   ok(res, { id: r.lastInsertRowid });
 });
 
 app.put("/api/empreendimentos/:id", (req, res) => {
-  const { cliente_id, nome, endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes } = req.body;
-  db.prepare(`UPDATE empreendimentos SET cliente_id=?,nome=?,endereco=?,cidade=?,estado=?,num_unidades=?,vgv_estimado=?,status=?,data_lancamento=?,data_inicio_vendas=?,observacoes=? WHERE id=?`).run(cliente_id, nome, endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes, req.params.id);
+  const { cliente_id, nome, endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x } = req.body;
+  db.prepare(`UPDATE empreendimentos SET cliente_id=?,nome=?,endereco=?,cidade=?,estado=?,num_unidades=?,vgv_estimado=?,status=?,data_lancamento=?,data_inicio_vendas=?,observacoes=?,percentual_r2x=? WHERE id=?`).run(cliente_id, nome, endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x || null, req.params.id);
+  ok(res, {});
+});
+
+// ─── UNIDADES ─────────────────────────────────────────────────────────────────
+
+app.get("/api/empreendimentos/:id/unidades", (req, res) => {
+  const rows = db.prepare("SELECT * FROM unidades WHERE empreendimento_id=? ORDER BY quadra, lote").all(req.params.id);
+  ok(res, rows);
+});
+
+app.post("/api/empreendimentos/:id/unidades/upload", upload.single("arquivo"), (req, res) => {
+  try {
+    const wb = XLSX.read(req.file.buffer, { type: "buffer" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: null });
+
+    const empId = parseInt(req.params.id);
+    const insert = db.prepare(`INSERT INTO unidades (empreendimento_id,quadra,lote,area_m2,preco,status) VALUES (?,?,?,?,?,?)`);
+
+    // Limpa unidades disponíveis existentes antes de reimportar
+    db.prepare("DELETE FROM unidades WHERE empreendimento_id=? AND status='disponivel'").run(empId);
+
+    const insertMany = db.transaction((rows) => {
+      for (const row of rows) {
+        const quadra = String(row['QD'] || row['quadra'] || row['Quadra'] || '').trim();
+        const lote = String(row['LT'] || row['lote'] || row['Lote'] || row['LOTE'] || '').trim();
+        const area = parseFloat(row['AREA'] || row['area_m2'] || row['Área'] || 0) || null;
+        const preco = parseFloat(String(row['VALOR'] || row['preco'] || row['Preço'] || row['Valor'] || '0').replace(/[R$\s.]/g, '').replace(',', '.')) || null;
+        if (!lote) continue;
+        insert.run(empId, quadra || null, lote, area, preco, 'disponivel');
+      }
+    });
+    insertMany(rows);
+
+    const total = db.prepare("SELECT COUNT(*) as n FROM unidades WHERE empreendimento_id=?").get(empId).n;
+    ok(res, { importadas: rows.length, total });
+  } catch (e) {
+    err(res, "Erro ao processar arquivo: " + e.message);
+  }
+});
+
+app.delete("/api/empreendimentos/:id/unidades", (req, res) => {
+  db.prepare("DELETE FROM unidades WHERE empreendimento_id=? AND status='disponivel'").run(req.params.id);
   ok(res, {});
 });
 
@@ -271,11 +318,33 @@ app.get("/api/vendas", (req, res) => {
 });
 
 app.post("/api/vendas", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, valor, data_venda, observacoes } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, observacoes } = req.body;
   if (!valor || !data_venda) return err(res, "Valor e data obrigatórios");
-  const r = db.prepare(`INSERT INTO vendas (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,valor,data_venda,observacoes) VALUES (?,?,?,?,?,?,?,?)`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, valor, data_venda, observacoes);
+
+  // Busca percentual R2X do empreendimento
+  const emp = empreendimento_id ? db.prepare("SELECT percentual_r2x, nome FROM empreendimentos WHERE id=?").get(empreendimento_id) : null;
+  const percentual = emp?.percentual_r2x || null;
+  const comissao = percentual ? parseFloat(((valor * percentual) / 100).toFixed(2)) : null;
+
+  const r = db.prepare(`INSERT INTO vendas (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,valor,data_venda,observacoes,percentual_r2x,comissao_r2x) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, valor, data_venda, observacoes, percentual, comissao);
+
   if (lead_id) db.prepare("UPDATE leads SET status='vendido' WHERE id=?").run(lead_id);
-  ok(res, { id: r.lastInsertRowid });
+
+  // Marca unidade como vendida
+  if (unidade_id) db.prepare("UPDATE unidades SET status='vendido' WHERE id=?").run(unidade_id);
+
+  // Gera entrada financeira automática de comissão R2X
+  if (comissao && empreendimento_id) {
+    const empNome = emp?.nome || 'Empreendimento';
+    const imovelDesc = imovel ? ` — ${imovel}` : '';
+    db.prepare(`INSERT INTO financeiro_entradas (empreendimento_id,venda_id,descricao,tipo,valor,data_prevista,status) VALUES (?,?,?,?,?,?,?)`).run(
+      empreendimento_id, r.lastInsertRowid,
+      `Comissão R2X ${percentual}% — ${empNome}${imovelDesc}`,
+      'comissao_venda', comissao, data_venda, 'pendente'
+    );
+  }
+
+  ok(res, { id: r.lastInsertRowid, comissao_r2x: comissao });
 });
 
 app.put("/api/vendas/:id", (req, res) => {

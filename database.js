@@ -136,11 +136,28 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS unidades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empreendimento_id INTEGER NOT NULL REFERENCES empreendimentos(id) ON DELETE CASCADE,
+    quadra TEXT,
+    lote TEXT NOT NULL,
+    area_m2 REAL,
+    preco REAL,
+    status TEXT DEFAULT 'disponivel',
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 // Migrations: adiciona colunas que podem estar faltando em bancos antigos
 const migrations = [
   "ALTER TABLE leads ADD COLUMN aniversario TEXT",
   "ALTER TABLE leads ADD COLUMN cpf TEXT",
   "ALTER TABLE clientes ADD COLUMN aniversario TEXT",
+  "ALTER TABLE empreendimentos ADD COLUMN percentual_r2x REAL",
+  "ALTER TABLE vendas ADD COLUMN unidade_id INTEGER REFERENCES unidades(id)",
+  "ALTER TABLE vendas ADD COLUMN percentual_r2x REAL",
+  "ALTER TABLE vendas ADD COLUMN comissao_r2x REAL",
 ];
 for (const sql of migrations) {
   try { db.exec(sql); } catch (_) { /* coluna já existe */ }
