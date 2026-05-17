@@ -667,7 +667,7 @@ async function renderVendas(filter = '') {
     <div class="table-card">
       <div class="table-header"><div class="table-title">🏆 Vendas (${vendas.length})</div></div>
       <table>
-        <thead><tr><th>Data</th><th>Lead</th><th>Imóvel</th><th>Valor</th><th>Corretor</th><th>Empreendimento</th><th>Incorporador</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Data</th><th>Lead</th><th>Imóvel</th><th>Valor</th><th>Corretor</th><th>Empreendimento</th><th>Incorporador</th><th>Status</th><th>Comissão Corretor</th><th></th></tr></thead>
         <tbody>
           ${vendas.length ? vendas.map(v => `
             <tr>
@@ -679,9 +679,18 @@ async function renderVendas(filter = '') {
               <td>${v.empreendimento_nome||'—'}</td>
               <td>${v.cliente_nome||'—'}</td>
               <td><span class="badge ${v.status==='ativo'?'badge-green':'badge-red'}">${v.status}</span></td>
+              <td style="white-space:nowrap">
+                ${v.comissao_corretor_pct ? `
+                  <div style="font-size:12px;color:var(--text2)">${v.comissao_corretor_pct}% = <strong style="color:var(--warning)">${fmt(v.comissao_corretor_valor)}</strong></div>
+                  <div style="display:flex;align-items:center;gap:4px;margin-top:3px">
+                    <span class="badge ${v.comissao_corretor_status==='pago'?'badge-green':'badge-yellow'}">${v.comissao_corretor_status==='pago'?'✅ Pago':'⏳ Pendente'}</span>
+                    ${v.comissao_corretor_status!=='pago'?`<button class="btn-icon" title="Marcar pago" onclick="pagarComissaoCorretor(${v.id})" style="font-size:13px">💳</button>`:''}
+                  </div>
+                ` : '<span style="color:var(--text2);font-size:12px">—</span>'}
+              </td>
               <td><button class="btn-icon btn-edit" onclick="editVenda(${v.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteVenda(${v.id})">🗑️</button></td>
             </tr>
-          `).join('') : '<tr class="empty-row"><td colspan="9">Nenhuma venda registrada</td></tr>'}
+          `).join('') : '<tr class="empty-row"><td colspan="10">Nenhuma venda registrada</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -739,7 +748,7 @@ function openVendaModal(venda = {}) {
       <div class="form-group"><label>Unidade</label>
         <select id="f-unidade" onchange="preencherUnidade(this)"><option value="">— Selecione o empreendimento —</option></select>
       </div>
-      <div class="form-group"><label>Valor (R$) *</label><input id="f-valor" type="number" value="${venda.valor||''}" placeholder="350000"></div>
+      <div class="form-group"><label>Valor (R$) *</label><input id="f-valor" type="number" value="${venda.valor||''}" placeholder="350000" oninput="calcComissaoCorretor()"></div>
       <div class="form-group"><label>Imóvel (descrição)</label><input id="f-imovel" value="${venda.imovel||''}" placeholder="Lote 42 - Quadra 5"></div>
       <div class="form-group span2" style="font-size:12px;padding:8px 12px;background:var(--navy3);border-radius:6px">
         <span id="info-comissao" style="color:var(--text2)">Selecione o empreendimento para ver o % R2X</span>
@@ -766,6 +775,14 @@ function openVendaModal(venda = {}) {
       </div>
       <div class="form-group"><label>Incorporador (Loteador)</label>
         <select id="f-cliente"><option value="">—</option>${(clientes||[]).map(c => `<option value="${c.id}" ${venda.cliente_id==c.id?'selected':''}>${c.razao_social}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>% Comissão Corretor</label><input id="f-com-pct" type="number" step="0.1" min="0" max="100" value="${venda.comissao_corretor_pct||''}" placeholder="ex: 1.0" oninput="calcComissaoCorretor()"></div>
+      <div class="form-group"><label>Valor Comissão Corretor (R$)</label><input id="f-com-valor" type="number" step="0.01" value="${venda.comissao_corretor_valor||''}" style="opacity:.75" placeholder="Calculado automaticamente"></div>
+      <div class="form-group"><label>Status Comissão Corretor</label>
+        <select id="f-com-status">
+          <option value="pendente" ${(!venda.comissao_corretor_status||venda.comissao_corretor_status==='pendente')?'selected':''}>⏳ Pendente</option>
+          <option value="pago" ${venda.comissao_corretor_status==='pago'?'selected':''}>✅ Pago</option>
+        </select>
       </div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${venda.observacoes||''}</textarea></div>
     </div>
@@ -797,7 +814,9 @@ function openVendaModal(venda = {}) {
       leadId = lr.data.id;
     }
 
-    const body = { data_venda: v('f-data'), valor, imovel: v('f-imovel'), status: v('f-status'), lead_id: leadId, corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, cliente_id: v('f-cliente')||null, unidade_id: unidadeId, observacoes: v('f-obs') };
+    const comPct = parseFloat(v('f-com-pct'))||null;
+    const comValor = parseFloat(v('f-com-valor'))||null;
+    const body = { data_venda: v('f-data'), valor, imovel: v('f-imovel'), status: v('f-status'), lead_id: leadId, corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, cliente_id: v('f-cliente')||null, unidade_id: unidadeId, observacoes: v('f-obs'), comissao_corretor_pct: comPct, comissao_corretor_valor: comValor, comissao_corretor_status: comPct ? (v('f-com-status')||'pendente') : null };
     if (!body.valor || !body.data_venda) return toast('Valor e data são obrigatórios', 'error');
     const r = venda.id ? await put(`/api/vendas/${venda.id}`, body) : await post('/api/vendas', body);
     if (!r.ok) return toast(r.error, 'error');
@@ -990,6 +1009,7 @@ async function renderEmpreendimentos(filter = '') {
               <td>${e.data_lancamento ? fmtDate(e.data_lancamento) : '—'}</td>
               <td style="white-space:nowrap">
                 ${e.num_unidades ? `<button class="btn-icon" title="Ver unidades" onclick="verUnidades(${e.id})">🏠</button>` : ''}
+                <button class="btn-icon" title="Relatório gerencial" onclick="gerarRelatorio(${e.id})" style="color:var(--accent)">📊</button>
                 <button class="btn-icon btn-edit" onclick="editEmp(${e.id})">✏️</button>
                 <button class="btn-icon btn-delete" onclick="deleteEmp(${e.id})">🗑️</button>
               </td>
@@ -1208,6 +1228,7 @@ function copyLink(link) { navigator.clipboard.writeText(link); toast('Link copia
 // ─── FINANCEIRO ───────────────────────────────────────────────────────────────
 
 let finTab = 'entradas';
+let rankingTab = 'corretores';
 
 async function renderFinanceiro(filter = '') {
   const [er, sr, dr, empr, resr] = await Promise.all([get('/api/financeiro/entradas'), get('/api/financeiro/saidas'), get('/api/financeiro/distribuicoes'), get('/api/empreendimentos'), get('/api/financeiro/resumo')]);
@@ -1233,6 +1254,7 @@ async function renderFinanceiro(filter = '') {
       <button class="fin-tab ${finTab==='saidas'?'active':''}" onclick="setFinTab('saidas')">📤 Saídas</button>
       <button class="fin-tab ${finTab==='distribuicoes'?'active':''}" onclick="setFinTab('distribuicoes')">💸 Distribuição</button>
       <button class="fin-tab ${finTab==='resumo'?'active':''}" onclick="setFinTab('resumo')">📊 Por Empreendimento</button>
+      <button class="fin-tab ${finTab==='comissoes'?'active':''}" onclick="setFinTab('comissoes')">💳 Comissões Corretores</button>
     </div>
     <div id="fin-content"></div>
   `;
@@ -1241,7 +1263,8 @@ async function renderFinanceiro(filter = '') {
 
 function setFinTab(tab) {
   finTab = tab;
-  document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(tab==='entradas'?'Entrada':tab==='saidas'?'Saída':tab==='distribuicoes'?'Distrib':'Empreend')));
+  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss' };
+  document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(keys[tab]||'')));
   renderFinTab();
 }
 
@@ -1318,6 +1341,39 @@ function renderFinTab() {
           </tbody>
         </table>
       </div>`;
+  } else if (finTab === 'comissoes') {
+    el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text2)">Carregando comissões...</div>';
+    get('/api/corretores/comissoes').then(r => {
+      const rows = r.data || [];
+      const totalPendente = rows.filter(v => v.comissao_corretor_status !== 'pago').reduce((s,v) => s+(v.comissao_corretor_valor||0), 0);
+      const totalPago = rows.filter(v => v.comissao_corretor_status === 'pago').reduce((s,v) => s+(v.comissao_corretor_valor||0), 0);
+      el.innerHTML = `
+        <div class="kpi-grid" style="margin-bottom:16px">
+          ${kpi('⏳', 'A Pagar Corretores', fmt(totalPendente), 'comissões pendentes')}
+          ${kpi('✅', 'Pago Corretores', fmt(totalPago), 'comissões quitadas')}
+        </div>
+        <div class="table-card">
+          <div class="table-header"><div class="table-title">💳 Comissões de Corretores (${rows.length})</div></div>
+          <table>
+            <thead><tr><th>Data</th><th>Corretor</th><th>Empreendimento</th><th>Imóvel</th><th>Valor Venda</th><th>% Comissão</th><th>Valor Comissão</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              ${rows.length ? rows.map(v => `
+                <tr>
+                  <td>${fmtDate(v.data_venda)}</td>
+                  <td><strong>${v.corretor_nome||'—'}</strong></td>
+                  <td>${v.empreendimento_nome||'—'}</td>
+                  <td>${v.imovel||'—'}</td>
+                  <td style="color:var(--success)">${fmt(v.valor)}</td>
+                  <td style="text-align:center">${v.comissao_corretor_pct}%</td>
+                  <td style="font-weight:600;color:var(--warning)">${fmt(v.comissao_corretor_valor)}</td>
+                  <td><span class="badge ${v.comissao_corretor_status==='pago'?'badge-green':'badge-yellow'}">${v.comissao_corretor_status==='pago'?'✅ Pago':'⏳ Pendente'}</span></td>
+                  <td>${v.comissao_corretor_status!=='pago'?`<button class="btn-icon" title="Marcar pago" onclick="pagarComissaoCorretor(${v.id})" style="font-size:13px">💳 Pagar</button>`:'—'}</td>
+                </tr>
+              `).join('') : '<tr class="empty-row"><td colspan="9">Nenhuma comissão de corretor registrada</td></tr>'}
+            </tbody>
+          </table>
+        </div>`;
+    });
   } else {
     // resumo por empreendimento
     const rows = (currentData.emp || []);
@@ -1578,37 +1634,161 @@ async function deleteCal(id) { if(!confirm('Excluir?')) return; await del(`/api/
 async function renderRanking() {
   const [rr, er] = await Promise.all([get('/api/vendas/ranking'), get('/api/empreendimentos')]);
   currentData.emp = er.data;
-  const rows = rr.data;
+  currentData.rankingCorretores = rr.data;
 
   document.getElementById('content').innerHTML = `
-    <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-      <select onchange="filterRanking(this.value,'emp')" style="font-size:13px;padding:8px 12px">
-        <option value="">Todos os empreendimentos</option>
-        ${er.data.map(e => `<option value="${e.id}">${e.nome}</option>`).join('')}
-      </select>
-      <select onchange="filterRanking(this.value,'periodo')" style="font-size:13px;padding:8px 12px">
-        <option value="">Todo o período</option>
-        <option value="mes">Este mês</option>
-      </select>
+    <div class="fin-tabs" style="margin-bottom:20px">
+      <button class="fin-tab ${rankingTab==='corretores'?'active':''}" onclick="setRankingTab('corretores')">⭐ Corretores</button>
+      <button class="fin-tab ${rankingTab==='imobiliarias'?'active':''}" onclick="setRankingTab('imobiliarias')">🏢 Imobiliárias</button>
+      <button class="fin-tab ${rankingTab==='conversao'?'active':''}" onclick="setRankingTab('conversao')">📊 Conversão</button>
+      <button class="fin-tab ${rankingTab==='metas'?'active':''}" onclick="setRankingTab('metas')">🎯 Metas</button>
     </div>
-    <div class="table-card">
-      <div class="table-header"><div class="table-title">⭐ Ranking de Corretores</div></div>
-      <table>
-        <thead><tr><th>#</th><th>Corretor</th><th>Imobiliária</th><th>Vendas</th><th>VGV</th></tr></thead>
-        <tbody id="ranking-body">
-          ${rows.length ? rows.map((r, i) => `
-            <tr>
-              <td><span style="font-weight:700;color:${i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'var(--text2)'}">${i+1}º</span></td>
-              <td><strong>${r.nome}</strong></td>
-              <td>${r.imobiliaria||'—'}</td>
-              <td style="text-align:center"><span class="badge badge-blue">${r.vendas}</span></td>
-              <td style="color:var(--success);font-weight:600">${fmt(r.vgv)}</td>
-            </tr>
-          `).join('') : '<tr class="empty-row"><td colspan="5">Nenhuma venda registrada</td></tr>'}
-        </tbody>
-      </table>
-    </div>
+    <div id="ranking-content"></div>
   `;
+  renderRankingTab();
+}
+
+function setRankingTab(tab) {
+  rankingTab = tab;
+  const keys = { corretores:'Corretor', imobiliarias:'Imobil', conversao:'Convers', metas:'Meta' };
+  document.querySelectorAll('#content .fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(keys[tab]||'')));
+  renderRankingTab();
+}
+
+async function renderRankingTab() {
+  const el = document.getElementById('ranking-content');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text2)">Carregando...</div>';
+
+  if (rankingTab === 'corretores') {
+    const rows = currentData.rankingCorretores || [];
+    el.innerHTML = `
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+        <select onchange="filterRanking(this.value,'emp')" style="font-size:13px;padding:8px 12px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px">
+          <option value="">Todos os empreendimentos</option>
+          ${(currentData.emp||[]).map(e => `<option value="${e.id}">${e.nome}</option>`).join('')}
+        </select>
+        <select onchange="filterRanking(this.value,'periodo')" style="font-size:13px;padding:8px 12px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px">
+          <option value="">Todo o período</option>
+          <option value="mes">Este mês</option>
+        </select>
+      </div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">⭐ Ranking de Corretores</div></div>
+        <table>
+          <thead><tr><th>#</th><th>Corretor</th><th>Imobiliária</th><th>Vendas</th><th>VGV</th></tr></thead>
+          <tbody id="ranking-body">
+            ${rows.length ? rows.map((r,i) => `
+              <tr>
+                <td><span style="font-weight:700;color:${i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'var(--text2)'}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}º`}</span></td>
+                <td><strong>${r.nome}</strong></td>
+                <td>${r.imobiliaria||'—'}</td>
+                <td style="text-align:center"><span class="badge badge-blue">${r.vendas}</span></td>
+                <td style="color:var(--success);font-weight:600">${fmt(r.vgv)}</td>
+              </tr>
+            `).join('') : '<tr class="empty-row"><td colspan="5">Nenhuma venda registrada</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+
+  } else if (rankingTab === 'imobiliarias') {
+    const r = await get('/api/vendas/ranking/imobiliarias');
+    const rows = r.data || [];
+    el.innerHTML = `
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">🏢 Ranking de Imobiliárias</div></div>
+        <table>
+          <thead><tr><th>#</th><th>Imobiliária</th><th>Corretores</th><th>Vendas</th><th>VGV Total</th></tr></thead>
+          <tbody>
+            ${rows.length ? rows.map((r,i) => `
+              <tr>
+                <td><span style="font-weight:700;color:${i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'var(--text2)'}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}º`}</span></td>
+                <td><strong>${r.imobiliaria||'Autônomo / Sem imobiliária'}</strong></td>
+                <td style="text-align:center"><span class="badge badge-blue">${r.corretores}</span></td>
+                <td style="text-align:center"><span class="badge badge-accent">${r.vendas}</span></td>
+                <td style="color:var(--success);font-weight:600">${fmt(r.vgv)}</td>
+              </tr>
+            `).join('') : '<tr class="empty-row"><td colspan="5">Nenhuma venda registrada</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+
+  } else if (rankingTab === 'conversao') {
+    const r = await get('/api/corretores/conversao');
+    const rows = r.data || [];
+    el.innerHTML = `
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">📊 Taxa de Conversão — Leads → Vendas</div></div>
+        <table>
+          <thead><tr><th>Corretor</th><th>Imobiliária</th><th>Leads Recebidos</th><th>Vendas</th><th>Taxa de Conversão</th></tr></thead>
+          <tbody>
+            ${rows.length ? rows.map(r => {
+              const pct = parseFloat(r.taxa_conversao)||0;
+              const cor = pct >= 30 ? 'var(--success)' : pct >= 15 ? 'var(--warning)' : 'var(--danger)';
+              return `<tr>
+                <td><strong>${r.nome}</strong></td>
+                <td>${r.imobiliaria||'—'}</td>
+                <td style="text-align:center">${r.leads_recebidos}</td>
+                <td style="text-align:center"><span class="badge badge-green">${r.leads_convertidos}</span></td>
+                <td>
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="flex:1;background:var(--navy3);border-radius:4px;height:8px;overflow:hidden;min-width:80px">
+                      <div style="width:${Math.min(pct,100)}%;height:100%;background:${cor};border-radius:4px;transition:width .4s"></div>
+                    </div>
+                    <span style="font-weight:700;color:${cor};min-width:42px;text-align:right">${pct.toFixed(1)}%</span>
+                  </div>
+                </td>
+              </tr>`;
+            }).join('') : '<tr class="empty-row"><td colspan="5">Sem dados suficientes</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+
+  } else if (rankingTab === 'metas') {
+    const now = new Date();
+    const mes = now.getMonth() + 1;
+    const ano = now.getFullYear();
+    const [mr, cr] = await Promise.all([get(`/api/metas?mes=${mes}&ano=${ano}`), get('/api/corretores')]);
+    currentData.corretores = cr.data || [];
+    const metas = mr.data || [];
+    const mesNome = now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:14px;font-weight:600;color:var(--text2)">📅 Período: <span style="color:var(--text)">${mesNome}</span></div>
+        <button class="btn btn-primary" onclick="openMetaModal(${mes},${ano})">+ Definir Meta</button>
+      </div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">🎯 Metas do Mês — ${mesNome}</div></div>
+        <table>
+          <thead><tr><th>Corretor</th><th>Empreendimento</th><th>Meta Qtd</th><th>Realizado</th><th>Meta VGV</th><th>VGV Realizado</th><th>Progresso</th><th></th></tr></thead>
+          <tbody>
+            ${metas.length ? metas.map(m => {
+              const pQtd = m.meta_qtd > 0 ? Math.min(100,(m.real_qtd/m.meta_qtd)*100) : 0;
+              const pVgv = m.meta_vgv > 0 ? Math.min(100,(m.real_vgv/m.meta_vgv)*100) : 0;
+              const pct  = Math.round(Math.max(pQtd, pVgv));
+              const cor  = pct >= 100 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
+              return `<tr>
+                <td><strong>${m.corretor_nome||'—'}</strong></td>
+                <td>${m.empreendimento_nome||'<span style="color:var(--text2)">Geral</span>'}</td>
+                <td style="text-align:center">${m.meta_qtd}</td>
+                <td style="text-align:center"><span class="badge ${m.real_qtd>=m.meta_qtd&&m.meta_qtd>0?'badge-green':'badge-yellow'}">${m.real_qtd}</span></td>
+                <td>${fmt(m.meta_vgv)}</td>
+                <td style="color:${m.real_vgv>=m.meta_vgv&&m.meta_vgv>0?'var(--success)':'var(--warning)'}">${fmt(m.real_vgv)}</td>
+                <td style="min-width:120px">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <div style="flex:1;background:var(--navy3);border-radius:4px;height:8px;overflow:hidden">
+                      <div style="width:${pct}%;height:100%;background:${cor};border-radius:4px;transition:width .4s"></div>
+                    </div>
+                    <span style="font-size:11px;font-weight:700;color:${cor};min-width:34px;text-align:right">${pct}%</span>
+                  </div>
+                </td>
+                <td><button class="btn-icon btn-delete" onclick="deleteMeta(${m.id},${mes},${ano})">🗑️</button></td>
+              </tr>`;
+            }).join('') : '<tr class="empty-row"><td colspan="8">Nenhuma meta definida para este mês — clique em "+ Definir Meta"</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+  }
 }
 
 async function filterRanking(val, tipo) {
@@ -1616,9 +1796,11 @@ async function filterRanking(val, tipo) {
   if (tipo === 'emp' && val) params.set('empreendimento_id', val);
   if (tipo === 'periodo' && val) params.set('periodo', val);
   const r = await get(`/api/vendas/ranking?${params}`);
-  document.getElementById('ranking-body').innerHTML = r.data.length ? r.data.map((row, i) => `
+  const tbody = document.getElementById('ranking-body');
+  if (!tbody) return;
+  tbody.innerHTML = r.data.length ? r.data.map((row,i) => `
     <tr>
-      <td><span style="font-weight:700;color:${i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'var(--text2)'}">${i+1}º</span></td>
+      <td><span style="font-weight:700;color:${i===0?'#FFD700':i===1?'#C0C0C0':i===2?'#CD7F32':'var(--text2)'}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}º`}</span></td>
       <td><strong>${row.nome}</strong></td><td>${row.imobiliaria||'—'}</td>
       <td style="text-align:center"><span class="badge badge-blue">${row.vendas}</span></td>
       <td style="color:var(--success);font-weight:600">${fmt(row.vgv)}</td>
@@ -1746,6 +1928,218 @@ async function updateUnidadeStatus(unidadeId, status, empId) {
   if (!r.ok) return toast(r.error, 'error');
   toast(status==='reservado'?'Unidade reservada! 🟡':'Reserva liberada! ✅');
   verUnidades(empId);
+}
+
+// ─── COMISSÃO CORRETOR ────────────────────────────────────────────────────────
+
+function calcComissaoCorretor() {
+  const pct   = parseFloat(document.getElementById('f-com-pct')?.value) || 0;
+  const valor = parseFloat(document.getElementById('f-valor')?.value)   || 0;
+  const dest  = document.getElementById('f-com-valor');
+  if (dest) dest.value = (pct && valor) ? (valor * pct / 100).toFixed(2) : '';
+}
+
+async function pagarComissaoCorretor(vendaId) {
+  if (!confirm('Marcar comissão deste corretor como paga?')) return;
+  const r = await put(`/api/vendas/${vendaId}/comissao-corretor`, { comissao_corretor_status: 'pago' });
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Comissão marcada como paga! 💳');
+  renderVendas();
+}
+
+// ─── RELATÓRIO GERENCIAL ──────────────────────────────────────────────────────
+
+async function gerarRelatorio(empId) {
+  const emp = (currentData.emp||[]).find(e => e.id === empId);
+  if (!emp) return toast('Empreendimento não encontrado', 'error');
+  toast('Gerando relatório... ⏳');
+
+  const [vr, unr] = await Promise.all([get('/api/vendas'), get(`/api/empreendimentos/${empId}/unidades`)]);
+  const todasVendas = vr.data || [];
+  const vendas = todasVendas.filter(v => v.empreendimento_id === empId && v.status === 'ativo');
+  const unidades = unr.data || [];
+
+  // KPIs
+  const vgvVendido  = vendas.reduce((s,v) => s + v.valor, 0);
+  const vso         = emp.vgv_estimado ? ((vgvVendido / emp.vgv_estimado) * 100).toFixed(1) : '—';
+  const cnt = { disponivel:0, reservado:0, vendido:0 };
+  unidades.forEach(u => { cnt[u.status] = (cnt[u.status]||0) + 1; });
+
+  // Ranking de corretores neste empreendimento
+  const byCorretor = {};
+  vendas.forEach(v => {
+    const k = v.corretor_nome || 'Sem corretor';
+    if (!byCorretor[k]) byCorretor[k] = { nome:k, imob:v.corretor_imobiliaria||'—', vendas:0, vgv:0 };
+    byCorretor[k].vendas++; byCorretor[k].vgv += v.valor;
+  });
+  const topCorretores = Object.values(byCorretor).sort((a,b) => b.vgv - a.vgv);
+
+  // Evolução mensal (últimos 6 meses)
+  const meses = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const label = d.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'});
+    const mv = vendas.filter(v => v.data_venda?.startsWith(key));
+    meses.push({ label, qtd: mv.length, vgv: mv.reduce((s,v)=>s+v.valor,0) });
+  }
+
+  const now = new Date().toLocaleDateString('pt-BR');
+  const cliente = emp.cliente_nome || '—';
+  const pctR2X  = emp.percentual_r2x ? `${emp.percentual_r2x}%` : '—';
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+  <title>Relatório — ${emp.nome}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;color:#1a1a2e;font-size:13px;padding:32px 40px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0D1B2E;padding-bottom:16px;margin-bottom:28px}
+    .logo{font-size:26px;font-weight:900;letter-spacing:-1px;color:#0D1B2E}
+    .logo span{color:#00C4B4}
+    .logo small{display:block;font-size:11px;font-weight:400;color:#666;margin-top:2px}
+    .report-info{text-align:right;font-size:12px;color:#555}
+    .report-info strong{display:block;font-size:18px;color:#0D1B2E;margin-bottom:4px}
+    h2{font-size:16px;font-weight:700;color:#0D1B2E;margin:24px 0 12px;border-left:4px solid #00C4B4;padding-left:10px}
+    .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+    .kpi{background:#f5f7fa;border-radius:8px;padding:14px 16px;border:1px solid #e0e4ea}
+    .kpi label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#666;display:block;margin-bottom:4px}
+    .kpi strong{font-size:18px;font-weight:900;color:#0D1B2E}
+    .kpi small{font-size:11px;color:#888;display:block;margin-top:2px}
+    table{width:100%;border-collapse:collapse;margin-bottom:20px}
+    th{background:#0D1B2E;color:#fff;padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+    td{padding:8px 12px;border-bottom:1px solid #eee;font-size:12px}
+    tr:nth-child(even) td{background:#fafbfc}
+    .badge-g{background:#e6f9ee;color:#1a8a4a;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
+    .badge-y{background:#fff8e6;color:#b07d00;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
+    .badge-r{background:#fdecea;color:#b91c1c;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
+    .bar-wrap{background:#eee;border-radius:4px;height:8px;overflow:hidden;flex:1}
+    .bar-fill{height:100%;background:#00C4B4;border-radius:4px}
+    .footer{margin-top:40px;border-top:1px solid #ccc;padding-top:12px;display:flex;justify-content:space-between;font-size:11px;color:#888}
+    @media print{body{padding:16px}}
+  </style></head><body>
+  <div class="header">
+    <div class="logo">R<span>2</span>X<small>Inteligência Comercial em Lançamentos</small></div>
+    <div class="report-info"><strong>Relatório Gerencial</strong>${emp.nome}<br>Emitido em ${now}</div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi"><label>Incorporador</label><strong style="font-size:13px">${cliente}</strong></div>
+    <div class="kpi"><label>VGV Estimado</label><strong>${emp.vgv_estimado?(emp.vgv_estimado/1e6).toFixed(2)+'M':'—'}</strong></div>
+    <div class="kpi"><label>% R2X</label><strong>${pctR2X}</strong></div>
+    <div class="kpi"><label>Status</label><strong style="font-size:13px">${emp.status||'—'}</strong></div>
+  </div>
+
+  <h2>📊 Resumo de Vendas</h2>
+  <div class="kpi-row">
+    <div class="kpi"><label>VGV Vendido</label><strong>${fmt(vgvVendido)}</strong><small>VSO: ${vso}%</small></div>
+    <div class="kpi"><label>Unidades Vendidas</label><strong>${cnt.vendido}</strong><small>de ${unidades.length} no total</small></div>
+    <div class="kpi"><label>Reservados</label><strong style="color:#b07d00">${cnt.reservado}</strong></div>
+    <div class="kpi"><label>Disponíveis</label><strong style="color:#1a8a4a">${cnt.disponivel}</strong></div>
+  </div>
+
+  <h2>📅 Evolução Mensal (últimos 6 meses)</h2>
+  <table>
+    <thead><tr><th>Mês</th><th>Vendas (qtd)</th><th>VGV</th></tr></thead>
+    <tbody>
+      ${meses.map(m => `<tr><td>${m.label}</td><td style="text-align:center">${m.qtd||'—'}</td><td style="color:${m.vgv>0?'#1a8a4a':'#888'}">${m.vgv>0?fmt(m.vgv):'—'}</td></tr>`).join('')}
+    </tbody>
+  </table>
+
+  <h2>⭐ Ranking de Corretores</h2>
+  <table>
+    <thead><tr><th>#</th><th>Corretor</th><th>Imobiliária</th><th style="text-align:center">Vendas</th><th>VGV</th></tr></thead>
+    <tbody>
+      ${topCorretores.length ? topCorretores.map((c,i) => `<tr>
+        <td style="font-weight:700">${i+1}º</td>
+        <td><strong>${c.nome}</strong></td>
+        <td>${c.imob}</td>
+        <td style="text-align:center">${c.vendas}</td>
+        <td style="color:#1a8a4a;font-weight:600">${fmt(c.vgv)}</td>
+      </tr>`).join('') : '<tr><td colspan="5" style="color:#888;text-align:center;padding:16px">Nenhuma venda registrada</td></tr>'}
+    </tbody>
+  </table>
+
+  <h2>📋 Lista de Vendas</h2>
+  <table>
+    <thead><tr><th>Data</th><th>Lead</th><th>Imóvel</th><th>Corretor</th><th>Valor</th></tr></thead>
+    <tbody>
+      ${vendas.length ? vendas.map(v => `<tr>
+        <td>${fmtDate(v.data_venda)}</td>
+        <td>${v.lead_nome||'—'}</td>
+        <td>${v.imovel||'—'}</td>
+        <td>${v.corretor_nome||'—'}</td>
+        <td style="font-weight:600;color:#1a8a4a">${fmt(v.valor)}</td>
+      </tr>`).join('') : '<tr><td colspan="5" style="color:#888;text-align:center;padding:16px">Nenhuma venda registrada</td></tr>'}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <span>R2X Inteligência Comercial · comercial@r2xlancamentos.com.br</span>
+    <span>Gerado em ${now} via CRM R2X</span>
+  </div>
+  ${'<sc'+'ript>window.onload=()=>window.print()<'+'/script>'}
+  </body></html>`;
+
+  const w = window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
+// ─── METAS ────────────────────────────────────────────────────────────────────
+
+async function openMetaModal(mes, ano) {
+  const cr = await get('/api/corretores');
+  const corretores = cr.data || [];
+  const emp = currentData.emp || [];
+  const mesNome = new Date(ano, mes-1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+
+  openModal('🎯 Definir Meta do Mês', `
+    <div style="font-size:12px;color:var(--accent);margin-bottom:14px;background:rgba(0,196,180,.08);padding:8px 12px;border-radius:6px">
+      📅 Período de referência: <strong>${mesNome}</strong>
+    </div>
+    <div class="form-grid">
+      <div class="form-group"><label>Corretor *</label>
+        <select id="f-corretor">
+          <option value="">— Selecione o corretor —</option>
+          ${corretores.map(c => `<option value="${c.id}">${c.nome}${c.imobiliaria?' ('+c.imobiliaria+')':''}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Empreendimento (opcional)</label>
+        <select id="f-emp">
+          <option value="">Geral (todos os empreendimentos)</option>
+          ${emp.map(e => `<option value="${e.id}">${e.nome}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Meta de Vendas (quantidade)</label>
+        <input id="f-meta-qtd" type="number" min="0" value="0" placeholder="0">
+      </div>
+      <div class="form-group"><label>Meta VGV (R$)</label>
+        <input id="f-meta-vgv" type="number" min="0" value="0" placeholder="0">
+      </div>
+    </div>
+  `, async () => {
+    const corrId = v('f-corretor');
+    if (!corrId) return toast('Selecione um corretor', 'error');
+    const body = {
+      corretor_id: corrId,
+      empreendimento_id: v('f-emp') || null,
+      mes, ano,
+      meta_qtd:  parseInt(v('f-meta-qtd'))  || 0,
+      meta_vgv:  parseFloat(v('f-meta-vgv')) || 0
+    };
+    const r = await post('/api/metas', body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Meta definida! 🎯');
+    closeModal();
+    renderRankingTab();
+  });
+}
+
+async function deleteMeta(id, mes, ano) {
+  if (!confirm('Excluir esta meta?')) return;
+  await del(`/api/metas/${id}`);
+  toast('Meta excluída');
+  renderRankingTab();
 }
 
 // ─── SEARCH ───────────────────────────────────────────────────────────────────

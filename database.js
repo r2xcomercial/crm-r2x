@@ -150,6 +150,20 @@ db.exec(`
 `);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS metas_corretores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    corretor_id INTEGER NOT NULL REFERENCES corretores(id) ON DELETE CASCADE,
+    empreendimento_id INTEGER REFERENCES empreendimentos(id),
+    mes INTEGER NOT NULL,
+    ano INTEGER NOT NULL,
+    meta_qtd INTEGER DEFAULT 0,
+    meta_vgv REAL DEFAULT 0,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(corretor_id, COALESCE(empreendimento_id, 0), mes, ano)
+  );
+`);
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS followups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
@@ -172,6 +186,9 @@ const migrations = [
   "ALTER TABLE financeiro_entradas ADD COLUMN parcela_num INTEGER",
   "ALTER TABLE financeiro_entradas ADD COLUMN parcela_total INTEGER",
   "ALTER TABLE empreendimentos ADD COLUMN tipo TEXT DEFAULT 'loteamento'",
+  "ALTER TABLE vendas ADD COLUMN comissao_corretor_pct REAL",
+  "ALTER TABLE vendas ADD COLUMN comissao_corretor_valor REAL",
+  "ALTER TABLE vendas ADD COLUMN comissao_corretor_status TEXT DEFAULT 'pendente'",
 ];
 for (const sql of migrations) {
   try { db.exec(sql); } catch (_) { /* coluna já existe */ }

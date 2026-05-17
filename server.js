@@ -495,10 +495,10 @@ function sincronizarComissaoVenda(vendaId) {
 }
 
 app.post("/api/vendas", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, observacoes } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status } = req.body;
   if (!valor || !data_venda) return err(res, "Valor e data obrigatórios");
 
-  const r = db.prepare(`INSERT INTO vendas (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,valor,data_venda,observacoes,status) VALUES (?,?,?,?,?,?,?,?,?,'ativo')`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, valor, data_venda, observacoes);
+  const r = db.prepare(`INSERT INTO vendas (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,valor,data_venda,observacoes,status,comissao_corretor_pct,comissao_corretor_valor,comissao_corretor_status) VALUES (?,?,?,?,?,?,?,?,?,'ativo',?,?,?)`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, valor, data_venda, observacoes, comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente');
 
   if (lead_id) db.prepare("UPDATE leads SET status='vendido' WHERE id=?").run(lead_id);
   if (unidade_id) db.prepare("UPDATE unidades SET status='vendido' WHERE id=?").run(unidade_id);
@@ -510,10 +510,10 @@ app.post("/api/vendas", (req, res) => {
 });
 
 app.put("/api/vendas/:id", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, status, observacoes } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status } = req.body;
   const vendaAntiga = db.prepare("SELECT unidade_id, status FROM vendas WHERE id=?").get(req.params.id);
 
-  db.prepare(`UPDATE vendas SET lead_id=?,empreendimento_id=?,corretor_id=?,cliente_id=?,imovel=?,unidade_id=?,valor=?,data_venda=?,status=?,observacoes=? WHERE id=?`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, valor, data_venda, status, observacoes, req.params.id);
+  db.prepare(`UPDATE vendas SET lead_id=?,empreendimento_id=?,corretor_id=?,cliente_id=?,imovel=?,unidade_id=?,valor=?,data_venda=?,status=?,observacoes=?,comissao_corretor_pct=?,comissao_corretor_valor=?,comissao_corretor_status=? WHERE id=?`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, valor, data_venda, status, observacoes, comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente', req.params.id);
 
   // Se mudou unidade, libera a anterior e marca a nova
   if (vendaAntiga?.unidade_id && vendaAntiga.unidade_id != unidade_id) {
@@ -667,6 +667,111 @@ app.get("/api/financeiro/resumo", (req, res) => {
   `).all();
   const total_distribuicoes = db.prepare("SELECT COALESCE(SUM(valor),0) as total FROM distribuicoes").get().total;
   ok(res, { empreendimentos: resumo, total_distribuicoes });
+});
+
+// ─── COMISSÕES DE CORRETORES ─────────────────────────────────────────────────
+
+app.get("/api/corretores/comissoes", (req, res) => {
+  const rows = db.prepare(`
+    SELECT c.id as corretor_id, c.nome, c.telefone, c.imobiliaria,
+      v.id as venda_id, v.data_venda, v.valor as valor_venda, v.imovel,
+      e.nome as empreendimento,
+      v.comissao_corretor_pct, v.comissao_corretor_valor, v.comissao_corretor_status
+    FROM vendas v
+    JOIN corretores c ON c.id = v.corretor_id
+    LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
+    WHERE v.status = 'ativo'
+    AND v.corretor_id IS NOT NULL
+    AND v.comissao_corretor_pct IS NOT NULL
+    ORDER BY c.nome, v.data_venda DESC
+  `).all();
+  ok(res, rows);
+});
+
+app.put("/api/vendas/:id/comissao-corretor", (req, res) => {
+  const { status } = req.body;
+  if (!['pendente','pago'].includes(status)) return err(res, "Status inválido");
+  db.prepare("UPDATE vendas SET comissao_corretor_status=? WHERE id=?").run(status, req.params.id);
+  ok(res, {});
+});
+
+// ─── METAS DE CORRETORES ─────────────────────────────────────────────────────
+
+app.get("/api/metas", (req, res) => {
+  const now = new Date();
+  const m = parseInt(req.query.mes) || (now.getMonth() + 1);
+  const a = parseInt(req.query.ano) || now.getFullYear();
+  const rows = db.prepare(`
+    SELECT mt.*, c.nome as corretor_nome, e.nome as empreendimento_nome,
+      COALESCE((SELECT COUNT(*) FROM vendas v WHERE v.corretor_id=mt.corretor_id AND v.status='ativo'
+        AND CAST(strftime('%m',v.data_venda) AS INTEGER)=mt.mes AND CAST(strftime('%Y',v.data_venda) AS INTEGER)=mt.ano
+        AND (mt.empreendimento_id IS NULL OR v.empreendimento_id=mt.empreendimento_id)),0) as vendas_realizadas,
+      COALESCE((SELECT SUM(v.valor) FROM vendas v WHERE v.corretor_id=mt.corretor_id AND v.status='ativo'
+        AND CAST(strftime('%m',v.data_venda) AS INTEGER)=mt.mes AND CAST(strftime('%Y',v.data_venda) AS INTEGER)=mt.ano
+        AND (mt.empreendimento_id IS NULL OR v.empreendimento_id=mt.empreendimento_id)),0) as vgv_realizado
+    FROM metas_corretores mt
+    JOIN corretores c ON c.id=mt.corretor_id
+    LEFT JOIN empreendimentos e ON e.id=mt.empreendimento_id
+    WHERE mt.mes=? AND mt.ano=?
+    ORDER BY c.nome
+  `).all(m, a);
+  ok(res, rows);
+});
+
+app.post("/api/metas", (req, res) => {
+  const { corretor_id, empreendimento_id, mes, ano, meta_qtd, meta_vgv } = req.body;
+  if (!corretor_id || !mes || !ano) return err(res, "Corretor, mês e ano obrigatórios");
+  const r = db.prepare(`INSERT OR REPLACE INTO metas_corretores (corretor_id,empreendimento_id,mes,ano,meta_qtd,meta_vgv) VALUES (?,?,?,?,?,?)`)
+    .run(corretor_id, empreendimento_id||null, mes, ano, meta_qtd||0, meta_vgv||0);
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.delete("/api/metas/:id", (req, res) => {
+  db.prepare("DELETE FROM metas_corretores WHERE id=?").run(req.params.id);
+  ok(res, {});
+});
+
+// ─── RANKING IMOBILIÁRIAS ─────────────────────────────────────────────────────
+
+app.get("/api/vendas/ranking/imobiliarias", (req, res) => {
+  const rows = db.prepare(`
+    SELECT c.imobiliaria,
+      COUNT(DISTINCT c.id) as corretores,
+      COUNT(v.id) as vendas,
+      COALESCE(SUM(v.valor),0) as vgv,
+      COUNT(DISTINCT v.empreendimento_id) as empreendimentos
+    FROM vendas v
+    JOIN corretores c ON c.id=v.corretor_id
+    WHERE v.status='ativo'
+    AND c.imobiliaria IS NOT NULL AND c.imobiliaria != ''
+    GROUP BY c.imobiliaria
+    ORDER BY vgv DESC LIMIT 20
+  `).all();
+  ok(res, rows);
+});
+
+// ─── TAXA DE CONVERSÃO ───────────────────────────────────────────────────────
+
+app.get("/api/corretores/conversao", (req, res) => {
+  const rows = db.prepare(`
+    SELECT c.id, c.nome, c.imobiliaria,
+      COUNT(DISTINCT l.id) as leads_recebidos,
+      COUNT(DISTINCT CASE WHEN l.status='vendido' THEN l.id END) as leads_convertidos,
+      COUNT(DISTINCT v.id) as total_vendas,
+      COALESCE(SUM(v.valor),0) as vgv
+    FROM corretores c
+    LEFT JOIN leads l ON l.corretor_id=c.id
+    LEFT JOIN vendas v ON v.corretor_id=c.id AND v.status='ativo'
+    WHERE c.ativo=1
+    GROUP BY c.id
+    HAVING leads_recebidos > 0 OR total_vendas > 0
+    ORDER BY leads_convertidos DESC, vgv DESC
+  `).all();
+  const result = rows.map(r => ({
+    ...r,
+    taxa_conversao: r.leads_recebidos > 0 ? parseFloat(((r.leads_convertidos / r.leads_recebidos) * 100).toFixed(1)) : 0
+  }));
+  ok(res, result);
 });
 
 // ─── START ────────────────────────────────────────────────────────────────────
