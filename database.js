@@ -160,6 +160,7 @@ const migrations = [
   "ALTER TABLE vendas ADD COLUMN comissao_r2x REAL",
   "ALTER TABLE financeiro_entradas ADD COLUMN parcela_num INTEGER",
   "ALTER TABLE financeiro_entradas ADD COLUMN parcela_total INTEGER",
+  "ALTER TABLE empreendimentos ADD COLUMN tipo TEXT DEFAULT 'loteamento'",
 ];
 for (const sql of migrations) {
   try { db.exec(sql); } catch (_) { /* coluna já existe */ }

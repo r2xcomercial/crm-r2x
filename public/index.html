@@ -680,7 +680,11 @@ async function carregarUnidadesVenda(empId) {
   if (!empId) { sel.innerHTML = '<option value="">— Sem unidade —</option>'; return; }
   const r = await get(`/api/empreendimentos/${empId}/unidades`);
   const units = (r.data || []).filter(u => u.status === 'disponivel');
-  sel.innerHTML = '<option value="">— Selecione a unidade —</option>' + units.map(u => `<option value="${u.id}" data-preco="${u.preco||''}" data-label="Qd ${u.quadra||'?'} Lt ${u.lote}">${u.quadra ? `Qd ${u.quadra} - ` : ''}Lote ${u.lote}${u.area_m2 ? ` (${u.area_m2}m²)` : ''}${u.preco ? ` — R$ ${u.preco.toLocaleString('pt-BR')}` : ''}</option>`).join('');
+  const empTipo = (currentData.emp||[]).find(e => e.id == empId)?.tipo || 'loteamento';
+  const isPredio = empTipo === 'predio';
+  const lblA = isPredio ? 'Andar' : 'Qd';
+  const lblB = isPredio ? 'Apto' : 'Lote';
+  sel.innerHTML = '<option value="">— Selecione a unidade —</option>' + units.map(u => `<option value="${u.id}" data-preco="${u.preco||''}" data-label="${lblA} ${u.quadra||'?'} ${lblB} ${u.lote}">${u.quadra ? `${lblA} ${u.quadra} - ` : ''}${lblB} ${u.lote}${u.area_m2 ? ` (${u.area_m2}m²)` : ''}${u.preco ? ` — R$ ${u.preco.toLocaleString('pt-BR')}` : ''}</option>`).join('');
   if (!units.length) sel.innerHTML = '<option value="">Nenhuma unidade disponível</option>';
 
   // Atualiza preview de comissão quando muda empreendimento
@@ -973,6 +977,12 @@ function openEmpModal(e = {}) {
       <div class="form-group"><label>Incorporador (Loteador)</label>
         <select id="f-cliente"><option value="">—</option>${(currentData.clientes||[]).map(c => `<option value="${c.id}" ${e.cliente_id==c.id?'selected':''}>${c.razao_social}</option>`).join('')}</select>
       </div>
+      <div class="form-group"><label>Tipo de Empreendimento</label>
+        <select id="f-tipo">
+          <option value="loteamento" ${(e.tipo||'loteamento')==='loteamento'?'selected':''}>Loteamento (Quadra/Lote)</option>
+          <option value="predio" ${e.tipo==='predio'?'selected':''}>Prédio / Apartamentos (Andar/Apto)</option>
+        </select>
+      </div>
       <div class="form-group"><label>Status</label>
         <select id="f-status">${['prospecto','planejamento','pre_lancamento','lancamento','vendas','encerrado'].map(s => `<option value="${s}" ${e.status===s?'selected':''}>${s}</option>`).join('')}</select>
       </div>
@@ -1010,7 +1020,7 @@ function openEmpModal(e = {}) {
       </div>` : '<div class="form-group span2" style="font-size:12px;color:var(--text2)">💡 Salve o empreendimento primeiro para importar a tabela de unidades.</div>'}
     </div>
   `, async () => {
-    const body = { nome: v('f-nome'), cliente_id: v('f-cliente')||null, status: v('f-status'), endereco: v('f-end'), cidade: v('f-cidade'), estado: v('f-estado'), num_unidades: parseInt(v('f-units'))||null, vgv_estimado: parseFloat(v('f-vgv'))||null, percentual_r2x: parseFloat(v('f-pct'))||null, data_lancamento: v('f-launch'), data_inicio_vendas: v('f-vendas'), observacoes: v('f-obs') };
+    const body = { nome: v('f-nome'), tipo: v('f-tipo')||'loteamento', cliente_id: v('f-cliente')||null, status: v('f-status'), endereco: v('f-end'), cidade: v('f-cidade'), estado: v('f-estado'), num_unidades: parseInt(v('f-units'))||null, vgv_estimado: parseFloat(v('f-vgv'))||null, percentual_r2x: parseFloat(v('f-pct'))||null, data_lancamento: v('f-launch'), data_inicio_vendas: v('f-vendas'), observacoes: v('f-obs') };
     if (!body.nome) return toast('Nome obrigatório', 'error');
     const r = e.id ? await put(`/api/empreendimentos/${e.id}`, body) : await post('/api/empreendimentos', body);
     if (!r.ok) return toast(r.error, 'error');

@@ -175,15 +175,15 @@ app.get("/api/empreendimentos", (req, res) => {
 });
 
 app.post("/api/empreendimentos", (req, res) => {
-  const { cliente_id, nome, endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x } = req.body;
+  const { cliente_id, nome, tipo, endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x } = req.body;
   if (!nome) return err(res, "Nome obrigatório");
-  const r = db.prepare(`INSERT INTO empreendimentos (cliente_id,nome,endereco,cidade,estado,num_unidades,vgv_estimado,status,data_lancamento,data_inicio_vendas,observacoes,percentual_r2x) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(cliente_id, nome, endereco, cidade, estado, num_unidades, vgv_estimado, status || 'prospecto', data_lancamento, data_inicio_vendas, observacoes, percentual_r2x || null);
+  const r = db.prepare(`INSERT INTO empreendimentos (cliente_id,nome,tipo,endereco,cidade,estado,num_unidades,vgv_estimado,status,data_lancamento,data_inicio_vendas,observacoes,percentual_r2x) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(cliente_id, nome, tipo || 'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado, status || 'prospecto', data_lancamento, data_inicio_vendas, observacoes, percentual_r2x || null);
   ok(res, { id: r.lastInsertRowid });
 });
 
 app.put("/api/empreendimentos/:id", (req, res) => {
-  const { cliente_id, nome, endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x } = req.body;
-  db.prepare(`UPDATE empreendimentos SET cliente_id=?,nome=?,endereco=?,cidade=?,estado=?,num_unidades=?,vgv_estimado=?,status=?,data_lancamento=?,data_inicio_vendas=?,observacoes=?,percentual_r2x=? WHERE id=?`).run(cliente_id, nome, endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x || null, req.params.id);
+  const { cliente_id, nome, tipo, endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x } = req.body;
+  db.prepare(`UPDATE empreendimentos SET cliente_id=?,nome=?,tipo=?,endereco=?,cidade=?,estado=?,num_unidades=?,vgv_estimado=?,status=?,data_lancamento=?,data_inicio_vendas=?,observacoes=?,percentual_r2x=? WHERE id=?`).run(cliente_id, nome, tipo || 'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x || null, req.params.id);
   ok(res, {});
 });
 
