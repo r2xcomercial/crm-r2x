@@ -108,6 +108,8 @@
   .badge-red { background: rgba(239,68,68,.15); color: #f87171; }
   .badge-gray { background: rgba(148,163,184,.12); color: var(--text2); }
   .badge-accent { background: rgba(0,196,180,.15); color: var(--accent); }
+  .badge-orange { background: rgba(251,146,60,.15); color: #fb923c; }
+  .modal-wide { max-width: 860px !important; }
 
   /* ── ACTION BUTTONS ── */
   .btn-icon { background: none; border: none; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 15px; transition: background .15s; }
@@ -356,7 +358,7 @@ async function renderDashboard() {
   const [{ data }, vendasR, finR] = await Promise.all([
     get('/api/dashboard'), get('/api/vendas'), get('/api/financeiro/entradas')
   ]);
-  const { kpis, aniversarios_mes, proximos_lancamentos, funil } = data;
+  const { kpis, aniversarios_mes, proximos_lancamentos, funil, leads_esquecidos } = data;
 
   document.getElementById('badge-leads').textContent = kpis.leads_novos;
 
@@ -431,6 +433,23 @@ async function renderDashboard() {
         </div>
       </div>
     </div>
+
+    ${leads_esquecidos && leads_esquecidos.length ? `
+    <div class="mini-card" style="margin-bottom:20px;border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.05)">
+      <h4 style="color:var(--warning)">⚠️ Leads Esquecidos (${leads_esquecidos.length}) — sem contato há 3+ dias</h4>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+        ${leads_esquecidos.map(l => {
+          const tel = (l.telefone||'').replace(/\D/g,'');
+          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <span class="badge badge-orange">${l.dias}d</span>
+            <div style="flex:1;font-size:13px;font-weight:500">${l.nome||'—'}</div>
+            <span class="badge badge-gray" style="font-size:10px">${l.status}</span>
+            ${tel ? `<a href="https://wa.me/55${tel}" target="_blank" style="background:#25D366;color:#fff;border-radius:6px;padding:3px 10px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap">📱 WPP</a>` : ''}
+            <button class="btn-icon" title="Registrar follow-up" onclick="navigate('leads')" style="font-size:13px">📞</button>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
 
     <div class="mini-card" style="margin-bottom:20px">
       <h4>📅 Próximos Lançamentos</h4>
@@ -528,9 +547,12 @@ async function renderLeads(filter = '') {
           <th>Faixa</th><th>Status</th><th>Corretor</th><th>Empreendimento</th><th>Origem</th><th></th>
         </tr></thead>
         <tbody>
-          ${leads.length ? leads.map(l => `
-            <tr>
-              <td><strong>${l.nome||'—'}</strong></td>
+          ${leads.length ? leads.map(l => {
+            const dias = l.atualizado_em ? Math.floor((Date.now() - new Date(l.atualizado_em.replace(' ','T'))) / 86400000) : 999;
+            const esquecido = dias >= 3 && !['vendido','perdido'].includes(l.status);
+            return `
+            <tr ${esquecido ? 'style="background:rgba(245,158,11,.04)"' : ''}>
+              <td><strong>${l.nome||'—'}</strong>${esquecido ? ` <span title="${dias} dias sem contato" style="color:var(--warning);font-size:11px">⚠️${dias}d</span>` : ''}</td>
               <td><a href="https://wa.me/55${l.telefone}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${fmtPhone(l.telefone)}</a></td>
               <td>${l.cidade||'—'}</td>
               <td>${l.objetivo||'—'}</td>
@@ -540,11 +562,12 @@ async function renderLeads(filter = '') {
               <td>${l.empreendimento_nome||l.empreendimento_interesse||'—'}</td>
               <td><span class="badge ${l.origem==='whatsapp'?'badge-green':'badge-gray'}">${l.origem}</span></td>
               <td style="white-space:nowrap">
+                <button class="btn-icon" title="Follow-up" onclick='openFollowupModal(${JSON.stringify({id:l.id,nome:l.nome})})'>📞</button>
                 <button class="btn-icon btn-edit" onclick="editLead(${l.id})">✏️</button>
                 <button class="btn-icon btn-delete" onclick="deleteLead(${l.id})">🗑️</button>
               </td>
-            </tr>
-          `).join('') : '<tr class="empty-row"><td colspan="10">Nenhum lead encontrado</td></tr>'}
+            </tr>`;
+          }).join('') : '<tr class="empty-row"><td colspan="10">Nenhum lead encontrado</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -683,12 +706,12 @@ async function carregarUnidadesVenda(empId) {
   sel.innerHTML = '<option value="">⏳ Carregando...</option>';
   if (!empId) { sel.innerHTML = '<option value="">— Sem unidade —</option>'; return; }
   const r = await get(`/api/empreendimentos/${empId}/unidades`);
-  const units = (r.data || []).filter(u => u.status === 'disponivel');
+  const units = (r.data || []).filter(u => u.status === 'disponivel' || u.status === 'reservado');
   const empTipo = (currentData.emp||[]).find(e => e.id == empId)?.tipo || 'loteamento';
   const isPredio = empTipo === 'predio';
   const lblA = isPredio ? 'Andar' : 'Qd';
   const lblB = isPredio ? 'Apto' : 'Lote';
-  sel.innerHTML = '<option value="">— Selecione a unidade —</option>' + units.map(u => `<option value="${u.id}" data-preco="${u.preco||''}" data-label="${lblA} ${u.quadra||'?'} ${lblB} ${u.lote}">${u.quadra ? `${lblA} ${u.quadra} - ` : ''}${lblB} ${u.lote}${u.area_m2 ? ` (${u.area_m2}m²)` : ''}${u.preco ? ` — R$ ${u.preco.toLocaleString('pt-BR')}` : ''}</option>`).join('');
+  sel.innerHTML = '<option value="">— Selecione a unidade —</option>' + units.map(u => `<option value="${u.id}" data-preco="${u.preco||''}" data-label="${lblA} ${u.quadra||'?'} ${lblB} ${u.lote}">${u.quadra ? `${lblA} ${u.quadra} - ` : ''}${lblB} ${u.lote}${u.area_m2 ? ` (${u.area_m2}m²)` : ''}${u.preco ? ` — R$ ${u.preco.toLocaleString('pt-BR')}` : ''}${u.status==='reservado'?' 🟡 RESERVADO':''}</option>`).join('');
   if (!units.length) sel.innerHTML = '<option value="">Nenhuma unidade disponível</option>';
 
   // Atualiza preview de comissão quando muda empreendimento
@@ -965,7 +988,11 @@ async function renderEmpreendimentos(filter = '') {
               <td style="color:var(--success)">${e.vgv_estimado ? fmt(e.vgv_estimado) : '—'}</td>
               <td><span class="badge ${statusBadge[e.status]||'badge-gray'}">${e.status}</span></td>
               <td>${e.data_lancamento ? fmtDate(e.data_lancamento) : '—'}</td>
-              <td><button class="btn-icon btn-edit" onclick="editEmp(${e.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteEmp(${e.id})">🗑️</button></td>
+              <td style="white-space:nowrap">
+                ${e.num_unidades ? `<button class="btn-icon" title="Ver unidades" onclick="verUnidades(${e.id})">🏠</button>` : ''}
+                <button class="btn-icon btn-edit" onclick="editEmp(${e.id})">✏️</button>
+                <button class="btn-icon btn-delete" onclick="deleteEmp(${e.id})">🗑️</button>
+              </td>
             </tr>
           `).join('') : '<tr class="empty-row"><td colspan="8">Nenhum empreendimento cadastrado</td></tr>'}
         </tbody>
@@ -1599,6 +1626,128 @@ async function filterRanking(val, tipo) {
   `).join('') : '<tr class="empty-row"><td colspan="5">Nenhuma venda</td></tr>';
 }
 
+// ─── FOLLOW-UP DE LEADS ───────────────────────────────────────────────────────
+
+async function openFollowupModal(lead) {
+  const r = await get(`/api/leads/${lead.id}/followups`);
+  const followups = r.data || [];
+  const tipoLabel = { ligacao:'📞 Ligação', whatsapp:'💬 WhatsApp', email:'📧 Email', visita:'🏠 Visita', proposta:'📄 Proposta', outro:'💬 Outro' };
+  const tipoColor = { ligacao:'badge-blue', whatsapp:'badge-green', email:'badge-accent', visita:'badge-yellow', proposta:'badge-accent', outro:'badge-gray' };
+
+  const timelineHtml = followups.length ? followups.map(f => `
+    <div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="flex-shrink:0;font-size:11px;color:var(--text2);min-width:80px;padding-top:2px">${fmtDate(f.criado_em?.slice(0,10))}</div>
+      <div style="flex:1">
+        <span class="badge ${tipoColor[f.tipo]||'badge-gray'}">${tipoLabel[f.tipo]||f.tipo}</span>
+        ${f.descricao ? `<div style="font-size:13px;margin-top:6px">${f.descricao}</div>` : ''}
+        ${f.data_retorno ? `<div style="font-size:11px;color:var(--warning);margin-top:4px">🔔 Retorno agendado: ${fmtDate(f.data_retorno)}</div>` : ''}
+      </div>
+    </div>
+  `).join('') : '<div style="color:var(--text2);font-size:13px;padding:12px 0">Nenhum contato registrado ainda</div>';
+
+  document.getElementById('modal-title').textContent = `📞 Follow-up — ${lead.nome||'Lead'}`;
+  document.getElementById('modal-body').innerHTML = `
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Histórico de Contatos</div>
+      <div style="max-height:200px;overflow-y:auto">${timelineHtml}</div>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:16px">
+      <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Registrar Novo Contato</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Tipo *</label>
+          <select id="fu-tipo">
+            <option value="ligacao">📞 Ligação</option>
+            <option value="whatsapp">💬 WhatsApp</option>
+            <option value="email">📧 Email</option>
+            <option value="visita">🏠 Visita</option>
+            <option value="proposta">📄 Proposta</option>
+            <option value="outro">💬 Outro</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Agendar Retorno (opcional)</label>
+          <input id="fu-retorno" type="date">
+        </div>
+        <div class="form-group span2"><label>Observações</label>
+          <textarea id="fu-desc" placeholder="Ex: Demonstrou interesse no lote 42, vai consultar com cônjuge..."></textarea>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('modal-foot').innerHTML = `
+    <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>
+    <button class="btn btn-primary" onclick="registrarFollowup(${lead.id})">📞 Registrar Contato</button>
+  `;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+async function registrarFollowup(leadId) {
+  const tipo = v('fu-tipo');
+  const descricao = v('fu-desc');
+  const data_retorno = v('fu-retorno');
+  const r = await post(`/api/leads/${leadId}/followups`, { tipo, descricao, data_retorno });
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Contato registrado! 📞');
+  const lead = leadsData.find(l => l.id === leadId) || { id: leadId };
+  openFollowupModal(lead);
+}
+
+// ─── VER UNIDADES POR EMPREENDIMENTO ──────────────────────────────────────────
+
+async function verUnidades(empId) {
+  const r = await get(`/api/empreendimentos/${empId}/unidades`);
+  const emp = (currentData.emp||[]).find(e => e.id === empId) || {};
+  const units = r.data || [];
+  const isPredio = emp.tipo === 'predio';
+  const lblA = isPredio ? 'Andar' : 'Qd';
+  const lblB = isPredio ? 'Apto' : 'Lote';
+
+  const cnt = { disponivel:0, reservado:0, vendido:0 };
+  units.forEach(u => { cnt[u.status] = (cnt[u.status]||0) + 1; });
+  const vgvDisp = units.filter(u => u.status==='disponivel').reduce((s,u) => s+(u.preco||0), 0);
+  const statusBadge = { disponivel:'badge-green', reservado:'badge-orange', vendido:'badge-red' };
+  const statusLabel = { disponivel:'Disponível', reservado:'Reservado', vendido:'Vendido' };
+
+  document.getElementById('modal').classList.add('modal-wide');
+  document.getElementById('modal-title').textContent = `🏠 Unidades — ${emp.nome||'Empreendimento'}`;
+  document.getElementById('modal-body').innerHTML = `
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <div style="background:rgba(34,197,94,.1);border-radius:8px;padding:8px 14px;font-size:13px">✅ Disponível: <strong style="color:var(--success)">${cnt.disponivel}</strong></div>
+      <div style="background:rgba(251,146,60,.1);border-radius:8px;padding:8px 14px;font-size:13px">🟡 Reservado: <strong style="color:#fb923c">${cnt.reservado}</strong></div>
+      <div style="background:rgba(239,68,68,.1);border-radius:8px;padding:8px 14px;font-size:13px">🔴 Vendido: <strong style="color:var(--danger)">${cnt.vendido}</strong></div>
+      <div style="background:rgba(0,196,180,.1);border-radius:8px;padding:8px 14px;font-size:13px">💰 VGV Disponível: <strong style="color:var(--accent)">${fmt(vgvDisp)}</strong></div>
+    </div>
+    <div style="max-height:420px;overflow-y:auto">
+      <table style="width:100%">
+        <thead><tr><th>${lblA}</th><th>${lblB}</th><th>Área</th><th>Preço</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${units.length ? units.map(u => `
+            <tr>
+              <td>${u.quadra||'—'}</td>
+              <td><strong>${u.lote}</strong></td>
+              <td>${u.area_m2?u.area_m2+' m²':'—'}</td>
+              <td style="color:var(--success)">${u.preco?fmt(u.preco):'—'}</td>
+              <td><span class="badge ${statusBadge[u.status]||'badge-gray'}">${statusLabel[u.status]||u.status}</span></td>
+              <td style="white-space:nowrap">
+                ${u.status==='disponivel'?`<button class="btn-icon" title="Reservar" onclick="updateUnidadeStatus(${u.id},'reservado',${empId})">🟡 Reservar</button>`:''}
+                ${u.status==='reservado'?`<button class="btn-icon" title="Liberar reserva" onclick="updateUnidadeStatus(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
+              </td>
+            </tr>
+          `).join('') : '<tr class="empty-row"><td colspan="6">Nenhuma unidade importada</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+  document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+async function updateUnidadeStatus(unidadeId, status, empId) {
+  const r = await put(`/api/unidades/${unidadeId}/status`, { status });
+  if (!r.ok) return toast(r.error, 'error');
+  toast(status==='reservado'?'Unidade reservada! 🟡':'Reserva liberada! ✅');
+  verUnidades(empId);
+}
+
 // ─── SEARCH ───────────────────────────────────────────────────────────────────
 
 function handleSearch(q) {
@@ -1637,7 +1786,7 @@ function openModal(title, bodyHtml, onSave) {
   document.getElementById('modal-overlay').classList.add('open');
 }
 function modalSave() { window._modalSave && window._modalSave(); }
-function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); document.getElementById('modal').classList.remove('modal-wide'); }
 function closeModalOutside(e) { if (e.target === document.getElementById('modal-overlay')) closeModal(); }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────

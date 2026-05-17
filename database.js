@@ -149,6 +149,17 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS followups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    tipo TEXT NOT NULL DEFAULT 'ligacao',
+    descricao TEXT,
+    data_retorno TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 // Migrations: adiciona colunas que podem estar faltando em bancos antigos
 const migrations = [
   "ALTER TABLE leads ADD COLUMN aniversario TEXT",

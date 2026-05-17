@@ -96,6 +96,16 @@ app.get("/api/dashboard", (req, res) => {
     SELECT status, COUNT(*) as n FROM leads GROUP BY status
   `).all();
 
+  const leads_esquecidos = db.prepare(`
+    SELECT id, nome, telefone, status, atualizado_em,
+      CAST(julianday('now') - julianday(atualizado_em) AS INTEGER) as dias
+    FROM leads
+    WHERE status NOT IN ('vendido','perdido')
+    AND julianday('now') - julianday(atualizado_em) >= 3
+    ORDER BY atualizado_em ASC
+    LIMIT 10
+  `).all();
+
   ok(res, {
     kpis: { leads_total, leads_novos, vendas_mes, vendas_total, entradas_pendentes, clientes_total, corretores_ativos, corretores_total, corretores_com_vendas, empreendimentos },
     aniversarios_mes,
@@ -103,6 +113,7 @@ app.get("/api/dashboard", (req, res) => {
     funil,
     ranking_vgv,
     ranking_qtd,
+    leads_esquecidos,
   });
 });
 
@@ -317,6 +328,14 @@ app.get("/api/empreendimentos/:id/contrato", (req, res) => {
   }
 });
 
+// Atualiza status de uma unidade (disponivel / reservado / vendido)
+app.put("/api/unidades/:id/status", (req, res) => {
+  const { status } = req.body;
+  if (!['disponivel','reservado','vendido'].includes(status)) return err(res, "Status inválido");
+  db.prepare("UPDATE unidades SET status=? WHERE id=?").run(status, req.params.id);
+  ok(res, {});
+});
+
 app.delete("/api/empreendimentos/:id/unidades", (req, res) => {
   db.prepare("DELETE FROM unidades WHERE empreendimento_id=? AND status='disponivel'").run(req.params.id);
   ok(res, {});
@@ -403,6 +422,20 @@ app.put("/api/leads/:id", (req, res) => {
 app.delete("/api/leads/:id", (req, res) => {
   db.prepare("DELETE FROM leads WHERE id=?").run(req.params.id);
   ok(res, {});
+});
+
+// Follow-ups de leads
+app.get("/api/leads/:id/followups", (req, res) => {
+  const rows = db.prepare("SELECT * FROM followups WHERE lead_id=? ORDER BY criado_em DESC").all(req.params.id);
+  ok(res, rows);
+});
+
+app.post("/api/leads/:id/followups", (req, res) => {
+  const { tipo, descricao, data_retorno } = req.body;
+  if (!tipo) return err(res, "Tipo obrigatório");
+  const r = db.prepare("INSERT INTO followups (lead_id,tipo,descricao,data_retorno) VALUES (?,?,?,?)").run(req.params.id, tipo, descricao || null, data_retorno || null);
+  db.prepare("UPDATE leads SET atualizado_em=CURRENT_TIMESTAMP WHERE id=?").run(req.params.id);
+  ok(res, { id: r.lastInsertRowid });
 });
 
 // Webhook para receber leads do chatbot WhatsApp
