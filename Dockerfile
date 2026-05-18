@@ -20,11 +20,12 @@ WORKDIR /app
 # Instala libs de sistema + ODA File Converter numa única camada
 # para que o apt cache esteja disponível quando o dpkg precisar de deps
 RUN apt-get update \
-    # Deps do sistema para Qt6 headless
+    # Deps do sistema para Qt6 headless + pymupdf via pip
     && apt-get install -y --no-install-recommends \
         curl \
         poppler-utils \
-        python3-pymupdf \
+        python3 \
+        python3-pip \
         libgl1 \
         libglib2.0-0 \
         libfontconfig1 \
@@ -33,6 +34,8 @@ RUN apt-get update \
         libxrender1 \
         libxi6 \
         libxext6 \
+    # Instala pymupdf via pip (python3-pymupdf não existe no bookworm)
+    && pip3 install --no-cache-dir pymupdf --break-system-packages \
     # Baixa e instala ODA File Converter
     && curl -fsSL \
         "https://www.opendesign.com/guestfiles/get?filename=ODAFileConverter_QT6_lnxX64_8.3dll_27.1.deb" \
