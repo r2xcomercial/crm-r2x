@@ -956,21 +956,7 @@ async function renderEmpreendimentos(filter = '') {
     </div>
 
     <div class="dash-row" style="margin-bottom:20px">
-      <div class="mini-card">
-        <h4>📍 Mapa de Lançamentos</h4>
-        <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px">
-          ${cidades.length ? cidades.map(([c,n]) => `
-            <div style="background:linear-gradient(135deg, rgba(79,142,247,0.15), rgba(79,142,247,0.05));border:1px solid rgba(79,142,247,0.3);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;min-width:160px">
-              <div style="font-size:22px">📍</div>
-              <div>
-                <div style="font-weight:600;font-size:13px">${c}</div>
-                <div style="font-size:11px;color:var(--text2)">${n} empreendimento${n>1?'s':''}</div>
-              </div>
-            </div>
-          `).join('') : '<div style="color:var(--text2);font-size:13px">Nenhuma cidade cadastrada</div>'}
-        </div>
-      </div>
-      <div class="mini-card">
+      <div class="mini-card" style="grid-column:span 2">
         <h4>🏆 Ranking de Lucratividade R2X</h4>
         <div style="margin-top:8px;max-height:280px;overflow-y:auto">
           ${lucros.length ? lucros.map((l,i) => {
@@ -992,7 +978,6 @@ async function renderEmpreendimentos(filter = '') {
         </div>
       </div>
     </div>
-
     <div class="table-card">
       <div class="table-header"><div class="table-title">🏗️ Empreendimentos (${rows.length})</div></div>
       <table>
