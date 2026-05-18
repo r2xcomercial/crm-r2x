@@ -780,6 +780,120 @@ const DxfParser = require('dxf-parser');
 const { execFileSync } = require('child_process');
 const os = require('os');
 
+// Caminhos possíveis do pdftocairo (poppler-utils) — Mac + Linux
+const PDFTOCAIRO_PATHS = [
+  '/usr/bin/pdftocairo',
+  '/usr/local/bin/pdftocairo',
+  '/opt/homebrew/bin/pdftocairo',
+];
+function findPdftocairo() {
+  return PDFTOCAIRO_PATHS.find(p => { try { fs.accessSync(p, fs.constants.X_OK); return true; } catch { return false; } });
+}
+
+/** Script Python (pymupdf) que extrai palavras com posição de um PDF */
+const PY_EXTRACT_WORDS = `import fitz,json,sys
+doc=fitz.open(sys.argv[1])
+page=doc[0]
+rect=page.rect
+words=page.get_text('words')
+print(json.dumps({'w':rect.width,'h':rect.height,'words':[{'x':(b[0]+b[2])/2,'y':(b[1]+b[3])/2,'t':b[4]} for b in words]}))
+`;
+
+/**
+ * Converte PDF → SVG interativo com marcadores de lote.
+ * Visual: pdftocairo (preserva geometria vetorial do PDF).
+ * Texto:  pymupdf (extrai posições exatas dos números de lote).
+ */
+function pdfParaSvg(pdfBuffer, originalName, units = []) {
+  const pdftocairo = findPdftocairo();
+  if (!pdftocairo) throw new Error('pdftocairo não instalado. Instale poppler-utils.');
+
+  const tmpIn  = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-in-'));
+  const tmpOut = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-out-'));
+  const safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const inFile  = path.join(tmpIn, safeName);
+  const outBase = path.join(tmpOut, 'planta');
+
+  fs.writeFileSync(inFile, pdfBuffer);
+  try {
+    // 1) SVG visual via pdftocairo (1ª página)
+    execFileSync(pdftocairo, ['-svg', '-f', '1', '-l', '1', inFile, outBase],
+      { timeout: 60000, env: { ...process.env, DISPLAY: '' } });
+    // pdftocairo: single page não adiciona extensão no Mac, adiciona no Linux
+    const svgFile = fs.existsSync(outBase + '.svg') ? outBase + '.svg' : outBase;
+    const rawSvg  = fs.readFileSync(svgFile, 'utf8');
+
+    // 2) Extrai palavras com posição via pymupdf
+    let words = [], pdfW = 0, pdfH = 0;
+    try {
+      const pyOut = execFileSync('python3', ['-c', PY_EXTRACT_WORDS, inFile],
+        { timeout: 30000, encoding: 'utf8' });
+      const p = JSON.parse(pyOut.trim());
+      words = p.words || [];
+      pdfW  = p.w;
+      pdfH  = p.h;
+    } catch (e) {
+      console.warn('[PDF] pymupdf indisponível — sem marcadores de lote:', e.message);
+    }
+
+    // 3) Sobrepõe marcadores no SVG
+    return sobreporMarcadoresPdf(rawSvg, words, pdfW, pdfH, units);
+  } finally {
+    try { fs.rmSync(tmpIn,  { recursive: true }); } catch {}
+    try { fs.rmSync(tmpOut, { recursive: true }); } catch {}
+  }
+}
+
+/**
+ * Injeta marcadores interativos coloridos no SVG gerado pelo pdftocairo.
+ * words = [{x,y,t}] em coordenadas de tela (y=0 no topo), coincide com SVG.
+ */
+function sobreporMarcadoresPdf(rawSvg, words, pdfW, pdfH, units = []) {
+  const vbMatch = rawSvg.match(/viewBox=["']([^"']+)["']/);
+  const vb = vbMatch ? vbMatch[1].trim().split(/\s+/).map(Number) : [0, 0, pdfW || 800, pdfH || 600];
+  const svgW = vb[2], svgH = vb[3];
+
+  // Filtra palavras para números de lote: 1–4 dígitos com letra opcional
+  const LOT_RE = /^\d{1,4}[A-Za-z]?$/;
+  const lotes  = words.filter(w => LOT_RE.test((w.t || '').trim()));
+
+  const unitMap = {};
+  units.forEach(u => {
+    unitMap[String(u.lote).trim()] = u;
+    if (u.quadra) unitMap[`${u.quadra}-${u.lote}`.trim()] = u;
+  });
+
+  const R = Math.max(8, Math.min(26, svgW / Math.sqrt(Math.max(lotes.length, 1) * 28)));
+
+  const marcadores = lotes.map((w, i) => {
+    const label = (w.t || '').trim();
+    const unit  = unitMap[label] || null;
+    const cls   = `lot ${unit?.status || 'sem-unidade'}`;
+    const dUID  = unit ? `data-uid="${unit.id}" data-status="${unit.status}"` : '';
+    return `<g id="pm${i}" class="${cls}" ${dUID} data-lote="${label}" transform="translate(${(+w.x).toFixed(1)},${(+w.y).toFixed(1)})">
+  <circle r="${R.toFixed(1)}" class="lot-marker"/>
+  <text class="lot-txt" text-anchor="middle" dominant-baseline="middle" font-size="${(R*.72).toFixed(1)}">${label}</text>
+</g>`;
+  }).join('\n');
+
+  const estilos = `<defs id="crm-styles"><style>
+  .lot{cursor:pointer;transition:opacity .12s}.lot.sem-unidade{cursor:default}
+  .lot:hover .lot-marker{opacity:.75;stroke:#00C4B4 !important;stroke-width:2.5}
+  .lot-marker{transition:fill .12s,stroke .12s;stroke-width:1.5}
+  .lot.disponivel .lot-marker{fill:rgba(34,197,94,.75);stroke:#16a34a}
+  .lot.reservado  .lot-marker{fill:rgba(245,158,11,.75);stroke:#d97706}
+  .lot.vendido    .lot-marker{fill:rgba(239,68,68,.7);stroke:#dc2626}
+  .lot.sem-unidade .lot-marker{fill:rgba(148,163,184,.45);stroke:rgba(148,163,184,.7)}
+  .lot-txt{font-family:Arial,sans-serif;font-weight:700;fill:#fff;pointer-events:none}
+  .lot.sem-unidade .lot-txt{fill:#94A3B8}
+</style></defs>`;
+
+  return rawSvg
+    .replace(/(<svg\b[^>]*>)/, `$1${estilos}`)
+    .replace('</svg>', `${marcadores}\n</svg>`)
+    .replace('<svg', `<svg data-lotes="${lotes.length}"`);
+}
+
 // Caminhos possíveis do ODA File Converter (local Mac + Linux Railway)
 const ODA_PATHS = [
   path.join(os.homedir(), 'Applications/ODAFileConverter.app/Contents/MacOS/ODAFileConverter'),
@@ -1012,10 +1126,13 @@ app.post('/api/empreendimentos/:id/mapa', upload.single('arquivo'), (req, res) =
       const dxfText = dwgParaDxf(req.file.buffer, req.file.originalname);
       const units   = db.prepare('SELECT * FROM unidades WHERE empreendimento_id=?').all(empId);
       svg = dxfParasvg(dxfText, units);
+    } else if (ext === '.pdf') {
+      const units = db.prepare('SELECT * FROM unidades WHERE empreendimento_id=?').all(empId);
+      svg = pdfParaSvg(req.file.buffer, req.file.originalname, units);
     } else if (ext === '.svg') {
       svg = req.file.buffer.toString('utf8');
     } else {
-      return err(res, 'Formato não suportado. Envie .dwg, .dxf ou .svg');
+      return err(res, 'Formato não suportado. Envie .pdf, .dwg, .dxf ou .svg');
     }
     db.prepare('INSERT INTO mapas(empreendimento_id,svg_data) VALUES(?,?) ON CONFLICT(empreendimento_id) DO UPDATE SET svg_data=excluded.svg_data, criado_em=CURRENT_TIMESTAMP').run(empId, svg);
     ok(res, { mensagem: 'Mapa importado com sucesso!' });

@@ -23,6 +23,8 @@ RUN apt-get update \
     # Deps do sistema para Qt6 headless
     && apt-get install -y --no-install-recommends \
         curl \
+        poppler-utils \
+        python3-pymupdf \
         libgl1 \
         libglib2.0-0 \
         libfontconfig1 \
