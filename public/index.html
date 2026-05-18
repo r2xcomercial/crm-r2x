@@ -179,6 +179,35 @@
   .fin-tab { padding: 8px 18px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); color: var(--text2); background: none; transition: all .15s; }
   .fin-tab.active { background: var(--accent); color: var(--navy); border-color: var(--accent); }
 
+  /* ── ESPELHO DE VENDAS ── */
+  .espelho-tile {
+    width: 68px; min-height: 68px; border-radius: 8px; border: 2px solid;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; padding: 5px; text-align: center;
+    transition: transform .12s, box-shadow .12s;
+  }
+  .espelho-tile:hover { transform: scale(1.12); box-shadow: 0 6px 20px rgba(0,0,0,.4); z-index: 2; position: relative; }
+  .espelho-tile.disponivel { background: rgba(34,197,94,.1);  border-color: rgba(34,197,94,.45); }
+  .espelho-tile.reservado  { background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.45); }
+  .espelho-tile.vendido    { background: rgba(239,68,68,.1);  border-color: rgba(239,68,68,.45); }
+  .espelho-tile .tile-num  { font-size: 14px; font-weight: 900; line-height: 1; }
+  .espelho-tile .tile-area { font-size: 9px; opacity: .65; margin-top: 3px; }
+  .espelho-tile.disponivel .tile-num { color: #4ade80; }
+  .espelho-tile.reservado  .tile-num { color: #fbbf24; }
+  .espelho-tile.vendido    .tile-num { color: #f87171; }
+  .espelho-secao { margin-bottom: 24px; }
+  .espelho-secao-header {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--text2); font-weight: 700; margin-bottom: 10px;
+    padding-bottom: 6px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .espelho-secao-header .sub { font-weight: 400; font-size: 11px; }
+  .espelho-tiles { display: flex; flex-wrap: wrap; gap: 8px; }
+  .vso-bar-wrap { background: var(--navy3); border-radius: 6px; height: 10px; flex: 1; overflow: hidden; }
+  .vso-bar-vend { height: 100%; background: var(--danger); border-radius: 6px 0 0 6px; display: inline-block; }
+  .vso-bar-res  { height: 100%; background: var(--warning); display: inline-block; }
+
   /* ── TOAST ── */
   #toast { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
   .toast-item { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; font-size: 13px; display: flex; align-items: center; gap: 10px; min-width: 240px; animation: slideIn .25s ease; box-shadow: 0 8px 32px rgba(0,0,0,.4); }
@@ -993,7 +1022,7 @@ async function renderEmpreendimentos(filter = '') {
               <td><span class="badge ${statusBadge[e.status]||'badge-gray'}">${e.status}</span></td>
               <td>${e.data_lancamento ? fmtDate(e.data_lancamento) : '—'}</td>
               <td style="white-space:nowrap">
-                ${e.num_unidades ? `<button class="btn-icon" title="Ver unidades" onclick="verUnidades(${e.id})">🏠</button>` : ''}
+                ${e.num_unidades ? `<button class="btn-icon" title="Espelho de Vendas" onclick="verEspelho(${e.id})">🏠</button>` : ''}
                 <button class="btn-icon" title="Relatório gerencial" onclick="gerarRelatorio(${e.id})" style="color:var(--accent)">📊</button>
                 <button class="btn-icon btn-edit" onclick="editEmp(${e.id})">✏️</button>
                 <button class="btn-icon btn-delete" onclick="deleteEmp(${e.id})">🗑️</button>
@@ -1917,6 +1946,197 @@ async function updateUnidadeStatus(unidadeId, status, empId) {
   if (!r.ok) return toast(r.error, 'error');
   toast(status==='reservado'?'Unidade reservada! 🟡':'Reserva liberada! ✅');
   verUnidades(empId);
+}
+
+// ─── ESPELHO DE VENDAS ────────────────────────────────────────────────────────
+
+async function verEspelho(empId) {
+  const emp = (currentData.emp||[]).find(e => e.id === empId) || {};
+  document.getElementById('page-title').textContent = `Espelho — ${emp.nome||''}`;
+  document.getElementById('content').innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)">Carregando espelho de vendas...</div>';
+
+  const r = await get(`/api/empreendimentos/${empId}/unidades`);
+  const units = r.data || [];
+
+  const isPredio = emp.tipo === 'predio';
+  const lblA = isPredio ? 'Andar' : 'Quadra';
+  const lblB = isPredio ? 'Apto' : 'Lote';
+
+  // Contagens
+  const cnt = { disponivel:0, reservado:0, vendido:0 };
+  units.forEach(u => { cnt[u.status] = (cnt[u.status]||0)+1; });
+  const total   = units.length;
+  const vsoNum  = total > 0 ? ((cnt.vendido+cnt.reservado)/total*100) : 0;
+  const vsoVend = total > 0 ? (cnt.vendido/total*100) : 0;
+  const vgvDisp = units.filter(u=>u.status==='disponivel').reduce((s,u)=>s+(u.preco||0),0);
+  const vgvVend = units.filter(u=>u.status==='vendido').reduce((s,u)=>s+(u.preco||0),0);
+  const vgvRes  = units.filter(u=>u.status==='reservado').reduce((s,u)=>s+(u.preco||0),0);
+
+  // Agrupar por quadra/andar e ordenar
+  const grupos = {};
+  units.forEach(u => {
+    const g = u.quadra != null ? String(u.quadra) : '—';
+    if (!grupos[g]) grupos[g] = [];
+    grupos[g].push(u);
+  });
+  const grupoKeys = Object.keys(grupos).sort((a,b) => {
+    const na = parseFloat(a), nb = parseFloat(b);
+    if (!isNaN(na) && !isNaN(nb)) return isPredio ? nb-na : na-nb;
+    return a.localeCompare(b,'pt-BR',{numeric:true});
+  });
+  grupoKeys.forEach(g => grupos[g].sort((a,b) => {
+    const na = parseFloat(a.lote), nb = parseFloat(b.lote);
+    return (!isNaN(na)&&!isNaN(nb)) ? na-nb : (a.lote||'').localeCompare(b.lote||'','pt-BR',{numeric:true});
+  }));
+
+  // Filtro de quadra
+  const filtros = [`<option value="">Todas as ${lblA}s</option>`,
+    ...grupoKeys.map(g => `<option value="${g}">${lblA} ${g}</option>`)].join('');
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="navigate('empreendimentos')" style="font-size:12px;padding:6px 12px">← Voltar</button>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${emp.nome}</div>
+        <div style="font-size:12px;color:var(--text2)">${emp.cidade||''}${emp.estado?'/'+emp.estado:''} · ${total} unidades</div>
+      </div>
+      <select id="espelho-filtro" onchange="filtrarEspelho()" style="font-size:12px;padding:6px 10px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px">${filtros}</select>
+      <button class="btn btn-secondary" onclick="verEspelho(${empId})" style="font-size:12px;padding:6px 12px">🔄</button>
+      <button class="btn btn-secondary" onclick="verUnidades(${empId})" style="font-size:12px;padding:6px 12px">📋 Lista</button>
+    </div>
+
+    <!-- Barra VSO -->
+    <div class="mini-card" style="margin-bottom:20px;padding:16px 20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:13px;font-weight:600">📊 Velocidade de Vendas (VSO) — <span style="color:var(--accent)">${vsoNum.toFixed(1)}%</span> absorvido</div>
+        <div style="display:flex;gap:16px;font-size:12px;flex-wrap:wrap">
+          <span style="color:#4ade80">✅ ${cnt.disponivel} disp.</span>
+          <span style="color:#fbbf24">🟡 ${cnt.reservado} res. (${fmt(vgvRes)})</span>
+          <span style="color:#f87171">🔴 ${cnt.vendido} vend. (${fmt(vgvVend)})</span>
+        </div>
+      </div>
+      <div style="display:flex;height:12px;border-radius:6px;overflow:hidden;background:rgba(34,197,94,.15)">
+        <div style="width:${vsoVend.toFixed(1)}%;background:var(--danger);transition:width .5s"></div>
+        <div style="width:${(vsoNum-vsoVend).toFixed(1)}%;background:var(--warning);transition:width .5s"></div>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--text2)">
+        <span>🔴 Vendido</span><span>🟡 Reservado</span><span style="color:rgba(34,197,94,.6)">██ Disponível</span>
+        <span style="margin-left:auto">VGV disponível: <strong style="color:var(--accent)">${fmt(vgvDisp)}</strong></span>
+      </div>
+    </div>
+
+    <!-- Legenda -->
+    <div style="display:flex;gap:20px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Legenda:</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(34,197,94,.15);border:2px solid rgba(34,197,94,.5);border-radius:3px;display:inline-block"></span>Disponível</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(245,158,11,.15);border:2px solid rgba(245,158,11,.5);border-radius:3px;display:inline-block"></span>Reservado</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(239,68,68,.15);border:2px solid rgba(239,68,68,.5);border-radius:3px;display:inline-block"></span>Vendido</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--text2)">Clique em qualquer unidade para ver detalhes ou alterar status</span>
+    </div>
+
+    <!-- Grid do espelho -->
+    <div id="espelho-corpo" data-empid="${empId}" data-lblb="${lblB}" data-lbla="${lblA}">
+      ${renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId)}
+    </div>
+  `;
+}
+
+function renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId) {
+  if (!grupoKeys.length) return '<div style="color:var(--text2);padding:32px;text-align:center">Nenhuma unidade importada para este empreendimento</div>';
+  return grupoKeys.map(g => {
+    const items = grupos[g];
+    const cntG = { disponivel: items.filter(u=>u.status==='disponivel').length, reservado: items.filter(u=>u.status==='reservado').length, vendido: items.filter(u=>u.status==='vendido').length };
+    return `
+      <div class="espelho-secao" data-grupo="${g}">
+        <div class="espelho-secao-header">
+          <span>${lblA} ${g}</span>
+          <span class="sub">
+            <span style="color:#4ade80">${cntG.disponivel} disp</span> ·
+            <span style="color:#fbbf24">${cntG.reservado} res</span> ·
+            <span style="color:#f87171">${cntG.vendido} vend</span>
+          </span>
+        </div>
+        <div class="espelho-tiles">
+          ${items.map(u => `
+            <div class="espelho-tile ${u.status}" onclick="abrirUnidade(${u.id},${empId})"
+              title="${lblB} ${u.lote}${u.area_m2?' · '+u.area_m2+'m²':''}${u.preco?' · '+fmt(u.preco):''}">
+              <div class="tile-num">${u.lote}</div>
+              ${u.area_m2 ? `<div class="tile-area">${u.area_m2}m²</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function filtrarEspelho() {
+  const sel = document.getElementById('espelho-filtro');
+  const val = sel?.value;
+  const corpo = document.getElementById('espelho-corpo');
+  if (!corpo) return;
+  corpo.querySelectorAll('.espelho-secao').forEach(sec => {
+    sec.style.display = (!val || sec.dataset.grupo === val) ? '' : 'none';
+  });
+}
+
+async function abrirUnidade(unidadeId, empId) {
+  const emp   = (currentData.emp||[]).find(e => e.id === empId) || {};
+  const r     = await get(`/api/empreendimentos/${empId}/unidades`);
+  const u     = (r.data||[]).find(x => x.id === unidadeId);
+  if (!u) return;
+
+  const isPredio = emp.tipo === 'predio';
+  const lblA = isPredio ? 'Andar' : 'Quadra';
+  const lblB = isPredio ? 'Apto'  : 'Lote';
+
+  const statusInfo = {
+    disponivel: { label:'✅ Disponível', color:'var(--success)' },
+    reservado:  { label:'🟡 Reservado',  color:'var(--warning)' },
+    vendido:    { label:'🔴 Vendido',    color:'var(--danger)'  }
+  };
+  const si = statusInfo[u.status] || statusInfo.disponivel;
+
+  document.getElementById('modal-title').textContent = `${lblA} ${u.quadra||'—'} — ${lblB} ${u.lote}`;
+  document.getElementById('modal-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+      <div style="background:var(--navy3);border-radius:8px;padding:14px;text-align:center">
+        <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${lblB}</div>
+        <div style="font-size:32px;font-weight:900">${u.lote}</div>
+      </div>
+      <div style="background:var(--navy3);border-radius:8px;padding:14px;text-align:center">
+        <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Status</div>
+        <div style="font-size:16px;font-weight:700;color:${si.color}">${si.label}</div>
+      </div>
+      ${u.area_m2 ? `<div style="background:var(--navy3);border-radius:8px;padding:14px;text-align:center">
+        <div style="font-size:10px;color:var(--text2);margin-bottom:4px">Área</div>
+        <div style="font-size:20px;font-weight:700">${u.area_m2} m²</div>
+      </div>` : ''}
+      ${u.preco ? `<div style="background:var(--navy3);border-radius:8px;padding:14px;text-align:center">
+        <div style="font-size:10px;color:var(--text2);margin-bottom:4px">Preço</div>
+        <div style="font-size:20px;font-weight:700;color:var(--success)">${fmt(u.preco)}</div>
+      </div>` : ''}
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:16px">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">Alterar Status</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${u.status!=='disponivel'?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(34,197,94,.4);color:#4ade80" onclick="mudarStatusEspelho(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
+        ${u.status!=='reservado' ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(245,158,11,.4);color:#fbbf24" onclick="mudarStatusEspelho(${u.id},'reservado',${empId})">🟡 Reservar</button>`:''}
+        ${u.status!=='vendido'   ?`<button class="btn btn-danger"    style="flex:1" onclick="mudarStatusEspelho(${u.id},'vendido',${empId})">🔴 Marcar Vendido</button>`:''}
+      </div>
+      ${u.status==='vendido'?`<div style="font-size:11px;color:var(--text2);margin-top:10px">Para liberar uma unidade vendida, altere o status da venda para "Distrato" na aba Vendas.</div>`:''}
+    </div>
+  `;
+  document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+async function mudarStatusEspelho(unidadeId, status, empId) {
+  const r = await put(`/api/unidades/${unidadeId}/status`, { status });
+  if (!r.ok) return toast(r.error, 'error');
+  const msgs = { disponivel:'✅ Unidade liberada!', reservado:'🟡 Unidade reservada!', vendido:'🔴 Marcada como vendida!' };
+  toast(msgs[status]);
+  closeModal();
+  verEspelho(empId);
 }
 
 // ─── COMISSÃO CORRETOR ────────────────────────────────────────────────────────
