@@ -106,14 +106,55 @@ app.get("/api/dashboard", (req, res) => {
     LIMIT 10
   `).all();
 
+  // Follow-ups com data de retorno vencida (lead ainda ativo, follow-up mais recente do lead)
+  const followups_vencidos = db.prepare(`
+    SELECT f.id, f.tipo, f.descricao, f.data_retorno,
+           l.id as lead_id, l.nome as lead_nome, l.telefone as lead_telefone, l.status as lead_status
+    FROM followups f
+    JOIN leads l ON l.id = f.lead_id
+    WHERE f.data_retorno IS NOT NULL
+      AND date(f.data_retorno) < date('now')
+      AND l.status NOT IN ('vendido','perdido')
+      AND f.id = (SELECT MAX(f2.id) FROM followups f2 WHERE f2.lead_id = f.lead_id AND f2.data_retorno IS NOT NULL)
+    ORDER BY f.data_retorno ASC
+    LIMIT 15
+  `).all();
+
+  // Follow-ups agendados para hoje
+  const followups_hoje = db.prepare(`
+    SELECT f.id, f.tipo, f.descricao, f.data_retorno,
+           l.id as lead_id, l.nome as lead_nome, l.telefone as lead_telefone
+    FROM followups f
+    JOIN leads l ON l.id = f.lead_id
+    WHERE date(f.data_retorno) = date('now')
+      AND l.status NOT IN ('vendido','perdido')
+    ORDER BY f.criado_em DESC
+    LIMIT 15
+  `).all();
+
+  // Aniversários hoje e esta semana
+  const aniversarios_hoje = db.prepare(`
+    SELECT nome, telefone, 'lead' as tipo FROM leads
+    WHERE strftime('%m-%d', aniversario) = strftime('%m-%d','now') AND aniversario IS NOT NULL
+    UNION ALL
+    SELECT nome, telefone, 'corretor' as tipo FROM corretores
+    WHERE strftime('%m-%d', aniversario) = strftime('%m-%d','now') AND aniversario IS NOT NULL
+    UNION ALL
+    SELECT nome_contato as nome, telefone, 'cliente' as tipo FROM clientes
+    WHERE strftime('%m-%d', aniversario) = strftime('%m-%d','now') AND aniversario IS NOT NULL
+  `).all();
+
   ok(res, {
     kpis: { leads_total, leads_novos, vendas_mes, vendas_total, entradas_pendentes, clientes_total, corretores_ativos, corretores_total, corretores_com_vendas, empreendimentos },
     aniversarios_mes,
+    aniversarios_hoje,
     proximos_lancamentos,
     funil,
     ranking_vgv,
     ranking_qtd,
     leads_esquecidos,
+    followups_vencidos,
+    followups_hoje,
   });
 });
 
@@ -408,14 +449,14 @@ app.get("/api/leads", (req, res) => {
 });
 
 app.post("/api/leads", (req, res) => {
-  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, origem, observacoes } = req.body;
-  const r = db.prepare(`INSERT INTO leads (nome,telefone,email,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,empreendimento_id,corretor_id,status,origem,observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status || 'novo', origem || 'manual', observacoes);
+  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, origem, observacoes, aniversario } = req.body;
+  const r = db.prepare(`INSERT INTO leads (nome,telefone,email,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,empreendimento_id,corretor_id,status,origem,observacoes,aniversario) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status || 'novo', origem || 'manual', observacoes, aniversario||null);
   ok(res, { id: r.lastInsertRowid });
 });
 
 app.put("/api/leads/:id", (req, res) => {
-  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, observacoes } = req.body;
-  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,observacoes=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, observacoes, req.params.id);
+  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, observacoes, aniversario } = req.body;
+  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,observacoes=?,aniversario=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, observacoes, aniversario||null, req.params.id);
   ok(res, {});
 });
 
@@ -1154,6 +1195,126 @@ app.get('/api/empreendimentos/:id/mapa', (req, res) => {
 app.delete('/api/empreendimentos/:id/mapa', (req, res) => {
   db.prepare('DELETE FROM mapas WHERE empreendimento_id=?').run(parseInt(req.params.id));
   ok(res, {});
+});
+
+// ─── IMPORTAÇÃO DE LEADS VIA EXCEL ───────────────────────────────────────────
+
+app.post('/api/leads/importar', upload.single('arquivo'), (req, res) => {
+  if (!req.file) return err(res, 'Arquivo não enviado');
+  try {
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+    const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // Detecta linha de cabeçalho
+    let headerRow = -1;
+    for (let i = 0; i < Math.min(aoa.length, 8); i++) {
+      const row = (aoa[i] || []).map(norm);
+      if (row.some(c => c === 'nome') && row.some(c => c === 'telefone' || c === 'tel')) {
+        headerRow = i; break;
+      }
+    }
+    if (headerRow === -1) return err(res, 'Cabeçalho não encontrado. Use colunas: Nome, Telefone, Email, Cidade, Objetivo, Empreendimento, Corretor');
+
+    const headers = aoa[headerRow].map(norm);
+    const idx = (...names) => {
+      for (const n of names) { const i = headers.indexOf(norm(n)); if (i !== -1) return i; }
+      for (const n of names) { const i = headers.findIndex(h => h && h.includes(norm(n))); if (i !== -1) return i; }
+      return -1;
+    };
+
+    const iNome     = idx('nome');
+    const iTel      = idx('telefone','tel','fone','whatsapp','celular');
+    const iEmail    = idx('email','e-mail');
+    const iCidade   = idx('cidade');
+    const iObjetivo = idx('objetivo','interesse');
+    const iFaixa    = idx('faixa','investimento','valor','preco');
+    const iPrazo    = idx('prazo');
+    const iObs      = idx('observacao','observacoes','obs','nota');
+    const iStatus   = idx('status');
+    const iOrigem   = idx('origem','source','fonte');
+
+    const insert = db.prepare(`INSERT INTO leads (nome,telefone,email,cidade,objetivo,faixa_investimento,prazo,observacoes,status,origem) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+    let importados = 0, ignorados = 0;
+
+    const importAll = db.transaction(() => {
+      for (let i = headerRow + 1; i < aoa.length; i++) {
+        const row = aoa[i] || [];
+        const nome = iNome >= 0 ? String(row[iNome] || '').trim() : '';
+        const tel  = iTel  >= 0 ? String(row[iTel]  || '').replace(/\D/g, '') : '';
+        if (!nome && !tel) { ignorados++; continue; }
+        // Ignora duplicatas por telefone
+        if (tel && db.prepare('SELECT id FROM leads WHERE telefone=?').get(tel)) { ignorados++; continue; }
+        const status = iStatus >= 0 && row[iStatus] ? String(row[iStatus]).trim() : 'novo';
+        const origem = iOrigem >= 0 && row[iOrigem] ? String(row[iOrigem]).trim() : 'excel';
+        insert.run(
+          nome || null,
+          tel  || (iNome >= 0 ? String(row[iNome] || '').trim() : null),
+          iEmail    >= 0 ? String(row[iEmail]    || '').trim() || null : null,
+          iCidade   >= 0 ? String(row[iCidade]   || '').trim() || null : null,
+          iObjetivo >= 0 ? String(row[iObjetivo] || '').trim() || null : null,
+          iFaixa    >= 0 ? String(row[iFaixa]    || '').trim() || null : null,
+          iPrazo    >= 0 ? String(row[iPrazo]    || '').trim() || null : null,
+          iObs      >= 0 ? String(row[iObs]      || '').trim() || null : null,
+          status, origem
+        );
+        importados++;
+      }
+    });
+    importAll();
+    ok(res, { importados, ignorados });
+  } catch (e) {
+    err(res, 'Erro ao processar arquivo: ' + e.message);
+  }
+});
+
+// ─── PAINEL DE LANÇAMENTO ─────────────────────────────────────────────────────
+
+app.get('/api/painel/:id', (req, res) => {
+  const empId = parseInt(req.params.id);
+  const emp = db.prepare('SELECT * FROM empreendimentos WHERE id=?').get(empId);
+  if (!emp) return err(res, 'Empreendimento não encontrado', 404);
+
+  const unidadeStats = db.prepare(`
+    SELECT status, COUNT(*) as n FROM unidades WHERE empreendimento_id=? GROUP BY status
+  `).all(empId);
+  const totalUnidades = unidadeStats.reduce((s, u) => s + u.n, 0);
+  const vendidas   = unidadeStats.find(u => u.status === 'vendido')?.n   || 0;
+  const reservadas = unidadeStats.find(u => u.status === 'reservado')?.n || 0;
+
+  const vgv_total = db.prepare("SELECT COALESCE(SUM(valor),0) as v FROM vendas WHERE empreendimento_id=? AND status='ativo'").get(empId).v;
+  const vgv_mes   = db.prepare("SELECT COALESCE(SUM(valor),0) as v FROM vendas WHERE empreendimento_id=? AND status='ativo' AND strftime('%Y-%m',data_venda)=strftime('%Y-%m','now')").get(empId).v;
+  const hoje      = db.prepare("SELECT COUNT(*) as n, COALESCE(SUM(valor),0) as v FROM vendas WHERE empreendimento_id=? AND status='ativo' AND date(data_venda)=date('now')").get(empId);
+
+  const top_corretores = db.prepare(`
+    SELECT c.nome, c.imobiliaria, COUNT(v.id) as vendas, COALESCE(SUM(v.valor),0) as vgv
+    FROM vendas v JOIN corretores c ON c.id=v.corretor_id
+    WHERE v.empreendimento_id=? AND v.status='ativo'
+    GROUP BY c.id ORDER BY vendas DESC LIMIT 10
+  `).all(empId);
+
+  const ultimas_vendas = db.prepare(`
+    SELECT v.data_venda, v.valor, v.imovel,
+           l.nome as lead_nome, c.nome as corretor_nome
+    FROM vendas v
+    LEFT JOIN leads l ON l.id=v.lead_id
+    LEFT JOIN corretores c ON c.id=v.corretor_id
+    WHERE v.empreendimento_id=? AND v.status='ativo'
+    ORDER BY v.id DESC LIMIT 15
+  `).all(empId);
+
+  const vso = totalUnidades > 0 ? parseFloat(((vendidas / totalUnidades) * 100).toFixed(1)) : 0;
+
+  ok(res, {
+    empreendimento: emp,
+    unidades: { total: totalUnidades, vendidas, reservadas, disponiveis: totalUnidades - vendidas - reservadas },
+    vso,
+    vgv_total, vgv_mes,
+    vendas_hoje: hoje.n, vgv_hoje: hoje.v,
+    top_corretores,
+    ultimas_vendas,
+  });
 });
 
 // ─── START ────────────────────────────────────────────────────────────────────

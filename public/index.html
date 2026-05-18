@@ -215,6 +215,30 @@
   .toast-item.error { border-left: 3px solid var(--danger); }
   @keyframes slideIn { from { transform: translateX(30px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
+  /* ── KANBAN ── */
+  .kanban-board { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 16px; align-items: flex-start; min-height: 60vh; }
+  .kanban-col { background: var(--card); border: 1px solid var(--border); border-radius: 10px; min-width: 220px; max-width: 240px; flex-shrink: 0; display: flex; flex-direction: column; }
+  .kanban-col-head { padding: 12px 14px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .kanban-col-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto; max-height: calc(100vh - 200px); }
+  .kanban-card { background: var(--card2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; cursor: pointer; transition: border-color .15s, transform .1s; }
+  .kanban-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .kanban-card .kc-nome { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .kanban-card .kc-tel { font-size: 12px; color: var(--accent); margin-bottom: 3px; }
+  .kanban-card .kc-meta { font-size: 11px; color: var(--text2); }
+  .kanban-card .kc-dias { font-size: 10px; color: var(--warning); font-weight: 600; }
+  .kanban-card .kc-move { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+  .kanban-card .kc-move button { font-size: 10px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--navy3); color: var(--text2); cursor: pointer; transition: all .12s; }
+  .kanban-card .kc-move button:hover { background: var(--accent); color: var(--navy); border-color: var(--accent); }
+
+  /* ── PAINEL ── */
+  .painel-big { font-size: clamp(36px, 6vw, 72px); font-weight: 900; line-height: 1; }
+  .painel-label { font-size: 13px; color: var(--text2); margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
+  .painel-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px 28px; text-align: center; }
+  .painel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 16px; margin-bottom: 24px; }
+  .vso-gauge { position: relative; width: 120px; height: 120px; margin: 0 auto; }
+  .vso-gauge svg { transform: rotate(-90deg); }
+  .vso-gauge .vso-pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; }
+
   /* ── SCROLLBAR ── */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -261,9 +285,11 @@
     <div class="nav-section">Principal</div>
     <div class="nav-item active" onclick="navigate('dashboard')"><span class="icon">📊</span> Dashboard</div>
     <div class="nav-item" onclick="navigate('calendario')"><span class="icon">📅</span> Calendário</div>
+    <div class="nav-item" onclick="navigate('painel')"><span class="icon">🚀</span> Painel de Lançamento</div>
 
     <div class="nav-section">Comercial</div>
     <div class="nav-item" onclick="navigate('leads')"><span class="icon">🎯</span> Leads <span class="nav-badge" id="badge-leads">0</span></div>
+    <div class="nav-item" onclick="navigate('kanban')"><span class="icon">📋</span> Kanban</div>
     <div class="nav-item" onclick="navigate('vendas')"><span class="icon">🏆</span> Vendas</div>
     <div class="nav-item" onclick="navigate('ranking')"><span class="icon">⭐</span> Ranking</div>
 
@@ -310,6 +336,8 @@
 const API = '';
 let currentPage = 'dashboard';
 let currentData = {};
+let _painelInterval = null;
+let _painelEmpId = null;
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 
@@ -323,6 +351,10 @@ function closeSidebar() {
 }
 
 function navigate(page) {
+  // Limpa refresh automático do painel ao sair
+  if (currentPage === 'painel' && page !== 'painel' && _painelInterval) {
+    clearInterval(_painelInterval); _painelInterval = null;
+  }
   currentPage = page;
   closeSidebar();
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -334,9 +366,10 @@ function navigate(page) {
 }
 
 const pageTitles = {
-  dashboard: 'Dashboard', leads: 'Leads', vendas: 'Vendas',
+  dashboard: 'Dashboard', leads: 'Leads', kanban: 'Kanban de Leads', vendas: 'Vendas',
   clientes: 'Incorporadores', empreendimentos: 'Empreendimentos', corretores: 'Corretores',
-  financeiro: 'Financeiro', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores'
+  financeiro: 'Financeiro', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
+  painel: 'Painel de Lançamento'
 };
 const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario'];
 
@@ -347,6 +380,7 @@ async function renderPage(page) {
     switch(page) {
       case 'dashboard': await renderDashboard(); break;
       case 'leads': await renderLeads(); break;
+      case 'kanban': await renderKanban(); break;
       case 'vendas': await renderVendas(); break;
       case 'clientes': await renderClientes(); break;
       case 'empreendimentos': await renderEmpreendimentos(); break;
@@ -354,6 +388,7 @@ async function renderPage(page) {
       case 'financeiro': await renderFinanceiro(); break;
       case 'calendario': await renderCalendario(); break;
       case 'ranking': await renderRanking(); break;
+      case 'painel': await renderPainel(); break;
     }
   } catch(e) {
     c.innerHTML = `<div style="color:var(--danger);padding:24px">Erro ao carregar: ${e.message}</div>`;
@@ -387,7 +422,7 @@ async function renderDashboard() {
   const [{ data }, vendasR, finR] = await Promise.all([
     get('/api/dashboard'), get('/api/vendas'), get('/api/financeiro/entradas')
   ]);
-  const { kpis, aniversarios_mes, proximos_lancamentos, funil, leads_esquecidos } = data;
+  const { kpis, aniversarios_mes, aniversarios_hoje, proximos_lancamentos, funil, leads_esquecidos, followups_vencidos, followups_hoje } = data;
 
   document.getElementById('badge-leads').textContent = kpis.leads_novos;
 
@@ -463,9 +498,63 @@ async function renderDashboard() {
       </div>
     </div>
 
+    ${aniversarios_hoje && aniversarios_hoje.length ? `
+    <div class="mini-card" style="margin-bottom:20px;border-color:rgba(0,196,180,.5);background:rgba(0,196,180,.05)">
+      <h4 style="color:var(--accent)">🎂 Aniversários HOJE (${aniversarios_hoje.length})</h4>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+        ${aniversarios_hoje.map(a => {
+          const tel = (a.telefone||'').replace(/\D/g,'');
+          const msg = encodeURIComponent(`Feliz Aniversário ${a.nome ? a.nome.split(' ')[0] : ''}! Que Deus continue abençoando você e sua família! Muitas felicidades, saúde e vendas! 🎉🎂`);
+          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="font-size:20px">🎂</div>
+            <div style="flex:1;font-size:13px;font-weight:600">${a.nome||'—'} <span style="font-size:11px;color:var(--text2);font-weight:400">${a.tipo==='corretor'?'Corretor':a.tipo==='cliente'?'Incorporador':'Lead'}</span></div>
+            ${tel ? `<a href="https://wa.me/55${tel}?text=${msg}" target="_blank" style="background:#25D366;color:#fff;border-radius:6px;padding:4px 12px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap">🎉 Parabenizar</a>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
+
+    ${followups_hoje && followups_hoje.length ? `
+    <div class="mini-card" style="margin-bottom:20px;border-color:rgba(0,153,204,.4);background:rgba(0,153,204,.05)">
+      <h4 style="color:var(--accent2)">📞 Follow-ups para Hoje (${followups_hoje.length})</h4>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+        ${followups_hoje.map(f => {
+          const tel = (f.lead_telefone||'').replace(/\D/g,'');
+          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <span class="badge badge-blue" style="white-space:nowrap">${f.tipo}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:500">${f.lead_nome||'—'}</div>
+              ${f.descricao ? `<div style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.descricao}</div>` : ''}
+            </div>
+            ${tel ? `<a href="https://wa.me/55${tel}" target="_blank" style="background:#25D366;color:#fff;border-radius:6px;padding:3px 10px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap">📱 WPP</a>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
+
+    ${followups_vencidos && followups_vencidos.length ? `
+    <div class="mini-card" style="margin-bottom:20px;border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.04)">
+      <h4 style="color:var(--danger)">🔴 Follow-ups Vencidos (${followups_vencidos.length}) — retorno atrasado</h4>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+        ${followups_vencidos.map(f => {
+          const tel = (f.lead_telefone||'').replace(/\D/g,'');
+          const diasAtrasado = Math.floor((Date.now() - new Date(f.data_retorno)) / 86400000);
+          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+            <span class="badge badge-red" style="white-space:nowrap">${diasAtrasado}d atrasado</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:500">${f.lead_nome||'—'}</div>
+              <div style="font-size:11px;color:var(--text2)">${f.tipo}${f.descricao ? ' · ' + f.descricao : ''}</div>
+            </div>
+            ${tel ? `<a href="https://wa.me/55${tel}" target="_blank" style="background:#25D366;color:#fff;border-radius:6px;padding:3px 10px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap">📱 WPP</a>` : ''}
+            <button class="btn-icon" onclick="navigate('leads')" style="font-size:13px" title="Ver no funil">📋</button>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
+
     ${leads_esquecidos && leads_esquecidos.length ? `
     <div class="mini-card" style="margin-bottom:20px;border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.05)">
-      <h4 style="color:var(--warning)">⚠️ Leads Esquecidos (${leads_esquecidos.length}) — sem contato há 3+ dias</h4>
+      <h4 style="color:var(--warning)">⚠️ Leads sem Contato (${leads_esquecidos.length}) — há 3+ dias</h4>
       <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
         ${leads_esquecidos.map(l => {
           const tel = (l.telefone||'').replace(/\D/g,'');
@@ -474,7 +563,7 @@ async function renderDashboard() {
             <div style="flex:1;font-size:13px;font-weight:500">${l.nome||'—'}</div>
             <span class="badge badge-gray" style="font-size:10px">${l.status}</span>
             ${tel ? `<a href="https://wa.me/55${tel}" target="_blank" style="background:#25D366;color:#fff;border-radius:6px;padding:3px 10px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap">📱 WPP</a>` : ''}
-            <button class="btn-icon" title="Registrar follow-up" onclick="navigate('leads')" style="font-size:13px">📞</button>
+            <button class="btn-icon" title="Registrar follow-up" onclick="navigate('kanban')" style="font-size:13px">📋</button>
           </div>`;
         }).join('')}
       </div>
@@ -558,7 +647,7 @@ async function renderLeads(filter = '') {
     <div class="table-card">
       <div class="table-header">
         <div class="table-title">🎯 Leads (${leads.length})</div>
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select onchange="filterLeadStatus(this.value)" style="font-size:12px;padding:6px 10px">
             <option value="">Todos os status</option>
             <option value="novo">Novo</option>
@@ -568,6 +657,10 @@ async function renderLeads(filter = '') {
             <option value="vendido">Vendido</option>
             <option value="perdido">Perdido</option>
           </select>
+          <button onclick="navigate('kanban')" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">📋 Kanban</button>
+          <label style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">
+            📥 Importar XLSX<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importarLeads(this)">
+          </label>
         </div>
       </div>
       <table>
@@ -658,14 +751,26 @@ function openLeadModal(lead = {}) {
           ${empData.map(e => `<option value="${e.id}" ${lead.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('')}
         </select>
       </div>
+      <div class="form-group"><label>Aniversário</label><input id="f-aniv" type="date" value="${lead.aniversario||''}"></div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${lead.observacoes||''}</textarea></div>
     </div>
+    ${lead.telefone ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📱 Ação Rápida WhatsApp</div>
+      <a href="https://wa.me/55${(lead.telefone||'').replace(/\D/g,'')}" target="_blank"
+        style="display:inline-flex;align-items:center;gap:6px;background:#25D366;color:#fff;border-radius:6px;padding:7px 16px;text-decoration:none;font-size:13px;font-weight:600">
+        💬 Abrir WhatsApp
+      </a>
+      <button onclick="openFollowupModal({id:${lead.id||0},nome:'${(lead.nome||'').replace(/'/g,"\\'")}',telefone:'${lead.telefone||''}'})" type="button"
+        style="margin-left:8px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer">
+        📞 Follow-up & Templates
+      </button>
+    </div>` : ''}
   `, async () => {
-    const body = { nome: v('f-nome'), telefone: v('f-tel'), email: v('f-email'), cidade: v('f-cidade'), objetivo: v('f-obj'), faixa_investimento: v('f-faixa'), prazo: v('f-prazo'), status: v('f-status'), corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, observacoes: v('f-obs') };
+    const body = { nome: v('f-nome'), telefone: v('f-tel'), email: v('f-email'), cidade: v('f-cidade'), objetivo: v('f-obj'), faixa_investimento: v('f-faixa'), prazo: v('f-prazo'), status: v('f-status'), corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, aniversario: v('f-aniv')||null, observacoes: v('f-obs') };
     const r = lead.id ? await put(`/api/leads/${lead.id}`, body) : await post('/api/leads', body);
     if (!r.ok) return toast(r.error, 'error');
     toast(lead.id ? 'Lead atualizado!' : 'Lead criado!');
-    closeModal(); renderLeads();
+    closeModal(); if (currentPage === 'kanban') renderKanban(); else renderLeads();
   });
 }
 
@@ -677,6 +782,212 @@ async function deleteLead(id) {
   if (!confirm('Excluir este lead?')) return;
   await del(`/api/leads/${id}`);
   toast('Lead excluído'); renderLeads();
+}
+
+async function importarLeads(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  const fd = new FormData();
+  fd.append('arquivo', file);
+  toast('Importando leads... ⏳');
+  try {
+    const r = await fetch(API + '/api/leads/importar', {
+      method: 'POST',
+      headers: { 'x-crm-token': TOKEN },
+      body: fd
+    });
+    const data = await r.json();
+    if (!data.ok) return toast(data.error, 'error');
+    toast(`✅ ${data.data.importados} lead(s) importado(s)${data.data.ignorados ? `, ${data.data.ignorados} ignorados (duplicados ou vazios)` : ''}!`);
+    renderLeads();
+  } catch(e) {
+    toast('Erro ao importar: ' + e.message, 'error');
+  }
+}
+
+// ─── KANBAN DE LEADS ─────────────────────────────────────────────────────────
+
+const KANBAN_COLS = [
+  { status: 'novo',        label: 'Novo',        color: '#00C4B4', badge: 'badge-accent' },
+  { status: 'qualificado', label: 'Qualificado',  color: '#0099CC', badge: 'badge-blue' },
+  { status: 'visitou',     label: 'Visitou',      color: '#F59E0B', badge: 'badge-yellow' },
+  { status: 'proposta',    label: 'Proposta',     color: '#A855F7', badge: 'badge-yellow' },
+  { status: 'vendido',     label: 'Vendido',      color: '#22C55E', badge: 'badge-green' },
+  { status: 'perdido',     label: 'Perdido',      color: '#EF4444', badge: 'badge-red' },
+];
+const KANBAN_NEXT = { novo: ['qualificado','visitou','proposta','perdido'], qualificado: ['visitou','proposta','vendido','perdido'], visitou: ['proposta','vendido','perdido'], proposta: ['vendido','perdido'] };
+
+async function renderKanban(filter = '') {
+  const [lr, cr, er] = await Promise.all([get('/api/leads'), get('/api/corretores'), get('/api/empreendimentos')]);
+  leadsData = lr.data; corretoresData = cr.data; empData = er.data;
+  document.getElementById('badge-leads').textContent = leadsData.filter(l => l.status === 'novo').length;
+
+  const leads = filter ? leadsData.filter(l => (l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter)) : leadsData;
+
+  const colsHtml = KANBAN_COLS.map(col => {
+    const colLeads = leads.filter(l => l.status === col.status);
+    const nexts = KANBAN_NEXT[col.status] || [];
+    const cards = colLeads.map(l => {
+      const dias = l.atualizado_em ? Math.floor((Date.now() - new Date(l.atualizado_em.replace(' ','T'))) / 86400000) : 999;
+      const esquecido = dias >= 3 && !['vendido','perdido'].includes(l.status);
+      const tel = (l.telefone||'').replace(/\D/g,'');
+      const moveButtons = nexts.map(ns => {
+        const nc = KANBAN_COLS.find(c => c.status === ns);
+        return `<button onclick="moverLead(${l.id},'${ns}')" title="Mover para ${nc?.label}">${nc?.label}</button>`;
+      }).join('');
+      return `<div class="kanban-card" onclick="editLead(${l.id})">
+        <div class="kc-nome">${l.nome||'—'}${esquecido ? ` <span class="kc-dias">⚠️${dias}d</span>` : ''}</div>
+        ${tel ? `<div class="kc-tel" onclick="event.stopPropagation()"><a href="https://wa.me/55${tel}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${fmtPhone(l.telefone)}</a></div>` : ''}
+        <div class="kc-meta">${l.corretor_nome ? `👤 ${l.corretor_nome.split(' ')[0]}` : ''}${l.empreendimento_nome||l.empreendimento_interesse ? ` · 🏗️ ${(l.empreendimento_nome||l.empreendimento_interesse||'').substring(0,18)}` : ''}</div>
+        ${l.faixa_investimento ? `<div class="kc-meta" style="color:var(--success)">💰 ${l.faixa_investimento}</div>` : ''}
+        ${nexts.length ? `<div class="kc-move" onclick="event.stopPropagation()">${moveButtons}</div>` : ''}
+      </div>`;
+    }).join('');
+
+    return `<div class="kanban-col">
+      <div class="kanban-col-head" style="border-top:3px solid ${col.color}">
+        <span style="color:${col.color}">${col.label}</span>
+        <span style="background:${col.color}22;color:${col.color};padding:2px 8px;border-radius:10px;font-size:11px">${colLeads.length}</span>
+      </div>
+      <div class="kanban-col-body">${cards || '<div style="color:var(--text2);font-size:12px;text-align:center;padding:20px 0">Vazio</div>'}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <div style="font-size:13px;color:var(--text2)">${leads.length} leads • Clique no card para editar • Use os botões para avançar status</div>
+      <button onclick="navigate('leads')" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;margin-left:auto">📋 Ver tabela</button>
+    </div>
+    <div class="kanban-board">${colsHtml}</div>
+  `;
+}
+
+async function moverLead(id, novoStatus) {
+  const lead = leadsData.find(l => l.id === id);
+  if (!lead) return;
+  const body = { ...lead, status: novoStatus, corretor_id: lead.corretor_id||null, empreendimento_id: lead.empreendimento_id||null };
+  const r = await put(`/api/leads/${id}`, body);
+  if (!r.ok) return toast(r.error, 'error');
+  toast(`Lead movido para ${novoStatus}! ✅`);
+  renderKanban();
+}
+
+// ─── PAINEL DE LANÇAMENTO ─────────────────────────────────────────────────────
+
+async function renderPainel() {
+  // Para refresh automático anterior se existir
+  if (_painelInterval) { clearInterval(_painelInterval); _painelInterval = null; }
+
+  const er = await get('/api/empreendimentos');
+  const emps = (er.data || []).filter(e => e.num_unidades > 0);
+
+  if (!_painelEmpId && emps.length > 0) _painelEmpId = emps[0].id;
+
+  const selectHtml = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+      <select id="painel-emp-sel" onchange="_painelEmpId=parseInt(this.value);loadPainelData()" style="padding:8px 14px;border-radius:8px;font-size:14px;background:var(--navy3);border:1px solid var(--border);color:var(--text)">
+        ${emps.map(e => `<option value="${e.id}" ${e.id===_painelEmpId?'selected':''}>${e.nome}</option>`).join('')}
+        ${emps.length===0 ? '<option value="">Nenhum empreendimento com unidades</option>' : ''}
+      </select>
+      <div style="font-size:12px;color:var(--text2)" id="painel-updated">Atualiza a cada 60s</div>
+      <button onclick="loadPainelData()" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--accent);cursor:pointer;font-size:13px">🔄 Atualizar</button>
+    </div>
+    <div id="painel-content"><div style="text-align:center;padding:40px;color:var(--text2)">Carregando...</div></div>
+  `;
+  document.getElementById('content').innerHTML = selectHtml;
+  if (_painelEmpId) await loadPainelData();
+  // Auto-refresh a cada 60s
+  _painelInterval = setInterval(() => { if (currentPage === 'painel' && _painelEmpId) loadPainelData(); }, 60000);
+}
+
+async function loadPainelData() {
+  if (!_painelEmpId) return;
+  const r = await get(`/api/painel/${_painelEmpId}`);
+  if (!r.ok) return;
+  const d = r.data;
+  const { empreendimento: emp, unidades, vso, vgv_total, vgv_mes, vendas_hoje, vgv_hoje, top_corretores, ultimas_vendas } = d;
+
+  // VSO gauge via SVG circle
+  const R = 48, C = 2 * Math.PI * R;
+  const dash = (C * vso / 100).toFixed(1);
+  const vsoColor = vso >= 75 ? '#22C55E' : vso >= 40 ? '#F59E0B' : '#00C4B4';
+
+  const painelHtml = `
+    <div class="painel-grid">
+      <div class="painel-card">
+        <div class="vso-gauge">
+          <svg width="120" height="120" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="${R}" fill="none" stroke="var(--navy3)" stroke-width="10"/>
+            <circle cx="60" cy="60" r="${R}" fill="none" stroke="${vsoColor}" stroke-width="10"
+              stroke-dasharray="${dash} ${C.toFixed(1)}" stroke-linecap="round" style="transition:stroke-dasharray .6s"/>
+          </svg>
+          <div class="vso-pct" style="color:${vsoColor}">${vso}%</div>
+        </div>
+        <div class="painel-label">VSO — Velocidade de Vendas</div>
+      </div>
+
+      <div class="painel-card">
+        <div class="painel-big" style="color:var(--danger)">${unidades.vendidas}</div>
+        <div class="painel-label">Unidades Vendidas</div>
+        <div style="margin-top:8px;font-size:13px;color:var(--text2)">${unidades.reservadas} reservadas · ${unidades.disponiveis} disponíveis · ${unidades.total} total</div>
+      </div>
+
+      <div class="painel-card">
+        <div class="painel-big" style="color:var(--success)">${fmt(vgv_total)}</div>
+        <div class="painel-label">VGV Vendido Total</div>
+        <div style="margin-top:8px;font-size:13px;color:var(--text2)">Mês: ${fmt(vgv_mes)}</div>
+      </div>
+
+      <div class="painel-card">
+        <div class="painel-big" style="color:var(--accent)">${vendas_hoje}</div>
+        <div class="painel-label">Vendas Hoje</div>
+        <div style="margin-top:8px;font-size:13px;color:var(--text2)">${fmt(vgv_hoje)}</div>
+      </div>
+    </div>
+
+    <div class="dash-row">
+      <div class="mini-card">
+        <h4>🏆 Ranking Corretores</h4>
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+          ${top_corretores.length ? top_corretores.map((c,i) => `
+            <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+              <div style="font-size:16px;width:24px;text-align:center">${i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}</div>
+              <div style="flex:1">
+                <div style="font-weight:600;font-size:13px">${c.nome}</div>
+                ${c.imobiliaria ? `<div style="font-size:11px;color:var(--text2)">${c.imobiliaria}</div>` : ''}
+              </div>
+              <div style="text-align:right">
+                <div style="font-weight:700;color:var(--success);font-size:13px">${fmt(c.vgv)}</div>
+                <div style="font-size:11px;color:var(--text2)">${c.vendas} venda${c.vendas!==1?'s':''}</div>
+              </div>
+            </div>
+          `).join('') : '<div style="color:var(--text2);font-size:13px;padding:8px 0">Nenhuma venda ainda</div>'}
+        </div>
+      </div>
+
+      <div class="mini-card">
+        <h4>📋 Últimas Vendas</h4>
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto">
+          ${ultimas_vendas.length ? ultimas_vendas.map(v => `
+            <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+              <div style="font-size:11px;color:var(--text2);min-width:60px">${fmtDate(v.data_venda)}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.lead_nome||v.imovel||'—'}</div>
+                <div style="font-size:11px;color:var(--text2)">${v.corretor_nome||'—'}${v.imovel ? ' · ' + v.imovel : ''}</div>
+              </div>
+              <div style="font-weight:700;color:var(--success);font-size:13px;white-space:nowrap">${fmt(v.valor)}</div>
+            </div>
+          `).join('') : '<div style="color:var(--text2);font-size:13px;padding:8px 0">Nenhuma venda</div>'}
+        </div>
+      </div>
+    </div>
+    <div style="text-align:right;font-size:11px;color:var(--text2);margin-top:8px">${emp.nome} — atualizado ${new Date().toLocaleTimeString('pt-BR')}</div>
+  `;
+
+  document.getElementById('painel-content').innerHTML = painelHtml;
+  const upd = document.getElementById('painel-updated');
+  if (upd) upd.textContent = `Atualizado às ${new Date().toLocaleTimeString('pt-BR')}`;
 }
 
 // ─── VENDAS ───────────────────────────────────────────────────────────────────
@@ -1856,17 +2167,47 @@ async function openFollowupModal(lead) {
       <div style="flex:1">
         <span class="badge ${tipoColor[f.tipo]||'badge-gray'}">${tipoLabel[f.tipo]||f.tipo}</span>
         ${f.descricao ? `<div style="font-size:13px;margin-top:6px">${f.descricao}</div>` : ''}
-        ${f.data_retorno ? `<div style="font-size:11px;color:var(--warning);margin-top:4px">🔔 Retorno agendado: ${fmtDate(f.data_retorno)}</div>` : ''}
+        ${f.data_retorno ? `<div style="font-size:11px;color:var(--warning);margin-top:4px">🔔 Retorno: ${fmtDate(f.data_retorno)}</div>` : ''}
       </div>
     </div>
   `).join('') : '<div style="color:var(--text2);font-size:13px;padding:12px 0">Nenhum contato registrado ainda</div>';
+
+  // WhatsApp templates
+  const primeiroNome = (lead.nome||'').split(' ')[0] || 'cliente';
+  const tel = (lead.telefone||'').replace(/\D/g,'');
+  const wppBase = tel ? `https://wa.me/55${tel}?text=` : null;
+
+  const templates = [
+    { icon:'👋', label:'Apresentação', msg:`Olá ${primeiroNome}, tudo bem? Aqui é da R2X Inteligência Comercial! Estou entrando em contato pois você demonstrou interesse em um de nossos empreendimentos. Posso te apresentar as opções disponíveis?` },
+    { icon:'🔄', label:'Retorno', msg:`Olá ${primeiroNome}! Passando para dar um retorno sobre o empreendimento que conversamos. Você teve a oportunidade de pensar a respeito? Posso tirar alguma dúvida?` },
+    { icon:'🏠', label:'Visita', msg:`Olá ${primeiroNome}! Tudo bem? Gostaria de confirmar sua visita ao empreendimento. Está confirmado para hoje? Aguardo você!` },
+    { icon:'📄', label:'Proposta', msg:`Olá ${primeiroNome}! Segue a proposta que preparei especialmente para você. Qualquer dúvida estou à disposição! 😊` },
+    { icon:'⏰', label:'Urgência', msg:`Olá ${primeiroNome}! As unidades estão se esgotando rapidamente. Restam poucas disponíveis no empreendimento que você se interessou. Podemos conversar hoje?` },
+  ];
+
+  const templatesHtml = wppBase ? `
+    <div style="margin-bottom:16px;border-top:1px solid var(--border);padding-top:14px">
+      <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">📱 Templates WhatsApp — toque para copiar e abrir</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${templates.map(t => `
+          <button onclick="usarTemplate(${JSON.stringify(t.msg).replace(/"/g,'&quot;')}, '${wppBase}')" style="
+            background:var(--navy3);border:1px solid var(--border);color:var(--text);
+            padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;
+            display:flex;align-items:center;gap:5px;transition:all .15s
+          " onmouseover="this.style.borderColor='#25D366';this.style.color='#25D366'" onmouseout="this.style.borderColor='';this.style.color=''"
+          >${t.icon} ${t.label}</button>
+        `).join('')}
+      </div>
+    </div>
+  ` : '';
 
   document.getElementById('modal-title').textContent = `📞 Follow-up — ${lead.nome||'Lead'}`;
   document.getElementById('modal-body').innerHTML = `
     <div style="margin-bottom:16px">
       <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Histórico de Contatos</div>
-      <div style="max-height:200px;overflow-y:auto">${timelineHtml}</div>
+      <div style="max-height:180px;overflow-y:auto">${timelineHtml}</div>
     </div>
+    ${templatesHtml}
     <div style="border-top:1px solid var(--border);padding-top:16px">
       <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Registrar Novo Contato</div>
       <div class="form-grid">
@@ -1880,7 +2221,7 @@ async function openFollowupModal(lead) {
             <option value="outro">💬 Outro</option>
           </select>
         </div>
-        <div class="form-group"><label>Agendar Retorno (opcional)</label>
+        <div class="form-group"><label>Agendar Retorno</label>
           <input id="fu-retorno" type="date">
         </div>
         <div class="form-group span2"><label>Observações</label>
@@ -1893,7 +2234,16 @@ async function openFollowupModal(lead) {
     <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>
     <button class="btn btn-primary" onclick="registrarFollowup(${lead.id})">📞 Registrar Contato</button>
   `;
+  document.getElementById('modal').classList.add('modal-wide');
   document.getElementById('modal-overlay').classList.add('open');
+}
+
+function usarTemplate(msg, wppBase) {
+  navigator.clipboard.writeText(msg).catch(() => {});
+  document.getElementById('fu-desc').value = msg;
+  document.getElementById('fu-tipo').value = 'whatsapp';
+  if (wppBase) window.open(wppBase + encodeURIComponent(msg), '_blank');
+  toast('Mensagem copiada e WhatsApp aberto! 📱');
 }
 
 async function registrarFollowup(leadId) {
