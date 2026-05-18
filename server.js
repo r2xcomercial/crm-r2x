@@ -797,8 +797,10 @@ function dwgParaDxf(dwgBuffer, originalName) {
   const tmpOut = fs.mkdtempSync(path.join(os.tmpdir(), 'dwg-out-'));
   const inFile = path.join(tmpIn, originalName);
   fs.writeFileSync(inFile, dwgBuffer);
+  // QT_QPA_PLATFORM=offscreen: executa sem display (necessário em servidores Linux)
+  const odaEnv = { ...process.env, QT_QPA_PLATFORM: 'offscreen', DISPLAY: '' };
   try {
-    execFileSync(oda, [tmpIn, tmpOut, 'ACAD2018', 'DXF', '0', '1'], { timeout: 60000 });
+    execFileSync(oda, [tmpIn, tmpOut, 'ACAD2018', 'DXF', '0', '1'], { timeout: 90000, env: odaEnv });
     const outFile = path.join(tmpOut, originalName.replace(/\.dwg$/i, '.dxf'));
     return fs.readFileSync(outFile, 'utf8');
   } finally {

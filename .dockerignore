@@ -1,0 +1,9 @@
+node_modules
+crm.db
+crm.db-shm
+crm.db-wal
+.env
+.env.*
+*.log
+.git
+.gitignore
