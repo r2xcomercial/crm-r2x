@@ -158,10 +158,15 @@ db.exec(`
     ano INTEGER NOT NULL,
     meta_qtd INTEGER DEFAULT 0,
     meta_vgv REAL DEFAULT 0,
-    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(corretor_id, COALESCE(empreendimento_id, 0), mes, ano)
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+// SQLite não aceita expressões em UNIQUE dentro de CREATE TABLE; usamos index separado
+try {
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_metas_unique
+    ON metas_corretores(corretor_id, COALESCE(empreendimento_id, 0), mes, ano);`);
+} catch (_) { /* índice já existe */ }
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS followups (
