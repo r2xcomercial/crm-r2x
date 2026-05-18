@@ -1068,10 +1068,10 @@ function openEmpModal(e = {}) {
       <div class="form-group span2" style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
         <label>🗺️ Planta do Empreendimento (Espelho Interativo)</label>
         <div style="font-size:12px;color:var(--text2);margin:6px 0;line-height:1.6">
-          Importe o arquivo <strong>.dxf</strong> (AutoCAD) ou <strong>.svg</strong>. O sistema lerá os polígonos dos lotes automaticamente e criará o espelho visual clicável.
+          Importe o arquivo <strong>.dwg</strong> ou <strong>.dxf</strong> (AutoCAD) ou <strong>.svg</strong>. O sistema converte automaticamente e cria o espelho visual clicável.
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input type="file" id="f-dxf" accept=".dxf,.svg" style="flex:1;font-size:13px">
+          <input type="file" id="f-dxf" accept=".dwg,.dxf,.svg" style="flex:1;font-size:13px">
           <button type="button" onclick="uploadMapa(${e.id})" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap">🗺️ Importar Planta</button>
           ${e._temMapa ? `<button type="button" onclick="removerMapa(${e.id})" style="padding:6px 10px;background:var(--danger);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">🗑️ Remover</button>` : ''}
         </div>
@@ -1969,8 +1969,9 @@ async function updateUnidadeStatus(unidadeId, status, empId) {
 async function uploadMapa(empId) {
   const input = document.getElementById('f-dxf');
   const status = document.getElementById('mapa-status');
-  if (!input?.files?.length) { if(status) status.textContent = '⚠️ Selecione um arquivo .dxf ou .svg'; return; }
-  if(status) { status.style.color='var(--accent)'; status.textContent='⏳ Processando planta...'; }
+  if (!input?.files?.length) { if(status) status.textContent = '⚠️ Selecione um arquivo .dwg, .dxf ou .svg'; return; }
+  const isDwg = input.files[0].name.toLowerCase().endsWith('.dwg');
+  if(status) { status.style.color='var(--accent)'; status.textContent= isDwg ? '⏳ Convertendo DWG → DXF e processando planta (pode levar ~30s)...' : '⏳ Processando planta...'; }
   const fd = new FormData();
   fd.append('arquivo', input.files[0]);
   try {
