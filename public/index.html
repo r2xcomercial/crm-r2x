@@ -1166,7 +1166,11 @@ async function renderCorretores(filter = '', cidadeFilter = '', sortByVendas = f
               <td style="text-align:center"><span class="badge badge-blue">${c.total_vendas}</span></td>
               <td style="color:var(--success)">${fmt(c.vgv_vendido)}</td>
               <td><span class="badge ${c.ativo?'badge-green':'badge-red'}">${c.ativo?'Ativo':'Inativo'}</span></td>
-              <td><button class="btn-icon btn-edit" onclick="editCorretor(${c.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteCorretor(${c.id})">🗑️</button></td>
+              <td style="white-space:nowrap">
+                <button class="btn-icon" title="Relatório do corretor" onclick="gerarRelatorioCorretor(${c.id})" style="color:var(--accent)">📄</button>
+                <button class="btn-icon btn-edit" onclick="editCorretor(${c.id})">✏️</button>
+                <button class="btn-icon btn-delete" onclick="deleteCorretor(${c.id})">🗑️</button>
+              </td>
             </tr>
           `).join('') : `<tr class="empty-row"><td colspan="${sortByVendas?10:9}">Nenhum corretor cadastrado</td></tr>`}
         </tbody>
@@ -2061,6 +2065,268 @@ async function gerarRelatorio(empId) {
   <div class="footer">
     <span>R2X Inteligência Comercial · comercial@r2xlancamentos.com.br</span>
     <span>Gerado em ${now} via CRM R2X</span>
+  </div>
+  ${'<sc'+'ript>window.onload=()=>window.print()<'+'/script>'}
+  </body></html>`;
+
+  const w = window.open('','_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
+// ─── RELATÓRIO POR CORRETOR ───────────────────────────────────────────────────
+
+async function gerarRelatorioCorretor(corretorId) {
+  const c = (currentData.corretores||[]).find(x => x.id === corretorId);
+  if (!c) return toast('Corretor não encontrado', 'error');
+  toast('Gerando relatório... ⏳');
+
+  const now = new Date();
+  const mes = now.getMonth() + 1;
+  const ano = now.getFullYear();
+
+  const [vr, lr, mr] = await Promise.all([
+    get('/api/vendas'),
+    get('/api/leads'),
+    get(`/api/metas?mes=${mes}&ano=${ano}`)
+  ]);
+
+  const todasVendas = vr.data || [];
+  const todosLeads  = lr.data || [];
+
+  // Filtra pelo corretor
+  const vendas = todasVendas.filter(v => v.corretor_id === corretorId && v.status === 'ativo');
+  const leads  = todosLeads.filter(l => l.corretor_id === corretorId);
+  const metas  = (mr.data || []).filter(m => m.corretor_id === corretorId);
+
+  // KPIs gerais
+  const vgvTotal      = vendas.reduce((s,v) => s + v.valor, 0);
+  const comPendente   = vendas.filter(v => v.comissao_corretor_status !== 'pago').reduce((s,v) => s + (v.comissao_corretor_valor||0), 0);
+  const comPago       = vendas.filter(v => v.comissao_corretor_status === 'pago').reduce((s,v) => s + (v.comissao_corretor_valor||0), 0);
+  const leadsAtivos   = leads.filter(l => !['vendido','perdido'].includes(l.status)).length;
+  const leadsConv     = leads.filter(l => l.status === 'vendido').length;
+  const taxaConv      = leads.length ? ((leadsConv / leads.length) * 100).toFixed(1) : '0.0';
+
+  // Funil de leads
+  const statusOrder = ['novo','qualificado','visitou','proposta','vendido','perdido'];
+  const statusLabel = { novo:'Novo', qualificado:'Qualificado', visitou:'Visitou', proposta:'Proposta', vendido:'Vendido', perdido:'Perdido' };
+  const funil = statusOrder.map(s => ({ status: s, n: leads.filter(l => l.status === s).length }));
+
+  // Evolução mensal — últimos 6 meses
+  const meses = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+    const key   = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const label = d.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'});
+    const mv    = vendas.filter(v => v.data_venda?.startsWith(key));
+    meses.push({ label, qtd: mv.length, vgv: mv.reduce((s,v)=>s+v.valor,0) });
+  }
+
+  // Por empreendimento
+  const byEmp = {};
+  vendas.forEach(v => {
+    const k = v.empreendimento_nome || 'Sem empreendimento';
+    if (!byEmp[k]) byEmp[k] = { nome:k, vendas:0, vgv:0 };
+    byEmp[k].vendas++; byEmp[k].vgv += v.valor;
+  });
+  const empRanking = Object.values(byEmp).sort((a,b) => b.vgv - a.vgv);
+
+  const dataEmissao = now.toLocaleDateString('pt-BR');
+  const mesNome     = now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+
+  // Meta do mês
+  const metaMes = metas[0] || null;
+  const metaQtdPct  = metaMes?.meta_qtd  > 0 ? Math.min(100,Math.round((metaMes.real_qtd/metaMes.meta_qtd)*100))  : null;
+  const metaVgvPct  = metaMes?.meta_vgv  > 0 ? Math.min(100,Math.round((metaMes.real_vgv/metaMes.meta_vgv)*100)) : null;
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+  <title>Relatório Corretor — ${c.nome}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;color:#1a1a2e;font-size:13px;padding:32px 40px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0D1B2E;padding-bottom:16px;margin-bottom:28px}
+    .logo{font-size:26px;font-weight:900;letter-spacing:-1px;color:#0D1B2E}.logo span{color:#00C4B4}
+    .logo small{display:block;font-size:11px;font-weight:400;color:#666;margin-top:2px}
+    .report-info{text-align:right;font-size:12px;color:#555}
+    .report-info strong{display:block;font-size:18px;color:#0D1B2E;margin-bottom:4px}
+    .perfil{display:flex;gap:24px;align-items:flex-start;background:#f5f7fa;border-radius:10px;padding:20px 24px;margin-bottom:28px;border:1px solid #e0e4ea}
+    .perfil-avatar{width:64px;height:64px;border-radius:50%;background:#0D1B2E;color:#00C4B4;font-size:28px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .perfil-info{flex:1}
+    .perfil-info h2{font-size:20px;font-weight:900;color:#0D1B2E;margin-bottom:6px}
+    .perfil-info .meta{font-size:12px;color:#555;display:flex;flex-wrap:wrap;gap:12px}
+    .perfil-info .meta span{display:flex;align-items:center;gap:4px}
+    .badge-ativo{background:#e6f9ee;color:#1a8a4a;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700}
+    .badge-inativo{background:#fdecea;color:#b91c1c;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700}
+    h2.section{font-size:14px;font-weight:700;color:#0D1B2E;margin:24px 0 12px;border-left:4px solid #00C4B4;padding-left:10px}
+    .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+    .kpi{background:#f5f7fa;border-radius:8px;padding:14px 16px;border:1px solid #e0e4ea}
+    .kpi label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#666;display:block;margin-bottom:4px}
+    .kpi strong{font-size:18px;font-weight:900;color:#0D1B2E}
+    .kpi small{font-size:11px;color:#888;display:block;margin-top:2px}
+    table{width:100%;border-collapse:collapse;margin-bottom:20px}
+    th{background:#0D1B2E;color:#fff;padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+    td{padding:8px 12px;border-bottom:1px solid #eee;font-size:12px}
+    tr:nth-child(even) td{background:#fafbfc}
+    .bar-wrap{background:#eee;border-radius:4px;height:8px;display:inline-block;width:80px;vertical-align:middle;margin-right:6px}
+    .bar-fill{height:100%;border-radius:4px;background:#00C4B4}
+    .funil-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #eee}
+    .funil-label{min-width:90px;font-size:12px;color:#555}
+    .funil-n{min-width:28px;text-align:right;font-weight:700;color:#0D1B2E}
+    .meta-box{background:#f5f7fa;border-radius:8px;padding:16px;border:1px solid #e0e4ea;margin-bottom:20px}
+    .meta-box h3{font-size:13px;font-weight:700;color:#0D1B2E;margin-bottom:12px}
+    .meta-item{display:flex;align-items:center;gap:12px;margin-bottom:8px;font-size:12px}
+    .meta-item label{min-width:110px;color:#666}
+    .meta-item .val{font-weight:700;min-width:80px}
+    .pct-bar{flex:1;background:#eee;border-radius:4px;height:10px;overflow:hidden}
+    .pct-fill{height:100%;border-radius:4px}
+    .pct-label{min-width:40px;text-align:right;font-weight:700}
+    .g{color:#1a8a4a}.y{color:#b07d00}.r{color:#b91c1c}
+    .footer{margin-top:40px;border-top:1px solid #ccc;padding-top:12px;display:flex;justify-content:space-between;font-size:11px;color:#888}
+    @media print{body{padding:16px}h2.section{break-before:auto}}
+  </style></head><body>
+
+  <div class="header">
+    <div class="logo">R<span>2</span>X<small>Inteligência Comercial em Lançamentos</small></div>
+    <div class="report-info"><strong>Relatório de Corretor</strong>Emitido em ${dataEmissao}</div>
+  </div>
+
+  <!-- PERFIL -->
+  <div class="perfil">
+    <div class="perfil-avatar">${c.nome.charAt(0).toUpperCase()}</div>
+    <div class="perfil-info">
+      <h2>${c.nome} <span class="${c.ativo?'badge-ativo':'badge-inativo'}">${c.ativo?'Ativo':'Inativo'}</span></h2>
+      <div class="meta">
+        ${c.creci    ? `<span>📋 CRECI: <strong>${c.creci}</strong></span>` : ''}
+        ${c.cpf      ? `<span>🪪 CPF: <strong>${c.cpf}</strong></span>` : ''}
+        ${c.imobiliaria ? `<span>🏢 ${c.imobiliaria}</span>` : ''}
+        ${c.cidade   ? `<span>📍 ${c.cidade}${c.estado?'/'+c.estado:''}</span>` : ''}
+        ${c.telefone ? `<span>📱 ${fmtPhone(c.telefone)}</span>` : ''}
+        ${c.email    ? `<span>✉️ ${c.email}</span>` : ''}
+        ${c.aniversario ? `<span>🎂 ${fmtDate(c.aniversario)}</span>` : ''}
+      </div>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <h2 class="section">📊 Desempenho Geral</h2>
+  <div class="kpi-row">
+    <div class="kpi"><label>Total de Vendas</label><strong>${vendas.length}</strong><small>negócios ativos</small></div>
+    <div class="kpi"><label>VGV Gerado</label><strong style="font-size:14px">${fmt(vgvTotal)}</strong><small>em vendas ativas</small></div>
+    <div class="kpi"><label>Leads Recebidos</label><strong>${leads.length}</strong><small>${leadsAtivos} em andamento</small></div>
+    <div class="kpi"><label>Taxa de Conversão</label><strong class="${parseFloat(taxaConv)>=30?'g':parseFloat(taxaConv)>=15?'y':'r'}">${taxaConv}%</strong><small>${leadsConv} de ${leads.length} leads</small></div>
+  </div>
+  <div class="kpi-row">
+    <div class="kpi"><label>Comissão Pendente</label><strong class="y" style="font-size:14px">${fmt(comPendente)}</strong><small>a receber</small></div>
+    <div class="kpi"><label>Comissão Paga</label><strong class="g" style="font-size:14px">${fmt(comPago)}</strong><small>já quitada</small></div>
+    <div class="kpi"><label>Comissão Total</label><strong style="font-size:14px">${fmt(comPendente+comPago)}</strong><small>total gerado</small></div>
+    <div class="kpi"><label>Ticket Médio</label><strong style="font-size:14px">${vendas.length ? fmt(Math.round(vgvTotal/vendas.length)) : '—'}</strong><small>por venda</small></div>
+  </div>
+
+  ${metaMes ? `
+  <!-- META DO MÊS -->
+  <h2 class="section">🎯 Meta — ${mesNome}</h2>
+  <div class="meta-box">
+    <h3>Empreendimento: ${metaMes.empreendimento_nome||'Geral'}</h3>
+    <div class="meta-item">
+      <label>Vendas (qtd)</label>
+      <div class="val">${metaMes.real_qtd} / ${metaMes.meta_qtd}</div>
+      <div class="pct-bar"><div class="pct-fill" style="width:${metaQtdPct}%;background:${metaQtdPct>=100?'#22C55E':metaQtdPct>=50?'#F59E0B':'#EF4444'}"></div></div>
+      <div class="pct-label ${metaQtdPct>=100?'g':metaQtdPct>=50?'y':'r'}">${metaQtdPct}%</div>
+    </div>
+    <div class="meta-item">
+      <label>VGV</label>
+      <div class="val">${fmt(metaMes.real_vgv)} / ${fmt(metaMes.meta_vgv)}</div>
+      <div class="pct-bar"><div class="pct-fill" style="width:${metaVgvPct}%;background:${metaVgvPct>=100?'#22C55E':metaVgvPct>=50?'#F59E0B':'#EF4444'}"></div></div>
+      <div class="pct-label ${metaVgvPct>=100?'g':metaVgvPct>=50?'y':'r'}">${metaVgvPct}%</div>
+    </div>
+  </div>` : ''}
+
+  <!-- EVOLUÇÃO MENSAL -->
+  <h2 class="section">📅 Evolução Mensal — Últimos 6 meses</h2>
+  <table>
+    <thead><tr><th>Mês</th><th style="text-align:center">Vendas (qtd)</th><th>VGV</th><th>Evolução</th></tr></thead>
+    <tbody>
+      ${meses.map(m => {
+        const maxVgv = Math.max(...meses.map(x=>x.vgv),1);
+        const pct = Math.round((m.vgv/maxVgv)*100);
+        return `<tr>
+          <td style="font-weight:600">${m.label}</td>
+          <td style="text-align:center">${m.qtd||'—'}</td>
+          <td style="color:${m.vgv>0?'#1a8a4a':'#888'}">${m.vgv>0?fmt(m.vgv):'—'}</td>
+          <td><div style="display:flex;align-items:center;gap:6px">
+            <div class="bar-wrap" style="width:100px"><div class="bar-fill" style="width:${pct}%"></div></div>
+          </div></td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>
+
+  <!-- POR EMPREENDIMENTO -->
+  ${empRanking.length ? `
+  <h2 class="section">🏗️ Vendas por Empreendimento</h2>
+  <table>
+    <thead><tr><th>Empreendimento</th><th style="text-align:center">Vendas</th><th>VGV</th></tr></thead>
+    <tbody>
+      ${empRanking.map(e => `<tr>
+        <td><strong>${e.nome}</strong></td>
+        <td style="text-align:center">${e.vendas}</td>
+        <td style="color:#1a8a4a;font-weight:600">${fmt(e.vgv)}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
+  <!-- FUNIL DE LEADS -->
+  ${leads.length ? `
+  <h2 class="section">🎯 Funil de Leads</h2>
+  <div style="max-width:400px;margin-bottom:20px">
+    ${funil.filter(f=>f.n>0).map(f => {
+      const pct = Math.round((f.n/leads.length)*100);
+      return `<div class="funil-row">
+        <div class="funil-label">${statusLabel[f.status]}</div>
+        <div class="bar-wrap" style="width:160px"><div class="bar-fill" style="width:${pct}%;background:${f.status==='vendido'?'#22C55E':f.status==='perdido'?'#EF4444':'#00C4B4'}"></div></div>
+        <div class="funil-n">${f.n}</div>
+        <div style="font-size:11px;color:#888">(${pct}%)</div>
+      </div>`;
+    }).join('')}
+  </div>` : ''}
+
+  <!-- LISTA DE VENDAS -->
+  <h2 class="section">🏆 Lista de Vendas</h2>
+  <table>
+    <thead><tr><th>Data</th><th>Lead</th><th>Empreendimento</th><th>Imóvel</th><th>Valor</th><th>Comissão</th><th>Status Com.</th></tr></thead>
+    <tbody>
+      ${vendas.length ? vendas.map(v => `<tr>
+        <td>${fmtDate(v.data_venda)}</td>
+        <td>${v.lead_nome||'—'}</td>
+        <td>${v.empreendimento_nome||'—'}</td>
+        <td>${v.imovel||'—'}</td>
+        <td style="font-weight:600;color:#1a8a4a">${fmt(v.valor)}</td>
+        <td>${v.comissao_corretor_valor?fmt(v.comissao_corretor_valor)+'<small style="color:#888"> ('+v.comissao_corretor_pct+'%)</small>':'—'}</td>
+        <td>${v.comissao_corretor_status==='pago'?'<span style="color:#1a8a4a;font-weight:700">✅ Pago</span>':v.comissao_corretor_valor?'<span style="color:#b07d00;font-weight:700">⏳ Pendente</span>':'—'}</td>
+      </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:#888;padding:16px">Nenhuma venda registrada</td></tr>'}
+    </tbody>
+  </table>
+
+  <!-- LEADS ATIVOS -->
+  ${leadsAtivos > 0 ? `
+  <h2 class="section">🎯 Leads em Andamento (${leadsAtivos})</h2>
+  <table>
+    <thead><tr><th>Nome</th><th>Telefone</th><th>Cidade</th><th>Interesse</th><th>Faixa</th><th>Status</th></tr></thead>
+    <tbody>
+      ${leads.filter(l=>!['vendido','perdido'].includes(l.status)).map(l => `<tr>
+        <td><strong>${l.nome||'—'}</strong></td>
+        <td>${fmtPhone(l.telefone)}</td>
+        <td>${l.cidade||'—'}</td>
+        <td>${l.empreendimento_nome||l.empreendimento_interesse||'—'}</td>
+        <td>${l.faixa_investimento||'—'}</td>
+        <td>${l.status}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>` : ''}
+
+  <div class="footer">
+    <span>R2X Inteligência Comercial · comercial@r2xlancamentos.com.br</span>
+    <span>Gerado em ${dataEmissao} via CRM R2X</span>
   </div>
   ${'<sc'+'ript>window.onload=()=>window.print()<'+'/script>'}
   </body></html>`;
