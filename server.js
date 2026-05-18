@@ -815,385 +815,50 @@ app.get("/api/corretores/conversao", (req, res) => {
   ok(res, result);
 });
 
-// ─── MAPA / ESPELHO SVG ───────────────────────────────────────────────────────
+// ─── MAPA DE VENDAS (IMAGEM JPEG/PNG + POSIÇÕES MANUAIS) ─────────────────────
 
-const DxfParser = require('dxf-parser');
-const { execFileSync } = require('child_process');
-const os = require('os');
+// Migration: posições manuais dos marcadores no mapa
+try { db.exec('ALTER TABLE unidades ADD COLUMN mapa_x REAL'); } catch(_) {}
+try { db.exec('ALTER TABLE unidades ADD COLUMN mapa_y REAL'); } catch(_) {}
 
-// Caminhos possíveis do pdftocairo (poppler-utils) — Mac + Linux
-const PDFTOCAIRO_PATHS = [
-  '/usr/bin/pdftocairo',
-  '/usr/local/bin/pdftocairo',
-  '/opt/homebrew/bin/pdftocairo',
-];
-function findPdftocairo() {
-  return PDFTOCAIRO_PATHS.find(p => { try { fs.accessSync(p, fs.constants.X_OK); return true; } catch { return false; } });
-}
-
-/** Script Python (pymupdf) que extrai palavras com posição de um PDF */
-const PY_EXTRACT_WORDS = `import fitz,json,sys
-doc=fitz.open(sys.argv[1])
-page=doc[0]
-rect=page.rect
-words=page.get_text('words')
-print(json.dumps({'w':rect.width,'h':rect.height,'words':[{'x':(b[0]+b[2])/2,'y':(b[1]+b[3])/2,'t':b[4]} for b in words]}))
-`;
-
-/**
- * Converte PDF → SVG interativo com marcadores de lote.
- * Visual: pdftocairo (preserva geometria vetorial do PDF).
- * Texto:  pymupdf (extrai posições exatas dos números de lote).
- */
-function pdfParaSvg(pdfBuffer, originalName, units = []) {
-  const pdftocairo = findPdftocairo();
-  if (!pdftocairo) throw new Error('pdftocairo não instalado. Instale poppler-utils.');
-
-  const tmpIn  = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-in-'));
-  const tmpOut = fs.mkdtempSync(path.join(os.tmpdir(), 'pdf-out-'));
-  const safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const inFile  = path.join(tmpIn, safeName);
-  const outBase = path.join(tmpOut, 'planta');
-
-  fs.writeFileSync(inFile, pdfBuffer);
-  try {
-    // 1) SVG visual via pdftocairo (1ª página)
-    execFileSync(pdftocairo, ['-svg', '-f', '1', '-l', '1', inFile, outBase],
-      { timeout: 60000, env: { ...process.env, DISPLAY: '' } });
-    // pdftocairo: single page não adiciona extensão no Mac, adiciona no Linux
-    const svgFile = fs.existsSync(outBase + '.svg') ? outBase + '.svg' : outBase;
-    const rawSvg  = fs.readFileSync(svgFile, 'utf8');
-
-    // 2) Extrai palavras com posição via pymupdf
-    let words = [], pdfW = 0, pdfH = 0;
-    try {
-      const pyOut = execFileSync('python3', ['-c', PY_EXTRACT_WORDS, inFile],
-        { timeout: 30000, encoding: 'utf8' });
-      const p = JSON.parse(pyOut.trim());
-      words = p.words || [];
-      pdfW  = p.w;
-      pdfH  = p.h;
-    } catch (e) {
-      console.warn('[PDF] pymupdf indisponível — sem marcadores de lote:', e.message);
-    }
-
-    // 3) Sobrepõe marcadores no SVG
-    return sobreporMarcadoresPdf(rawSvg, words, pdfW, pdfH, units);
-  } finally {
-    try { fs.rmSync(tmpIn,  { recursive: true }); } catch {}
-    try { fs.rmSync(tmpOut, { recursive: true }); } catch {}
-  }
-}
-
-/**
- * Injeta marcadores interativos coloridos no SVG gerado pelo pdftocairo.
- * words = [{x,y,t}] em coordenadas de tela (y=0 no topo), coincide com SVG.
- */
-function sobreporMarcadoresPdf(rawSvg, words, pdfW, pdfH, units = []) {
-  const vbMatch = rawSvg.match(/viewBox=["']([^"']+)["']/);
-  const vb = vbMatch ? vbMatch[1].trim().split(/\s+/).map(Number) : [0, 0, pdfW || 800, pdfH || 600];
-  const svgW = vb[2], svgH = vb[3];
-
-  // Filtra palavras para números de lote: 1–4 dígitos com letra opcional
-  const LOT_RE = /^\d{1,4}[A-Za-z]?$/;
-  const lotes  = words.filter(w => LOT_RE.test((w.t || '').trim()));
-
-  const unitMap = {};
-  units.forEach(u => {
-    unitMap[String(u.lote).trim()] = u;
-    if (u.quadra) unitMap[`${u.quadra}-${u.lote}`.trim()] = u;
-  });
-
-  const R = Math.max(8, Math.min(26, svgW / Math.sqrt(Math.max(lotes.length, 1) * 28)));
-
-  const marcadores = lotes.map((w, i) => {
-    const label = (w.t || '').trim();
-    const unit  = unitMap[label] || null;
-    const cls   = `lot ${unit?.status || 'sem-unidade'}`;
-    const dUID  = unit ? `data-uid="${unit.id}" data-status="${unit.status}"` : '';
-    return `<g id="pm${i}" class="${cls}" ${dUID} data-lote="${label}" transform="translate(${(+w.x).toFixed(1)},${(+w.y).toFixed(1)})">
-  <circle r="${R.toFixed(1)}" class="lot-marker"/>
-  <text class="lot-txt" text-anchor="middle" dominant-baseline="middle" font-size="${(R*.72).toFixed(1)}">${label}</text>
-</g>`;
-  }).join('\n');
-
-  const estilos = `<defs id="crm-styles"><style>
-  .lot{cursor:pointer;transition:opacity .12s}.lot.sem-unidade{cursor:default}
-  .lot:hover .lot-marker{opacity:.75;stroke:#00C4B4 !important;stroke-width:2.5}
-  .lot-marker{transition:fill .12s,stroke .12s;stroke-width:1.5}
-  .lot.disponivel .lot-marker{fill:rgba(34,197,94,.75);stroke:#16a34a}
-  .lot.reservado  .lot-marker{fill:rgba(245,158,11,.75);stroke:#d97706}
-  .lot.vendido    .lot-marker{fill:rgba(239,68,68,.7);stroke:#dc2626}
-  .lot.sem-unidade .lot-marker{fill:rgba(148,163,184,.45);stroke:rgba(148,163,184,.7)}
-  .lot-txt{font-family:Arial,sans-serif;font-weight:700;fill:#fff;pointer-events:none}
-  .lot.sem-unidade .lot-txt{fill:#94A3B8}
-</style></defs>`;
-
-  return rawSvg
-    .replace(/(<svg\b[^>]*>)/, `$1${estilos}`)
-    .replace('</svg>', `${marcadores}\n</svg>`)
-    .replace('<svg', `<svg data-lotes="${lotes.length}"`);
-}
-
-// Caminhos possíveis do ODA File Converter (local Mac + Linux Railway)
-const ODA_PATHS = [
-  path.join(os.homedir(), 'Applications/ODAFileConverter.app/Contents/MacOS/ODAFileConverter'),
-  '/Applications/ODAFileConverter.app/Contents/MacOS/ODAFileConverter',
-  '/usr/bin/ODAFileConverter',
-  '/usr/local/bin/ODAFileConverter',
-];
-function findODA() { return ODA_PATHS.find(p => { try { require('fs').accessSync(p, require('fs').constants.X_OK); return true; } catch { return false; } }); }
-
-/** Converte DWG → DXF usando ODA File Converter, retorna texto DXF */
-function dwgParaDxf(dwgBuffer, originalName) {
-  const oda = findODA();
-  if (!oda) throw new Error('ODA File Converter não instalado. Por favor converta o arquivo para DXF antes de importar.');
-  const tmpIn  = fs.mkdtempSync(path.join(os.tmpdir(), 'dwg-in-'));
-  const tmpOut = fs.mkdtempSync(path.join(os.tmpdir(), 'dwg-out-'));
-  const inFile = path.join(tmpIn, originalName);
-  fs.writeFileSync(inFile, dwgBuffer);
-  // QT_QPA_PLATFORM=offscreen: executa sem display (necessário em servidores Linux)
-  const odaEnv = { ...process.env, QT_QPA_PLATFORM: 'offscreen', DISPLAY: '' };
-  try {
-    execFileSync(oda, [tmpIn, tmpOut, 'ACAD2018', 'DXF', '0', '1'], { timeout: 90000, env: odaEnv });
-    const outFile = path.join(tmpOut, originalName.replace(/\.dwg$/i, '.dxf'));
-    return fs.readFileSync(outFile, 'utf8');
-  } finally {
-    try { fs.rmSync(tmpIn,  { recursive: true }); } catch {}
-    try { fs.rmSync(tmpOut, { recursive: true }); } catch {}
-  }
-}
-
-/** Ponto dentro de polígono (ray casting) */
-function pointInPolygon(px, py, verts) {
-  let inside = false;
-  for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
-    const xi = verts[i].x, yi = verts[i].y;
-    const xj = verts[j].x, yj = verts[j].y;
-    if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi))
-      inside = !inside;
-  }
-  return inside;
-}
-
-/** Centróide simples de polígono */
-function centroid(verts) {
-  const n = verts.length;
-  return { x: verts.reduce((s,v)=>s+v.x,0)/n, y: verts.reduce((s,v)=>s+v.y,0)/n };
-}
-
-/** Keywords para auto-detectar layer de lotes e de textos */
-const LOT_KW  = /lote|lot[^a-z]|parcel|C-PROP-LOTS|quadra.*lote/i;
-const TXT_KW  = /numero|lote.*txt|txt.*lote|C-PROP-TEXT|LOTES E QUADRA|LOTES_TXT/i;
-
-/** Limpa texto MTEXT (remove formatação RTF inline) */
-function limparMtext(raw = '') {
-  return raw.replace(/\\[a-zA-Z][^;]*;/g,'').replace(/[{}|\\]/g,'').trim();
-}
-
-/** SVG modo 1: polígonos fechados LWPOLYLINE/POLYLINE */
-function renderPoligonos(polys, texts, units) {
-  let x0=Infinity, y0=Infinity, x1=-Infinity, y1=-Infinity;
-  polys.forEach(p => (p.vertices||[]).forEach(v => {
-    x0=Math.min(x0,v.x); y0=Math.min(y0,v.y); x1=Math.max(x1,v.x); y1=Math.max(y1,v.y);
-  }));
-  const W=1400, H=900, PAD=40;
-  const scale = Math.min((W-PAD*2)/(x1-x0), (H-PAD*2)/(y1-y0));
-  const tx = x => ((x-x0)*scale+PAD).toFixed(1);
-  const ty = y => (H-((y-y0)*scale+PAD)).toFixed(1);
-
-  // Associa texto → polígono por ponto-dentro-do-polígono
-  const rotulos = {};
-  texts.forEach(t => {
-    const px = t.startPoint?.x ?? t.position?.x ?? 0;
-    const py = t.startPoint?.y ?? t.position?.y ?? 0;
-    const txt = limparMtext(t.text || t.string || t.contents || '');
-    if (!txt) return;
-    polys.forEach((p, i) => {
-      if (!rotulos[i] && pointInPolygon(px, py, p.vertices||[])) rotulos[i] = txt;
-    });
-  });
-
-  const unitMap = {};
-  units.forEach(u => {
-    unitMap[String(u.lote).trim()] = u;
-    if (u.quadra) unitMap[`${u.quadra}-${u.lote}`.trim()] = u;
-  });
-
-  const polEls = polys.map((p, i) => {
-    const pts = (p.vertices||[]).map(v => `${tx(v.x)},${ty(v.y)}`).join(' ');
-    const label = rotulos[i] || '';
-    const unit  = unitMap[label] || null;
-    const cls   = `lot ${unit?.status || 'sem-unidade'}`;
-    return `<polygon points="${pts}" id="p${i}" class="${cls}" ${unit?`data-uid="${unit.id}" data-status="${unit.status}"`:''}  data-lote="${label}"/>`;
-  });
-  const txtEls = polys.map((p, i) => {
-    const label = rotulos[i]; if (!label) return '';
-    const c = centroid(p.vertices||[]);
-    return `<text x="${tx(c.x)}" y="${ty(c.y)}" class="lot-txt" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
-  });
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}">
-<defs><style>
-  .lot{stroke:#1E3352;stroke-width:.8;cursor:pointer;transition:fill .12s,opacity .12s}
-  .lot:hover{opacity:.75;stroke:#00C4B4;stroke-width:1.5}
-  .lot.disponivel{fill:rgba(34,197,94,.25)} .lot.reservado{fill:rgba(245,158,11,.35)}
-  .lot.vendido{fill:rgba(239,68,68,.3)} .lot.sem-unidade{fill:rgba(148,163,184,.08);cursor:default}
-  .lot-txt{font-size:8px;fill:#94A3B8;pointer-events:none;font-family:Arial,sans-serif;font-weight:600}
-</style></defs>
-${polEls.join('\n')}
-${txtEls.join('\n')}
-</svg>`;
-}
-
-/** SVG modo 2: linhas de divisa + marcadores nos rótulos (arquivos brasileiros com LINE) */
-function renderLinhas(lines, texts, units) {
-  // Bounds via vértices das linhas
-  const allV = lines.flatMap(l => l.vertices || []);
-  let x0=Infinity, y0=Infinity, x1=-Infinity, y1=-Infinity;
-  allV.forEach(v => { x0=Math.min(x0,v.x); y0=Math.min(y0,v.y); x1=Math.max(x1,v.x); y1=Math.max(y1,v.y); });
-  const W=1400, H=900, PAD=50;
-  const scale = Math.min((W-PAD*2)/(x1-x0), (H-PAD*2)/(y1-y0));
-  const tx = x => ((x-x0)*scale+PAD).toFixed(1);
-  const ty = y => (H-((y-y0)*scale+PAD)).toFixed(1);
-
-  const unitMap = {};
-  units.forEach(u => {
-    unitMap[String(u.lote).trim()] = u;
-    if (u.quadra) unitMap[`${u.quadra}-${u.lote}`.trim()] = u;
-  });
-
-  // Linhas de divisa
-  const lineEls = lines.map(l => {
-    const v = l.vertices || []; if (v.length < 2) return '';
-    return `<line x1="${tx(v[0].x)}" y1="${ty(v[0].y)}" x2="${tx(v[1].x)}" y2="${ty(v[1].y)}" class="lot-line"/>`;
-  }).join('\n');
-
-  // Marcadores clicáveis em cada rótulo de lote
-  const markerEls = texts.map((t, i) => {
-    const px = t.startPoint?.x ?? t.position?.x;
-    const py = t.startPoint?.y ?? t.position?.y;
-    const label = limparMtext(t.text || t.string || t.contents || '');
-    if (!label || !isFinite(px) || !isFinite(py)) return '';
-    const unit = unitMap[label] || null;
-    const cls  = `lot ${unit?.status || 'sem-unidade'}`;
-    const R = Math.max(8, Math.min(14, 120 / Math.sqrt(texts.length || 1)));
-    return `<g id="m${i}" class="${cls}" ${unit?`data-uid="${unit.id}" data-status="${unit.status}"`:''}  data-lote="${label}" transform="translate(${tx(px)},${ty(py)})">
-  <circle r="${R.toFixed(1)}" class="lot-marker"/>
-  <text class="lot-txt" text-anchor="middle" dominant-baseline="middle" font-size="${(R*0.7).toFixed(1)}">${label}</text>
-</g>`;
-  }).join('\n');
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}">
-<defs><style>
-  .lot-line{stroke:#475569;stroke-width:.6;fill:none}
-  .lot{cursor:pointer;transition:opacity .12s}
-  .lot:hover .lot-marker{opacity:.8;stroke:#00C4B4 !important;stroke-width:2}
-  .lot.disponivel .lot-marker{fill:rgba(34,197,94,.55);stroke:rgba(34,197,94,.9);stroke-width:1}
-  .lot.reservado  .lot-marker{fill:rgba(245,158,11,.55);stroke:rgba(245,158,11,.9);stroke-width:1}
-  .lot.vendido    .lot-marker{fill:rgba(239,68,68,.5);stroke:rgba(239,68,68,.8);stroke-width:1}
-  .lot.sem-unidade .lot-marker{fill:rgba(148,163,184,.25);stroke:rgba(148,163,184,.5);stroke-width:.5;cursor:default}
-  .lot-marker{transition:fill .12s,stroke .12s}
-  .lot-txt{fill:#1E293B;pointer-events:none;font-family:Arial,sans-serif;font-weight:700}
-  .lot.sem-unidade .lot-txt{fill:#64748B}
-</style></defs>
-<rect width="${W}" height="${H}" fill="#0F172A" rx="8"/>
-${lineEls}
-${markerEls}
-</svg>`;
-}
-
-/** Converte DXF (texto) → SVG — detecta automaticamente o tipo de geometria */
-function dxfParasvg(dxfText, units = []) {
-  const parser = new DxfParser();
-  const dxf = parser.parseSync(dxfText);
-
-  // Coleta todas as entidades (nível raiz + todos os blocos)
-  const allEnt = [...(dxf.entities || [])];
-  Object.values(dxf.blocks || {}).forEach(b => allEnt.push(...(b.entities || [])));
-
-  // 1) Polígonos fechados em layer de lote
-  const closedPolys = allEnt.filter(e =>
-    (e.type === 'LWPOLYLINE' || e.type === 'POLYLINE') &&
-    (e.shape || e.closed) && (e.vertices||[]).length >= 3 &&
-    LOT_KW.test(e.layer || '')
-  );
-
-  // 2) LINE em layer de lote
-  const lotLines = allEnt.filter(e => e.type === 'LINE' && LOT_KW.test(e.layer || ''));
-
-  // Textos de identificação — layer específico ou fallback geral
-  const lotTexts = allEnt.filter(e =>
-    (e.type === 'TEXT' || e.type === 'MTEXT') &&
-    (TXT_KW.test(e.layer || '') || LOT_KW.test(e.layer || ''))
-  );
-  const allTexts = lotTexts.length ? lotTexts :
-    allEnt.filter(e => e.type === 'TEXT' || e.type === 'MTEXT');
-
-  // Prefere LINE-based quando há muito mais linhas que polígonos fechados
-  // (polígonos encontrados são provavelmente quadras/blocos, não lotes individuais)
-  const useLines = lotLines.length > 5 &&
-    (closedPolys.length < 3 || lotLines.length > closedPolys.length * 4);
-
-  if (!useLines && closedPolys.length >= 3) {
-    return renderPoligonos(closedPolys, allTexts, units);
-  }
-  if (useLines) {
-    return renderLinhas(lotLines, allTexts, units);
-  }
-  // Fallback: qualquer LWPOLYLINE fechada (mínimo 3 vértices)
-  const anyPolys = allEnt.filter(e =>
-    (e.type === 'LWPOLYLINE' || e.type === 'POLYLINE') &&
-    (e.shape || e.closed) && (e.vertices||[]).length >= 3
-  );
-  if (anyPolys.length >= 3) return renderPoligonos(anyPolys, allTexts, units);
-
-  const topLayers = [...new Set(allEnt.map(e=>e.layer))].filter(Boolean).slice(0,8).join(', ');
-  throw new Error(`Nenhuma geometria de lote encontrada. Layers detectados: ${topLayers}. ` +
-    'Certifique-se que as polylines de lote estão fechadas ou que há LINE em layer "LOTES".');
-}
-
-// Upload DXF, DWG (ou SVG) e gera/atualiza o mapa do empreendimento
+// Upload JPEG/PNG do mapa de vendas — armazenado como data URL base64
 app.post('/api/empreendimentos/:id/mapa', upload.single('arquivo'), (req, res) => {
   const empId = parseInt(req.params.id);
   if (!req.file) return err(res, 'Arquivo não enviado');
-  const ext = path.extname(req.file.originalname).toLowerCase();
-  let svg;
-  try {
-    if (ext === '.dxf') {
-      const units = db.prepare('SELECT * FROM unidades WHERE empreendimento_id=?').all(empId);
-      svg = dxfParasvg(req.file.buffer.toString('utf8'), units);
-    } else if (ext === '.dwg') {
-      const dxfText = dwgParaDxf(req.file.buffer, req.file.originalname);
-      const units   = db.prepare('SELECT * FROM unidades WHERE empreendimento_id=?').all(empId);
-      svg = dxfParasvg(dxfText, units);
-    } else if (ext === '.pdf') {
-      const units = db.prepare('SELECT * FROM unidades WHERE empreendimento_id=?').all(empId);
-      svg = pdfParaSvg(req.file.buffer, req.file.originalname, units);
-    } else if (ext === '.svg') {
-      svg = req.file.buffer.toString('utf8');
-    } else {
-      return err(res, 'Formato não suportado. Envie .pdf, .dwg, .dxf ou .svg');
-    }
-    db.prepare('INSERT INTO mapas(empreendimento_id,svg_data) VALUES(?,?) ON CONFLICT(empreendimento_id) DO UPDATE SET svg_data=excluded.svg_data, criado_em=CURRENT_TIMESTAMP').run(empId, svg);
-    ok(res, { mensagem: 'Mapa importado com sucesso!' });
-  } catch(e) {
-    err(res, 'Erro ao processar arquivo: ' + e.message);
+  const mime = req.file.mimetype;
+  if (!['image/jpeg','image/png','image/jpg'].includes(mime)) {
+    return err(res, 'Formato não suportado. Envie apenas JPEG ou PNG.');
   }
+  const dataUrl = `data:${mime};base64,${req.file.buffer.toString('base64')}`;
+  db.prepare('INSERT INTO mapas(empreendimento_id,svg_data) VALUES(?,?) ON CONFLICT(empreendimento_id) DO UPDATE SET svg_data=excluded.svg_data, criado_em=CURRENT_TIMESTAMP').run(empId, dataUrl);
+  ok(res, { mensagem: 'Imagem do mapa salva com sucesso!' });
 });
 
-// Retorna SVG + status atual das unidades para o frontend colorir
+// Retorna imagem + unidades com posições para o frontend renderizar
 app.get('/api/empreendimentos/:id/mapa', (req, res) => {
   const empId = parseInt(req.params.id);
   const mapa  = db.prepare('SELECT svg_data FROM mapas WHERE empreendimento_id=?').get(empId);
   if (!mapa) return res.status(404).json({ ok: false, error: 'Nenhum mapa importado para este empreendimento' });
-  const units = db.prepare('SELECT id, quadra, lote, status, area_m2, preco FROM unidades WHERE empreendimento_id=?').all(empId);
-  ok(res, { svg: mapa.svg_data, units });
+  const units = db.prepare('SELECT id, quadra, lote, status, area_m2, preco, mapa_x, mapa_y FROM unidades WHERE empreendimento_id=?').all(empId);
+  ok(res, { imagem: mapa.svg_data, units });
 });
 
-// Remove mapa
+// Salva posições dos marcadores (batch) — [{id, x, y}]
+app.put('/api/empreendimentos/:id/unidades/posicoes', (req, res) => {
+  const posicoes = req.body.posicoes || [];
+  const update = db.prepare('UPDATE unidades SET mapa_x=?, mapa_y=? WHERE id=?');
+  const batch = db.transaction(() => {
+    for (const p of posicoes) update.run(p.x ?? null, p.y ?? null, p.id);
+  });
+  batch();
+  ok(res, { atualizadas: posicoes.length });
+});
+
+// Remove mapa e limpa posições
 app.delete('/api/empreendimentos/:id/mapa', (req, res) => {
-  db.prepare('DELETE FROM mapas WHERE empreendimento_id=?').run(parseInt(req.params.id));
+  const empId = parseInt(req.params.id);
+  db.prepare('DELETE FROM mapas WHERE empreendimento_id=?').run(empId);
+  db.prepare('UPDATE unidades SET mapa_x=NULL, mapa_y=NULL WHERE empreendimento_id=?').run(empId);
   ok(res, {});
 });
 

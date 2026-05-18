@@ -1377,16 +1377,16 @@ function openEmpModal(e = {}) {
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${e.observacoes||''}</textarea></div>
       ${e.id ? `
       <div class="form-group span2" style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
-        <label>🗺️ Planta do Empreendimento (Espelho Interativo)</label>
+        <label>🗺️ Planta do Empreendimento (Mapa de Vendas)</label>
         <div style="font-size:12px;color:var(--text2);margin:6px 0;line-height:1.6">
-          Importe a planta nos formatos <strong>.pdf</strong> (urbanístico), <strong>.dwg</strong> ou <strong>.dxf</strong> (AutoCAD). O sistema converte automaticamente e cria o espelho visual clicável.
+          Envie uma foto ou imagem da planta em <strong>JPEG ou PNG</strong>. Depois posicione cada lote/unidade manualmente clicando na imagem.
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input type="file" id="f-dxf" accept=".pdf,.dwg,.dxf,.svg" style="flex:1;font-size:13px">
-          <button type="button" onclick="uploadMapa(${e.id})" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap">🗺️ Importar Planta</button>
+          <input type="file" id="f-dxf" accept=".jpg,.jpeg,.png" style="flex:1;font-size:13px">
+          <button type="button" onclick="uploadMapa(${e.id})" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap">🗺️ Enviar Imagem</button>
           ${e._temMapa ? `<button type="button" onclick="removerMapa(${e.id})" style="padding:6px 10px;background:var(--danger);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">🗑️ Remover</button>` : ''}
         </div>
-        <div id="mapa-status" style="font-size:12px;margin-top:6px;color:var(--text2)">${e._temMapa ? '✅ Planta importada — clique em 🏠 para ver o espelho' : 'Nenhuma planta importada ainda'}</div>
+        <div id="mapa-status" style="font-size:12px;margin-top:6px;color:var(--text2)">${e._temMapa ? '✅ Planta importada — clique em 🏠 para ver e posicionar os lotes' : 'Nenhuma planta enviada ainda'}</div>
       </div>
       <div class="form-group span2" style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
         <label>📄 Contrato de Prestação de Serviços</label>
@@ -2319,30 +2319,25 @@ async function updateUnidadeStatus(unidadeId, status, empId) {
 async function uploadMapa(empId) {
   const input = document.getElementById('f-dxf');
   const status = document.getElementById('mapa-status');
-  if (!input?.files?.length) { if(status) status.textContent = '⚠️ Selecione um arquivo .pdf, .dwg, .dxf ou .svg'; return; }
-  const fname = input.files[0].name.toLowerCase();
-  const loadMsg = fname.endsWith('.dwg') ? '⏳ Convertendo DWG → DXF e processando planta (~30s)...'
-    : fname.endsWith('.pdf') ? '⏳ Convertendo PDF → SVG e detectando lotes (~20s)...'
-    : '⏳ Processando planta...';
-  if(status) { status.style.color='var(--accent)'; status.textContent = loadMsg; }
+  if (!input?.files?.length) { if(status) status.textContent = '⚠️ Selecione uma imagem JPEG ou PNG'; return; }
+  if(status) { status.style.color='var(--accent)'; status.textContent = '⏳ Enviando imagem...'; }
   const fd = new FormData();
   fd.append('arquivo', input.files[0]);
   try {
     const res = await fetch(`/api/empreendimentos/${empId}/mapa`, { method:'POST', headers:{'x-crm-token': localStorage.getItem('crm_token')||''}, body: fd });
     const data = await res.json();
     if (data.ok) {
-      if(status) { status.style.color='var(--success)'; status.textContent='✅ Planta importada! Feche este formulário e clique em 🏠 para ver o espelho.'; }
-      toast('Planta importada com sucesso! 🗺️');
-      // Atualiza flag local
+      if(status) { status.style.color='var(--success)'; status.textContent='✅ Imagem salva! Feche este formulário e clique em 🏠 para posicionar os lotes.'; }
+      toast('Imagem do mapa enviada! 🗺️');
       const emp = (currentData.emp||[]).find(e=>e.id===empId);
       if(emp) emp._temMapa = true;
     } else {
       if(status) { status.style.color='var(--danger)'; status.textContent='❌ Erro: ' + data.error; }
-      toast('Erro ao importar: ' + data.error, 'error');
+      toast('Erro: ' + data.error, 'error');
     }
   } catch(e) {
-    if(status) { status.style.color='var(--danger)'; status.textContent='❌ Falha na importação'; }
-    toast('Falha ao importar planta', 'error');
+    if(status) { status.style.color='var(--danger)'; status.textContent='❌ Falha no envio'; }
+    toast('Falha ao enviar imagem', 'error');
   }
 }
 
@@ -2355,107 +2350,269 @@ async function removerMapa(empId) {
   closeModal(); renderEmpreendimentos();
 }
 
-// ─── ESPELHO SVG (PLANTA REAL) ────────────────────────────────────────────────
+// ─── ESPELHO POR IMAGEM — posicionamento manual de marcadores ─────────────────
 
-async function verEspelhoSVG(empId, emp, mapaData) {
-  const { svg, units } = mapaData;
+let _mapaUnits    = {};   // id → unit
+let _mapaEmpId    = null;
+let _mapaEmpTipo  = null;
+let _posicoes     = {};   // id → {x, y} percentuais pendentes de salvar
+let _modoPosiconar = false;
+let _unitAtiva    = null; // id da unidade a ser posicionada
+
+async function verEspelhoImagem(empId, emp, mapaData) {
+  const { imagem, units } = mapaData;
   const isPredio = emp.tipo === 'predio';
-  const lblB = isPredio ? 'Apto' : 'Lote';
+  const lblA = isPredio ? 'Andar' : 'Qd';
+  const lblB = isPredio ? 'Apto'  : 'Lote';
 
-  const cnt = { disponivel:0, reservado:0, vendido:0, total: units.length };
+  _mapaUnits   = {};
+  _posicoes    = {};
+  _modoPosiconar = false;
+  _unitAtiva   = null;
+  _mapaEmpId   = empId;
+  _mapaEmpTipo = emp.tipo;
+  units.forEach(u => {
+    _mapaUnits[u.id] = u;
+    if (u.mapa_x != null) _posicoes[u.id] = { x: u.mapa_x, y: u.mapa_y };
+  });
+
+  const cnt = { disponivel:0, reservado:0, vendido:0 };
   units.forEach(u => { cnt[u.status] = (cnt[u.status]||0)+1; });
-  const vsoNum  = cnt.total > 0 ? ((cnt.vendido+cnt.reservado)/cnt.total*100) : 0;
-  const vsoVend = cnt.total > 0 ? (cnt.vendido/cnt.total*100) : 0;
-  const vgvDisp = units.filter(u=>u.status==='disponivel').reduce((s,u)=>s+(u.preco||0),0);
+  const total   = units.length;
+  const vsoNum  = total > 0 ? ((cnt.vendido+cnt.reservado)/total*100) : 0;
+  const vsoVend = total > 0 ? (cnt.vendido/total*100) : 0;
   const vgvVend = units.filter(u=>u.status==='vendido').reduce((s,u)=>s+(u.preco||0),0);
-
-  // Mapa rápido id→unit para hover/click
-  const unitById = {};
-  units.forEach(u => { unitById[u.id] = u; });
-  window._mapaUnits   = unitById;
-  window._mapaEmpId   = empId;
-  window._mapaEmpTipo = emp.tipo;
+  const vgvDisp = units.filter(u=>u.status==='disponivel').reduce((s,u)=>s+(u.preco||0),0);
+  const semPos  = units.filter(u => u.mapa_x == null).length;
 
   document.getElementById('content').innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
       <button class="btn btn-secondary" onclick="navigate('empreendimentos')" style="font-size:12px;padding:6px 12px">← Voltar</button>
       <div style="flex:1;min-width:0">
         <div style="font-size:17px;font-weight:700">${emp.nome}</div>
-        <div style="font-size:12px;color:var(--text2)">${emp.cidade||''}${emp.estado?'/'+emp.estado:''} · ${cnt.total} unidades</div>
+        <div style="font-size:12px;color:var(--text2)">${total} unidades · ${semPos} sem posição no mapa</div>
       </div>
-      <button class="btn btn-secondary" onclick="verEspelho(${empId})" style="font-size:12px;padding:6px 12px">🔄 Atualizar</button>
-      <button class="btn btn-secondary" onclick="editEmp(${empId})" style="font-size:12px;padding:6px 12px">⚙️ Substituir Planta</button>
+      <button onclick="toggleModoPosiconar(${empId})" id="btn-posicionar"
+        style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;font-size:13px;font-weight:600">
+        📍 Posicionar Unidades
+      </button>
+      <button onclick="salvarPosicoes(${empId})" id="btn-salvar-pos"
+        style="display:none;padding:6px 14px;border-radius:6px;border:none;background:var(--accent);color:var(--navy);cursor:pointer;font-size:13px;font-weight:700">
+        💾 Salvar Posições
+      </button>
+      <button onclick="verEspelho(${empId})" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;font-size:12px">🔄</button>
+      <button onclick="verUnidades(${empId})" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;font-size:12px">📋 Lista</button>
     </div>
 
-    <!-- Barra VSO -->
-    <div class="mini-card" style="margin-bottom:16px;padding:14px 20px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-        <div style="font-size:13px;font-weight:600">📊 VSO — <span style="color:var(--accent)">${vsoNum.toFixed(1)}%</span> absorvido</div>
-        <div style="display:flex;gap:14px;font-size:12px;flex-wrap:wrap">
-          <span style="color:#4ade80">✅ ${cnt.disponivel} disp.</span>
+    <!-- VSO -->
+    <div class="mini-card" style="margin-bottom:14px;padding:12px 18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;flex-wrap:wrap;gap:6px">
+        <span style="font-size:13px;font-weight:600">📊 VSO <span style="color:var(--accent)">${vsoNum.toFixed(1)}%</span></span>
+        <span style="display:flex;gap:14px;font-size:12px;flex-wrap:wrap">
+          <span style="color:#4ade80">✅ ${cnt.disponivel} disp. (${fmt(vgvDisp)})</span>
           <span style="color:#fbbf24">🟡 ${cnt.reservado} reservados</span>
           <span style="color:#f87171">🔴 ${cnt.vendido} vendidos (${fmt(vgvVend)})</span>
-          <span style="color:var(--text2)">Estoque: ${fmt(vgvDisp)}</span>
-        </div>
+        </span>
       </div>
-      <div style="display:flex;height:10px;border-radius:6px;overflow:hidden;background:rgba(34,197,94,.15)">
-        <div style="width:${vsoVend.toFixed(1)}%;background:var(--danger);transition:width .5s"></div>
-        <div style="width:${(vsoNum-vsoVend).toFixed(1)}%;background:var(--warning);transition:width .5s"></div>
+      <div style="display:flex;height:8px;border-radius:6px;overflow:hidden;background:rgba(34,197,94,.12)">
+        <div style="width:${vsoVend.toFixed(1)}%;background:var(--danger)"></div>
+        <div style="width:${(vsoNum-vsoVend).toFixed(1)}%;background:var(--warning)"></div>
+      </div>
+    </div>
+
+    <div id="mapa-instrucao" style="display:none;background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.3);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">
+      <strong style="color:var(--accent)">Modo Posicionamento:</strong>
+      <span id="instrucao-texto">Clique em uma unidade da lista ao lado, depois clique no mapa para posicioná-la.</span>
+    </div>
+
+    <div style="display:flex;gap:14px;align-items:flex-start">
+      <!-- Imagem do mapa com marcadores -->
+      <div style="flex:1;min-width:0;position:relative;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:crosshair" id="mapa-wrap">
+        <img id="mapa-img" src="${imagem}" style="width:100%;display:block;user-select:none;-webkit-user-drag:none">
+        <div id="mapa-markers" style="position:absolute;inset:0;pointer-events:none"></div>
+      </div>
+      <!-- Painel lateral de unidades (visível só no modo posicionamento) -->
+      <div id="painel-unidades" style="display:none;width:200px;flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;max-height:70vh;overflow-y:auto">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Unidades sem posição</div>
+        <div id="lista-sem-pos"></div>
       </div>
     </div>
 
     <!-- Legenda -->
-    <div style="display:flex;gap:20px;margin-bottom:12px;flex-wrap:wrap;align-items:center;font-size:12px">
-      <span style="color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.5px">Legenda:</span>
-      <span style="display:flex;align-items:center;gap:5px"><span style="width:16px;height:10px;background:rgba(34,197,94,.25);border:1px solid rgba(34,197,94,.5);display:inline-block;border-radius:2px"></span>Disponível</span>
-      <span style="display:flex;align-items:center;gap:5px"><span style="width:16px;height:10px;background:rgba(245,158,11,.35);border:1px solid rgba(245,158,11,.5);display:inline-block;border-radius:2px"></span>Reservado</span>
-      <span style="display:flex;align-items:center;gap:5px"><span style="width:16px;height:10px;background:rgba(239,68,68,.3);border:1px solid rgba(239,68,68,.5);display:inline-block;border-radius:2px"></span>Vendido</span>
-      <span style="margin-left:auto;font-size:11px;color:var(--text2)">Clique no lote para ver detalhes</span>
-    </div>
-
-    <!-- SVG da planta -->
-    <div id="svg-container" style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;width:100%">
-      ${svg}
+    <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;align-items:center;font-size:12px">
+      <span style="color:var(--text2);font-size:11px;text-transform:uppercase">Legenda:</span>
+      <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:14px;background:rgba(34,197,94,.55);border-radius:50%;display:inline-block;border:2px solid #22c55e"></span>Disponível</span>
+      <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:14px;background:rgba(245,158,11,.55);border-radius:50%;display:inline-block;border:2px solid #f59e0b"></span>Reservado</span>
+      <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:14px;background:rgba(239,68,68,.7);border-radius:50%;display:inline-block;border:2px solid #ef4444"></span>Vendido</span>
+      <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:14px;background:rgba(148,163,184,.4);border-radius:50%;display:inline-block;border:2px dashed #94a3b8"></span>Sem posição</span>
     </div>
   `;
 
-  // Injeta handlers de clique e hover nos polígonos do SVG
-  document.querySelectorAll('#svg-container .lot').forEach(el => {
-    const uid = el.dataset.uid ? parseInt(el.dataset.uid) : null;
-    if (!uid) return;
-    el.addEventListener('click', () => abrirUnidade(uid, empId));
-    el.addEventListener('mouseenter', e => mostrarTooltipMapa(e, uid));
-    el.addEventListener('mouseleave', esconderTooltipMapa);
-  });
+  renderMarkers();
+  document.getElementById('mapa-wrap').addEventListener('click', onMapaClick);
 }
 
-function mostrarTooltipMapa(e, uid) {
-  const u = window._mapaUnits?.[uid];
-  if (!u) return;
-  const isPredio = window._mapaEmpTipo === 'predio';
-  let tip = document.getElementById('mapa-tooltip');
-  if (!tip) {
-    tip = document.createElement('div');
-    tip.id = 'mapa-tooltip';
-    tip.style.cssText = 'position:fixed;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;pointer-events:none;z-index:5000;box-shadow:0 4px 16px rgba(0,0,0,.4);max-width:200px';
-    document.body.appendChild(tip);
+function renderMarkers() {
+  const wrap = document.getElementById('mapa-markers');
+  if (!wrap) return;
+  const img  = document.getElementById('mapa-img');
+  if (!img.complete) { img.onload = renderMarkers; return; }
+
+  const statusColors = {
+    disponivel: 'rgba(34,197,94,.65)',
+    reservado:  'rgba(245,158,11,.75)',
+    vendido:    'rgba(239,68,68,.8)',
+  };
+  const borderColors = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#ef4444' };
+
+  wrap.innerHTML = Object.entries(_posicoes).map(([idStr, pos]) => {
+    const id = parseInt(idStr);
+    const u  = _mapaUnits[id];
+    if (!u) return '';
+    const cor = statusColors[u.status] || 'rgba(148,163,184,.45)';
+    const brd = borderColors[u.status] || '#94a3b8';
+    const isAtivo = _unitAtiva === id;
+    return `<div
+      data-uid="${id}"
+      onclick="onMarkerClick(event, ${id})"
+      style="
+        position:absolute;
+        left:calc(${pos.x}% - 18px);
+        top:calc(${pos.y}% - 18px);
+        width:36px;height:36px;
+        border-radius:50%;
+        background:${cor};
+        border:2px solid ${brd};
+        display:flex;align-items:center;justify-content:center;
+        font-size:10px;font-weight:700;color:#fff;
+        cursor:pointer;pointer-events:all;
+        box-shadow:${isAtivo ? '0 0 0 4px var(--accent)' : '0 2px 6px rgba(0,0,0,.4)'};
+        transition:transform .12s;
+        user-select:none;
+        text-shadow:0 1px 2px rgba(0,0,0,.6);
+        white-space:nowrap;overflow:hidden;
+        text-overflow:ellipsis;
+        line-height:1;
+        padding:2px;
+      "
+      title="${u.quadra ? `Qd ${u.quadra} - ` : ''}${u.lote}${u.area_m2 ? ` · ${u.area_m2}m²` : ''}${u.preco ? ` · ${fmt(u.preco)}` : ''}"
+    >${u.lote}</div>`;
+  }).join('');
+}
+
+function onMarkerClick(evt, uid) {
+  evt.stopPropagation();
+  if (_modoPosiconar) {
+    // Em modo posicionamento: seleciona esta unidade para reposicionar
+    _unitAtiva = uid;
+    renderMarkers();
+    atualizarListaSemPos();
+    document.getElementById('instrucao-texto').textContent =
+      `Clique no mapa para reposicionar: ${_mapaUnits[uid]?.lote || uid}`;
+    return;
   }
-  const lblA = isPredio ? 'Andar' : 'Qd';
-  const lblB = isPredio ? 'Apto'  : 'Lote';
-  const statusLabel = { disponivel:'✅ Disponível', reservado:'🟡 Reservado', vendido:'🔴 Vendido' };
-  tip.innerHTML = `<div style="font-weight:700;margin-bottom:4px">${lblA} ${u.quadra||'—'} — ${lblB} ${u.lote}</div>
-    ${u.area_m2?`<div style="color:var(--text2)">${u.area_m2} m²</div>`:''}
-    ${u.preco?`<div style="color:var(--success);font-weight:600">${fmt(u.preco)}</div>`:''}
-    <div style="margin-top:4px">${statusLabel[u.status]||u.status}</div>`;
-  tip.style.left = (e.clientX + 12) + 'px';
-  tip.style.top  = (e.clientY - 10) + 'px';
-  tip.style.display = 'block';
+  // Fora do modo: abre detalhes/status da unidade
+  abrirUnidade(uid, _mapaEmpId);
 }
 
-function esconderTooltipMapa() {
-  const tip = document.getElementById('mapa-tooltip');
-  if (tip) tip.style.display = 'none';
+function onMapaClick(evt) {
+  if (!_modoPosiconar) return;
+  if (!_unitAtiva) {
+    toast('Selecione uma unidade na lista ao lado primeiro', 'error');
+    return;
+  }
+  const wrap = document.getElementById('mapa-wrap');
+  const rect = wrap.getBoundingClientRect();
+  const x = ((evt.clientX - rect.left) / rect.width  * 100);
+  const y = ((evt.clientY - rect.top)  / rect.height * 100);
+  _posicoes[_unitAtiva] = { x: parseFloat(x.toFixed(2)), y: parseFloat(y.toFixed(2)) };
+
+  // Avança automaticamente para próxima unidade sem posição
+  const semPos = Object.values(_mapaUnits).filter(u => !_posicoes[u.id]);
+  const atual  = semPos.findIndex(u => u.id === _unitAtiva);
+  const prox   = semPos[atual + 1] || semPos[0];
+  _unitAtiva = prox?.id ?? null;
+
+  renderMarkers();
+  atualizarListaSemPos();
+  if (_unitAtiva) {
+    document.getElementById('instrucao-texto').textContent =
+      `Agora clique no mapa para posicionar: ${_mapaUnits[_unitAtiva]?.lote || _unitAtiva}`;
+  } else {
+    document.getElementById('instrucao-texto').textContent =
+      'Todas as unidades posicionadas! Clique em 💾 Salvar Posições.';
+  }
 }
+
+function toggleModoPosiconar(empId) {
+  _modoPosiconar = !_modoPosiconar;
+  const btn   = document.getElementById('btn-posicionar');
+  const salvar= document.getElementById('btn-salvar-pos');
+  const instr = document.getElementById('mapa-instrucao');
+  const painel= document.getElementById('painel-unidades');
+
+  if (_modoPosiconar) {
+    btn.textContent = '✖ Sair do modo posicionamento';
+    btn.style.background = 'var(--danger)'; btn.style.color = '#fff'; btn.style.border = 'none';
+    salvar.style.display = 'inline-block';
+    instr.style.display  = 'block';
+    painel.style.display = 'block';
+    atualizarListaSemPos();
+    // Seleciona automaticamente a primeira sem posição
+    const semPos = Object.values(_mapaUnits).filter(u => !_posicoes[u.id]);
+    _unitAtiva = semPos[0]?.id ?? null;
+    if (_unitAtiva) {
+      document.getElementById('instrucao-texto').textContent =
+        `Clique no mapa para posicionar: ${_mapaUnits[_unitAtiva]?.lote || _unitAtiva}`;
+    }
+  } else {
+    btn.textContent = '📍 Posicionar Unidades';
+    btn.style.background = 'var(--navy3)'; btn.style.color = 'var(--text)'; btn.style.border = '1px solid var(--border)';
+    salvar.style.display = 'none';
+    instr.style.display  = 'none';
+    painel.style.display = 'none';
+    _unitAtiva = null;
+    renderMarkers();
+  }
+}
+
+function atualizarListaSemPos() {
+  const lista = document.getElementById('lista-sem-pos');
+  if (!lista) return;
+  const isPredio = _mapaEmpTipo === 'predio';
+  const todas = Object.values(_mapaUnits).sort((a,b) => {
+    if (a.quadra !== b.quadra) return (a.quadra||'').localeCompare(b.quadra||'', 'pt-BR', {numeric:true});
+    return (a.lote||'').localeCompare(b.lote||'', 'pt-BR', {numeric:true});
+  });
+  lista.innerHTML = todas.map(u => {
+    const temPos  = !!_posicoes[u.id];
+    const isAtivo = _unitAtiva === u.id;
+    const statusColor = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#f87171' };
+    return `<div onclick="_unitAtiva=${u.id};renderMarkers();atualizarListaSemPos();document.getElementById('instrucao-texto').textContent='Clique no mapa: ${u.lote}'" style="
+      display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;margin-bottom:3px;
+      background:${isAtivo ? 'rgba(0,196,180,.15)' : 'transparent'};
+      border:1px solid ${isAtivo ? 'var(--accent)' : 'transparent'};
+    ">
+      <span style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${statusColor[u.status]||'#64748b'};border:${temPos?'2px solid #fff':'1px dashed #64748b'}"></span>
+      <span style="font-size:12px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${isAtivo?'var(--accent)':'var(--text)'}">
+        ${u.quadra ? `Qd${u.quadra} - ` : ''}${u.lote}
+      </span>
+      ${temPos ? '<span style="font-size:10px;color:var(--success)">✓</span>' : '<span style="font-size:10px;color:var(--text2)">—</span>'}
+    </div>`;
+  }).join('');
+}
+
+async function salvarPosicoes(empId) {
+  const posicoes = Object.entries(_posicoes).map(([id, pos]) => ({ id: parseInt(id), x: pos.x, y: pos.y }));
+  if (!posicoes.length) return toast('Nenhuma posição para salvar', 'error');
+  const r = await put(`/api/empreendimentos/${empId}/unidades/posicoes`, { posicoes });
+  if (!r.ok) return toast(r.error, 'error');
+  toast(`${r.data.atualizadas} posições salvas! 💾`);
+  verEspelho(empId);
+}
+
+function mostrarTooltipMapa(e, uid) {} // mantido por compatibilidade
+function esconderTooltipMapa() {}
 
 // ─── ESPELHO DE VENDAS ────────────────────────────────────────────────────────
 
@@ -2464,9 +2621,9 @@ async function verEspelho(empId) {
   document.getElementById('page-title').textContent = `Espelho — ${emp.nome||''}`;
   document.getElementById('content').innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)">Carregando espelho de vendas...</div>';
 
-  // Tenta carregar mapa SVG real primeiro
+  // Tenta carregar mapa (imagem JPEG/PNG) real primeiro
   const mapaR = await get(`/api/empreendimentos/${empId}/mapa`);
-  if (mapaR.ok) { return verEspelhoSVG(empId, emp, mapaR.data); }
+  if (mapaR.ok) { return verEspelhoImagem(empId, emp, mapaR.data); }
 
   const r = await get(`/api/empreendimentos/${empId}/unidades`);
   const units = r.data || [];
