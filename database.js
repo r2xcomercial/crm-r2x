@@ -199,4 +199,13 @@ for (const sql of migrations) {
   try { db.exec(sql); } catch (_) { /* coluna já existe */ }
 }
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS mapas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empreendimento_id INTEGER NOT NULL UNIQUE REFERENCES empreendimentos(id) ON DELETE CASCADE,
+    svg_data TEXT NOT NULL,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 module.exports = db;

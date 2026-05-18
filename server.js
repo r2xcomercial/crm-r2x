@@ -774,6 +774,147 @@ app.get("/api/corretores/conversao", (req, res) => {
   ok(res, result);
 });
 
+// ─── MAPA / ESPELHO SVG ───────────────────────────────────────────────────────
+
+const DxfParser = require('dxf-parser');
+
+/** Ponto dentro de polígono (ray casting) */
+function pointInPolygon(px, py, verts) {
+  let inside = false;
+  for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+    const xi = verts[i].x, yi = verts[i].y;
+    const xj = verts[j].x, yj = verts[j].y;
+    if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi))
+      inside = !inside;
+  }
+  return inside;
+}
+
+/** Centróide simples de polígono */
+function centroid(verts) {
+  const n = verts.length;
+  return { x: verts.reduce((s,v)=>s+v.x,0)/n, y: verts.reduce((s,v)=>s+v.y,0)/n };
+}
+
+/** Converte DXF (texto) → SVG com polígonos de lotes já identificados */
+function dxfParasvg(dxfText, units = []) {
+  const parser = new DxfParser();
+  const dxf = parser.parseSync(dxfText);
+  const entities = dxf.entities || [];
+
+  // Polígonos fechados (lotes)
+  const polys = entities.filter(e =>
+    (e.type === 'LWPOLYLINE' || e.type === 'POLYLINE') &&
+    (e.shape || e.closed) &&
+    (e.vertices || []).length >= 3
+  );
+
+  // Textos (rótulos de lote)
+  const texts = entities.filter(e => e.type === 'TEXT' || e.type === 'MTEXT');
+
+  if (!polys.length) throw new Error('Nenhum polígono fechado encontrado no DXF. Verifique se as polylines estão fechadas.');
+
+  // Bounds
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  polys.forEach(p => (p.vertices||[]).forEach(v => {
+    x0=Math.min(x0,v.x); y0=Math.min(y0,v.y);
+    x1=Math.max(x1,v.x); y1=Math.max(y1,v.y);
+  }));
+
+  const W = 1400, H = 900, PAD = 40;
+  const scale = Math.min((W-PAD*2)/(x1-x0), (H-PAD*2)/(y1-y0));
+  const tx = x => ((x - x0) * scale + PAD).toFixed(1);
+  const ty = y => (H - ((y - y0) * scale + PAD)).toFixed(1); // flip Y
+
+  // Mapeia texto → polígono (ponto dentro do polígono)
+  const rotulos = {}; // índice poly → string
+  texts.forEach(t => {
+    const px = t.startPoint?.x ?? t.position?.x ?? 0;
+    const py = t.startPoint?.y ?? t.position?.y ?? 0;
+    const txt = (t.text || t.string || '').trim();
+    if (!txt) return;
+    polys.forEach((p, i) => {
+      if (!rotulos[i] && pointInPolygon(px, py, p.vertices||[])) rotulos[i] = txt;
+    });
+  });
+
+  // Mapa lote→unidade
+  const unitMap = {};
+  units.forEach(u => {
+    unitMap[String(u.lote).trim()] = u;
+    if (u.quadra) unitMap[`${u.quadra}-${u.lote}`.trim()] = u;
+  });
+
+  const polygonEls = polys.map((p, i) => {
+    const pts = (p.vertices||[]).map(v => `${tx(v.x)},${ty(v.y)}`).join(' ');
+    const label = rotulos[i] || '';
+    const unit  = unitMap[label] || null;
+    const uid   = unit ? `data-uid="${unit.id}"` : '';
+    const st    = unit ? `data-status="${unit.status}"` : '';
+    const lbl   = label ? `data-lote="${label}"` : '';
+    const cls   = `lot ${unit?.status || 'sem-unidade'}`;
+    return `<polygon points="${pts}" id="p${i}" class="${cls}" ${uid} ${st} ${lbl}/>`;
+  });
+
+  const textEls = polys.map((p, i) => {
+    const label = rotulos[i];
+    if (!label) return '';
+    const c = centroid(p.vertices||[]);
+    return `<text x="${tx(c.x)}" y="${ty(c.y)}" class="lot-txt" text-anchor="middle" dominant-baseline="middle">${label}</text>`;
+  });
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}">
+<defs><style>
+  .lot{stroke:#1E3352;stroke-width:.8;cursor:pointer;transition:fill .12s,opacity .12s}
+  .lot:hover{opacity:.75;stroke:#00C4B4;stroke-width:1.5}
+  .lot.disponivel{fill:rgba(34,197,94,.25)}
+  .lot.reservado{fill:rgba(245,158,11,.35)}
+  .lot.vendido{fill:rgba(239,68,68,.3)}
+  .lot.sem-unidade{fill:rgba(148,163,184,.08);cursor:default}
+  .lot-txt{font-size:8px;fill:#94A3B8;pointer-events:none;font-family:Arial,sans-serif;font-weight:600}
+</style></defs>
+${polygonEls.join('\n')}
+${textEls.join('\n')}
+</svg>`;
+}
+
+// Upload DXF (ou SVG) e gera/atualiza o mapa do empreendimento
+app.post('/api/empreendimentos/:id/mapa', upload.single('arquivo'), (req, res) => {
+  const empId = parseInt(req.params.id);
+  if (!req.file) return fail(res, 'Arquivo não enviado');
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  let svg;
+  try {
+    if (ext === '.dxf') {
+      const units = db.prepare('SELECT * FROM unidades WHERE empreendimento_id=?').all(empId);
+      svg = dxfParasvg(req.file.buffer.toString('utf8'), units);
+    } else if (ext === '.svg') {
+      svg = req.file.buffer.toString('utf8');
+    } else {
+      return fail(res, 'Formato não suportado. Envie .dxf ou .svg');
+    }
+    db.prepare('INSERT INTO mapas(empreendimento_id,svg_data) VALUES(?,?) ON CONFLICT(empreendimento_id) DO UPDATE SET svg_data=excluded.svg_data, criado_em=CURRENT_TIMESTAMP').run(empId, svg);
+    ok(res, { mensagem: 'Mapa importado com sucesso!' });
+  } catch(e) {
+    fail(res, 'Erro ao processar arquivo: ' + e.message);
+  }
+});
+
+// Retorna SVG + status atual das unidades para o frontend colorir
+app.get('/api/empreendimentos/:id/mapa', (req, res) => {
+  const empId = parseInt(req.params.id);
+  const mapa  = db.prepare('SELECT svg_data FROM mapas WHERE empreendimento_id=?').get(empId);
+  if (!mapa) return res.status(404).json({ ok: false, error: 'Nenhum mapa importado para este empreendimento' });
+  const units = db.prepare('SELECT id, quadra, lote, status, area_m2, preco FROM unidades WHERE empreendimento_id=?').all(empId);
+  ok(res, { svg: mapa.svg_data, units });
+});
+
+// Remove mapa
+app.delete('/api/empreendimentos/:id/mapa', (req, res) => {
+  db.prepare('DELETE FROM mapas WHERE empreendimento_id=?').run(parseInt(req.params.id));
+  ok(res, {});
+});
+
 // ─── START ────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => console.log(`CRM R2X rodando em http://localhost:${PORT}`));

@@ -16,6 +16,7 @@
     "cors": "^2.8.6",
     "docxtemplater": "^3.68.7",
     "dotenv": "^17.4.2",
+    "dxf-parser": "^1.1.2",
     "express": "^5.2.1",
     "multer": "^2.1.1",
     "pizzip": "^3.2.0",
