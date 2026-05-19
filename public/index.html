@@ -1338,6 +1338,7 @@ async function renderEmpreendimentos(filter = '') {
               <td>${e.data_lancamento ? fmtDate(e.data_lancamento) : '—'}</td>
               <td style="white-space:nowrap">
                 ${e.num_unidades ? `<button class="btn-icon" title="Espelho de Vendas" onclick="verEspelho(${e.id})">🏠</button>` : ''}
+                <button class="btn-icon" title="Gerar Contrato (.docx)" onclick="gerarContrato(${e.id})" style="color:var(--success)">📄</button>
                 <button class="btn-icon" title="Relatório gerencial" onclick="gerarRelatorio(${e.id})" style="color:var(--accent)">📊</button>
                 <button class="btn-icon btn-edit" onclick="editEmp(${e.id})">✏️</button>
                 <button class="btn-icon btn-delete" onclick="deleteEmp(${e.id})">🗑️</button>
@@ -2316,13 +2317,43 @@ async function updateUnidadeStatus(unidadeId, status, empId) {
 
 // ─── UPLOAD / REMOÇÃO DE MAPA ─────────────────────────────────────────────────
 
+// Comprime imagem usando Canvas antes do envio (reduz para max 2000px, JPEG 82%)
+function comprimirImagem(file, maxPx = 2000, quality = 0.82) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const w = Math.round(img.width  * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob => resolve(blob), 'image/jpeg', quality);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 async function uploadMapa(empId) {
   const input = document.getElementById('f-dxf');
   const status = document.getElementById('mapa-status');
   if (!input?.files?.length) { if(status) status.textContent = '⚠️ Selecione uma imagem JPEG ou PNG'; return; }
-  if(status) { status.style.color='var(--accent)'; status.textContent = '⏳ Enviando imagem...'; }
+  const file = input.files[0];
+  if (file.size > 30 * 1024 * 1024) {
+    if(status) { status.style.color='var(--danger)'; status.textContent = '❌ Imagem muito grande (máx. 30 MB antes da compressão)'; }
+    return;
+  }
+  if(status) { status.style.color='var(--accent)'; status.textContent = '⏳ Otimizando imagem…'; }
+  let blob;
+  try { blob = await comprimirImagem(file); } catch(_) { blob = file; }
+  const sizeMB = (blob.size / 1024 / 1024).toFixed(1);
+  if(status) status.textContent = `⏳ Enviando imagem (${sizeMB} MB)…`;
   const fd = new FormData();
-  fd.append('arquivo', input.files[0]);
+  fd.append('arquivo', blob, 'mapa.jpg');
   try {
     const res = await fetch(`/api/empreendimentos/${empId}/mapa`, { method:'POST', headers:{'x-crm-token': localStorage.getItem('crm_token')||''}, body: fd });
     const data = await res.json();
@@ -2358,6 +2389,7 @@ let _mapaEmpTipo  = null;
 let _posicoes     = {};   // id → {x, y} percentuais pendentes de salvar
 let _modoPosiconar = false;
 let _unitAtiva    = null; // id da unidade a ser posicionada
+let _mapaZoomLevel = 1;   // nível de zoom atual do mapa
 
 async function verEspelhoImagem(empId, emp, mapaData) {
   const { imagem, units } = mapaData;
@@ -2426,14 +2458,26 @@ async function verEspelhoImagem(empId, emp, mapaData) {
     </div>
 
     <div style="display:flex;gap:14px;align-items:flex-start">
-      <!-- Imagem do mapa com marcadores -->
-      <div style="flex:1;min-width:0;position:relative;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:crosshair" id="mapa-wrap">
-        <img id="mapa-img" src="${imagem}" style="width:100%;display:block;user-select:none;-webkit-user-drag:none">
-        <div id="mapa-markers" style="position:absolute;inset:0;pointer-events:none"></div>
+      <!-- Imagem do mapa com marcadores + zoom/pan por scroll -->
+      <div style="flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;position:relative;height:calc(100vh - 270px);min-height:420px" id="mapa-outer">
+        <div id="mapa-zoom-wrap" style="width:100%;height:100%;overflow:auto;cursor:crosshair">
+          <div id="mapa-inner" style="position:relative;display:inline-block;min-width:100%">
+            <img id="mapa-img" src="${imagem}" style="display:block;width:100%;user-select:none;-webkit-user-drag:none">
+            <div id="mapa-markers" style="position:absolute;inset:0;pointer-events:none"></div>
+          </div>
+        </div>
+        <!-- Controles de zoom -->
+        <div style="position:absolute;bottom:10px;right:10px;display:flex;align-items:center;gap:6px;z-index:10">
+          <button onclick="mapaZoom(-0.25)" title="Reduzir" style="width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;font-weight:bold;display:flex;align-items:center;justify-content:center;line-height:1">−</button>
+          <span id="mapa-zoom-pct" style="padding:3px 8px;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;font-size:12px;min-width:44px;text-align:center">100%</span>
+          <button onclick="mapaZoom(0.25)" title="Ampliar" style="width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;font-weight:bold;display:flex;align-items:center;justify-content:center;line-height:1">+</button>
+        </div>
+        <!-- Dica scroll -->
+        <div style="position:absolute;top:8px;right:8px;font-size:10px;color:rgba(255,255,255,.6);background:rgba(0,0,0,.35);padding:2px 7px;border-radius:4px;pointer-events:none">🖱️ Scroll = zoom</div>
       </div>
       <!-- Painel lateral de unidades (visível só no modo posicionamento) -->
       <div id="painel-unidades" style="display:none;width:200px;flex-shrink:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;max-height:70vh;overflow-y:auto">
-        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Unidades sem posição</div>
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Unidades</div>
         <div id="lista-sem-pos"></div>
       </div>
     </div>
@@ -2448,8 +2492,27 @@ async function verEspelhoImagem(empId, emp, mapaData) {
     </div>
   `;
 
+  _mapaZoomLevel = 1;
   renderMarkers();
-  document.getElementById('mapa-wrap').addEventListener('click', onMapaClick);
+
+  // Click para posicionar unidades (no mapa-zoom-wrap para pegar scroll também)
+  document.getElementById('mapa-zoom-wrap').addEventListener('click', onMapaClick);
+
+  // Zoom com scroll do mouse
+  document.getElementById('mapa-zoom-wrap').addEventListener('wheel', function(e) {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.15 : -0.15;
+    mapaZoom(delta);
+  }, { passive: false });
+}
+
+// Função de zoom do mapa — escala o mapa-inner dentro do scroll container
+function mapaZoom(delta) {
+  _mapaZoomLevel = Math.max(0.4, Math.min(5, _mapaZoomLevel + delta));
+  const inner = document.getElementById('mapa-inner');
+  if (inner) inner.style.width = (_mapaZoomLevel * 100) + '%';
+  const pct = document.getElementById('mapa-zoom-pct');
+  if (pct) pct.textContent = Math.round(_mapaZoomLevel * 100) + '%';
 }
 
 function renderMarkers() {
@@ -2521,8 +2584,9 @@ function onMapaClick(evt) {
     toast('Selecione uma unidade na lista ao lado primeiro', 'error');
     return;
   }
-  const wrap = document.getElementById('mapa-wrap');
-  const rect = wrap.getBoundingClientRect();
+  // Usa mapa-inner (que escala com zoom) para calcular % correto
+  const inner = document.getElementById('mapa-inner');
+  const rect  = inner.getBoundingClientRect();
   const x = ((evt.clientX - rect.left) / rect.width  * 100);
   const y = ((evt.clientY - rect.top)  / rect.height * 100);
   _posicoes[_unitAtiva] = { x: parseFloat(x.toFixed(2)), y: parseFloat(y.toFixed(2)) };

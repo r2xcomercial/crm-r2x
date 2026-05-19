@@ -9,7 +9,7 @@ const PizZip = require("pizzip");
 const Docxtemplater = require("docxtemplater");
 const db = require("./database");
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }); // 8 MB máx
 
 const app = express();
 app.use(cors());
