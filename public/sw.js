@@ -1,22 +1,38 @@
-const CACHE = "r2x-crm-v1";
-const STATIC = ["/", "/index.html", "/manifest.json"];
+const CACHE = 'crm-r2x-v3';
+const STATIC = ['/', '/index.html', '/login', '/manifest.json', '/icon-192.png', '/icon-512.png', '/portal.html'];
 
-self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(STATIC)));
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE).then(c => c.addAll(STATIC).catch(() => {}))
+  );
   self.skipWaiting();
 });
 
-self.addEventListener("activate", e => {
-  e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-  ));
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    )
+  );
   self.clients.claim();
 });
 
-self.addEventListener("fetch", e => {
-  // API sempre vai para a rede
-  if (e.request.url.includes("/api/")) return;
+self.addEventListener('fetch', e => {
+  const url = e.request.url;
+  // API e portal sempre vão para rede — nunca cache
+  if (url.includes('/api/') || url.includes('/portal/')) return;
+  // Estratégia cache-first para assets estáticos
   e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
+    caches.match(e.request).then(cached => {
+      if (cached) return cached;
+      return fetch(e.request).then(response => {
+        // Cacheia apenas respostas válidas de GET
+        if (e.request.method === 'GET' && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+        }
+        return response;
+      }).catch(() => caches.match('/index.html'));
+    })
   );
 });

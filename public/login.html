@@ -44,26 +44,36 @@
 </div>
 
 <script>
-  // Se já tem token salvo, vai direto
   const saved = localStorage.getItem('crm_token');
   if (saved) {
-    fetch('/api/dashboard', { headers: { 'x-crm-token': saved } })
-      .then(r => r.ok ? window.location.href = '/' : null)
-      .catch(() => {});
+    fetch('/api/auth/me', { headers: { 'x-crm-token': saved } })
+      .then(r => r.ok ? window.location.href = '/' : null).catch(() => {});
   }
 
   async function login(e) {
     e.preventDefault();
-    const user = document.getElementById('user').value;
-    const pass = document.getElementById('pass').value;
-    const token = btoa(user + ':' + pass);
-
-    const r = await fetch('/api/dashboard', { headers: { 'x-crm-token': token } });
-    if (r.ok) {
-      localStorage.setItem('crm_token', token);
-      window.location.href = '/';
-    } else {
-      document.getElementById('error').style.display = 'block';
+    const email = document.getElementById('user').value.trim();
+    const senha = document.getElementById('pass').value;
+    const errEl = document.getElementById('error');
+    errEl.style.display = 'none';
+    try {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, senha })
+      });
+      const data = await r.json();
+      if (data.ok) {
+        localStorage.setItem('crm_token', data.data.token);
+        localStorage.setItem('crm_usuario', JSON.stringify({ nome: data.data.nome, perfil: data.data.perfil, corretor_id: data.data.corretor_id }));
+        window.location.href = '/';
+      } else {
+        errEl.textContent = data.error || 'Credenciais inválidas';
+        errEl.style.display = 'block';
+      }
+    } catch(e) {
+      errEl.textContent = 'Erro de conexão';
+      errEl.style.display = 'block';
     }
   }
 </script>
