@@ -301,6 +301,7 @@
     <div class="nav-section">Financeiro</div>
     <div class="nav-item" onclick="navigate('financeiro')"><span class="icon">💰</span> Financeiro</div>
     <div class="nav-item" onclick="navigate('debora')" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px"><span class="icon">🤖</span> Débora <span class="nav-badge" id="badge-debora" style="display:none"></span></div>
+    <div class="nav-item" onclick="baixarBackup()" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px;color:var(--text2)"><span class="icon">💾</span> Backup do Banco</div>
   </nav>
 </div>
 
@@ -1441,6 +1442,23 @@ async function gerarContrato(empId) {
     toast('Contrato gerado! 📄');
   } catch(e) {
     toast('Falha ao gerar contrato', 'error');
+  }
+}
+
+async function baixarBackup() {
+  toast('Gerando backup… aguarde ⏳');
+  try {
+    const res = await fetch('/api/admin/backup', { headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' } });
+    if (!res.ok) return toast('Erro ao gerar backup', 'error');
+    const blob = await res.blob();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'crm-backup.db';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast('Backup baixado! 💾 Guarde este arquivo em lugar seguro.');
+  } catch(e) {
+    toast('Falha ao baixar backup', 'error');
   }
 }
 

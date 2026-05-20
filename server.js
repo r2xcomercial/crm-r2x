@@ -982,6 +982,26 @@ app.get('/api/painel/:id', (req, res) => {
   });
 });
 
+// ─── BACKUP DO BANCO DE DADOS ────────────────────────────────────────────────
+
+app.get('/api/admin/backup', (req, res) => {
+  try {
+    // Força checkpoint WAL para garantir que todos os dados estejam no arquivo principal
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    const dbPath = process.env.RAILWAY_VOLUME_MOUNT_PATH
+      ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'crm.db')
+      : path.join(__dirname, 'crm.db');
+    const data = fs.readFileSync(dbPath);
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="crm-backup-${date}.db"`);
+    res.send(data);
+  } catch (e) {
+    console.error('[backup]', e);
+    err(res, 'Erro ao gerar backup: ' + e.message);
+  }
+});
+
 // ─── GLOBAL ERROR HANDLER ─────────────────────────────────────────────────────
 
 // Captura erros do multer (ex: arquivo muito grande) e outros erros de middleware
