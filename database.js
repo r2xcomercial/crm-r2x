@@ -208,4 +208,17 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS checklist_marketing (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empreendimento_id INTEGER NOT NULL REFERENCES empreendimentos(id) ON DELETE CASCADE,
+    material TEXT NOT NULL,
+    responsavel TEXT,
+    data_entrega TEXT,
+    status TEXT DEFAULT 'a_definir',
+    ordem INTEGER DEFAULT 0,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 module.exports = db;

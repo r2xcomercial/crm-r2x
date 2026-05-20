@@ -982,6 +982,59 @@ app.get('/api/painel/:id', (req, res) => {
   });
 });
 
+// ─── CHECKLIST DE MARKETING ──────────────────────────────────────────────────
+
+const MATERIAIS_PADRAO = [
+  'Naming e Slogan','Identidade Visual (logo, paleta de cores, tipografia)',
+  'Mapa de Vendas','Playbook Corretores','Teaser (campanha de pré-lançamento)',
+  'Tabela de Preços','Vídeo aéreo (drone)','Fotos da região e entorno',
+  'Landing Page','Renders 3D externos','Renders 3D internos (decorados)',
+  'Tour Virtual 360°','Vídeo institucional','Apresentação Meeting',
+  'Outdoor','Folder impresso','Planta Humanizada','Apresentação comercial (PPT)',
+  'Camisetas de uniforme','Catálogo/Book','Memorial Descritivo',
+  'Pack para redes sociais (posts e stories)','Criativos para Google Ads',
+  'Banners para portais imobiliários','E-mail marketing','Placa de obra/Tapume',
+  'Estande de vendas (projeto e ambientação)','Material POP (flyers, cartões, brindes)',
+  'Régua de relacionamento (CRM)','Releases para imprensa',
+];
+
+// Retorna checklist — cria itens padrão automaticamente se estiver vazio
+app.get('/api/empreendimentos/:id/checklist', (req, res) => {
+  const empId = parseInt(req.params.id);
+  let items = db.prepare('SELECT * FROM checklist_marketing WHERE empreendimento_id=? ORDER BY ordem,id').all(empId);
+  if (!items.length) {
+    const ins = db.prepare('INSERT INTO checklist_marketing(empreendimento_id,material,ordem) VALUES(?,?,?)');
+    const batch = db.transaction(() => MATERIAIS_PADRAO.forEach((m, i) => ins.run(empId, m, i + 1)));
+    batch();
+    items = db.prepare('SELECT * FROM checklist_marketing WHERE empreendimento_id=? ORDER BY ordem,id').all(empId);
+  }
+  ok(res, items);
+});
+
+// Atualiza item do checklist
+app.put('/api/checklist/:id', (req, res) => {
+  const { status, responsavel, data_entrega } = req.body;
+  db.prepare('UPDATE checklist_marketing SET status=COALESCE(?,status), responsavel=?, data_entrega=? WHERE id=?')
+    .run(status ?? null, responsavel ?? null, data_entrega ?? null, parseInt(req.params.id));
+  ok(res, {});
+});
+
+// Adiciona item personalizado
+app.post('/api/empreendimentos/:id/checklist', (req, res) => {
+  const empId = parseInt(req.params.id);
+  const { material } = req.body;
+  if (!material) return err(res, 'Material obrigatório');
+  const maxOrdem = db.prepare('SELECT MAX(ordem) as m FROM checklist_marketing WHERE empreendimento_id=?').get(empId)?.m || 0;
+  const r = db.prepare('INSERT INTO checklist_marketing(empreendimento_id,material,ordem) VALUES(?,?,?)').run(empId, material, maxOrdem + 1);
+  ok(res, { id: r.lastInsertRowid });
+});
+
+// Remove item do checklist
+app.delete('/api/checklist/:id', (req, res) => {
+  db.prepare('DELETE FROM checklist_marketing WHERE id=?').run(parseInt(req.params.id));
+  ok(res, {});
+});
+
 // ─── BACKUP / RESTAURAÇÃO DO BANCO DE DADOS ──────────────────────────────────
 
 const uploadBackup = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } }); // 200 MB para backup

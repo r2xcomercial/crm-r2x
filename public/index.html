@@ -1342,6 +1342,7 @@ async function renderEmpreendimentos(filter = '') {
               <td>${e.data_lancamento ? fmtDate(e.data_lancamento) : '—'}</td>
               <td style="white-space:nowrap">
                 ${e.num_unidades ? `<button class="btn-icon" title="Espelho de Vendas" onclick="verEspelho(${e.id})">🏠</button>` : ''}
+                <button class="btn-icon" title="Checklist de Marketing" onclick="verChecklist(${e.id})" style="color:#a78bfa">✅</button>
                 <button class="btn-icon" title="Gerar Contrato (.docx)" onclick="gerarContrato(${e.id})" style="color:var(--success)">📄</button>
                 <button class="btn-icon" title="Relatório gerencial" onclick="gerarRelatorio(${e.id})" style="color:var(--accent)">📊</button>
                 <button class="btn-icon btn-edit" onclick="editEmp(${e.id})">✏️</button>
@@ -1424,6 +1425,163 @@ function openEmpModal(e = {}) {
     toast(e.id ? 'Atualizado!' : 'Empreendimento criado!');
     closeModal(); renderEmpreendimentos();
   });
+}
+
+// ─── CHECKLIST DE MARKETING ───────────────────────────────────────────────────
+
+const CK_STATUS = {
+  a_definir:  { label: 'A DEFINIR',   color: '#64748b', bg: 'rgba(100,116,139,.15)' },
+  no_prazo:   { label: 'NO PRAZO',    color: '#3b82f6', bg: 'rgba(59,130,246,.15)'  },
+  pronto:     { label: 'PRONTO',      color: '#22c55e', bg: 'rgba(34,197,94,.15)'   },
+  dispensado: { label: 'DISPENSADO',  color: '#94a3b8', bg: 'rgba(148,163,184,.1)'  },
+};
+
+async function verChecklist(empId) {
+  const emp = (currentData.emp||[]).find(e => e.id === empId) || {};
+  document.getElementById('page-title').textContent = `Checklist Marketing — ${emp.nome||''}`;
+  document.getElementById('content').innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)">Carregando checklist…</div>';
+  const r = await get(`/api/empreendimentos/${empId}/checklist`);
+  if (!r.ok) return toast(r.error, 'error');
+  renderChecklistPage(empId, emp, r.data);
+}
+
+function renderChecklistPage(empId, emp, items) {
+  const total     = items.length;
+  const prontos   = items.filter(i => i.status === 'pronto').length;
+  const noPrazo   = items.filter(i => i.status === 'no_prazo').length;
+  const aDefinir  = items.filter(i => i.status === 'a_definir').length;
+  const pct = total ? Math.round(prontos / total * 100) : 0;
+
+  const statusOptions = Object.entries(CK_STATUS).map(([v, s]) =>
+    `<option value="${v}">${s.label}</option>`).join('');
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="navigate('empreendimentos')" style="font-size:12px;padding:6px 12px">← Voltar</button>
+      <div style="flex:1">
+        <div style="font-size:17px;font-weight:700">${emp.nome} — Checklist de Marketing</div>
+        <div style="font-size:12px;color:var(--text2)">${total} itens · ${prontos} prontos · ${noPrazo} no prazo · ${aDefinir} a definir</div>
+      </div>
+      <button onclick="adicionarItemChecklist(${empId})" style="padding:6px 14px;border-radius:6px;border:none;background:var(--accent);color:var(--navy);cursor:pointer;font-size:13px;font-weight:600">+ Adicionar Item</button>
+    </div>
+
+    <!-- Barra de progresso -->
+    <div class="mini-card" style="margin-bottom:16px;padding:12px 18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:600">Progresso geral</span>
+        <span style="font-size:20px;font-weight:800;color:${pct===100?'var(--success)':'var(--accent)'}">${pct}%</span>
+      </div>
+      <div style="height:10px;border-radius:6px;background:var(--navy3);overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${pct===100?'var(--success)':'var(--accent)'};border-radius:6px;transition:width .4s"></div>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;font-size:12px">
+        ${Object.entries(CK_STATUS).map(([v,s]) => {
+          const n = items.filter(i=>i.status===v).length;
+          return `<span style="display:flex;align-items:center;gap:5px">
+            <span style="width:10px;height:10px;border-radius:50%;background:${s.color};display:inline-block"></span>
+            ${s.label}: <strong>${n}</strong>
+          </span>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- Tabela -->
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:32px">#</th>
+            <th>Material de Marketing</th>
+            <th style="width:160px">Responsável</th>
+            <th style="width:140px">Data de Entrega</th>
+            <th style="width:150px">Status</th>
+            <th style="width:40px"></th>
+          </tr>
+        </thead>
+        <tbody id="ck-tbody">
+          ${items.map((item, idx) => renderChecklistRow(item, idx + 1)).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderChecklistRow(item, num) {
+  const s = CK_STATUS[item.status] || CK_STATUS.a_definir;
+  const isDisp = item.status === 'dispensado';
+  return `<tr id="ck-row-${item.id}" style="${isDisp?'opacity:.45':''}">
+    <td style="color:var(--text2);font-size:12px">${num}</td>
+    <td style="font-weight:500;${isDisp?'text-decoration:line-through':''}">${item.material}</td>
+    <td>
+      <input value="${item.responsavel||''}" placeholder="—"
+        style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:13px;padding:2px 4px;outline:none"
+        onchange="atualizarChecklist(${item.id}, {responsavel: this.value})"
+        onblur="atualizarChecklist(${item.id}, {responsavel: this.value})">
+    </td>
+    <td>
+      <input type="date" value="${item.data_entrega||''}"
+        style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:13px;padding:2px 4px;outline:none"
+        onchange="atualizarChecklist(${item.id}, {data_entrega: this.value})">
+    </td>
+    <td>
+      <select onchange="atualizarChecklistStatus(${item.id}, this.value, this)"
+        style="width:100%;border:none;border-radius:5px;padding:4px 8px;font-size:12px;font-weight:600;cursor:pointer;background:${s.bg};color:${s.color}">
+        ${Object.entries(CK_STATUS).map(([v, st]) =>
+          `<option value="${v}" ${item.status===v?'selected':''}>${st.label}</option>`).join('')}
+      </select>
+    </td>
+    <td>
+      <button onclick="excluirItemChecklist(${item.id})" class="btn-icon btn-delete" title="Remover item" style="font-size:13px">🗑️</button>
+    </td>
+  </tr>`;
+}
+
+async function atualizarChecklist(id, campos) {
+  await put(`/api/checklist/${id}`, campos);
+}
+
+async function atualizarChecklistStatus(id, novoStatus, selectEl) {
+  const s = CK_STATUS[novoStatus] || CK_STATUS.a_definir;
+  selectEl.style.background = s.bg;
+  selectEl.style.color = s.color;
+  const row = document.getElementById(`ck-row-${id}`);
+  if (row) {
+    row.style.opacity = novoStatus === 'dispensado' ? '0.45' : '1';
+    const td = row.querySelector('td:nth-child(2)');
+    if (td) td.style.textDecoration = novoStatus === 'dispensado' ? 'line-through' : '';
+  }
+  await put(`/api/checklist/${id}`, { status: novoStatus });
+  // Atualiza barra de progresso
+  const allSelects = document.querySelectorAll('#ck-tbody select');
+  const total = allSelects.length;
+  const prontos = [...allSelects].filter(s => s.value === 'pronto').length;
+  const pct = total ? Math.round(prontos / total * 100) : 0;
+  const bar = document.querySelector('[style*="border-radius:6px;transition:width"]');
+  if (bar) { bar.style.width = pct + '%'; bar.style.background = pct===100?'var(--success)':'var(--accent)'; }
+  const pctEl = document.querySelector('[style*="font-size:20px"]');
+  if (pctEl) { pctEl.textContent = pct + '%'; pctEl.style.color = pct===100?'var(--success)':'var(--accent)'; }
+}
+
+async function adicionarItemChecklist(empId) {
+  const material = prompt('Nome do material de marketing:');
+  if (!material?.trim()) return;
+  const r = await post(`/api/empreendimentos/${empId}/checklist`, { material: material.trim() });
+  if (!r.ok) return toast(r.error, 'error');
+  const tbody = document.getElementById('ck-tbody');
+  if (tbody) {
+    const num = tbody.querySelectorAll('tr').length + 1;
+    const newItem = { id: r.data.id, material: material.trim(), status: 'a_definir', responsavel: '', data_entrega: '' };
+    tbody.insertAdjacentHTML('beforeend', renderChecklistRow(newItem, num));
+  }
+  toast('Item adicionado! ✅');
+}
+
+async function excluirItemChecklist(id) {
+  if (!confirm('Remover este item do checklist?')) return;
+  await del(`/api/checklist/${id}`);
+  const row = document.getElementById(`ck-row-${id}`);
+  if (row) row.remove();
+  toast('Item removido');
 }
 
 async function gerarContrato(empId) {
