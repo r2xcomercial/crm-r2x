@@ -183,6 +183,9 @@ db.exec(`
 const migrations = [
   "ALTER TABLE leads ADD COLUMN aniversario TEXT",
   "ALTER TABLE leads ADD COLUMN cpf TEXT",
+  "ALTER TABLE leads ADD COLUMN tipo TEXT",
+  "ALTER TABLE leads ADD COLUMN score INTEGER DEFAULT 0",
+  "ALTER TABLE leads ADD COLUMN resumo TEXT",
   "ALTER TABLE clientes ADD COLUMN aniversario TEXT",
   "ALTER TABLE empreendimentos ADD COLUMN percentual_r2x REAL",
   "ALTER TABLE vendas ADD COLUMN unidade_id INTEGER REFERENCES unidades(id)",
@@ -217,6 +220,52 @@ db.exec(`
     data_entrega TEXT,
     status TEXT DEFAULT 'a_definir',
     ordem INTEGER DEFAULT 0,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    senha_hash TEXT NOT NULL,
+    salt TEXT NOT NULL,
+    perfil TEXT DEFAULT 'corretor',
+    corretor_id INTEGER REFERENCES corretores(id),
+    ativo INTEGER DEFAULT 1,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS sessoes (
+    token TEXT PRIMARY KEY,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    expira_em TEXT NOT NULL,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS interacoes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    tipo TEXT DEFAULT 'nota',
+    descricao TEXT NOT NULL,
+    usuario_nome TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS visitas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    corretor_id INTEGER REFERENCES corretores(id),
+    empreendimento_id INTEGER REFERENCES empreendimentos(id),
+    data_visita TEXT NOT NULL,
+    unidade_interesse TEXT,
+    proximo_passo TEXT,
+    observacoes TEXT,
     criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);

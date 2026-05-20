@@ -7,6 +7,7 @@ const XLSX = require("xlsx");
 const fs = require("fs");
 const PizZip = require("pizzip");
 const Docxtemplater = require("docxtemplater");
+const crypto = require("crypto");
 const db = require("./database");
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }); // 8 MB máx
@@ -15,23 +16,27 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ─── AUTENTICAÇÃO SIMPLES ────────────────────────────────────────────────────
+// ─── AUTENTICAÇÃO MULTI-USUÁRIO ──────────────────────────────────────────────
 
-const CRM_USER = process.env.CRM_USER || "r2x";
-const CRM_PASS = process.env.CRM_PASS || "r2x2026";
+function gerarSalt() { return crypto.randomBytes(16).toString('hex'); }
+function hashSenha(senha, salt) { return crypto.pbkdf2Sync(senha, salt, 10000, 64, 'sha512').toString('hex'); }
+function gerarToken() { return crypto.randomBytes(32).toString('hex'); }
 
-const APIs_PUBLICAS = ["/api/corretores/publico", "/api/leads/whatsapp"];
+const APIs_PUBLICAS = ["/api/corretores/publico", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/"];
 
 function autenticar(req, res, next) {
-  // Páginas HTML e assets são servidos livremente — o frontend gerencia o redirecionamento
   if (!req.path.startsWith("/api/")) return next();
-  // APIs públicas não precisam de token
   if (APIs_PUBLICAS.some(p => req.path.startsWith(p))) return next();
-  // Demais APIs exigem token
   const token = req.headers["x-crm-token"] || req.query.token;
-  const esperado = Buffer.from(`${CRM_USER}:${CRM_PASS}`).toString("base64");
-  if (token === esperado) return next();
-  return res.status(401).json({ ok: false, error: "Não autorizado" });
+  if (!token) return res.status(401).json({ ok: false, error: "Não autorizado" });
+  const sessao = db.prepare(`
+    SELECT s.token, u.id, u.nome, u.email, u.perfil, u.corretor_id
+    FROM sessoes s JOIN usuarios u ON u.id = s.usuario_id
+    WHERE s.token=? AND s.expira_em > datetime('now') AND u.ativo=1
+  `).get(token);
+  if (!sessao) return res.status(401).json({ ok: false, error: "Sessão inválida ou expirada" });
+  req.usuario = { id: sessao.id, nome: sessao.nome, email: sessao.email, perfil: sessao.perfil, corretor_id: sessao.corretor_id };
+  next();
 }
 
 app.use(autenticar);
@@ -39,10 +44,88 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 4000;
 
+// Cria admin padrão se não existir nenhum usuário
+(function seedAdmin() {
+  const existe = db.prepare('SELECT id FROM usuarios LIMIT 1').get();
+  if (!existe) {
+    const salt = gerarSalt();
+    db.prepare('INSERT INTO usuarios(nome, email, senha_hash, salt, perfil) VALUES(?,?,?,?,?)')
+      .run('Administrador', process.env.CRM_USER || 'r2x', hashSenha(process.env.CRM_PASS || 'r2x2026', salt), salt, 'admin');
+    console.log('[auth] Usuário admin criado — login:', process.env.CRM_USER || 'r2x');
+  }
+})();
+
 // ─── UTILS ───────────────────────────────────────────────────────────────────
 
 function ok(res, data) { res.json({ ok: true, data }); }
 function err(res, msg, code = 400) { res.status(code).json({ ok: false, error: msg }); }
+
+// ─── AUTH ────────────────────────────────────────────────────────────────────
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, senha } = req.body;
+  if (!email || !senha) return err(res, 'Email e senha obrigatórios');
+  const u = db.prepare('SELECT * FROM usuarios WHERE email=? AND ativo=1').get(email.trim());
+  if (!u || hashSenha(senha, u.salt) !== u.senha_hash) return err(res, 'Credenciais inválidas', 401);
+  const token = gerarToken();
+  const expira = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().replace('T',' ').slice(0,19);
+  db.prepare('INSERT INTO sessoes(token, usuario_id, expira_em) VALUES(?,?,?)').run(token, u.id, expira);
+  db.prepare("DELETE FROM sessoes WHERE expira_em < datetime('now')").run();
+  ok(res, { token, nome: u.nome, email: u.email, perfil: u.perfil, corretor_id: u.corretor_id });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = req.headers["x-crm-token"] || req.query.token;
+  if (token) db.prepare('DELETE FROM sessoes WHERE token=?').run(token);
+  ok(res, {});
+});
+
+app.get('/api/auth/me', (req, res) => {
+  ok(res, req.usuario);
+});
+
+// ─── USUÁRIOS (admin only) ────────────────────────────────────────────────────
+
+function soAdmin(req, res, next) {
+  if (req.usuario?.perfil !== 'admin') return err(res, 'Acesso restrito a administradores', 403);
+  next();
+}
+
+app.get('/api/usuarios', soAdmin, (req, res) => {
+  const rows = db.prepare(`SELECT u.id, u.nome, u.email, u.perfil, u.corretor_id, u.ativo, u.criado_em, c.nome as corretor_nome FROM usuarios u LEFT JOIN corretores c ON c.id = u.corretor_id ORDER BY u.nome`).all();
+  ok(res, rows);
+});
+
+app.post('/api/usuarios', soAdmin, (req, res) => {
+  const { nome, email, senha, perfil, corretor_id } = req.body;
+  if (!nome || !email || !senha) return err(res, 'Nome, email e senha obrigatórios');
+  const salt = gerarSalt();
+  const hash = hashSenha(senha, salt);
+  try {
+    const r = db.prepare('INSERT INTO usuarios(nome,email,senha_hash,salt,perfil,corretor_id) VALUES(?,?,?,?,?,?)').run(nome, email, hash, salt, perfil||'corretor', corretor_id||null);
+    ok(res, { id: r.lastInsertRowid });
+  } catch(e) {
+    if (e.message.includes('UNIQUE')) return err(res, 'E-mail já cadastrado');
+    throw e;
+  }
+});
+
+app.put('/api/usuarios/:id', soAdmin, (req, res) => {
+  const { nome, email, senha, perfil, corretor_id, ativo } = req.body;
+  const u = db.prepare('SELECT * FROM usuarios WHERE id=?').get(parseInt(req.params.id));
+  if (!u) return err(res, 'Usuário não encontrado', 404);
+  let hash = u.senha_hash, salt = u.salt;
+  if (senha) { salt = gerarSalt(); hash = hashSenha(senha, salt); }
+  db.prepare('UPDATE usuarios SET nome=?,email=?,senha_hash=?,salt=?,perfil=?,corretor_id=?,ativo=? WHERE id=?')
+    .run(nome||u.nome, email||u.email, hash, salt, perfil||u.perfil, corretor_id??u.corretor_id, ativo??u.ativo, u.id);
+  ok(res, {});
+});
+
+app.delete('/api/usuarios/:id', soAdmin, (req, res) => {
+  db.prepare('DELETE FROM sessoes WHERE usuario_id=?').run(parseInt(req.params.id));
+  db.prepare('DELETE FROM usuarios WHERE id=?').run(parseInt(req.params.id));
+  ok(res, {});
+});
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 
@@ -442,6 +525,9 @@ app.get("/api/leads", (req, res) => {
     WHERE 1=1
   `;
   const params = [];
+  if (req.usuario?.perfil === 'corretor' && req.usuario?.corretor_id) {
+    sql += " AND l.corretor_id=?"; params.push(req.usuario.corretor_id);
+  }
   if (status) { sql += " AND l.status=?"; params.push(status); }
   if (empreendimento_id) { sql += " AND l.empreendimento_id=?"; params.push(empreendimento_id); }
   sql += " ORDER BY l.criado_em DESC";
@@ -479,17 +565,68 @@ app.post("/api/leads/:id/followups", (req, res) => {
   ok(res, { id: r.lastInsertRowid });
 });
 
+// ─── HISTÓRICO DE INTERAÇÕES COM LEAD ────────────────────────────────────────
+
+app.get('/api/leads/:id/interacoes', (req, res) => {
+  const rows = db.prepare('SELECT * FROM interacoes WHERE lead_id=? ORDER BY criado_em DESC').all(parseInt(req.params.id));
+  ok(res, rows);
+});
+
+app.post('/api/leads/:id/interacoes', (req, res) => {
+  const { tipo, descricao } = req.body;
+  if (!descricao) return err(res, 'Descrição obrigatória');
+  const r = db.prepare('INSERT INTO interacoes(lead_id,tipo,descricao,usuario_nome) VALUES(?,?,?,?)').run(parseInt(req.params.id), tipo||'nota', descricao, req.usuario?.nome||'Sistema');
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.delete('/api/interacoes/:id', (req, res) => {
+  db.prepare('DELETE FROM interacoes WHERE id=?').run(parseInt(req.params.id));
+  ok(res, {});
+});
+
+// ─── VISITAS ──────────────────────────────────────────────────────────────────
+
+app.get('/api/leads/:id/visitas', (req, res) => {
+  const rows = db.prepare('SELECT v.*, c.nome as corretor_nome, e.nome as emp_nome FROM visitas v LEFT JOIN corretores c ON c.id=v.corretor_id LEFT JOIN empreendimentos e ON e.id=v.empreendimento_id WHERE v.lead_id=? ORDER BY v.data_visita DESC').all(parseInt(req.params.id));
+  ok(res, rows);
+});
+
+app.post('/api/leads/:id/visitas', (req, res) => {
+  const { corretor_id, empreendimento_id, data_visita, unidade_interesse, proximo_passo, observacoes } = req.body;
+  if (!data_visita) return err(res, 'Data da visita obrigatória');
+  const r = db.prepare('INSERT INTO visitas(lead_id,corretor_id,empreendimento_id,data_visita,unidade_interesse,proximo_passo,observacoes) VALUES(?,?,?,?,?,?,?)').run(parseInt(req.params.id), corretor_id||null, empreendimento_id||null, data_visita, unidade_interesse||null, proximo_passo||null, observacoes||null);
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.delete('/api/visitas/:id', (req, res) => {
+  db.prepare('DELETE FROM visitas WHERE id=?').run(parseInt(req.params.id));
+  ok(res, {});
+});
+
 // Webhook para receber leads do chatbot WhatsApp
 app.post("/api/leads/whatsapp", (req, res) => {
-  const { telefone, nome, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse } = req.body;
+  const { telefone, nome, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, tipo, score, resumo } = req.body;
   if (!telefone) return err(res, "Telefone obrigatório");
-  const existente = db.prepare("SELECT id FROM leads WHERE telefone=?").get(telefone);
+  const existente = db.prepare("SELECT id, status FROM leads WHERE telefone=?").get(telefone);
   if (existente) {
-    db.prepare(`UPDATE leads SET nome=COALESCE(?,nome), cidade=COALESCE(?,cidade), objetivo=COALESCE(?,objetivo), faixa_investimento=COALESCE(?,faixa_investimento), prazo=COALESCE(?,prazo), empreendimento_interesse=COALESCE(?,empreendimento_interesse), atualizado_em=CURRENT_TIMESTAMP WHERE id=?`)
-      .run(nome||null, cidade||null, objetivo||null, faixa_investimento||null, prazo||null, empreendimento_interesse||null, existente.id);
+    // Sobe status automaticamente se score melhorou
+    let novoStatus = existente.status;
+    if (score >= 60 && existente.status === 'novo') novoStatus = 'qualificado';
+    db.prepare(`UPDATE leads SET
+      nome=COALESCE(?,nome), cidade=COALESCE(?,cidade), objetivo=COALESCE(?,objetivo),
+      faixa_investimento=COALESCE(?,faixa_investimento), prazo=COALESCE(?,prazo),
+      empreendimento_interesse=COALESCE(?,empreendimento_interesse),
+      tipo=COALESCE(?,tipo), score=COALESCE(?,score), resumo=COALESCE(?,resumo),
+      status=?, atualizado_em=CURRENT_TIMESTAMP WHERE id=?`)
+      .run(nome||null, cidade||null, objetivo||null, faixa_investimento||null, prazo||null,
+           empreendimento_interesse||null, tipo||null, score||null, resumo||null,
+           novoStatus, existente.id);
     return ok(res, { id: existente.id, atualizado: true });
   }
-  const r = db.prepare(`INSERT INTO leads (nome,telefone,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,status,origem) VALUES (?,?,?,?,?,?,?,'novo','whatsapp')`).run(nome, telefone, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse);
+  const r = db.prepare(`INSERT INTO leads
+    (nome,telefone,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,tipo,score,resumo,status,origem)
+    VALUES (?,?,?,?,?,?,?,?,?,?,'novo','whatsapp')`)
+    .run(nome, telefone, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, tipo||null, score||0, resumo||null);
   ok(res, { id: r.lastInsertRowid, atualizado: false });
 });
 
@@ -1033,6 +1170,170 @@ app.post('/api/empreendimentos/:id/checklist', (req, res) => {
 app.delete('/api/checklist/:id', (req, res) => {
   db.prepare('DELETE FROM checklist_marketing WHERE id=?').run(parseInt(req.params.id));
   ok(res, {});
+});
+
+// ─── PROPOSTA COMERCIAL ───────────────────────────────────────────────────────
+
+app.get('/api/leads/:id/proposta', (req, res) => {
+  const lead = db.prepare('SELECT l.*, c.nome as corretor_nome, e.nome as emp_nome, e.cidade as emp_cidade, e.estado as emp_estado, e.num_unidades, e.vgv_estimado, e.percentual_r2x FROM leads l LEFT JOIN corretores c ON c.id=l.corretor_id LEFT JOIN empreendimentos e ON e.id=l.empreendimento_id WHERE l.id=?').get(parseInt(req.params.id));
+  if (!lead) return err(res, 'Lead não encontrado', 404);
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Proposta Comercial — ${lead.nome}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: #fff; color: #1a1a2e; padding: 40px; max-width: 800px; margin: 0 auto; }
+  .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 24px; border-bottom: 3px solid #00C4B4; margin-bottom: 32px; }
+  .logo { font-size: 28px; font-weight: 900; color: #0D1B2E; }
+  .logo span { color: #00C4B4; }
+  .tag { background: #00C4B4; color: #0D1B2E; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+  h1 { font-size: 26px; font-weight: 900; margin-bottom: 6px; }
+  .subtitle { color: #64748b; font-size: 14px; margin-bottom: 32px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 28px; }
+  .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; }
+  .card-title { font-size: 11px; font-weight: 600; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .card-value { font-size: 18px; font-weight: 700; color: #0D1B2E; }
+  .section-title { font-size: 16px; font-weight: 700; color: #0D1B2E; margin: 24px 0 12px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #0D1B2E; color: #fff; padding: 10px 14px; text-align: left; font-weight: 600; }
+  td { padding: 10px 14px; border-bottom: 1px solid #e2e8f0; }
+  tr:hover td { background: #f8fafc; }
+  .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; text-align: center; color: #94a3b8; font-size: 12px; }
+  .accent { color: #00C4B4; }
+  @media print { body { padding: 20px; } }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">R2X <span>Comercial</span></div>
+    <div class="tag">PROPOSTA COMERCIAL</div>
+  </div>
+  <h1>Olá, ${lead.nome}!</h1>
+  <p class="subtitle">Preparamos esta proposta especialmente para você com base no seu perfil de investimento.</p>
+  <div class="grid">
+    <div class="card"><div class="card-title">Empreendimento de Interesse</div><div class="card-value">${lead.emp_nome || lead.empreendimento_interesse || '—'}</div></div>
+    <div class="card"><div class="card-title">Localização</div><div class="card-value">${[lead.emp_cidade, lead.emp_estado].filter(Boolean).join(' / ') || '—'}</div></div>
+    <div class="card"><div class="card-title">Faixa de Investimento</div><div class="card-value accent">${lead.faixa_investimento || '—'}</div></div>
+    <div class="card"><div class="card-title">Prazo de Compra</div><div class="card-value">${lead.prazo || '—'}</div></div>
+  </div>
+  <div class="section-title">Perfil do Cliente</div>
+  <table>
+    <tr><th>Campo</th><th>Informação</th></tr>
+    <tr><td>Nome</td><td><strong>${lead.nome || '—'}</strong></td></tr>
+    <tr><td>Contato</td><td>${lead.telefone || '—'}${lead.email ? ' · ' + lead.email : ''}</td></tr>
+    <tr><td>Cidade</td><td>${lead.cidade || '—'}</td></tr>
+    <tr><td>Objetivo</td><td>${lead.objetivo || '—'}</td></tr>
+    <tr><td>Corretor Responsável</td><td>${lead.corretor_nome || '—'}</td></tr>
+  </table>
+  ${lead.num_unidades ? `
+  <div class="section-title">Sobre o Empreendimento</div>
+  <table>
+    <tr><th>Informação</th><th>Detalhe</th></tr>
+    <tr><td>Total de Unidades</td><td>${lead.num_unidades}</td></tr>
+    ${lead.vgv_estimado ? `<tr><td>VGV Estimado</td><td>R$ ${Number(lead.vgv_estimado).toLocaleString('pt-BR', {minimumFractionDigits:2})}</td></tr>` : ''}
+  </table>` : ''}
+  <div class="footer">
+    <p><strong>R2X Aceleradora de Vendas</strong> · Braço do Norte, SC</p>
+    <p style="margin-top:4px">Proposta gerada em ${new Date().toLocaleDateString('pt-BR')} — Documento confidencial</p>
+  </div>
+  <script>window.onload=()=>window.print()<\/script>
+</body>
+</html>`;
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
+});
+
+// ─── RELATÓRIO DE COMISSÕES ───────────────────────────────────────────────────
+
+app.get('/api/relatorios/comissoes', (req, res) => {
+  const rows = db.prepare(`
+    SELECT c.nome, c.telefone,
+      COUNT(v.id) as total_vendas,
+      SUM(v.valor) as vgv_total,
+      SUM(v.comissao_corretor_valor) as comissao_total,
+      SUM(CASE WHEN v.comissao_corretor_status='pago' THEN v.comissao_corretor_valor ELSE 0 END) as comissao_paga,
+      SUM(CASE WHEN v.comissao_corretor_status='pendente' THEN v.comissao_corretor_valor ELSE 0 END) as comissao_pendente
+    FROM corretores c
+    LEFT JOIN vendas v ON v.corretor_id=c.id AND v.status='ativo'
+    WHERE c.ativo=1
+    GROUP BY c.id ORDER BY comissao_total DESC
+  `).all();
+  ok(res, rows);
+});
+
+// ─── EXPORTAÇÃO EXCEL ─────────────────────────────────────────────────────────
+
+app.get('/api/exportar/leads', (req, res) => {
+  const rows = db.prepare(`SELECT l.nome, l.telefone, l.email, l.cidade, l.status, l.origem, l.objetivo, l.faixa_investimento, l.prazo, l.empreendimento_interesse, c.nome as corretor, e.nome as empreendimento, l.criado_em FROM leads l LEFT JOIN corretores c ON c.id=l.corretor_id LEFT JOIN empreendimentos e ON e.id=l.empreendimento_id ORDER BY l.criado_em DESC`).all();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Leads');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="leads-${new Date().toISOString().slice(0,10)}.xlsx"`);
+  res.send(buf);
+});
+
+app.get('/api/exportar/vendas', (req, res) => {
+  const rows = db.prepare(`SELECT v.data_venda, l.nome as lead, e.nome as empreendimento, c.nome as corretor, v.imovel, v.valor, v.comissao_corretor_pct, v.comissao_corretor_valor, v.comissao_corretor_status, v.status, v.observacoes FROM vendas v LEFT JOIN leads l ON l.id=v.lead_id LEFT JOIN empreendimentos e ON e.id=v.empreendimento_id LEFT JOIN corretores c ON c.id=v.corretor_id ORDER BY v.data_venda DESC`).all();
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Vendas');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="vendas-${new Date().toISOString().slice(0,10)}.xlsx"`);
+  res.send(buf);
+});
+
+// ─── PORTAL DO INCORPORADOR ───────────────────────────────────────────────────
+
+app.post('/api/empreendimentos/:id/portal/token', (req, res) => {
+  const empId = parseInt(req.params.id);
+  const token = crypto.randomBytes(16).toString('hex');
+  try {
+    db.exec("CREATE TABLE IF NOT EXISTS portal_tokens (token TEXT PRIMARY KEY, empreendimento_id INTEGER, criado_em DATETIME DEFAULT CURRENT_TIMESTAMP)");
+  } catch(_) {}
+  db.prepare("INSERT OR REPLACE INTO portal_tokens(token, empreendimento_id) VALUES(?,?)").run(token, empId);
+  ok(res, { token, url: `/portal/${token}` });
+});
+
+app.get('/api/portal/:token', (req, res) => {
+  try {
+    db.exec("CREATE TABLE IF NOT EXISTS portal_tokens (token TEXT PRIMARY KEY, empreendimento_id INTEGER, criado_em DATETIME DEFAULT CURRENT_TIMESTAMP)");
+  } catch(_) {}
+  const pt = db.prepare('SELECT * FROM portal_tokens WHERE token=?').get(req.params.token);
+  if (!pt) return err(res, 'Link inválido ou expirado', 404);
+  const empId = pt.empreendimento_id;
+  const emp = db.prepare('SELECT * FROM empreendimentos WHERE id=?').get(empId);
+  if (!emp) return err(res, 'Empreendimento não encontrado', 404);
+  const unidades = db.prepare('SELECT status, COUNT(*) as n FROM unidades WHERE empreendimento_id=? GROUP BY status').all(empId);
+  const vendas = db.prepare("SELECT COUNT(*) as n, SUM(valor) as vgv FROM vendas WHERE empreendimento_id=? AND status='ativo'").get(empId);
+  const checklist = db.prepare('SELECT material, status FROM checklist_marketing WHERE empreendimento_id=? ORDER BY ordem').all(empId);
+  ok(res, { emp, unidades, vendas, checklist });
+});
+
+// ─── WEBHOOK — CAPTURA DE LEADS DE PORTAIS ────────────────────────────────────
+
+const WEBHOOK_KEY = process.env.WEBHOOK_KEY || 'webhook-r2x-2026';
+
+app.post('/api/webhook/lead', (req, res) => {
+  const key = req.headers['x-webhook-key'] || req.query.key;
+  if (key !== WEBHOOK_KEY) return res.status(401).json({ ok: false, error: 'Chave inválida' });
+  const { nome, telefone, email, cidade, mensagem, empreendimento, origem } = req.body;
+  if (!nome && !telefone) return err(res, 'Nome ou telefone obrigatório');
+  const existe = telefone ? db.prepare('SELECT id FROM leads WHERE telefone=?').get(telefone) : null;
+  if (existe) return res.json({ ok: true, data: { id: existe.id, duplicado: true } });
+  const r = db.prepare('INSERT INTO leads(nome,telefone,email,cidade,empreendimento_interesse,origem,status,observacoes) VALUES(?,?,?,?,?,?,?,?)').run(
+    nome||null, telefone||null, email||null, cidade||null,
+    empreendimento||null, origem||'portal', 'novo',
+    mensagem ? `Mensagem do portal: ${mensagem}` : null
+  );
+  ok(res, { id: r.lastInsertRowid });
 });
 
 // ─── BACKUP / RESTAURAÇÃO DO BANCO DE DADOS ──────────────────────────────────

@@ -244,6 +244,20 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+  /* ── TIMELINE / INTERACOES ── */
+  .timeline-item { padding: 8px 10px; background: var(--card2); border-radius: 6px; border-left: 3px solid var(--accent2); margin-bottom: 6px; }
+  .timeline-item .ti-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+  .timeline-item .ti-desc { font-size: 12px; }
+
+  /* ── PWA MOBILE ── */
+  @media(max-width: 480px) {
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+    .topbar-search { display: none; }
+    #add-btn { padding: 7px 10px; font-size: 12px; }
+    .espelho-tile { width: 56px; min-height: 56px; }
+    .espelho-tile .tile-num { font-size: 12px; }
+  }
+
   /* ── RESPONSIVE ── */
   #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 200; }
   #sidebar-overlay.open { display: block; }
@@ -300,10 +314,21 @@
 
     <div class="nav-section">Financeiro</div>
     <div class="nav-item" onclick="navigate('financeiro')"><span class="icon">💰</span> Financeiro</div>
-    <div class="nav-item" onclick="navigate('debora')" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px"><span class="icon">🤖</span> Débora <span class="nav-badge" id="badge-debora" style="display:none"></span></div>
+    <div class="nav-item" onclick="navigate('calculadora')" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px"><span class="icon">🧮</span> Calculadora</div>
+    <div class="nav-item" onclick="navigate('debora')"><span class="icon">🤖</span> Débora <span class="nav-badge" id="badge-debora" style="display:none"></span></div>
+    <div id="nav-usuarios" class="nav-item" onclick="navigate('usuarios')" style="display:none"><span class="icon">👤</span> Usuários</div>
     <div class="nav-item" onclick="baixarBackup()" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px;color:var(--text2)"><span class="icon">💾</span> Backup do Banco</div>
     <label class="nav-item" style="cursor:pointer;color:var(--text2)"><span class="icon">📥</span> Restaurar Backup<input type="file" accept=".db" style="display:none" onchange="restaurarBackup(this)"></label>
   </nav>
+  <div id="sidebar-user" style="padding:12px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--text2)">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-weight:600;color:var(--text)" id="sidebar-user-nome">—</div>
+        <div id="sidebar-user-perfil" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px"></div>
+      </div>
+      <button onclick="fazerLogout()" style="background:none;border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px" title="Sair">Sair</button>
+    </div>
+  </div>
 </div>
 
 <!-- OVERLAY MOBILE -->
@@ -372,9 +397,9 @@ const pageTitles = {
   dashboard: 'Dashboard', leads: 'Leads', kanban: 'Kanban de Leads', vendas: 'Vendas',
   clientes: 'Incorporadores', empreendimentos: 'Empreendimentos', corretores: 'Corretores',
   financeiro: 'Financeiro', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
-  painel: 'Painel de Lançamento'
+  painel: 'Painel de Lançamento', usuarios: 'Usuários do Sistema', calculadora: 'Calculadora de Financiamento'
 };
-const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario'];
+const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario','usuarios'];
 
 async function renderPage(page) {
   const c = document.getElementById('content');
@@ -393,6 +418,8 @@ async function renderPage(page) {
       case 'ranking': await renderRanking(); break;
       case 'painel': await renderPainel(); break;
       case 'debora': await renderDebora(); break;
+      case 'usuarios': await renderUsuarios(); break;
+      case 'calculadora': renderCalculadora(); break;
     }
   } catch(e) {
     c.innerHTML = `<div style="color:var(--danger);padding:24px">Erro ao carregar: ${e.message}</div>`;
@@ -402,7 +429,9 @@ async function renderPage(page) {
 // ─── API HELPERS ──────────────────────────────────────────────────────────────
 
 const TOKEN = localStorage.getItem('crm_token') || '';
-if (!TOKEN) { window.location.href = '/login.html'; }
+let USUARIO = {};
+try { USUARIO = JSON.parse(localStorage.getItem('crm_usuario') || '{}'); } catch(_) {}
+if (!TOKEN) { window.location.href = '/login'; }
 
 async function api(method, path, body) {
   const r = await fetch(API + path, {
@@ -410,7 +439,7 @@ async function api(method, path, body) {
     headers: { 'Content-Type': 'application/json', 'x-crm-token': TOKEN },
     body: body ? JSON.stringify(body) : undefined
   });
-  if (r.status === 401) { localStorage.removeItem('crm_token'); window.location.href = '/login'; return; }
+  if (r.status === 401) { localStorage.removeItem('crm_token'); localStorage.removeItem('crm_usuario'); window.location.href = '/login'; return; }
   return r.json();
 }
 const get = p => api('GET', p);
@@ -665,36 +694,17 @@ async function renderLeads(filter = '') {
           <label style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">
             📥 Importar XLSX<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importarLeads(this)">
           </label>
+          <button onclick="exportarLeads()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">📊 Exportar Excel</button>
         </div>
       </div>
       <table>
         <thead><tr>
           <th>Nome</th><th>Telefone</th><th>Cidade</th><th>Objetivo</th>
-          <th>Faixa</th><th>Status</th><th>Corretor</th><th>Empreendimento</th><th>Origem</th><th></th>
+          <th>Faixa</th><th>Status</th><th style="width:64px;text-align:center">Score</th>
+          <th>Corretor</th><th>Empreendimento</th><th>Origem</th><th></th>
         </tr></thead>
         <tbody>
-          ${leads.length ? leads.map(l => {
-            const dias = l.atualizado_em ? Math.floor((Date.now() - new Date(l.atualizado_em.replace(' ','T'))) / 86400000) : 999;
-            const esquecido = dias >= 3 && !['vendido','perdido'].includes(l.status);
-            return `
-            <tr ${esquecido ? 'style="background:rgba(245,158,11,.04)"' : ''}>
-              <td><strong>${l.nome||'—'}</strong>${esquecido ? ` <span title="${dias} dias sem contato" style="color:var(--warning);font-size:11px">⚠️${dias}d</span>` : ''}</td>
-              <td><a href="https://wa.me/55${l.telefone}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${fmtPhone(l.telefone)}</a></td>
-              <td>${l.cidade||'—'}</td>
-              <td>${l.objetivo||'—'}</td>
-              <td>${l.faixa_investimento||'—'}</td>
-              <td><span class="badge ${statusColors[l.status]||'badge-gray'}">${l.status}</span></td>
-              <td>${l.corretor_nome||'<span style="color:var(--text2)">—</span>'}</td>
-              <td>${l.empreendimento_nome||l.empreendimento_interesse||'—'}</td>
-              <td><span class="badge ${l.origem==='whatsapp'?'badge-green':'badge-gray'}">${l.origem}</span></td>
-              <td style="white-space:nowrap">
-                ${l.origem==='whatsapp' && l.telefone ? `<button class="btn-icon" title="Ver conversa na Débora" onclick="abrirDeboraParaLead('${l.telefone}')">🤖</button>` : ''}
-                <button class="btn-icon" title="Follow-up" onclick='openFollowupModal(${JSON.stringify({id:l.id,nome:l.nome})})'>📞</button>
-                <button class="btn-icon btn-edit" onclick="editLead(${l.id})">✏️</button>
-                <button class="btn-icon btn-delete" onclick="deleteLead(${l.id})">🗑️</button>
-              </td>
-            </tr>`;
-          }).join('') : '<tr class="empty-row"><td colspan="10">Nenhum lead encontrado</td></tr>'}
+          ${leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="11">Nenhum lead encontrado</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -709,20 +719,50 @@ function filterLeadStatus(status) {
 
 function renderLeadsFiltered(leads) {
   const statusColors = { novo:'badge-accent', qualificado:'badge-blue', visitou:'badge-yellow', proposta:'badge-yellow', vendido:'badge-green', perdido:'badge-red' };
-  document.querySelector('#content tbody').innerHTML = leads.length ? leads.map(l => `
-    <tr>
-      <td><strong>${l.nome||'—'}</strong></td>
-      <td><a href="https://wa.me/55${l.telefone}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${fmtPhone(l.telefone)}</a></td>
-      <td>${l.cidade||'—'}</td>
-      <td>${l.objetivo||'—'}</td>
-      <td>${l.faixa_investimento||'—'}</td>
-      <td><span class="badge ${statusColors[l.status]||'badge-gray'}">${l.status}</span></td>
-      <td>${l.corretor_nome||'—'}</td>
-      <td>${l.empreendimento_nome||l.empreendimento_interesse||'—'}</td>
-      <td><span class="badge ${l.origem==='whatsapp'?'badge-green':'badge-gray'}">${l.origem}</span></td>
-      <td><button class="btn-icon btn-edit" onclick="editLead(${l.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteLead(${l.id})">🗑️</button></td>
-    </tr>
-  `).join('') : '<tr class="empty-row"><td colspan="10">Nenhum lead</td></tr>';
+  document.querySelector('#content tbody').innerHTML = leads.length
+    ? leads.map(l => renderLeadRow(l, statusColors)).join('')
+    : '<tr class="empty-row"><td colspan="11">Nenhum lead</td></tr>';
+}
+
+// ─── Renderização de linha de lead (shared) ───────────────────────────────────
+
+function scoreChip(score) {
+  if (!score) return '<span style="color:var(--text2);font-size:11px">—</span>';
+  const cor = score >= 61 ? '#22c55e' : score >= 31 ? '#f59e0b' : '#ef4444';
+  const label = score >= 61 ? 'Alto' : score >= 31 ? 'Médio' : 'Baixo';
+  return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+    <div style="width:36px;height:4px;border-radius:2px;background:var(--navy3);overflow:hidden">
+      <div style="width:${score}%;height:100%;background:${cor};border-radius:2px"></div>
+    </div>
+    <span style="font-size:9px;color:${cor};font-weight:700">${score}% ${label}</span>
+  </div>`;
+}
+
+function renderLeadRow(l, statusColors) {
+  const sc = statusColors || { novo:'badge-accent', qualificado:'badge-blue', visitou:'badge-yellow', proposta:'badge-yellow', vendido:'badge-green', perdido:'badge-red' };
+  const dias = l.atualizado_em ? Math.floor((Date.now() - new Date(l.atualizado_em.replace(' ','T'))) / 86400000) : 999;
+  const esquecido = dias >= 3 && !['vendido','perdido'].includes(l.status);
+  const nomeTitle = l.resumo ? ` title="${l.resumo.replace(/"/g,'&quot;')}"` : '';
+  return `
+  <tr ${esquecido ? 'style="background:rgba(245,158,11,.04)"' : ''}>
+    <td><strong${nomeTitle}>${l.nome||'—'}</strong>${esquecido ? ` <span title="${dias}d sem contato" style="color:var(--warning);font-size:11px">⚠️${dias}d</span>` : ''}${l.resumo ? ` <span style="font-size:10px;color:var(--text2);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">${l.resumo}</span>` : ''}</td>
+    <td><a href="https://wa.me/55${l.telefone}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${fmtPhone(l.telefone)}</a></td>
+    <td>${l.cidade||'—'}</td>
+    <td>${l.objetivo||'—'}</td>
+    <td>${l.faixa_investimento||'—'}</td>
+    <td><span class="badge ${sc[l.status]||'badge-gray'}">${l.status}</span></td>
+    <td style="text-align:center">${scoreChip(l.score)}</td>
+    <td>${l.corretor_nome||'<span style="color:var(--text2)">—</span>'}</td>
+    <td>${l.empreendimento_nome||l.empreendimento_interesse||'—'}</td>
+    <td><span class="badge ${l.origem==='whatsapp'?'badge-green':'badge-gray'}">${l.origem}</span></td>
+    <td style="white-space:nowrap">
+      ${l.origem==='whatsapp' && l.telefone ? `<button class="btn-icon" title="Ver conversa na Débora" onclick="abrirDeboraParaLead('${l.telefone}')">🤖</button>` : ''}
+      <button class="btn-icon" title="Follow-up" onclick='openFollowupModal(${JSON.stringify({id:l.id,nome:l.nome})})'>📞</button>
+      <button class="btn-icon" title="Proposta Comercial" onclick="abrirProposta(${l.id})" style="color:var(--accent2)">📋</button>
+      <button class="btn-icon btn-edit" onclick="editLead(${l.id})">✏️</button>
+      <button class="btn-icon btn-delete" onclick="deleteLead(${l.id})">🗑️</button>
+    </td>
+  </tr>`;
 }
 
 function openLeadModal(lead = {}) {
@@ -770,6 +810,28 @@ function openLeadModal(lead = {}) {
         📞 Follow-up & Templates
       </button>
     </div>` : ''}
+    ${lead.id ? `
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📋 Histórico de Interações</div>
+      <div id="timeline-list" style="max-height:180px;overflow-y:auto;margin-bottom:8px;display:flex;flex-direction:column;gap:6px">
+        <div style="color:var(--text2);font-size:12px">Carregando...</div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:4px">
+        <select id="interacao-tipo" style="font-size:12px;padding:5px 8px;border-radius:6px;background:var(--navy3);border:1px solid var(--border);color:var(--text)">
+          <option value="nota">Nota</option><option value="ligacao">Ligação</option><option value="email">E-mail</option><option value="whatsapp">WhatsApp</option><option value="reuniao">Reunião</option>
+        </select>
+        <input id="interacao-texto" placeholder="Descreva a interação..." style="flex:1;font-size:12px;padding:5px 8px;border-radius:6px;background:var(--navy3);border:1px solid var(--border);color:var(--text)">
+        <button onclick="adicionarInteracao(${lead.id})" style="background:var(--accent);border:none;color:var(--navy);border-radius:6px;padding:5px 12px;cursor:pointer;font-weight:600;font-size:12px">+</button>
+      </div>
+    </div>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📅 Registro de Visitas</div>
+      <div id="visitas-list" style="max-height:120px;overflow-y:auto;margin-bottom:8px;display:flex;flex-direction:column;gap:6px">
+        <div style="color:var(--text2);font-size:12px">Carregando...</div>
+      </div>
+      <button onclick="abrirModalVisita(${lead.id})" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600">+ Registrar Visita</button>
+    </div>
+    ` : ''}
   `, async () => {
     const body = { nome: v('f-nome'), telefone: v('f-tel'), email: v('f-email'), cidade: v('f-cidade'), objetivo: v('f-obj'), faixa_investimento: v('f-faixa'), prazo: v('f-prazo'), status: v('f-status'), corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, aniversario: v('f-aniv')||null, observacoes: v('f-obs') };
     const r = lead.id ? await put(`/api/leads/${lead.id}`, body) : await post('/api/leads', body);
@@ -777,6 +839,7 @@ function openLeadModal(lead = {}) {
     toast(lead.id ? 'Lead atualizado!' : 'Lead criado!');
     closeModal(); if (currentPage === 'kanban') renderKanban(); else renderLeads();
   });
+  if (lead.id) { carregarTimeline(lead.id); carregarVisitas(lead.id); }
 }
 
 async function editLead(id) {
@@ -1010,7 +1073,13 @@ async function renderVendas(filter = '') {
       ${kpi('💵', 'VGV Total', fmt(totalVGV), `${vendas.filter(v=>v.status==='ativo').length} vendas ativas`)}
     </div>
     <div class="table-card">
-      <div class="table-header"><div class="table-title">🏆 Vendas (${vendas.length})</div></div>
+      <div class="table-header">
+        <div class="table-title">🏆 Vendas (${vendas.length})</div>
+        <div style="display:flex;gap:8px">
+          <button onclick="exportarVendas()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">📊 Exportar Excel</button>
+          <button onclick="renderComissoes()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">💰 Rel. Comissões</button>
+        </div>
+      </div>
       <table>
         <thead><tr><th>Data</th><th>Lead</th><th>Imóvel</th><th>Valor</th><th>Corretor</th><th>Empreendimento</th><th>Incorporador</th><th>Status</th><th>Comissão Corretor</th><th></th></tr></thead>
         <tbody>
@@ -1346,6 +1415,7 @@ async function renderEmpreendimentos(filter = '') {
                 <button class="btn-icon" title="Checklist de Marketing" onclick="verChecklist(${e.id})" style="color:#a78bfa">✅</button>
                 <button class="btn-icon" title="Gerar Contrato (.docx)" onclick="gerarContrato(${e.id})" style="color:var(--success)">📄</button>
                 <button class="btn-icon" title="Relatório gerencial" onclick="gerarRelatorio(${e.id})" style="color:var(--accent)">📊</button>
+                <button class="btn-icon" title="Portal do Incorporador" onclick="gerarLinkPortal(${e.id},'${(e.nome||'').replace(/'/g,"\\'")}')">🔗</button>
                 <button class="btn-icon btn-edit" onclick="editEmp(${e.id})">✏️</button>
                 <button class="btn-icon btn-delete" onclick="deleteEmp(${e.id})">🗑️</button>
               </td>
@@ -3577,13 +3647,20 @@ function handleAdd() {
 
 // ─── MODAL UTILS ─────────────────────────────────────────────────────────────
 
-function openModal(title, bodyHtml, onSave) {
+function openModal(title, bodyHtml, onSave, options = {}) {
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML = bodyHtml;
-  document.getElementById('modal-foot').innerHTML = `
-    <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-    <button class="btn btn-primary" onclick="modalSave()">Salvar</button>
-  `;
+  const foot = document.getElementById('modal-foot');
+  if (options.hideFooter) {
+    foot.innerHTML = '';
+    foot.style.display = 'none';
+  } else {
+    foot.style.display = '';
+    foot.innerHTML = `
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="modalSave()">Salvar</button>
+    `;
+  }
   window._modalSave = onSave;
   document.getElementById('modal-overlay').classList.add('open');
 }
@@ -4082,17 +4159,352 @@ async function enviarMidiaDebora(numero, midiaId) {
   }
 }
 
+// ─── LOGOUT ───────────────────────────────────────────────────────────────────
+
+async function fazerLogout() {
+  await fetch('/api/auth/logout', { method: 'POST', headers: { 'x-crm-token': TOKEN } }).catch(() => {});
+  localStorage.removeItem('crm_token');
+  localStorage.removeItem('crm_usuario');
+  window.location.href = '/login';
+}
+
+// ─── INIT USUARIO UI ──────────────────────────────────────────────────────────
+
+function initUsuarioUI() {
+  const nomeEl = document.getElementById('sidebar-user-nome');
+  const perfilEl = document.getElementById('sidebar-user-perfil');
+  const navUsuarios = document.getElementById('nav-usuarios');
+  if (nomeEl) nomeEl.textContent = USUARIO.nome || 'Usuário';
+  if (perfilEl) perfilEl.textContent = USUARIO.perfil || '';
+  if (navUsuarios && USUARIO.perfil === 'admin') navUsuarios.style.display = 'flex';
+}
+
+// ─── USUÁRIOS CRUD ────────────────────────────────────────────────────────────
+
+async function renderUsuarios() {
+  const r = await get('/api/usuarios');
+  const usuarios = r.data || [];
+  document.getElementById('content').innerHTML = `
+    <div class="table-card">
+      <div class="table-header"><div class="table-title">👤 Usuários do Sistema (${usuarios.length})</div></div>
+      <table>
+        <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Ativo</th><th>Criado em</th><th></th></tr></thead>
+        <tbody>
+          ${usuarios.length ? usuarios.map(u => `
+            <tr>
+              <td><strong>${u.nome}</strong></td>
+              <td>${u.email}</td>
+              <td><span class="badge ${u.perfil==='admin'?'badge-accent':u.perfil==='gestor'?'badge-blue':'badge-gray'}">${u.perfil}</span></td>
+              <td><span class="badge ${u.ativo?'badge-green':'badge-red'}">${u.ativo?'Sim':'Não'}</span></td>
+              <td>${fmtDate(u.criado_em)}</td>
+              <td><button class="btn-icon btn-edit" onclick="openUsuarioModal(${JSON.stringify(u).replace(/"/g,'&quot;')})">✏️</button><button class="btn-icon btn-delete" onclick="deleteUsuario(${u.id})">🗑️</button></td>
+            </tr>
+          `).join('') : '<tr class="empty-row"><td colspan="6">Nenhum usuário</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function openUsuarioModal(u = {}) {
+  openModal(u.id ? 'Editar Usuário' : 'Novo Usuário', `
+    <div class="form-grid">
+      <div class="form-group"><label>Nome</label><input id="u-nome" value="${u.nome||''}"></div>
+      <div class="form-group"><label>E-mail</label><input id="u-email" type="email" value="${u.email||''}"></div>
+      <div class="form-group"><label>Perfil</label>
+        <select id="u-perfil">
+          <option value="corretor" ${u.perfil==='corretor'?'selected':''}>Corretor</option>
+          <option value="gestor" ${u.perfil==='gestor'?'selected':''}>Gestor</option>
+          <option value="admin" ${u.perfil==='admin'?'selected':''}>Admin</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Senha ${u.id?'(deixe em branco para manter)':''}</label><input id="u-senha" type="password" placeholder="••••••••"></div>
+      ${u.id ? `<div class="form-group"><label>Ativo</label><select id="u-ativo"><option value="1" ${u.ativo?'selected':''}>Sim</option><option value="0" ${!u.ativo?'selected':''}>Não</option></select></div>` : ''}
+    </div>
+  `, async () => {
+    const body = { nome: v('u-nome'), email: v('u-email'), perfil: v('u-perfil') };
+    const senha = v('u-senha');
+    if (senha) body.senha = senha;
+    if (u.id) body.ativo = parseInt(v('u-ativo'));
+    const r = u.id ? await put(`/api/usuarios/${u.id}`, body) : await post('/api/usuarios', body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast(u.id ? 'Usuário atualizado!' : 'Usuário criado!');
+    closeModal(); renderUsuarios();
+  });
+}
+
+async function deleteUsuario(id) {
+  if (!confirm('Excluir este usuário?')) return;
+  const r = await del(`/api/usuarios/${id}`);
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Usuário excluído'); renderUsuarios();
+}
+
+// ─── INTERAÇÕES / TIMELINE ────────────────────────────────────────────────────
+
+function fmtDateTime(d) {
+  if (!d) return '—';
+  const dt = new Date(d.replace(' ','T'));
+  return dt.toLocaleDateString('pt-BR') + ' ' + dt.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+}
+
+async function carregarTimeline(leadId) {
+  const el = document.getElementById('timeline-list');
+  if (!el) return;
+  const r = await get(`/api/leads/${leadId}/interacoes`);
+  const itens = r.data || [];
+  el.innerHTML = itens.length ? itens.map(i => `
+    <div style="padding:8px 10px;background:var(--navy3);border-radius:6px;border-left:3px solid var(--accent2)">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+        <span class="badge badge-blue" style="font-size:10px">${i.tipo}</span>
+        <span style="font-size:11px;color:var(--text2)">${fmtDateTime(i.criado_em)}</span>
+        ${i.usuario_nome ? `<span style="font-size:11px;color:var(--text2)">· ${i.usuario_nome}</span>` : ''}
+      </div>
+      <div style="font-size:12px">${i.descricao}</div>
+    </div>
+  `).join('') : '<div style="color:var(--text2);font-size:12px">Sem interações registradas</div>';
+}
+
+async function adicionarInteracao(leadId) {
+  const tipo = document.getElementById('interacao-tipo')?.value || 'nota';
+  const descricao = document.getElementById('interacao-texto')?.value?.trim();
+  if (!descricao) return;
+  const r = await post(`/api/leads/${leadId}/interacoes`, { tipo, descricao });
+  if (!r.ok) return toast(r.error, 'error');
+  document.getElementById('interacao-texto').value = '';
+  carregarTimeline(leadId);
+}
+
+// ─── VISITAS ─────────────────────────────────────────────────────────────────
+
+async function carregarVisitas(leadId) {
+  const el = document.getElementById('visitas-list');
+  if (!el) return;
+  const r = await get(`/api/leads/${leadId}/visitas`);
+  const itens = r.data || [];
+  el.innerHTML = itens.length ? itens.map(v => `
+    <div style="padding:8px 10px;background:var(--navy3);border-radius:6px;border-left:3px solid var(--warning)">
+      <div style="font-size:12px;font-weight:600">${fmtDate(v.data_visita)} ${v.empreendimento_nome ? '· '+v.empreendimento_nome : ''}</div>
+      ${v.unidade_interesse ? `<div style="font-size:11px;color:var(--text2)">Unidade: ${v.unidade_interesse}</div>` : ''}
+      ${v.proximo_passo ? `<div style="font-size:11px;color:var(--accent)">Próx. passo: ${v.proximo_passo}</div>` : ''}
+    </div>
+  `).join('') : '<div style="color:var(--text2);font-size:12px">Nenhuma visita registrada</div>';
+}
+
+function abrirModalVisita(leadId) {
+  const emps = empData || [];
+  const corrs = corretoresData || [];
+  openModal('Registrar Visita', `
+    <div class="form-grid">
+      <div class="form-group"><label>Data da Visita</label><input id="vis-data" type="date" value="${today()}"></div>
+      <div class="form-group"><label>Unidade de Interesse</label><input id="vis-unidade" placeholder="ex: Lote 12 - Qd 3"></div>
+      <div class="form-group"><label>Empreendimento</label>
+        <select id="vis-emp"><option value="">— Selecionar —</option>${emps.map(e => `<option value="${e.id}">${e.nome}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Corretor</label>
+        <select id="vis-corretor"><option value="">— Selecionar —</option>${corrs.map(c => `<option value="${c.id}">${c.nome}</option>`).join('')}</select>
+      </div>
+      <div class="form-group span2"><label>Próximo Passo</label><input id="vis-passo" placeholder="ex: Agendar proposta na semana que vem"></div>
+      <div class="form-group span2"><label>Observações</label><textarea id="vis-obs"></textarea></div>
+    </div>
+  `, async () => {
+    const body = { data_visita: v('vis-data'), unidade_interesse: v('vis-unidade'), empreendimento_id: v('vis-emp')||null, corretor_id: v('vis-corretor')||null, proximo_passo: v('vis-passo'), observacoes: v('vis-obs') };
+    const r = await post(`/api/leads/${leadId}/visitas`, body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Visita registrada!');
+    closeModal();
+    // Re-open lead modal if still on leads page — just reload timeline
+    carregarVisitas(leadId);
+  });
+}
+
+// ─── PROPOSTA COMERCIAL ───────────────────────────────────────────────────────
+
+function abrirProposta(leadId) {
+  window.open(`/api/leads/${leadId}/proposta?token=${TOKEN}`, '_blank');
+}
+
+// ─── RELATÓRIO DE COMISSÕES ───────────────────────────────────────────────────
+
+async function renderComissoes() {
+  const r = await get('/api/relatorios/comissoes');
+  if (!r.ok) return toast(r.error, 'error');
+  const rows = r.data || [];
+  document.getElementById('content').innerHTML = `
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">💰 Relatório de Comissões por Corretor</div>
+        <button onclick="navigate('vendas')" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">← Voltar</button>
+      </div>
+      <table>
+        <thead><tr><th>Corretor</th><th>Vendas</th><th>VGV Total</th><th>Comissão Total</th><th>Comissão Paga</th><th>Comissão Pendente</th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(c => `
+            <tr>
+              <td><strong>${c.corretor_nome||'—'}</strong></td>
+              <td>${c.total_vendas}</td>
+              <td style="color:var(--success)">${fmt(c.vgv_total)}</td>
+              <td style="color:var(--warning)">${fmt(c.comissao_total)}</td>
+              <td style="color:var(--success)">${fmt(c.comissao_paga)}</td>
+              <td style="color:var(--danger)">${fmt(c.comissao_pendente)}</td>
+            </tr>
+          `).join('') : '<tr class="empty-row"><td colspan="6">Sem dados de comissão</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// ─── EXPORTAR EXCEL ───────────────────────────────────────────────────────────
+
+function exportarLeads() {
+  window.open(`/api/exportar/leads?token=${TOKEN}`, '_blank');
+}
+
+function exportarVendas() {
+  window.open(`/api/exportar/vendas?token=${TOKEN}`, '_blank');
+}
+
+// ─── PORTAL DO INCORPORADOR ───────────────────────────────────────────────────
+
+async function gerarLinkPortal(empId, empNome) {
+  const r = await post(`/api/empreendimentos/${empId}/portal/token`, {});
+  if (!r.ok) return toast(r.error || 'Erro ao gerar link', 'error');
+  const link = `${window.location.origin}/portal/${r.data.token}`;
+  openModal(`Portal: ${empNome}`, `
+    <p style="font-size:13px;color:var(--text2);margin-bottom:12px">Link de acesso somente-leitura para o incorporador:</p>
+    <div style="display:flex;gap:8px">
+      <input readonly value="${link}" style="flex:1;font-size:12px" id="portal-link-input">
+      <button onclick="navigator.clipboard.writeText(document.getElementById('portal-link-input').value);toast('Link copiado!')" style="background:var(--accent);border:none;color:var(--navy);border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:600;font-size:12px">Copiar</button>
+    </div>
+    <p style="font-size:11px;color:var(--text2);margin-top:8px">O link não expira e pode ser regenerado a qualquer momento.</p>
+  `, null, { hideFooter: false });
+}
+
+// ─── CALCULADORA DE FINANCIAMENTO ─────────────────────────────────────────────
+
+function renderCalculadora() {
+  document.getElementById('content').innerHTML = `
+    <div class="mini-card" style="max-width:560px">
+      <h4 style="font-size:15px;font-weight:700;margin-bottom:16px">🧮 Calculadora de Financiamento</h4>
+      <div class="form-grid">
+        <div class="form-group"><label>Valor do Imóvel (R$)</label><input id="calc-valor" type="number" value="300000" min="0" step="1000"></div>
+        <div class="form-group"><label>Entrada (R$)</label><input id="calc-entrada" type="number" value="60000" min="0" step="1000"></div>
+        <div class="form-group"><label>Taxa de Juros anual (%)</label><input id="calc-taxa" type="number" value="12" step="0.1" min="0"></div>
+        <div class="form-group"><label>Prazo (meses)</label><input id="calc-prazo" type="number" value="240" step="12" min="12" max="420"></div>
+        <div class="form-group"><label>Sistema</label>
+          <select id="calc-sistema"><option value="price">PRICE (parcela fixa)</option><option value="sac">SAC (amortização constante)</option></select>
+        </div>
+      </div>
+      <button onclick="calcFinanciamento()" style="margin-top:16px;background:var(--accent);border:none;color:var(--navy);border-radius:8px;padding:10px 24px;font-weight:700;font-size:14px;cursor:pointer">Calcular</button>
+      <div id="calc-resultado" style="margin-top:20px"></div>
+    </div>`;
+}
+
+function calcFinanciamento() {
+  const valor = parseFloat(document.getElementById('calc-valor').value) || 0;
+  const entrada = parseFloat(document.getElementById('calc-entrada').value) || 0;
+  const taxaAnual = parseFloat(document.getElementById('calc-taxa').value) || 0;
+  const prazo = parseInt(document.getElementById('calc-prazo').value) || 0;
+  const sistema = document.getElementById('calc-sistema').value;
+  const saldo = valor - entrada;
+  const i = taxaAnual / 100 / 12;
+
+  let html = '';
+  if (sistema === 'price') {
+    const pmt = saldo * (i * Math.pow(1+i, prazo)) / (Math.pow(1+i, prazo) - 1);
+    const total = pmt * prazo;
+    html = `
+      <div class="kpi-grid" style="grid-template-columns:1fr 1fr;gap:12px">
+        ${kpi('💰','Parcela Fixa (PRICE)',fmt(pmt),'')}
+        ${kpi('📊','Total Pago',fmt(total+entrada),`Juros: ${fmt(total-saldo)}`)}
+        ${kpi('🏦','Saldo Financiado',fmt(saldo),'')}
+        ${kpi('📅','Prazo',prazo+' meses',`${(prazo/12).toFixed(0)} anos`)}
+      </div>`;
+  } else {
+    const amort = saldo / prazo;
+    const p1 = amort + saldo * i;
+    const pUlt = amort + amort * i;
+    const total = amort * prazo + (saldo * i * (prazo + 1)) / 2;
+    html = `
+      <div class="kpi-grid" style="grid-template-columns:1fr 1fr;gap:12px">
+        ${kpi('💰','1ª Parcela (SAC)',fmt(p1),'')}
+        ${kpi('💵','Última Parcela',fmt(pUlt),'')}
+        ${kpi('📊','Total Pago',fmt(total+entrada),`Juros: ${fmt(total-saldo)}`)}
+        ${kpi('🏦','Amortização Mensal',fmt(amort),'')}
+      </div>`;
+  }
+  document.getElementById('calc-resultado').innerHTML = html;
+}
+
+// ─── NOTIFICAÇÕES PUSH (WEB NOTIFICATIONS API) ────────────────────────────────
+
+function iniciarNotificacoes() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+  // Verifica periodicamente (a cada 5 min)
+  setInterval(verificarNotificacoes, 5 * 60 * 1000);
+  verificarNotificacoes();
+}
+
+async function verificarNotificacoes() {
+  if (Notification.permission !== 'granted') return;
+  try {
+    const r = await get('/api/dashboard');
+    const data = r.data || {};
+    const vencidos = data.followups_vencidos || [];
+    const hoje = data.followups_hoje || [];
+    const anivHoje = data.aniversarios_hoje || [];
+    if (vencidos.length > 0) {
+      new Notification('CRM R2X — Follow-ups Vencidos', {
+        body: `${vencidos.length} follow-up(s) em atraso precisam de atenção.`,
+        icon: '/icon-192.png'
+      });
+    }
+    if (hoje.length > 0 && new Date().getHours() === 9) {
+      new Notification('CRM R2X — Follow-ups de Hoje', {
+        body: `${hoje.length} follow-up(s) agendado(s) para hoje.`,
+        icon: '/icon-192.png'
+      });
+    }
+    if (anivHoje.length > 0) {
+      new Notification('🎂 Aniversários Hoje', {
+        body: anivHoje.map(a => a.nome).join(', '),
+        icon: '/icon-192.png'
+      });
+    }
+  } catch(_) {}
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 
 // Redireciona para login se não tiver token
 if (!TOKEN) { window.location.href = '/login'; }
 
+initUsuarioUI();
+iniciarNotificacoes();
 renderPage('dashboard');
 
 // PWA — registra service worker
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
+
+// PWA — Install prompt
+let _pwaPrompt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); _pwaPrompt = e; document.getElementById('pwa-banner')?.style.setProperty('display','flex'); });
+
+function instalarApp() {
+  if (_pwaPrompt) { _pwaPrompt.prompt(); _pwaPrompt.userChoice.then(() => { _pwaPrompt = null; document.getElementById('pwa-banner')?.remove(); }); }
+}
 </script>
+
+<!-- PWA INSTALL BANNER -->
+<div id="pwa-banner" style="display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--accent);border-radius:12px;padding:12px 20px;z-index:9000;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.4);white-space:nowrap">
+  <span style="font-size:13px">📲 Instalar o app R2X CRM?</span>
+  <button onclick="instalarApp()" style="background:var(--accent);border:none;color:var(--navy);border-radius:6px;padding:6px 14px;font-weight:700;cursor:pointer;font-size:13px">Instalar</button>
+  <button onclick="document.getElementById('pwa-banner').style.display='none'" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;line-height:1">✕</button>
+</div>
+
 </body>
 </html>
