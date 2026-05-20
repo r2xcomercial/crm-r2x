@@ -302,6 +302,7 @@
     <div class="nav-item" onclick="navigate('financeiro')"><span class="icon">💰</span> Financeiro</div>
     <div class="nav-item" onclick="navigate('debora')" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px"><span class="icon">🤖</span> Débora <span class="nav-badge" id="badge-debora" style="display:none"></span></div>
     <div class="nav-item" onclick="baixarBackup()" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px;color:var(--text2)"><span class="icon">💾</span> Backup do Banco</div>
+    <label class="nav-item" style="cursor:pointer;color:var(--text2)"><span class="icon">📥</span> Restaurar Backup<input type="file" accept=".db" style="display:none" onchange="restaurarBackup(this)"></label>
   </nav>
 </div>
 
@@ -1443,6 +1444,29 @@ async function gerarContrato(empId) {
   } catch(e) {
     toast('Falha ao gerar contrato', 'error');
   }
+}
+
+async function restaurarBackup(input) {
+  if (!input.files?.length) return;
+  if (!confirm('⚠️ Isso vai SUBSTITUIR todos os dados atuais pelo backup selecionado.\n\nTem certeza?')) {
+    input.value = ''; return;
+  }
+  toast('Restaurando backup… aguarde ⏳');
+  const fd = new FormData();
+  fd.append('backup', input.files[0]);
+  try {
+    const res = await fetch('/api/admin/restaurar', { method: 'POST', headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' }, body: fd });
+    const data = await res.json();
+    if (data.ok) {
+      toast('✅ ' + data.data.mensagem);
+      setTimeout(() => window.location.reload(), 3000);
+    } else {
+      toast('Erro: ' + data.error, 'error');
+    }
+  } catch(e) {
+    toast('Falha ao restaurar backup', 'error');
+  }
+  input.value = '';
 }
 
 async function baixarBackup() {

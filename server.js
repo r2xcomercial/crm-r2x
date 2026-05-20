@@ -982,11 +982,12 @@ app.get('/api/painel/:id', (req, res) => {
   });
 });
 
-// ─── BACKUP DO BANCO DE DADOS ────────────────────────────────────────────────
+// ─── BACKUP / RESTAURAÇÃO DO BANCO DE DADOS ──────────────────────────────────
+
+const uploadBackup = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } }); // 200 MB para backup
 
 app.get('/api/admin/backup', (req, res) => {
   try {
-    // Força checkpoint WAL para garantir que todos os dados estejam no arquivo principal
     db.pragma('wal_checkpoint(TRUNCATE)');
     const dbPath = process.env.RAILWAY_VOLUME_MOUNT_PATH
       ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'crm.db')
@@ -999,6 +1000,30 @@ app.get('/api/admin/backup', (req, res) => {
   } catch (e) {
     console.error('[backup]', e);
     err(res, 'Erro ao gerar backup: ' + e.message);
+  }
+});
+
+app.post('/api/admin/restaurar', uploadBackup.single('backup'), (req, res) => {
+  try {
+    if (!req.file) return err(res, 'Arquivo não enviado');
+    // Valida magic bytes do SQLite
+    const magic = req.file.buffer.slice(0, 15).toString('utf8');
+    if (!magic.startsWith('SQLite format 3')) {
+      return err(res, 'Arquivo inválido — envie apenas um backup .db gerado pelo CRM');
+    }
+    const dbPath = process.env.RAILWAY_VOLUME_MOUNT_PATH
+      ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'crm.db')
+      : path.join(__dirname, 'crm.db');
+    // Salva backup do banco atual antes de substituir
+    const bkpPath = dbPath.replace('.db', `-antes-restauracao-${Date.now()}.db`);
+    try { fs.copyFileSync(dbPath, bkpPath); } catch(_) {}
+    // Substitui o banco e reinicia o processo (Railway reinicia automaticamente)
+    fs.writeFileSync(dbPath, req.file.buffer);
+    res.json({ ok: true, data: { mensagem: 'Banco restaurado com sucesso! O servidor vai reiniciar em 2 segundos.' } });
+    setTimeout(() => process.exit(0), 2000);
+  } catch (e) {
+    console.error('[restaurar]', e);
+    err(res, 'Erro ao restaurar: ' + e.message);
   }
 });
 
