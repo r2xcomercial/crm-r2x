@@ -982,6 +982,21 @@ app.get('/api/painel/:id', (req, res) => {
   });
 });
 
+// ─── GLOBAL ERROR HANDLER ─────────────────────────────────────────────────────
+
+// Captura erros do multer (ex: arquivo muito grande) e outros erros de middleware
+app.use((error, req, res, next) => {
+  if (error?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ ok: false, error: 'Arquivo muito grande. Máximo 8 MB após compressão.' });
+  }
+  console.error('[error]', error?.message || error);
+  if (!res.headersSent) res.status(500).json({ ok: false, error: 'Erro interno do servidor' });
+});
+
+// Evita que erros não capturados derrubem o processo
+process.on('uncaughtException', e => console.error('[uncaughtException]', e));
+process.on('unhandledRejection', e => console.error('[unhandledRejection]', e));
+
 // ─── START ────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => console.log(`CRM R2X rodando em http://localhost:${PORT}`));
