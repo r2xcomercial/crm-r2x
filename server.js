@@ -658,11 +658,19 @@ app.get("/api/vendas", (req, res) => {
 });
 
 // ─── PAINEL DO CORRETOR ───────────────────────────────────────────────────────
+
+function guardaCorretor(req, res) {
+  const id = req.usuario?.corretor_id;
+  if (!id) { err(res, 'Usuário não vinculado a um corretor'); return null; }
+  return id;
+}
+
 app.get("/api/corretor/painel", (req, res) => {
-  const corretorId = req.usuario?.corretor_id;
-  if (!corretorId) return err(res, 'Usuário não vinculado a um corretor');
-  const corretor = db.prepare('SELECT * FROM corretores WHERE id=?').get(corretorId);
-  const vendas = db.prepare(`
+  const corretorId = guardaCorretor(req, res); if (!corretorId) return;
+  const corretor   = db.prepare('SELECT * FROM corretores WHERE id=?').get(corretorId);
+
+  // Vendas R2X
+  const vendasR2X = db.prepare(`
     SELECT v.*, e.nome as empreendimento_nome, l.nome as lead_nome, l.telefone as lead_tel
     FROM vendas v
     LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
@@ -670,10 +678,79 @@ app.get("/api/corretor/painel", (req, res) => {
     WHERE v.corretor_id=? AND v.status='ativo'
     ORDER BY v.data_venda DESC
   `).all(corretorId);
-  const totalVendido  = vendas.reduce((s,v) => s+(v.valor||0), 0);
-  const comPendente   = vendas.filter(v=>v.comissao_corretor_status==='pendente').reduce((s,v)=>s+(v.comissao_corretor_valor||0),0);
-  const comPaga       = vendas.filter(v=>v.comissao_corretor_status==='pago').reduce((s,v)=>s+(v.comissao_corretor_valor||0),0);
-  ok(res, { corretor, vendas, totalVendido, comPendente, comPaga, qtdVendas: vendas.length });
+
+  // Vendas próprias (externas)
+  const vendasProprias = db.prepare(
+    `SELECT * FROM corretor_vendas_proprias WHERE corretor_id=? ORDER BY data_venda DESC`
+  ).all(corretorId);
+
+  // KPIs R2X
+  const r2xTotalVendido = vendasR2X.reduce((s,v)=>s+(v.valor||0),0);
+  const r2xComPend      = vendasR2X.filter(v=>v.comissao_corretor_status==='pendente').reduce((s,v)=>s+(v.comissao_corretor_valor||0),0);
+  const r2xComPaga      = vendasR2X.filter(v=>v.comissao_corretor_status==='pago').reduce((s,v)=>s+(v.comissao_corretor_valor||0),0);
+
+  // KPIs próprios
+  const propTotalVendido = vendasProprias.reduce((s,v)=>s+(v.valor_venda||0),0);
+  const propComPend      = vendasProprias.filter(v=>v.status_comissao!=='recebido').reduce((s,v)=>s+Math.max(0,(v.comissao_valor||0)-(v.valor_recebido||0)),0);
+  const propComPaga      = vendasProprias.reduce((s,v)=>s+(v.valor_recebido||0),0);
+
+  ok(res, {
+    corretor,
+    vendasR2X, r2xTotalVendido, r2xComPend, r2xComPaga,
+    vendasProprias, propTotalVendido, propComPend, propComPaga,
+    // combinados
+    totalVendido : r2xTotalVendido + propTotalVendido,
+    comPendente  : r2xComPend + propComPend,
+    comPaga      : r2xComPaga + propComPaga,
+    qtdVendas    : vendasR2X.length + vendasProprias.length,
+  });
+});
+
+// CRUD — Vendas próprias do corretor
+app.get("/api/corretor/vendas-proprias", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  ok(res, db.prepare(`SELECT * FROM corretor_vendas_proprias WHERE corretor_id=? ORDER BY data_venda DESC`).all(cid));
+});
+
+app.post("/api/corretor/vendas-proprias", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  const { data_venda, empreendimento, imovel, cliente_nome, valor_venda, comissao_pct, comissao_valor, status_comissao, valor_recebido, observacoes } = req.body;
+  if (!data_venda || !valor_venda) return err(res, 'Data e valor são obrigatórios');
+  const r = db.prepare(`
+    INSERT INTO corretor_vendas_proprias
+      (corretor_id, data_venda, empreendimento, imovel, cliente_nome, valor_venda, comissao_pct, comissao_valor, status_comissao, valor_recebido, observacoes)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)
+  `).run(cid, data_venda, empreendimento||null, imovel||null, cliente_nome||null,
+         parseFloat(valor_venda)||0, parseFloat(comissao_pct)||null,
+         parseFloat(comissao_valor)||null, status_comissao||'pendente',
+         parseFloat(valor_recebido)||0, observacoes||null);
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.put("/api/corretor/vendas-proprias/:id", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  const id = parseInt(req.params.id);
+  const row = db.prepare('SELECT * FROM corretor_vendas_proprias WHERE id=? AND corretor_id=?').get(id, cid);
+  if (!row) return err(res, 'Não encontrado', 404);
+  const { data_venda, empreendimento, imovel, cliente_nome, valor_venda, comissao_pct, comissao_valor, status_comissao, valor_recebido, observacoes } = req.body;
+  db.prepare(`
+    UPDATE corretor_vendas_proprias
+    SET data_venda=?, empreendimento=?, imovel=?, cliente_nome=?, valor_venda=?,
+        comissao_pct=?, comissao_valor=?, status_comissao=?, valor_recebido=?, observacoes=?
+    WHERE id=? AND corretor_id=?
+  `).run(data_venda||row.data_venda, empreendimento??row.empreendimento,
+         imovel??row.imovel, cliente_nome??row.cliente_nome,
+         parseFloat(valor_venda)||row.valor_venda, parseFloat(comissao_pct)||row.comissao_pct,
+         parseFloat(comissao_valor)||row.comissao_valor, status_comissao||row.status_comissao,
+         parseFloat(valor_recebido)??row.valor_recebido, observacoes??row.observacoes,
+         id, cid);
+  ok(res, {});
+});
+
+app.delete("/api/corretor/vendas-proprias/:id", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  db.prepare('DELETE FROM corretor_vendas_proprias WHERE id=? AND corretor_id=?').run(parseInt(req.params.id), cid);
+  ok(res, {});
 });
 
 // Helper: gera/atualiza entrada financeira de comissão de uma venda

@@ -4541,58 +4541,201 @@ function calcFinanciamento() {
 
 // ─── PAINEL DO CORRETOR ───────────────────────────────────────────────────────
 
-async function renderCorretorPainel() {
+let _cpTab = 'r2x'; // aba ativa do painel: 'r2x' | 'proprias' | 'calc'
+let _cpData = null; // cache do painel
+
+async function renderCorretorPainel(tab) {
+  if (tab) _cpTab = tab;
   const r = await get('/api/corretor/painel');
-  if (!r.ok) {
-    document.getElementById('content').innerHTML = `<div style="padding:40px;color:var(--danger)">❌ ${r.error}</div>`;
-    return;
-  }
-  const { corretor, vendas, totalVendido, comPendente, comPaga, qtdVendas } = r.data;
+  if (!r.ok) { document.getElementById('content').innerHTML = `<div style="padding:40px;color:var(--danger)">❌ ${r.error}</div>`; return; }
+  _cpData = r.data;
+  const { corretor, vendasR2X, vendasProprias, totalVendido, comPendente, comPaga, qtdVendas,
+          r2xTotalVendido, r2xComPend, r2xComPaga,
+          propTotalVendido, propComPend, propComPaga } = _cpData;
+
+  const tabBtn = (id, icon, label) => `
+    <button onclick="_cpTab='${id}';renderCorretorPainel('${id}')"
+      style="padding:8px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;
+             background:${_cpTab===id?'var(--accent)':'var(--navy3)'};
+             color:${_cpTab===id?'var(--navy)':'var(--text2)'};transition:all .15s">
+      ${icon} ${label}
+    </button>`;
 
   document.getElementById('content').innerHTML = `
     <!-- Saudação -->
-    <div style="margin-bottom:20px">
-      <div style="font-size:20px;font-weight:700">Olá, ${corretor?.nome || USUARIO.nome}! 👋</div>
-      <div style="font-size:13px;color:var(--text2);margin-top:4px">Aqui estão suas vendas e comissões</div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-size:20px;font-weight:700">Olá, ${corretor?.nome || USUARIO.nome}! 👋</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px">Sua central de gestão de vendas</div>
+      </div>
     </div>
 
-    <!-- KPIs -->
+    <!-- KPIs consolidados -->
     <div class="kpi-grid" style="margin-bottom:20px">
-      ${kpi('🏆', 'Vendas Realizadas', qtdVendas, 'negócios ativos')}
-      ${kpi('💵', 'Volume Total Vendido', fmt(totalVendido), 'valor total dos imóveis')}
-      ${kpi('⏳', 'Comissão a Receber', fmt(comPendente), 'pendente de pagamento')}
-      ${kpi('✅', 'Comissão Recebida', fmt(comPaga), 'já quitada')}
+      ${kpi('🏆', 'Total de Vendas', qtdVendas, `R2X: ${vendasR2X.length} · Externas: ${vendasProprias.length}`)}
+      ${kpi('💵', 'Volume Total', fmt(totalVendido), `R2X: ${fmt(r2xTotalVendido)} · Ext.: ${fmt(propTotalVendido)}`)}
+      ${kpi('⏳', 'Comissão a Receber', fmt(comPendente), `R2X: ${fmt(r2xComPend)} · Ext.: ${fmt(propComPend)}`)}
+      ${kpi('✅', 'Comissão Recebida', fmt(comPaga), `R2X: ${fmt(r2xComPaga)} · Ext.: ${fmt(propComPaga)}`)}
     </div>
 
-    <!-- Tabela de Vendas -->
-    <div class="table-card" style="margin-bottom:24px">
-      <div class="table-header"><div class="table-title">🏆 Minhas Vendas</div></div>
-      <table>
-        <thead><tr><th>Data</th><th>Imóvel</th><th>Empreendimento</th><th>Valor Venda</th><th>Comissão</th><th>Status Comissão</th></tr></thead>
-        <tbody>
-          ${vendas.length ? vendas.map(v => {
-            const comBadge = v.comissao_corretor_status === 'pago'
-              ? '<span class="badge badge-green">Pago</span>'
-              : '<span class="badge badge-yellow">Pendente</span>';
-            return `<tr>
-              <td>${fmtDate(v.data_venda)}</td>
-              <td>${v.imovel || '—'}</td>
-              <td>${v.empreendimento_nome || '—'}</td>
-              <td style="color:var(--success);font-weight:600">${fmt(v.valor)}</td>
-              <td style="color:var(--accent);font-weight:600">${v.comissao_corretor_valor ? fmt(v.comissao_corretor_valor) + ` (${v.comissao_corretor_pct}%)` : '—'}</td>
-              <td>${v.comissao_corretor_pct ? comBadge : '—'}</td>
-            </tr>`;
-          }).join('') : '<tr class="empty-row"><td colspan="6">Nenhuma venda registrada</td></tr>'}
-        </tbody>
-      </table>
+    <!-- Abas -->
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      ${tabBtn('r2x',   '🏢', 'Vendas R2X')}
+      ${tabBtn('proprias', '🏠', 'Minhas Vendas')}
+      ${tabBtn('calc',  '🧮', 'Calculadora')}
     </div>
 
-    <!-- Calculadora embutida -->
-    <div id="calc-wrapper"></div>
+    <!-- Conteúdo da aba -->
+    <div id="cp-tab-content"></div>
   `;
 
-  // Renderiza calculadora dentro do painel
-  renderCalculadora(document.getElementById('calc-wrapper'));
+  _renderCpTab();
+}
+
+function _renderCpTab() {
+  const el = document.getElementById('cp-tab-content');
+  if (!el || !_cpData) return;
+  const { vendasR2X, vendasProprias } = _cpData;
+
+  if (_cpTab === 'r2x') {
+    el.innerHTML = `
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">🏢 Vendas via R2X (${vendasR2X.length})</div></div>
+        <table>
+          <thead><tr><th>Data</th><th>Empreendimento</th><th>Imóvel</th><th>Valor Venda</th><th>Comissão</th><th>Status</th></tr></thead>
+          <tbody>
+            ${vendasR2X.length ? vendasR2X.map(v => {
+              const st = v.comissao_corretor_status;
+              const badge = st==='pago' ? 'badge-green' : 'badge-yellow';
+              const stLabel = st==='pago' ? 'Pago' : 'Pendente';
+              return `<tr>
+                <td>${fmtDate(v.data_venda)}</td>
+                <td>${v.empreendimento_nome||'—'}</td>
+                <td>${v.imovel||'—'}</td>
+                <td style="color:var(--success);font-weight:600">${fmt(v.valor)}</td>
+                <td style="color:var(--accent)">${v.comissao_corretor_valor ? fmt(v.comissao_corretor_valor)+` (${v.comissao_corretor_pct}%)` : '—'}</td>
+                <td>${v.comissao_corretor_pct ? `<span class="badge ${badge}">${stLabel}</span>` : '—'}</td>
+              </tr>`;
+            }).join('') : '<tr class="empty-row"><td colspan="6">Nenhuma venda R2X ainda</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+
+  } else if (_cpTab === 'proprias') {
+    el.innerHTML = `
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">🏠 Minhas Vendas Externas (${vendasProprias.length})</div>
+          <button class="btn btn-primary" onclick="openVendaPropriaModal()" style="font-size:13px;padding:7px 14px">+ Nova Venda</button>
+        </div>
+        <table>
+          <thead><tr><th>Data</th><th>Empreendimento</th><th>Imóvel</th><th>Cliente</th><th>Valor Venda</th><th>Comissão</th><th>Recebido</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${vendasProprias.length ? vendasProprias.map(v => {
+              const stMap = { pendente:['badge-yellow','Pendente'], recebido:['badge-green','Recebido'], parcial:['badge-blue','Parcial'] };
+              const [badgeCls, badgeLbl] = stMap[v.status_comissao] || ['badge-gray', v.status_comissao];
+              return `<tr>
+                <td>${fmtDate(v.data_venda)}</td>
+                <td>${v.empreendimento||'—'}</td>
+                <td>${v.imovel||'—'}</td>
+                <td>${v.cliente_nome||'—'}</td>
+                <td style="color:var(--success);font-weight:600">${fmt(v.valor_venda)}</td>
+                <td style="color:var(--accent)">${v.comissao_valor ? fmt(v.comissao_valor)+(v.comissao_pct?` (${v.comissao_pct}%)`:'') : '—'}</td>
+                <td style="color:var(--success)">${v.valor_recebido ? fmt(v.valor_recebido) : '—'}</td>
+                <td><span class="badge ${badgeCls}">${badgeLbl}</span></td>
+                <td style="white-space:nowrap">
+                  <button class="btn-icon btn-edit" onclick="openVendaPropriaModal(${v.id})">✏️</button>
+                  <button class="btn-icon btn-delete" onclick="deleteVendaPropria(${v.id})">🗑️</button>
+                </td>
+              </tr>`;
+            }).join('') : '<tr class="empty-row"><td colspan="9">Nenhuma venda externa registrada ainda<br><small>Clique em "+ Nova Venda" para começar</small></td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+
+  } else if (_cpTab === 'calc') {
+    renderCalculadora(el);
+  }
+}
+
+async function openVendaPropriaModal(id) {
+  let venda = {};
+  if (id) {
+    const r = await get('/api/corretor/vendas-proprias');
+    venda = (r.data||[]).find(v=>v.id===id) || {};
+  }
+  openModal(id ? 'Editar Venda' : 'Nova Venda Externa', `
+    <div class="form-grid">
+      <div class="form-group"><label>Data da Venda *</label><input id="vp-data" type="date" value="${venda.data_venda||today()}"></div>
+      <div class="form-group"><label>Empreendimento</label><input id="vp-emp" value="${venda.empreendimento||''}" placeholder="Nome do empreendimento"></div>
+      <div class="form-group"><label>Imóvel / Unidade</label><input id="vp-imovel" value="${venda.imovel||''}" placeholder="Lote 12, Apto 203..."></div>
+      <div class="form-group"><label>Nome do Cliente</label><input id="vp-cliente" value="${venda.cliente_nome||''}" placeholder="Nome do comprador"></div>
+      <div class="form-group"><label>Valor da Venda (R$) *</label><input id="vp-valor" type="number" min="0" step="1000" value="${venda.valor_venda||''}" oninput="calcComissaoVP()"></div>
+      <div class="form-group"><label>Comissão (%)</label><input id="vp-pct" type="number" min="0" step="0.1" value="${venda.comissao_pct||''}" placeholder="ex: 1.5" oninput="calcComissaoVP()"></div>
+      <div class="form-group"><label>Comissão (R$)</label><input id="vp-com" type="number" min="0" step="100" value="${venda.comissao_valor||''}" placeholder="Calculado automaticamente"></div>
+      <div class="form-group"><label>Status da Comissão</label>
+        <select id="vp-status" onchange="toggleRecebidoVP()">
+          <option value="pendente" ${(venda.status_comissao||'pendente')==='pendente'?'selected':''}>Pendente</option>
+          <option value="parcial" ${venda.status_comissao==='parcial'?'selected':''}>Parcial (recebido parcialmente)</option>
+          <option value="recebido" ${venda.status_comissao==='recebido'?'selected':''}>Recebido integralmente</option>
+        </select>
+      </div>
+      <div class="form-group" id="vp-grupo-recebido" style="display:${['parcial','recebido'].includes(venda.status_comissao)?'block':'none'}">
+        <label>Valor Já Recebido (R$)</label>
+        <input id="vp-recebido" type="number" min="0" step="100" value="${venda.valor_recebido||0}">
+      </div>
+      <div class="form-group span2"><label>Observações</label><textarea id="vp-obs" rows="2">${venda.observacoes||''}</textarea></div>
+    </div>
+  `, async () => {
+    const body = {
+      data_venda:      v('vp-data'),
+      empreendimento:  v('vp-emp'),
+      imovel:          v('vp-imovel'),
+      cliente_nome:    v('vp-cliente'),
+      valor_venda:     parseFloat(document.getElementById('vp-valor').value)||0,
+      comissao_pct:    parseFloat(document.getElementById('vp-pct').value)||null,
+      comissao_valor:  parseFloat(document.getElementById('vp-com').value)||null,
+      status_comissao: v('vp-status'),
+      valor_recebido:  parseFloat(document.getElementById('vp-recebido')?.value)||0,
+      observacoes:     v('vp-obs'),
+    };
+    if (!body.data_venda || !body.valor_venda) return toast('Data e valor são obrigatórios', 'error');
+    const res = id
+      ? await put(`/api/corretor/vendas-proprias/${id}`, body)
+      : await post('/api/corretor/vendas-proprias', body);
+    if (!res.ok) return toast(res.error, 'error');
+    toast(id ? 'Venda atualizada!' : 'Venda registrada! 🏠');
+    closeModal();
+    renderCorretorPainel('proprias');
+  });
+  // Garante que o campo recebido esteja correto após render
+  setTimeout(toggleRecebidoVP, 50);
+}
+
+function calcComissaoVP() {
+  const valor = parseFloat(document.getElementById('vp-valor')?.value)||0;
+  const pct   = parseFloat(document.getElementById('vp-pct')?.value)||0;
+  const comEl = document.getElementById('vp-com');
+  if (comEl && valor > 0 && pct > 0) comEl.value = (valor * pct / 100).toFixed(2);
+}
+
+function toggleRecebidoVP() {
+  const st = document.getElementById('vp-status')?.value;
+  const gr = document.getElementById('vp-grupo-recebido');
+  if (gr) gr.style.display = ['parcial','recebido'].includes(st) ? 'block' : 'none';
+  if (st === 'recebido') {
+    const com = parseFloat(document.getElementById('vp-com')?.value)||0;
+    const rec = document.getElementById('vp-recebido');
+    if (rec && com > 0 && !rec.value) rec.value = com.toFixed(2);
+  }
+}
+
+async function deleteVendaPropria(id) {
+  if (!confirm('Excluir esta venda?')) return;
+  const r = await del(`/api/corretor/vendas-proprias/${id}`);
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Venda excluída');
+  renderCorretorPainel('proprias');
 }
 
 // ─── NOTIFICAÇÕES PUSH (WEB NOTIFICATIONS API) ────────────────────────────────

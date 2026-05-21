@@ -270,4 +270,23 @@ db.exec(`
   );
 `);
 
+// Tabela de vendas próprias do corretor (externas à R2X)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS corretor_vendas_proprias (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    corretor_id INTEGER NOT NULL REFERENCES corretores(id) ON DELETE CASCADE,
+    data_venda TEXT NOT NULL,
+    empreendimento TEXT,
+    imovel TEXT,
+    cliente_nome TEXT,
+    valor_venda REAL DEFAULT 0,
+    comissao_pct REAL,
+    comissao_valor REAL,
+    status_comissao TEXT DEFAULT 'pendente',
+    valor_recebido REAL DEFAULT 0,
+    observacoes TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 module.exports = db;
