@@ -4580,9 +4580,10 @@ async function renderCorretorPainel(tab) {
 
     <!-- Abas -->
     <div style="display:flex;gap:8px;margin-bottom:16px">
-      ${tabBtn('r2x',   '🏢', 'Vendas R2X')}
-      ${tabBtn('proprias', '🏠', 'Minhas Vendas')}
-      ${tabBtn('calc',  '🧮', 'Calculadora')}
+      ${tabBtn('r2x',      '🏢', 'Vendas R2X')}
+      ${tabBtn('proprias',  '🏠', 'Minhas Vendas')}
+      ${tabBtn('clientes',  '👥', 'Meus Clientes')}
+      ${tabBtn('calc',      '🧮', 'Calculadora')}
     </div>
 
     <!-- Conteúdo da aba -->
@@ -4653,9 +4654,106 @@ function _renderCpTab() {
         </table>
       </div>`;
 
+  } else if (_cpTab === 'clientes') {
+    // Carrega clientes e renderiza
+    const rc = await get('/api/corretor/clientes');
+    const clientes = rc.data || [];
+    el.innerHTML = `
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">👥 Meus Clientes (${clientes.length})</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="cc-busca" placeholder="🔍 Buscar..." oninput="_filtrarCorretorClientes()"
+              style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;width:180px">
+            <button class="btn btn-primary" onclick="openCorretorClienteModal()" style="font-size:13px;padding:7px 14px">+ Novo Cliente</button>
+          </div>
+        </div>
+        <table id="cc-tabela">
+          <thead><tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>Email</th><th>Cidade</th><th>Aniversário</th><th></th></tr></thead>
+          <tbody id="cc-tbody">
+            ${clientes.length ? clientes.map(c => _rowCorretorCliente(c)).join('') : '<tr class="empty-row"><td colspan="7">Nenhum cliente cadastrado<br><small>Clique em "+ Novo Cliente" para começar</small></td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+    // Guarda cache local para filtro
+    el._clientes = clientes;
+
   } else if (_cpTab === 'calc') {
     renderCalculadora(el);
   }
+}
+
+function _rowCorretorCliente(c) {
+  const aniv = c.aniversario ? (() => { const [,m,d] = c.aniversario.split('-'); return `${d}/${m}`; })() : '—';
+  return `<tr data-cc-id="${c.id}" data-cc-nome="${(c.nome||'').toLowerCase()}" data-cc-cidade="${(c.cidade||'').toLowerCase()}">
+    <td><strong>${c.nome}</strong></td>
+    <td>${c.cpf||'—'}</td>
+    <td>${c.telefone ? `<a href="https://wa.me/55${c.telefone.replace(/\D/g,'')}" target="_blank" style="color:var(--accent)">📱 ${fmtPhone(c.telefone)}</a>` : '—'}</td>
+    <td>${c.email ? `<a href="mailto:${c.email}" style="color:var(--accent)">${c.email}</a>` : '—'}</td>
+    <td>${c.cidade||'—'}${c.estado?'/'+c.estado:''}</td>
+    <td>${aniv}</td>
+    <td style="white-space:nowrap">
+      <button class="btn-icon btn-edit" onclick="openCorretorClienteModal(${c.id})">✏️</button>
+      <button class="btn-icon btn-delete" onclick="deleteCorretorCliente(${c.id})">🗑️</button>
+    </td>
+  </tr>`;
+}
+
+function _filtrarCorretorClientes() {
+  const q = (document.getElementById('cc-busca')?.value||'').toLowerCase().trim();
+  const el = document.getElementById('cp-tab-content');
+  const clientes = el?._clientes || [];
+  const tbody = document.getElementById('cc-tbody');
+  if (!tbody) return;
+  const filtrados = q ? clientes.filter(c => c.nome.toLowerCase().includes(q) || (c.cidade||'').toLowerCase().includes(q) || (c.cpf||'').includes(q) || (c.email||'').toLowerCase().includes(q)) : clientes;
+  tbody.innerHTML = filtrados.length ? filtrados.map(c => _rowCorretorCliente(c)).join('') : '<tr class="empty-row"><td colspan="7">Nenhum resultado</td></tr>';
+}
+
+async function openCorretorClienteModal(id) {
+  let c = {};
+  if (id) {
+    const r = await get('/api/corretor/clientes');
+    c = (r.data||[]).find(x => x.id === id) || {};
+  }
+  openModal(id ? 'Editar Cliente' : 'Novo Cliente', `
+    <div class="form-grid">
+      <div class="form-group span2"><label>Nome *</label><input id="cc-nome" value="${c.nome||''}" placeholder="Nome completo ou razão social"></div>
+      <div class="form-group"><label>CPF / CNPJ</label><input id="cc-cpf" value="${c.cpf||''}" placeholder="000.000.000-00"></div>
+      <div class="form-group"><label>Telefone / WhatsApp</label><input id="cc-tel" value="${c.telefone||''}" placeholder="(48) 99999-9999"></div>
+      <div class="form-group span2"><label>Email</label><input id="cc-email" type="email" value="${c.email||''}" placeholder="email@exemplo.com"></div>
+      <div class="form-group"><label>Cidade</label><input id="cc-cidade" value="${c.cidade||''}"></div>
+      <div class="form-group"><label>Estado</label><input id="cc-estado" value="${c.estado||''}" placeholder="SC" maxlength="2"></div>
+      <div class="form-group"><label>Data de Aniversário</label><input id="cc-aniv" type="date" value="${c.aniversario||''}"></div>
+      <div class="form-group span2"><label>Observações</label><textarea id="cc-obs" rows="2">${c.observacoes||''}</textarea></div>
+    </div>
+  `, async () => {
+    const body = {
+      nome:       v('cc-nome'),
+      cpf:        v('cc-cpf'),
+      telefone:   v('cc-tel'),
+      email:      v('cc-email'),
+      cidade:     v('cc-cidade'),
+      estado:     v('cc-estado'),
+      aniversario: v('cc-aniv'),
+      observacoes: v('cc-obs'),
+    };
+    if (!body.nome) return toast('Nome é obrigatório', 'error');
+    const res = id
+      ? await put(`/api/corretor/clientes/${id}`, body)
+      : await post('/api/corretor/clientes', body);
+    if (!res.ok) return toast(res.error, 'error');
+    toast(id ? 'Cliente atualizado! ✅' : 'Cliente cadastrado! 👥');
+    closeModal();
+    renderCorretorPainel('clientes');
+  });
+}
+
+async function deleteCorretorCliente(id) {
+  if (!confirm('Excluir este cliente?')) return;
+  const r = await del(`/api/corretor/clientes/${id}`);
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Cliente excluído');
+  renderCorretorPainel('clientes');
 }
 
 async function openVendaPropriaModal(id) {

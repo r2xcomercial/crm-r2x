@@ -270,6 +270,23 @@ db.exec(`
   );
 `);
 
+// Tabela de clientes próprios do corretor (acesso privado por corretor)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS corretor_clientes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    corretor_id INTEGER NOT NULL REFERENCES corretores(id) ON DELETE CASCADE,
+    nome TEXT NOT NULL,
+    cpf TEXT,
+    telefone TEXT,
+    email TEXT,
+    cidade TEXT,
+    estado TEXT,
+    aniversario TEXT,
+    observacoes TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 // Tabela de vendas próprias do corretor (externas à R2X)
 db.exec(`
   CREATE TABLE IF NOT EXISTS corretor_vendas_proprias (
