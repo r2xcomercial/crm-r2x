@@ -105,6 +105,9 @@
 
   /* ── BADGES ── */
   .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  /* ── Modo Privacidade ── */
+  .v-priv { transition: filter .15s, opacity .15s; }
+  body.mode-priv .v-priv { filter: blur(8px); opacity: .6; user-select: none; pointer-events: none; }
   .badge-green { background: rgba(34,197,94,.15); color: #4ade80; }
   .badge-blue { background: rgba(0,153,204,.15); color: #38bdf8; }
   .badge-yellow { background: rgba(245,158,11,.15); color: #fbbf24; }
@@ -3785,17 +3788,15 @@ function closeModalOutside(e) { if (e.target === document.getElementById('modal-
 function v(id) { return document.getElementById(id)?.value || ''; }
 let _privacyMode = localStorage.getItem('crm_privacy') === '1';
 function fmt(n) {
-  if (_privacyMode) return 'R$ ●●●●';
-  return (n||0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const val = (n||0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return `<span class="v-priv">${val}</span>`;
 }
 function togglePrivacyMode() {
   _privacyMode = !_privacyMode;
   localStorage.setItem('crm_privacy', _privacyMode ? '1' : '0');
-  // Atualiza ícone do botão
+  document.body.classList.toggle('mode-priv', _privacyMode);
   const btn = document.getElementById('btn-privacy');
   if (btn) { btn.title = _privacyMode ? 'Mostrar valores' : 'Ocultar valores'; btn.textContent = _privacyMode ? '🙈' : '👁️'; }
-  // Re-renderiza a página atual para aplicar/remover a máscara
-  navigate(currentPage || 'dashboard');
 }
 function fmtDate(d) { if (!d) return '—'; const [y,m,day] = d.split('T')[0].split('-'); return `${day}/${m}/${y}`; }
 function fmtPhone(p) { if (!p) return '—'; const n = p.replace(/\D/g,''); return n.length===11 ? `(${n.slice(0,2)}) ${n.slice(2,7)}-${n.slice(7)}` : p; }
@@ -4849,7 +4850,7 @@ async function renderCorretorPainel(tab) {
   _renderCpTab();
 }
 
-function _renderCpTab() {
+async function _renderCpTab() {
   const el = document.getElementById('cp-tab-content');
   if (!el || !_cpData) return;
   const { vendasR2X, vendasProprias } = _cpData;
@@ -5581,9 +5582,9 @@ initUsuarioUI();
 iniciarNotificacoes();
 // Aplica estado inicial do modo privacidade
 (function initPrivacy() {
+  if (_privacyMode) document.body.classList.add('mode-priv');
   const btn = document.getElementById('btn-privacy');
-  if (!btn) return;
-  if (_privacyMode) { btn.textContent = '🙈'; btn.title = 'Mostrar valores'; }
+  if (btn && _privacyMode) { btn.textContent = '🙈'; btn.title = 'Mostrar valores'; }
 })();
 // Corretor vai direto ao painel dele; demais usuários ao dashboard
 renderPage(USUARIO.perfil === 'corretor' ? 'corretor-painel' : 'dashboard');
