@@ -770,6 +770,120 @@ app.delete("/api/corretor/vendas-proprias/:id", (req, res) => {
   ok(res, {});
 });
 
+// ─── CORRETOR: CONFIGURAÇÃO FINANCEIRA ───────────────────────────────────────
+app.get("/api/corretor/config", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  const row = db.prepare('SELECT * FROM corretor_config WHERE corretor_id=?').get(cid);
+  ok(res, row || { imobiliaria_nome: null, imobiliaria_split_pct: 0 });
+});
+
+app.put("/api/corretor/config", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  const { imobiliaria_nome, imobiliaria_split_pct } = req.body;
+  db.prepare(`
+    INSERT INTO corretor_config (corretor_id, imobiliaria_nome, imobiliaria_split_pct)
+    VALUES (?,?,?)
+    ON CONFLICT(corretor_id) DO UPDATE SET imobiliaria_nome=excluded.imobiliaria_nome, imobiliaria_split_pct=excluded.imobiliaria_split_pct
+  `).run(cid, imobiliaria_nome||null, parseFloat(imobiliaria_split_pct)||0);
+  ok(res, {});
+});
+
+// ─── CORRETOR: DESPESAS ───────────────────────────────────────────────────────
+app.get("/api/corretor/despesas", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  ok(res, db.prepare(`SELECT * FROM corretor_despesas WHERE corretor_id=? ORDER BY recorrente DESC, data_pagamento DESC`).all(cid));
+});
+
+app.post("/api/corretor/despesas", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  const { descricao, categoria, valor, data_pagamento, recorrente, status, observacoes } = req.body;
+  if (!descricao || !valor) return err(res, 'Descrição e valor obrigatórios');
+  const r = db.prepare(`
+    INSERT INTO corretor_despesas (corretor_id, descricao, categoria, valor, data_pagamento, recorrente, status, observacoes)
+    VALUES (?,?,?,?,?,?,?,?)
+  `).run(cid, descricao, categoria||'outros', parseFloat(valor), data_pagamento||null, recorrente?1:0, status||'pago', observacoes||null);
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.put("/api/corretor/despesas/:id", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  const id = parseInt(req.params.id);
+  const row = db.prepare('SELECT * FROM corretor_despesas WHERE id=? AND corretor_id=?').get(id, cid);
+  if (!row) return err(res, 'Não encontrado');
+  const { descricao, categoria, valor, data_pagamento, recorrente, status, observacoes } = req.body;
+  db.prepare(`
+    UPDATE corretor_despesas SET descricao=?, categoria=?, valor=?, data_pagamento=?, recorrente=?, status=?, observacoes=?
+    WHERE id=? AND corretor_id=?
+  `).run(descricao||row.descricao, categoria||row.categoria, parseFloat(valor)||row.valor,
+         data_pagamento||null, recorrente!==undefined?parseInt(recorrente):row.recorrente,
+         status||row.status, observacoes||null, id, cid);
+  ok(res, {});
+});
+
+app.delete("/api/corretor/despesas/:id", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  db.prepare('DELETE FROM corretor_despesas WHERE id=? AND corretor_id=?').run(parseInt(req.params.id), cid);
+  ok(res, {});
+});
+
+// ─── CORRETOR: FLUXO DE CAIXA PROJETADO ──────────────────────────────────────
+app.get("/api/corretor/fluxo", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+
+  const config    = db.prepare('SELECT * FROM corretor_config WHERE corretor_id=?').get(cid) || {};
+  const splitPct  = config.imobiliaria_split_pct || 0;
+  const despesas  = db.prepare('SELECT * FROM corretor_despesas WHERE corretor_id=?').all(cid);
+
+  // Comissões pendentes R2X
+  const comR2X = db.prepare(`
+    SELECT comissao_corretor_valor, data_venda FROM vendas
+    WHERE corretor_id=? AND status='ativo' AND comissao_corretor_status='pendente' AND comissao_corretor_valor > 0
+  `).all(cid);
+
+  // Comissões pendentes vendas próprias
+  const comProp = db.prepare(`
+    SELECT comissao_valor, valor_recebido, data_venda FROM corretor_vendas_proprias
+    WHERE corretor_id=? AND status_comissao != 'recebido' AND comissao_valor > 0
+  `).all(cid);
+
+  const hoje = new Date();
+  const meses = [];
+
+  for (let i = 0; i < 6; i++) {
+    const d    = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
+    const mes  = d.getMonth() + 1;
+    const ano  = d.getFullYear();
+    const msStr = `${ano}-${String(mes).padStart(2,'0')}`;
+
+    // Despesas recorrentes (todo mês)
+    const recorrentes = despesas.filter(x => x.recorrente).reduce((s,x) => s + x.valor, 0);
+
+    // Despesas avulsas pendentes com data neste mês
+    const pontual = despesas
+      .filter(x => !x.recorrente && x.status === 'pendente' && (x.data_pagamento||'').startsWith(msStr))
+      .reduce((s,x) => s + x.valor, 0);
+
+    // Entradas: comissões pendentes vão para o mês atual apenas (sem data exata conhecida)
+    let entR2X = 0, entProp = 0;
+    if (i === 0) {
+      entR2X  = comR2X.reduce((s,v) => s + (v.comissao_corretor_valor||0), 0);
+      entProp = comProp.reduce((s,v) => s + Math.max(0, (v.comissao_valor||0) - (v.valor_recebido||0)), 0);
+    }
+    const entBruta   = entR2X + entProp;
+    const split      = entBruta * splitPct / 100;
+    const entLiquida = entBruta - split;
+    const saidas     = recorrentes + pontual;
+
+    meses.push({ mes, ano, msStr, entBruta, entLiquida, split, splitPct, entR2X, entProp, recorrentes, pontual, saidas, saldo: entLiquida - saidas });
+  }
+
+  // Saldo acumulado
+  let acumulado = 0;
+  for (const m of meses) { acumulado += m.saldo; m.acumulado = acumulado; }
+
+  ok(res, { meses, config, despesas, splitPct });
+});
+
 // ─── CORRETOR: AGENDA DE TAREFAS ─────────────────────────────────────────────
 app.get("/api/corretor/tarefas", (req, res) => {
   const cid = guardaCorretor(req, res); if (!cid) return;

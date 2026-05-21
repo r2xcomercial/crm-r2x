@@ -270,6 +270,31 @@ db.exec(`
   );
 `);
 
+// Configuração financeira do corretor (split de imobiliária etc.)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS corretor_config (
+    corretor_id INTEGER PRIMARY KEY REFERENCES corretores(id) ON DELETE CASCADE,
+    imobiliaria_nome TEXT,
+    imobiliaria_split_pct REAL DEFAULT 0
+  );
+`);
+
+// Despesas do corretor
+db.exec(`
+  CREATE TABLE IF NOT EXISTS corretor_despesas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    corretor_id INTEGER NOT NULL REFERENCES corretores(id) ON DELETE CASCADE,
+    descricao TEXT NOT NULL,
+    categoria TEXT DEFAULT 'outros',
+    valor REAL NOT NULL,
+    data_pagamento TEXT,
+    recorrente INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'pago',
+    observacoes TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 // Agenda de tarefas do corretor
 db.exec(`
   CREATE TABLE IF NOT EXISTS corretor_tarefas (

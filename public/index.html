@@ -4720,11 +4720,12 @@ async function renderCorretorPainel(tab) {
 
     <!-- Abas -->
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-      ${tabBtn('r2x',     '🏢', 'Vendas R2X')}
-      ${tabBtn('proprias','🏠', 'Minhas Vendas')}
-      ${tabBtn('clientes','👥', 'Meus Clientes')}
-      ${tabBtn('agenda',  '📋', 'Agenda', totalAlertas||null)}
-      ${tabBtn('calc',    '🧮', 'Calculadora')}
+      ${tabBtn('r2x',        '🏢', 'Vendas R2X')}
+      ${tabBtn('proprias',   '🏠', 'Minhas Vendas')}
+      ${tabBtn('clientes',   '👥', 'Meus Clientes')}
+      ${tabBtn('agenda',     '📋', 'Agenda', totalAlertas||null)}
+      ${tabBtn('financeiro', '💰', 'Financeiro')}
+      ${tabBtn('calc',       '🧮', 'Calculadora')}
     </div>
 
     <!-- Conteúdo da aba -->
@@ -4884,9 +4885,295 @@ function _renderCpTab() {
     // Guarda cache local para filtro
     el._clientes = clientes;
 
+  } else if (_cpTab === 'financeiro') {
+    await _renderFinanceiroCorretor(el);
+
   } else if (_cpTab === 'calc') {
     renderCalculadora(el);
   }
+}
+
+// ─── CORRETOR: FINANCEIRO ─────────────────────────────────────────────────────
+let _cfView = 'despesas'; // 'despesas' | 'fluxo'
+
+async function _renderFinanceiroCorretor(el) {
+  const [rd, rc] = await Promise.all([
+    get('/api/corretor/despesas'),
+    get('/api/corretor/config'),
+  ]);
+  const despesas = rd.data || [];
+  const config   = rc.data || {};
+  el._despesas   = despesas;
+  el._cfConfig   = config;
+
+  const catIcon = { aluguel:'🏠', gasolina:'⛽', trafego:'📢', celular:'📱', software:'💻', educacao:'🎓', alimentacao:'🍽️', outros:'📌' };
+  const catLabel = { aluguel:'Aluguel', gasolina:'Gasolina', trafego:'Tráfego Pago', celular:'Celular', software:'Software/Assinatura', educacao:'Educação', alimentacao:'Alimentação', outros:'Outros' };
+
+  const recorrentesTotal = despesas.filter(d => d.recorrente).reduce((s,d) => s + d.valor, 0);
+  const pagasTotal       = despesas.filter(d => !d.recorrente && d.status === 'pago').reduce((s,d) => s + d.valor, 0);
+  const pendentesTotal   = despesas.filter(d => !d.recorrente && d.status === 'pendente').reduce((s,d) => s + d.valor, 0);
+
+  const subBtn = (id, icon, label) => `<button onclick="_cfView='${id}';document.getElementById('cp-tab-content')._renderFinSub()"
+    style="padding:7px 16px;border-radius:7px;border:1px solid ${_cfView===id?'var(--accent)':'var(--border)'};
+           background:${_cfView===id?'rgba(0,196,180,.12)':'transparent'};color:${_cfView===id?'var(--accent)':'var(--text2)'};
+           font-size:12px;font-weight:${_cfView===id?'700':'400'};cursor:pointer">${icon} ${label}</button>`;
+
+  el.innerHTML = `
+    <!-- Config imobiliária -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">🏛️ Configuração de Imobiliária</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div style="flex:1;min-width:160px">
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">Nome da Imobiliária</label>
+          <input id="cfg-imob-nome" value="${config.imobiliaria_nome||''}" placeholder="Deixe vazio se autônomo"
+            style="width:100%;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px">
+        </div>
+        <div style="min-width:120px">
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">Repasse à imobiliária (%)</label>
+          <input id="cfg-imob-pct" type="number" min="0" max="100" step="0.5" value="${config.imobiliaria_split_pct||0}"
+            style="width:100%;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px">
+        </div>
+        <button onclick="salvarConfigCorretor()" style="padding:8px 16px;background:var(--accent);color:var(--navy);border:none;border-radius:7px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">Salvar</button>
+        ${config.imobiliaria_split_pct > 0 ? `<div style="font-size:11px;color:var(--text2);align-self:center">
+          Você fica com <strong style="color:var(--success)">${100 - config.imobiliaria_split_pct}%</strong> da comissão
+        </div>` : '<div style="font-size:11px;color:var(--text2);align-self:center">Autônomo — 100% da comissão é seu</div>'}
+      </div>
+    </div>
+
+    <!-- KPIs despesas -->
+    <div class="kpi-grid" style="margin-bottom:14px">
+      ${kpi('🔄', 'Custo Fixo/Mês', fmt(recorrentesTotal), 'despesas recorrentes')}
+      ${kpi('✅', 'Despesas Pagas', fmt(pagasTotal), 'avulsas quitadas')}
+      ${kpi('⏳', 'A Pagar', fmt(pendentesTotal), 'avulsas pendentes')}
+      ${kpi('📊', 'Total Geral', fmt(recorrentesTotal + pagasTotal + pendentesTotal), 'fixo + avulsas')}
+    </div>
+
+    <!-- Sub-abas -->
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      ${subBtn('despesas','📋','Despesas')}
+      ${subBtn('fluxo','📈','Fluxo de Caixa')}
+    </div>
+
+    <div id="cf-sub-content"></div>`;
+
+  // Guarda referências para re-render do sub-tab
+  el._catIcon  = catIcon;
+  el._catLabel = catLabel;
+  el._renderFinSub = () => _renderFinSubView(el);
+  el._renderFinSub();
+}
+
+async function _renderFinSubView(el) {
+  const sub    = document.getElementById('cf-sub-content');
+  if (!sub) return;
+  const despesas  = el._despesas || [];
+  const catIcon   = el._catIcon  || {};
+  const catLabel  = el._catLabel || {};
+
+  if (_cfView === 'despesas') {
+    const catOpts = Object.keys(catLabel).map(k => `<option value="${k}">${catIcon[k]} ${catLabel[k]}</option>`).join('');
+
+    sub.innerHTML = `
+      <!-- Quick-add inline -->
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:10px">⚡ Adicionar despesa rápida</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <div style="flex:2;min-width:150px">
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Descrição *</label>
+            <input id="qd-desc" placeholder="Ex: Gasolina semana" style="width:100%;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px">
+          </div>
+          <div style="min-width:140px">
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Categoria</label>
+            <select id="qd-cat" style="width:100%;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px">${catOpts}</select>
+          </div>
+          <div style="min-width:120px">
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Valor (R$) *</label>
+            <input id="qd-valor" type="number" min="0" step="10" placeholder="0,00" style="width:100%;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px">
+          </div>
+          <div style="min-width:130px">
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Data</label>
+            <input id="qd-data" type="date" value="${today()}" style="width:100%;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:11px;color:var(--text2)">Status</label>
+            <select id="qd-status" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px">
+              <option value="pago">✅ Pago</option>
+              <option value="pendente">⏳ Pendente</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding-bottom:8px">
+            <input type="checkbox" id="qd-rec" style="width:16px;height:16px;accent-color:var(--accent)">
+            <label for="qd-rec" style="font-size:12px;cursor:pointer;white-space:nowrap">🔄 Recorrente</label>
+          </div>
+          <button onclick="addDespesaRapida()" style="padding:8px 18px;background:var(--accent);color:var(--navy);border:none;border-radius:7px;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;align-self:flex-end">+ Adicionar</button>
+        </div>
+      </div>
+
+      <!-- Tabela de despesas -->
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">📋 Despesas (${despesas.length})</div>
+          <button class="btn btn-primary" onclick="openDespesaModal()" style="font-size:13px;padding:7px 14px">+ Detalhada</button>
+        </div>
+        <table>
+          <thead><tr><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Data</th><th>Tipo</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${despesas.length ? despesas.map(d => `
+              <tr>
+                <td><strong>${d.descricao}</strong>${d.observacoes?`<div style="font-size:11px;color:var(--text2)">${d.observacoes}</div>`:''}</td>
+                <td>${catIcon[d.categoria]||'📌'} <span style="font-size:12px;color:var(--text2)">${catLabel[d.categoria]||d.categoria}</span></td>
+                <td style="color:var(--danger);font-weight:600">${fmt(d.valor)}</td>
+                <td style="font-size:12px">${d.data_pagamento?fmtDate(d.data_pagamento):'—'}</td>
+                <td><span class="badge ${d.recorrente?'badge-yellow':'badge-gray'}">${d.recorrente?'🔄 Recorrente':'Avulsa'}</span></td>
+                <td><span class="badge ${d.status==='pago'?'badge-green':'badge-yellow'}">${d.status==='pago'?'Pago':'Pendente'}</span></td>
+                <td style="white-space:nowrap">
+                  <button class="btn-icon btn-edit" onclick="openDespesaModal(${d.id})">✏️</button>
+                  <button class="btn-icon btn-delete" onclick="deleteDespesa(${d.id})">🗑️</button>
+                </td>
+              </tr>`).join('') : '<tr class="empty-row"><td colspan="7">Nenhuma despesa registrada<br><small>Use o formulário acima para adicionar</small></td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+
+  } else {
+    // Fluxo de caixa — busca do servidor
+    const rf = await get('/api/corretor/fluxo');
+    const { meses, splitPct } = rf.data || { meses: [], splitPct: 0 };
+    const mesNomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+    sub.innerHTML = `
+      <div style="background:rgba(0,196,180,.06);border:1px solid rgba(0,196,180,.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--text2)">
+        💡 <strong>Como ler:</strong> Entradas = comissões pendentes a receber${splitPct>0?` (já descontado ${splitPct}% da imobiliária)`:''}.
+        Saídas = despesas recorrentes cadastradas + avulsas pendentes do mês. Meses futuros não têm entradas previstas (você adiciona ao fechar vendas).
+      </div>
+
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">📈 Projeção — Próximos 6 Meses</div></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Mês</th>
+              <th>Entradas <span style="color:var(--text2);font-weight:400">(líquido)</span></th>
+              ${splitPct > 0 ? '<th>Split Imob.</th>' : ''}
+              <th>Fixo/Mês</th>
+              <th>Avulsas</th>
+              <th>Total Saídas</th>
+              <th>Saldo do Mês</th>
+              <th>Saldo Acumulado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${meses.map((m, i) => {
+              const corSaldo = m.saldo >= 0 ? 'var(--success)' : 'var(--danger)';
+              const corAcum  = m.acumulado >= 0 ? 'var(--success)' : 'var(--danger)';
+              const isAtual  = i === 0;
+              return `<tr style="${isAtual?'background:rgba(0,196,180,.04)':''}">
+                <td><strong style="color:${isAtual?'var(--accent)':'inherit'}">${mesNomes[m.mes-1]}/${m.ano}</strong>${isAtual?` <span class="badge badge-accent" style="font-size:9px">Atual</span>`:''}
+                  ${m.entR2X||m.entProp ? `<div style="font-size:10px;color:var(--text2)">R2X: ${fmt(m.entR2X)} · Ext: ${fmt(m.entProp)}</div>` : ''}
+                </td>
+                <td style="color:var(--success);font-weight:600">${m.entLiquida > 0 ? fmt(m.entLiquida) : '<span style="color:var(--text2)">—</span>'}</td>
+                ${splitPct > 0 ? `<td style="color:var(--danger);font-size:12px">${m.split > 0 ? '-'+fmt(m.split) : '—'}</td>` : ''}
+                <td style="color:var(--danger)">${m.recorrentes > 0 ? fmt(m.recorrentes) : '—'}</td>
+                <td style="color:var(--danger);font-size:12px">${m.pontual > 0 ? fmt(m.pontual) : '—'}</td>
+                <td style="color:var(--danger);font-weight:600">${fmt(m.saidas)}</td>
+                <td style="color:${corSaldo};font-weight:700">${m.saldo >= 0 ? '+' : ''}${fmt(m.saldo)}</td>
+                <td style="color:${corAcum};font-weight:600">${m.acumulado >= 0 ? '+' : ''}${fmt(m.acumulado)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:10px;font-size:11px;color:var(--text2);text-align:center">
+        💡 Para melhorar a projeção, cadastre todas as suas despesas recorrentes na aba <strong>Despesas</strong>
+        e registre despesas avulsas futuras com status <em>Pendente</em>.
+      </div>`;
+  }
+}
+
+async function addDespesaRapida() {
+  const desc  = document.getElementById('qd-desc')?.value?.trim();
+  const cat   = document.getElementById('qd-cat')?.value;
+  const valor = parseFloat(document.getElementById('qd-valor')?.value);
+  const data  = document.getElementById('qd-data')?.value;
+  const status = document.getElementById('qd-status')?.value || 'pago';
+  const rec   = document.getElementById('qd-rec')?.checked ? 1 : 0;
+  if (!desc || !valor) return toast('Preencha descrição e valor', 'error');
+  const r = await post('/api/corretor/despesas', { descricao: desc, categoria: cat, valor, data_pagamento: data, recorrente: rec, status });
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Despesa adicionada! 📋');
+  // Limpa campos
+  document.getElementById('qd-desc').value = '';
+  document.getElementById('qd-valor').value = '';
+  document.getElementById('qd-rec').checked = false;
+  renderCorretorPainel('financeiro');
+}
+
+async function openDespesaModal(id) {
+  let d = {};
+  if (id) {
+    const r = await get('/api/corretor/despesas');
+    d = (r.data||[]).find(x => x.id === id) || {};
+  }
+  const catLabel = { aluguel:'🏠 Aluguel', gasolina:'⛽ Gasolina', trafego:'📢 Tráfego Pago', celular:'📱 Celular', software:'💻 Software/Assinatura', educacao:'🎓 Educação', alimentacao:'🍽️ Alimentação', outros:'📌 Outros' };
+  const catOpts  = Object.entries(catLabel).map(([k,v]) => `<option value="${k}" ${(d.categoria||'outros')===k?'selected':''}>${v}</option>`).join('');
+
+  openModal(id ? 'Editar Despesa' : 'Nova Despesa', `
+    <div class="form-grid">
+      <div class="form-group span2"><label>Descrição *</label><input id="dp-desc" value="${d.descricao||''}" placeholder="Ex: Aluguel escritório"></div>
+      <div class="form-group"><label>Categoria</label><select id="dp-cat">${catOpts}</select></div>
+      <div class="form-group"><label>Valor (R$) *</label><input id="dp-valor" type="number" min="0" step="10" value="${d.valor||''}"></div>
+      <div class="form-group"><label>Data</label><input id="dp-data" type="date" value="${d.data_pagamento||today()}"></div>
+      <div class="form-group"><label>Status</label>
+        <select id="dp-status">
+          <option value="pago" ${(d.status||'pago')==='pago'?'selected':''}>✅ Pago</option>
+          <option value="pendente" ${d.status==='pendente'?'selected':''}>⏳ Pendente</option>
+        </select>
+      </div>
+      <div class="form-group span2" style="display:flex;align-items:center;gap:10px;padding-top:4px">
+        <input type="checkbox" id="dp-rec" ${d.recorrente?'checked':''} style="width:18px;height:18px;accent-color:var(--accent)">
+        <label for="dp-rec" style="cursor:pointer;font-size:13px">🔄 <strong>Despesa Recorrente</strong> — aparece todo mês no fluxo de caixa</label>
+      </div>
+      <div class="form-group span2"><label>Observações</label><textarea id="dp-obs" rows="2">${d.observacoes||''}</textarea></div>
+    </div>
+  `, async () => {
+    const body = {
+      descricao:      v('dp-desc'),
+      categoria:      v('dp-cat'),
+      valor:          parseFloat(document.getElementById('dp-valor').value)||0,
+      data_pagamento: v('dp-data'),
+      status:         v('dp-status'),
+      recorrente:     document.getElementById('dp-rec').checked ? 1 : 0,
+      observacoes:    v('dp-obs'),
+    };
+    if (!body.descricao || !body.valor) return toast('Descrição e valor obrigatórios', 'error');
+    const res = id
+      ? await put(`/api/corretor/despesas/${id}`, body)
+      : await post('/api/corretor/despesas', body);
+    if (!res.ok) return toast(res.error, 'error');
+    toast(id ? 'Despesa atualizada!' : 'Despesa registrada!');
+    closeModal();
+    renderCorretorPainel('financeiro');
+  });
+}
+
+async function deleteDespesa(id) {
+  if (!confirm('Excluir esta despesa?')) return;
+  const r = await del(`/api/corretor/despesas/${id}`);
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Despesa excluída');
+  renderCorretorPainel('financeiro');
+}
+
+async function salvarConfigCorretor() {
+  const body = {
+    imobiliaria_nome:      document.getElementById('cfg-imob-nome')?.value?.trim() || null,
+    imobiliaria_split_pct: parseFloat(document.getElementById('cfg-imob-pct')?.value) || 0,
+  };
+  const r = await put('/api/corretor/config', body);
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Configuração salva! ✅');
+  renderCorretorPainel('financeiro');
 }
 
 function _rowCorretorCliente(c) {
