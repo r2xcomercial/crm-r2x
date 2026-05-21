@@ -298,7 +298,8 @@
       <div class="logo-sub">Inteligência Comercial em Lançamentos</div>
     </div>
   </div>
-  <nav>
+  <!-- Nav completo (admin/gestor) -->
+  <nav id="nav-admin">
     <div class="nav-section">Principal</div>
     <div class="nav-item active" onclick="navigate('dashboard')"><span class="icon">📊</span> Dashboard</div>
     <div class="nav-item" onclick="navigate('calendario')"><span class="icon">📅</span> Calendário</div>
@@ -322,6 +323,12 @@
     <div id="nav-usuarios" class="nav-item" onclick="navigate('usuarios')" style="display:none"><span class="icon">👤</span> Usuários</div>
     <div class="nav-item" onclick="baixarBackup()" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px;color:var(--text2)"><span class="icon">💾</span> Backup do Banco</div>
     <label class="nav-item" style="cursor:pointer;color:var(--text2)"><span class="icon">📥</span> Restaurar Backup<input type="file" accept=".db" style="display:none" onchange="restaurarBackup(this)"></label>
+  </nav>
+  <!-- Nav simplificado (corretor) -->
+  <nav id="nav-corretor" style="display:none">
+    <div class="nav-section">Meu Espaço</div>
+    <div class="nav-item active" onclick="navigate('corretor-painel')"><span class="icon">📊</span> Meu Painel</div>
+    <div class="nav-item" onclick="navigate('calculadora')"><span class="icon">🧮</span> Calculadora</div>
   </nav>
   <div id="sidebar-user" style="padding:12px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--text2)">
     <div style="display:flex;align-items:center;justify-content:space-between">
@@ -405,7 +412,8 @@ const pageTitles = {
   dashboard: 'Dashboard', leads: 'Leads', kanban: 'Kanban de Leads', vendas: 'Vendas',
   clientes: 'Incorporadores', empreendimentos: 'Empreendimentos', corretores: 'Corretores',
   financeiro: 'Financeiro', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
-  painel: 'Painel de Lançamento', usuarios: 'Usuários do Sistema', calculadora: 'Calculadora de Financiamento'
+  painel: 'Painel de Lançamento', usuarios: 'Usuários do Sistema', calculadora: 'Calculadora de Financiamento',
+  'corretor-painel': 'Meu Painel'
 };
 const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario','usuarios'];
 
@@ -428,6 +436,7 @@ async function renderPage(page) {
       case 'debora': await renderDebora(); break;
       case 'usuarios': await renderUsuarios(); break;
       case 'calculadora': renderCalculadora(); break;
+      case 'corretor-painel': await renderCorretorPainel(); break;
     }
   } catch(e) {
     c.innerHTML = `<div style="color:var(--danger);padding:24px">Erro ao carregar: ${e.message}</div>`;
@@ -4192,12 +4201,20 @@ async function fazerLogout() {
 // ─── INIT USUARIO UI ──────────────────────────────────────────────────────────
 
 function initUsuarioUI() {
-  const nomeEl = document.getElementById('sidebar-user-nome');
-  const perfilEl = document.getElementById('sidebar-user-perfil');
+  const nomeEl      = document.getElementById('sidebar-user-nome');
+  const perfilEl    = document.getElementById('sidebar-user-perfil');
   const navUsuarios = document.getElementById('nav-usuarios');
+  const navAdmin    = document.getElementById('nav-admin');
+  const navCorretor = document.getElementById('nav-corretor');
   if (nomeEl) nomeEl.textContent = USUARIO.nome || 'Usuário';
   if (perfilEl) perfilEl.textContent = USUARIO.perfil || '';
-  if (navUsuarios && USUARIO.perfil === 'admin') navUsuarios.style.display = 'flex';
+  if (USUARIO.perfil === 'corretor') {
+    // Corretor vê apenas o nav simplificado
+    if (navAdmin)    navAdmin.style.display = 'none';
+    if (navCorretor) navCorretor.style.display = 'block';
+  } else {
+    if (navUsuarios && USUARIO.perfil === 'admin') navUsuarios.style.display = 'flex';
+  }
 }
 
 // ─── USUÁRIOS CRUD ────────────────────────────────────────────────────────────
@@ -4402,17 +4419,35 @@ async function gerarLinkPortal(empId, empNome) {
 
 // ─── CALCULADORA DE FINANCIAMENTO ─────────────────────────────────────────────
 
-function renderCalculadora() {
-  document.getElementById('content').innerHTML = `
-    <div class="mini-card" style="max-width:560px">
+function renderCalculadora(container) {
+  const wrap = container || document.getElementById('content');
+  wrap.innerHTML = `
+    <div class="mini-card" style="max-width:620px">
       <h4 style="font-size:15px;font-weight:700;margin-bottom:16px">🧮 Calculadora de Financiamento</h4>
       <div class="form-grid">
         <div class="form-group"><label>Valor do Imóvel (R$)</label><input id="calc-valor" type="number" value="300000" min="0" step="1000"></div>
         <div class="form-group"><label>Entrada (R$)</label><input id="calc-entrada" type="number" value="60000" min="0" step="1000"></div>
-        <div class="form-group"><label>Taxa de Juros anual (%)</label><input id="calc-taxa" type="number" value="12" step="0.1" min="0"></div>
-        <div class="form-group"><label>Prazo (meses)</label><input id="calc-prazo" type="number" value="240" step="12" min="12" max="420"></div>
-        <div class="form-group"><label>Sistema</label>
-          <select id="calc-sistema"><option value="price">PRICE (parcela fixa)</option><option value="sac">SAC (amortização constante)</option></select>
+        <div class="form-group">
+          <label>Taxa de Juros <strong>mensal</strong> (%)</label>
+          <input id="calc-taxa" type="number" value="1.0" step="0.01" min="0" placeholder="ex: 0.99">
+        </div>
+        <div class="form-group"><label>Prazo (meses)</label><input id="calc-prazo" type="number" value="240" step="12" min="1" max="420"></div>
+        <div class="form-group"><label>Sistema de Amortização</label>
+          <select id="calc-sistema">
+            <option value="price">PRICE (parcela fixa)</option>
+            <option value="sac">SAC (amortização constante)</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Balão</label>
+          <select id="calc-balao" onchange="toggleBalaoValor()">
+            <option value="0">Nenhum</option>
+            <option value="6">Semestral (a cada 6 meses)</option>
+            <option value="12">Anual (a cada 12 meses)</option>
+          </select>
+        </div>
+        <div class="form-group" id="grupo-balao-valor" style="display:none">
+          <label>Valor do Balão (R$)</label>
+          <input id="calc-balao-valor" type="number" value="5000" min="0" step="500" placeholder="Valor por balão">
         </div>
       </div>
       <button onclick="calcFinanciamento()" style="margin-top:16px;background:var(--accent);border:none;color:var(--navy);border-radius:8px;padding:10px 24px;font-weight:700;font-size:14px;cursor:pointer">Calcular</button>
@@ -4420,40 +4455,144 @@ function renderCalculadora() {
     </div>`;
 }
 
-function calcFinanciamento() {
-  const valor = parseFloat(document.getElementById('calc-valor').value) || 0;
-  const entrada = parseFloat(document.getElementById('calc-entrada').value) || 0;
-  const taxaAnual = parseFloat(document.getElementById('calc-taxa').value) || 0;
-  const prazo = parseInt(document.getElementById('calc-prazo').value) || 0;
-  const sistema = document.getElementById('calc-sistema').value;
-  const saldo = valor - entrada;
-  const i = taxaAnual / 100 / 12;
+function toggleBalaoValor() {
+  const freq = parseInt(document.getElementById('calc-balao').value);
+  document.getElementById('grupo-balao-valor').style.display = freq ? 'block' : 'none';
+}
 
-  let html = '';
+// Cálculo iterativo mês a mês com balão aplicado ao principal
+function calcIterativo(saldo, i, prazo, sistema, balaoValor, balaoFreq) {
+  let bal = saldo;
+  let totalPago = 0, totalBalaos = 0, mesesEfetivos = 0;
+  const pmtPrice = i > 0 ? saldo * (i * Math.pow(1+i,prazo)) / (Math.pow(1+i,prazo)-1) : saldo/prazo;
+  const amortSAC = saldo / prazo;
+  const p1SAC    = amortSAC + saldo * i;
+  const pUltSAC  = amortSAC + amortSAC * i;
+
+  for (let mes = 1; mes <= prazo && bal > 0.01; mes++) {
+    const juros = bal * i;
+    let amort;
+    if (sistema === 'price') {
+      amort = Math.min(pmtPrice - juros, bal);
+    } else {
+      amort = Math.min(amortSAC, bal);
+    }
+    bal -= amort;
+    totalPago += juros + amort;
+    if (balaoValor > 0 && balaoFreq > 0 && mes % balaoFreq === 0 && bal > 0.01) {
+      const b = Math.min(balaoValor, bal);
+      bal -= b; totalBalaos += b; totalPago += b;
+    }
+    mesesEfetivos = mes;
+    if (bal <= 0.01) break;
+  }
+  return { pmtPrice, p1SAC, pUltSAC, amortSAC, totalPago, totalBalaos, mesesEfetivos, jurosTotais: totalPago - saldo };
+}
+
+function calcFinanciamento() {
+  const valor   = parseFloat(document.getElementById('calc-valor').value) || 0;
+  const entrada = parseFloat(document.getElementById('calc-entrada').value) || 0;
+  const taxaMes = parseFloat(document.getElementById('calc-taxa').value) || 0;
+  const prazo   = parseInt(document.getElementById('calc-prazo').value) || 0;
+  const sistema = document.getElementById('calc-sistema').value;
+  const balaoFreq  = parseInt(document.getElementById('calc-balao').value) || 0;
+  const balaoValor = balaoFreq ? (parseFloat(document.getElementById('calc-balao-valor').value) || 0) : 0;
+  const saldo   = valor - entrada;
+  const i       = taxaMes / 100;
+
+  if (saldo <= 0 || prazo <= 0) { document.getElementById('calc-resultado').innerHTML = '<p style="color:var(--danger)">Preencha os campos corretamente.</p>'; return; }
+
+  const r = calcIterativo(saldo, i, prazo, sistema, balaoValor, balaoFreq);
+  const qtdBalaos = balaoFreq > 0 ? Math.floor(r.mesesEfetivos / balaoFreq) : 0;
+  const anosEf = (r.mesesEfetivos / 12).toFixed(1);
+
+  let html = `<div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:12px">`;
   if (sistema === 'price') {
-    const pmt = saldo * (i * Math.pow(1+i, prazo)) / (Math.pow(1+i, prazo) - 1);
-    const total = pmt * prazo;
-    html = `
-      <div class="kpi-grid" style="grid-template-columns:1fr 1fr;gap:12px">
-        ${kpi('💰','Parcela Fixa (PRICE)',fmt(pmt),'')}
-        ${kpi('📊','Total Pago',fmt(total+entrada),`Juros: ${fmt(total-saldo)}`)}
-        ${kpi('🏦','Saldo Financiado',fmt(saldo),'')}
-        ${kpi('📅','Prazo',prazo+' meses',`${(prazo/12).toFixed(0)} anos`)}
-      </div>`;
+    html += kpi('💰', 'Parcela Mensal (PRICE)', fmt(r.pmtPrice), `fixa durante ${r.mesesEfetivos} meses`);
   } else {
-    const amort = saldo / prazo;
-    const p1 = amort + saldo * i;
-    const pUlt = amort + amort * i;
-    const total = amort * prazo + (saldo * i * (prazo + 1)) / 2;
-    html = `
-      <div class="kpi-grid" style="grid-template-columns:1fr 1fr;gap:12px">
-        ${kpi('💰','1ª Parcela (SAC)',fmt(p1),'')}
-        ${kpi('💵','Última Parcela',fmt(pUlt),'')}
-        ${kpi('📊','Total Pago',fmt(total+entrada),`Juros: ${fmt(total-saldo)}`)}
-        ${kpi('🏦','Amortização Mensal',fmt(amort),'')}
-      </div>`;
+    html += kpi('💰', '1ª Parcela (SAC)', fmt(r.p1SAC), `última: ${fmt(r.pUltSAC)}`);
+    html += kpi('🔧', 'Amortização Mensal', fmt(r.amortSAC), 'constante');
+  }
+  if (balaoValor > 0) {
+    const freq = balaoFreq === 6 ? 'semestral' : 'anual';
+    html += kpi('🎈', `Balão ${freq}`, fmt(balaoValor), `${qtdBalaos}× ao longo do contrato`);
+    html += kpi('💸', 'Total em Balões', fmt(r.totalBalaos), `${qtdBalaos} pagamentos extras`);
+  }
+  html += kpi('📊', 'Total Pago (com entrada)', fmt(r.totalPago + entrada), `Juros: ${fmt(r.jurosTotais)}`);
+  html += kpi('📅', 'Prazo Efetivo', `${r.mesesEfetivos} meses`, `${anosEf} anos${balaoValor > 0 ? ' (reduzido pelo balão)' : ''}`);
+  html += kpi('🏦', 'Saldo Financiado', fmt(saldo), `${((saldo/valor)*100).toFixed(0)}% do imóvel`);
+  html += `</div>`;
+
+  // Tabela resumo comparativa (com x sem balão)
+  if (balaoValor > 0) {
+    const semBalao = calcIterativo(saldo, i, prazo, sistema, 0, 0);
+    const economiaJuros = semBalao.jurosTotais - r.jurosTotais;
+    const economiaMeses = semBalao.mesesEfetivos - r.mesesEfetivos;
+    html += `<div style="background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.25);border-radius:8px;padding:12px 16px;font-size:13px">
+      <div style="font-weight:700;color:var(--accent);margin-bottom:8px">📈 Economia com o Balão</div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap">
+        <span>💰 Juros economizados: <strong style="color:var(--success)">${fmt(economiaJuros)}</strong></span>
+        <span>📅 Meses a menos: <strong style="color:var(--success)">${economiaMeses} meses</strong></span>
+      </div>
+    </div>`;
   }
   document.getElementById('calc-resultado').innerHTML = html;
+}
+
+// ─── PAINEL DO CORRETOR ───────────────────────────────────────────────────────
+
+async function renderCorretorPainel() {
+  const r = await get('/api/corretor/painel');
+  if (!r.ok) {
+    document.getElementById('content').innerHTML = `<div style="padding:40px;color:var(--danger)">❌ ${r.error}</div>`;
+    return;
+  }
+  const { corretor, vendas, totalVendido, comPendente, comPaga, qtdVendas } = r.data;
+
+  document.getElementById('content').innerHTML = `
+    <!-- Saudação -->
+    <div style="margin-bottom:20px">
+      <div style="font-size:20px;font-weight:700">Olá, ${corretor?.nome || USUARIO.nome}! 👋</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:4px">Aqui estão suas vendas e comissões</div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid" style="margin-bottom:20px">
+      ${kpi('🏆', 'Vendas Realizadas', qtdVendas, 'negócios ativos')}
+      ${kpi('💵', 'Volume Total Vendido', fmt(totalVendido), 'valor total dos imóveis')}
+      ${kpi('⏳', 'Comissão a Receber', fmt(comPendente), 'pendente de pagamento')}
+      ${kpi('✅', 'Comissão Recebida', fmt(comPaga), 'já quitada')}
+    </div>
+
+    <!-- Tabela de Vendas -->
+    <div class="table-card" style="margin-bottom:24px">
+      <div class="table-header"><div class="table-title">🏆 Minhas Vendas</div></div>
+      <table>
+        <thead><tr><th>Data</th><th>Imóvel</th><th>Empreendimento</th><th>Valor Venda</th><th>Comissão</th><th>Status Comissão</th></tr></thead>
+        <tbody>
+          ${vendas.length ? vendas.map(v => {
+            const comBadge = v.comissao_corretor_status === 'pago'
+              ? '<span class="badge badge-green">Pago</span>'
+              : '<span class="badge badge-yellow">Pendente</span>';
+            return `<tr>
+              <td>${fmtDate(v.data_venda)}</td>
+              <td>${v.imovel || '—'}</td>
+              <td>${v.empreendimento_nome || '—'}</td>
+              <td style="color:var(--success);font-weight:600">${fmt(v.valor)}</td>
+              <td style="color:var(--accent);font-weight:600">${v.comissao_corretor_valor ? fmt(v.comissao_corretor_valor) + ` (${v.comissao_corretor_pct}%)` : '—'}</td>
+              <td>${v.comissao_corretor_pct ? comBadge : '—'}</td>
+            </tr>`;
+          }).join('') : '<tr class="empty-row"><td colspan="6">Nenhuma venda registrada</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Calculadora embutida -->
+    <div id="calc-wrapper"></div>
+  `;
+
+  // Renderiza calculadora dentro do painel
+  renderCalculadora(document.getElementById('calc-wrapper'));
 }
 
 // ─── NOTIFICAÇÕES PUSH (WEB NOTIFICATIONS API) ────────────────────────────────
@@ -4510,7 +4649,8 @@ iniciarNotificacoes();
   if (!btn) return;
   if (_privacyMode) { btn.textContent = '🙈'; btn.title = 'Mostrar valores'; }
 })();
-renderPage('dashboard');
+// Corretor vai direto ao painel dele; demais usuários ao dashboard
+renderPage(USUARIO.perfil === 'corretor' ? 'corretor-painel' : 'dashboard');
 
 // PWA — registra service worker
 if ('serviceWorker' in navigator) {

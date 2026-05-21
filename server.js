@@ -637,7 +637,7 @@ app.post("/api/leads/whatsapp", (req, res) => {
 // ─── VENDAS ───────────────────────────────────────────────────────────────────
 
 app.get("/api/vendas", (req, res) => {
-  const rows = db.prepare(`
+  let sql = `
     SELECT v.*, l.nome as lead_nome, l.telefone as lead_telefone,
            c.nome as corretor_nome, e.nome as empreendimento_nome,
            cl.razao_social as cliente_nome
@@ -646,9 +646,34 @@ app.get("/api/vendas", (req, res) => {
     LEFT JOIN corretores c ON c.id = v.corretor_id
     LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
     LEFT JOIN clientes cl ON cl.id = v.cliente_id
+    WHERE 1=1
+  `;
+  const params = [];
+  // Corretor só vê as próprias vendas
+  if (req.usuario?.perfil === 'corretor' && req.usuario?.corretor_id) {
+    sql += " AND v.corretor_id=?"; params.push(req.usuario.corretor_id);
+  }
+  sql += " ORDER BY v.data_venda DESC";
+  ok(res, db.prepare(sql).all(...params));
+});
+
+// ─── PAINEL DO CORRETOR ───────────────────────────────────────────────────────
+app.get("/api/corretor/painel", (req, res) => {
+  const corretorId = req.usuario?.corretor_id;
+  if (!corretorId) return err(res, 'Usuário não vinculado a um corretor');
+  const corretor = db.prepare('SELECT * FROM corretores WHERE id=?').get(corretorId);
+  const vendas = db.prepare(`
+    SELECT v.*, e.nome as empreendimento_nome, l.nome as lead_nome, l.telefone as lead_tel
+    FROM vendas v
+    LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
+    LEFT JOIN leads l ON l.id = v.lead_id
+    WHERE v.corretor_id=? AND v.status='ativo'
     ORDER BY v.data_venda DESC
-  `).all();
-  ok(res, rows);
+  `).all(corretorId);
+  const totalVendido  = vendas.reduce((s,v) => s+(v.valor||0), 0);
+  const comPendente   = vendas.filter(v=>v.comissao_corretor_status==='pendente').reduce((s,v)=>s+(v.comissao_corretor_valor||0),0);
+  const comPaga       = vendas.filter(v=>v.comissao_corretor_status==='pago').reduce((s,v)=>s+(v.comissao_corretor_valor||0),0);
+  ok(res, { corretor, vendas, totalVendido, comPendente, comPaga, qtdVendas: vendas.length });
 });
 
 // Helper: gera/atualiza entrada financeira de comissão de uma venda
