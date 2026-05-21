@@ -4536,12 +4536,63 @@ function calcFinanciamento() {
       </div>
     </div>`;
   }
+  // Botão compartilhar via WhatsApp
+  html += `
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button onclick="compartilharSimulacaoWpp()" style="background:#25D366;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        Enviar pelo WhatsApp
+      </button>
+    </div>`;
+
   document.getElementById('calc-resultado').innerHTML = html;
+}
+
+function compartilharSimulacaoWpp() {
+  const valor    = parseFloat(document.getElementById('calc-valor')?.value) || 0;
+  const entrada  = parseFloat(document.getElementById('calc-entrada')?.value) || 0;
+  const taxaMes  = parseFloat(document.getElementById('calc-taxa')?.value) || 0;
+  const prazo    = parseInt(document.getElementById('calc-prazo')?.value) || 0;
+  const sistema  = document.getElementById('calc-sistema')?.value;
+  const balaoFreq  = parseInt(document.getElementById('calc-balao')?.value) || 0;
+  const balaoValor = balaoFreq ? (parseFloat(document.getElementById('calc-balao-valor')?.value) || 0) : 0;
+  const saldo = valor - entrada;
+  const i = taxaMes / 100;
+  if (saldo <= 0 || prazo <= 0) return;
+
+  const r = calcIterativo(saldo, i, prazo, sistema, balaoValor, balaoFreq);
+  const fmtN = n => (n||0).toLocaleString('pt-BR', { style:'currency', currency:'BRL', minimumFractionDigits:0, maximumFractionDigits:0 });
+  const fmtSistema = sistema === 'price' ? 'PRICE (parcela fixa)' : 'SAC (amortização constante)';
+  const anosEf = (r.mesesEfetivos / 12).toFixed(1);
+
+  let txt = `🏠 *Simulação de Financiamento*\n\n`;
+  txt += `💰 Valor do imóvel: ${fmtN(valor)}\n`;
+  txt += `📥 Entrada: ${fmtN(entrada)} (${((entrada/valor)*100).toFixed(0)}%)\n`;
+  txt += `🏦 Saldo financiado: ${fmtN(saldo)}\n`;
+  txt += `📊 Sistema: ${fmtSistema}\n`;
+  txt += `💳 Taxa de juros: ${taxaMes}% ao mês\n\n`;
+
+  if (sistema === 'price') {
+    txt += `📆 Parcela mensal: *${fmtN(r.pmtPrice)}*\n`;
+  } else {
+    txt += `📆 1ª parcela: *${fmtN(r.p1SAC)}*\n`;
+    txt += `📆 Última parcela: ${fmtN(r.pUltSAC)}\n`;
+  }
+  if (balaoValor > 0) {
+    const freqLabel = balaoFreq === 6 ? 'semestral' : 'anual';
+    txt += `🎈 Balão ${freqLabel}: ${fmtN(balaoValor)}\n`;
+  }
+  txt += `\n⏳ Prazo efetivo: *${r.mesesEfetivos} meses* (${anosEf} anos)\n`;
+  txt += `💸 Total pago: ${fmtN(r.totalPago + entrada)}\n`;
+  txt += `📈 Total de juros: ${fmtN(r.jurosTotais)}\n\n`;
+  txt += `_Simulação gerada pelo CRM R2X_`;
+
+  window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, '_blank');
 }
 
 // ─── PAINEL DO CORRETOR ───────────────────────────────────────────────────────
 
-let _cpTab = 'r2x'; // aba ativa do painel: 'r2x' | 'proprias' | 'calc'
+let _cpTab = 'r2x'; // aba ativa do painel: 'r2x' | 'proprias' | 'clientes' | 'agenda' | 'calc'
 let _cpData = null; // cache do painel
 
 async function renderCorretorPainel(tab) {
@@ -4551,39 +4602,129 @@ async function renderCorretorPainel(tab) {
   _cpData = r.data;
   const { corretor, vendasR2X, vendasProprias, totalVendido, comPendente, comPaga, qtdVendas,
           r2xTotalVendido, r2xComPend, r2xComPaga,
-          propTotalVendido, propComPend, propComPaga } = _cpData;
+          propTotalVendido, propComPend, propComPaga,
+          meta, clientes, tarefasHoje, tarefasAtrasadas } = _cpData;
 
-  const tabBtn = (id, icon, label) => `
+  const tabBtn = (id, icon, label, badge) => `
     <button onclick="_cpTab='${id}';renderCorretorPainel('${id}')"
-      style="padding:8px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;
+      style="padding:8px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;position:relative;
              background:${_cpTab===id?'var(--accent)':'var(--navy3)'};
              color:${_cpTab===id?'var(--navy)':'var(--text2)'};transition:all .15s">
-      ${icon} ${label}
+      ${icon} ${label}${badge?`<span style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 5px;min-width:16px;text-align:center">${badge}</span>`:''}
     </button>`;
+
+  // ─── Alertas de tarefas ───
+  const totalAlertas = (tarefasHoje?.length||0) + (tarefasAtrasadas?.length||0);
+  const alertaHtml = totalAlertas > 0 ? `
+    <div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;cursor:pointer" onclick="_cpTab='agenda';renderCorretorPainel('agenda')">
+      <span style="font-size:20px">📋</span>
+      <div>
+        <div style="font-weight:700;color:var(--warning);font-size:13px">
+          ${tarefasAtrasadas?.length ? `${tarefasAtrasadas.length} tarefa(s) atrasada(s)` : ''}${tarefasAtrasadas?.length && tarefasHoje?.length ? ' · ' : ''}${tarefasHoje?.length ? `${tarefasHoje.length} tarefa(s) para hoje` : ''}
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">Clique para ver a agenda →</div>
+      </div>
+    </div>` : '';
+
+  // ─── Meta do mês ───
+  const mesNome = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][new Date().getMonth()];
+  const anoAtual = new Date().getFullYear();
+  const mesVgv = r2xTotalVendido + propTotalVendido; // considera apenas mês atual seria melhor, mas usamos total por simplicidade
+  const pctVgv  = meta?.meta_vgv > 0 ? Math.min(100, (mesVgv / meta.meta_vgv * 100)).toFixed(0) : null;
+  const pctQtd  = meta?.meta_qtd > 0 ? Math.min(100, (qtdVendas / meta.meta_qtd * 100)).toFixed(0) : null;
+  const pctCom  = meta?.meta_comissao > 0 ? Math.min(100, ((comPaga+comPendente) / meta.meta_comissao * 100)).toFixed(0) : null;
+  const temMeta = meta?.meta_vgv > 0 || meta?.meta_qtd > 0 || meta?.meta_comissao > 0;
+
+  const barMeta = (label, atual, total, pct, cor) => total > 0 ? `
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="color:var(--text2)">${label}</span>
+        <span style="font-weight:600">${atual} <span style="color:var(--text2);font-weight:400">/ ${total}</span></span>
+      </div>
+      <div style="background:var(--navy3);border-radius:4px;height:8px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${cor};border-radius:4px;transition:width .5s"></div>
+      </div>
+    </div>` : '';
+
+  const metaHtml = `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700">🎯 Meta de ${mesNome}/${anoAtual}</div>
+        <button onclick="openMetaCorretorModal()" style="font-size:11px;padding:4px 10px;background:var(--navy3);border:1px solid var(--border);border-radius:6px;color:var(--text2);cursor:pointer">
+          ${temMeta ? '✏️ Editar' : '+ Definir meta'}
+        </button>
+      </div>
+      ${temMeta ? `
+        ${barMeta('VGV', fmt(mesVgv), fmt(meta.meta_vgv), pctVgv, 'var(--accent)')}
+        ${barMeta('Vendas', qtdVendas, meta.meta_qtd, pctQtd, 'var(--success)')}
+        ${barMeta('Comissão', fmt(comPaga+comPendente), fmt(meta.meta_comissao), pctCom, 'var(--warning)')}
+      ` : '<div style="font-size:12px;color:var(--text2);text-align:center;padding:8px 0">Nenhuma meta definida para este mês.<br>Clique em "+ Definir meta" para começar.</div>'}
+    </div>`;
+
+  // ─── Aniversariantes do mês ───
+  const mesAtualNum = new Date().getMonth() + 1;
+  const hoje = new Date().getDate();
+  const aniversariantes = (clientes||[]).filter(c => {
+    if (!c.aniversario) return false;
+    const [,m] = c.aniversario.split('-');
+    return parseInt(m) === mesAtualNum;
+  }).sort((a,b) => {
+    const da = parseInt(a.aniversario.split('-')[2]);
+    const db2 = parseInt(b.aniversario.split('-')[2]);
+    return da - db2;
+  });
+
+  const anivHtml = aniversariantes.length ? `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:10px">🎂 Aniversariantes de ${mesNome}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${aniversariantes.map(c => {
+          const dia = parseInt(c.aniversario.split('-')[2]);
+          const isHoje = dia === hoje;
+          const isBreve = dia >= hoje && dia <= hoje + 3;
+          return `<div style="background:${isHoje?'rgba(0,196,180,.15)':isBreve?'rgba(245,158,11,.1)':'var(--navy3)'};border:1px solid ${isHoje?'var(--accent)':isBreve?'rgba(245,158,11,.3)':'var(--border)'};border-radius:8px;padding:6px 12px;font-size:12px">
+            ${isHoje?'🎉 ':''}
+            <strong>${c.nome}</strong>
+            <span style="color:var(--text2);margin-left:6px">dia ${dia}${isHoje?' — Hoje!':''}</span>
+            ${c.telefone ? `<a href="https://wa.me/55${c.telefone.replace(/\D/g,'')}" target="_blank" style="margin-left:6px;color:var(--accent)">📲</a>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
 
   document.getElementById('content').innerHTML = `
     <!-- Saudação -->
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <div>
         <div style="font-size:20px;font-weight:700">Olá, ${corretor?.nome || USUARIO.nome}! 👋</div>
         <div style="font-size:13px;color:var(--text2);margin-top:4px">Sua central de gestão de vendas</div>
       </div>
     </div>
 
+    <!-- Alerta de tarefas -->
+    ${alertaHtml}
+
     <!-- KPIs consolidados -->
-    <div class="kpi-grid" style="margin-bottom:20px">
+    <div class="kpi-grid" style="margin-bottom:16px">
       ${kpi('🏆', 'Total de Vendas', qtdVendas, `R2X: ${vendasR2X.length} · Externas: ${vendasProprias.length}`)}
       ${kpi('💵', 'Volume Total', fmt(totalVendido), `R2X: ${fmt(r2xTotalVendido)} · Ext.: ${fmt(propTotalVendido)}`)}
       ${kpi('⏳', 'Comissão a Receber', fmt(comPendente), `R2X: ${fmt(r2xComPend)} · Ext.: ${fmt(propComPend)}`)}
       ${kpi('✅', 'Comissão Recebida', fmt(comPaga), `R2X: ${fmt(r2xComPaga)} · Ext.: ${fmt(propComPaga)}`)}
     </div>
 
+    <!-- Meta do mês -->
+    ${metaHtml}
+
+    <!-- Aniversariantes -->
+    ${anivHtml}
+
     <!-- Abas -->
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      ${tabBtn('r2x',      '🏢', 'Vendas R2X')}
-      ${tabBtn('proprias',  '🏠', 'Minhas Vendas')}
-      ${tabBtn('clientes',  '👥', 'Meus Clientes')}
-      ${tabBtn('calc',      '🧮', 'Calculadora')}
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      ${tabBtn('r2x',     '🏢', 'Vendas R2X')}
+      ${tabBtn('proprias','🏠', 'Minhas Vendas')}
+      ${tabBtn('clientes','👥', 'Meus Clientes')}
+      ${tabBtn('agenda',  '📋', 'Agenda', totalAlertas||null)}
+      ${tabBtn('calc',    '🧮', 'Calculadora')}
     </div>
 
     <!-- Conteúdo da aba -->
@@ -4650,6 +4791,71 @@ function _renderCpTab() {
                 </td>
               </tr>`;
             }).join('') : '<tr class="empty-row"><td colspan="9">Nenhuma venda externa registrada ainda<br><small>Clique em "+ Nova Venda" para começar</small></td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+
+  } else if (_cpTab === 'agenda') {
+    const rt = await get('/api/corretor/tarefas');
+    const tarefas = rt.data || [];
+    const hoje = new Date().toISOString().split('T')[0];
+    el._tarefas = tarefas;
+    el._tarefaFiltro = el._tarefaFiltro || 'pendentes';
+    const filtro = el._tarefaFiltro;
+    const tipoIcon = { ligacao:'📞', visita:'🏠', whatsapp:'💬', email:'📧', reuniao:'🤝', outro:'📌' };
+
+    const filtrarTarefas = (lista, f) => {
+      if (f === 'hoje')     return lista.filter(t => t.data_tarefa === hoje && !t.concluida);
+      if (f === 'atrasadas') return lista.filter(t => t.data_tarefa && t.data_tarefa < hoje && !t.concluida);
+      if (f === 'pendentes') return lista.filter(t => !t.concluida);
+      if (f === 'concluidas') return lista.filter(t => t.concluida);
+      return lista;
+    };
+    const filtradas = filtrarTarefas(tarefas, filtro);
+
+    const filtroBtn = (id, label, cnt) => {
+      const ativo = filtro === id;
+      const total = filtrarTarefas(tarefas, id).length;
+      return `<button onclick="document.getElementById('cp-tab-content')._tarefaFiltro='${id}';_renderCpTab()"
+        style="padding:6px 14px;border-radius:8px;border:1px solid ${ativo?'var(--accent)':'var(--border)'};
+               background:${ativo?'rgba(0,196,180,.15)':'transparent'};color:${ativo?'var(--accent)':'var(--text2)'};
+               font-size:12px;cursor:pointer;font-weight:${ativo?'700':'400'}">${label} ${total>0?`(${total})`:''}</button>`;
+    };
+
+    el.innerHTML = `
+      <div class="table-card">
+        <div class="table-header">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${filtroBtn('pendentes','⏳ Pendentes')}
+            ${filtroBtn('hoje','📅 Hoje')}
+            ${filtroBtn('atrasadas','🔴 Atrasadas')}
+            ${filtroBtn('concluidas','✅ Concluídas')}
+            ${filtroBtn('todas','📋 Todas')}
+          </div>
+          <button class="btn btn-primary" onclick="openTarefaModal()" style="font-size:13px;padding:7px 14px">+ Nova Tarefa</button>
+        </div>
+        <table>
+          <thead><tr><th style="width:36px"></th><th>Tarefa</th><th>Tipo</th><th>Cliente</th><th>Data</th><th>Hora</th><th></th></tr></thead>
+          <tbody>
+            ${filtradas.length ? filtradas.map(t => {
+              const atrasada = !t.concluida && t.data_tarefa && t.data_tarefa < hoje;
+              return `<tr style="${t.concluida?'opacity:.5':atrasada?'background:rgba(239,68,68,.04)':''}">
+                <td style="text-align:center">
+                  <input type="checkbox" ${t.concluida?'checked':''} onchange="toggleTarefaConcluida(${t.id}, this.checked)"
+                    style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)">
+                </td>
+                <td style="${t.concluida?'text-decoration:line-through':''}">${atrasada?'<span style="color:var(--danger);font-size:10px;font-weight:700">ATRASADA </span>':''}<strong>${t.titulo}</strong>${t.observacoes?`<div style="font-size:11px;color:var(--text2)">${t.observacoes}</div>`:''}
+                </td>
+                <td>${tipoIcon[t.tipo]||'📌'} <span style="font-size:12px;color:var(--text2)">${t.tipo||'—'}</span></td>
+                <td style="font-size:12px">${t.cliente_nome||'—'}</td>
+                <td style="font-size:12px;color:${atrasada?'var(--danger)':'inherit'}">${t.data_tarefa?fmtDate(t.data_tarefa):'—'}</td>
+                <td style="font-size:12px">${t.hora||'—'}</td>
+                <td style="white-space:nowrap">
+                  <button class="btn-icon btn-edit" onclick="openTarefaModal(${t.id})">✏️</button>
+                  <button class="btn-icon btn-delete" onclick="deleteTarefa(${t.id})">🗑️</button>
+                </td>
+              </tr>`;
+            }).join('') : `<tr class="empty-row"><td colspan="7">Nenhuma tarefa ${filtro==='hoje'?'para hoje':filtro==='atrasadas'?'atrasada':filtro==='concluidas'?'concluída':'pendente'}</td></tr>`}
           </tbody>
         </table>
       </div>`;
@@ -4754,6 +4960,94 @@ async function deleteCorretorCliente(id) {
   if (!r.ok) return toast(r.error, 'error');
   toast('Cliente excluído');
   renderCorretorPainel('clientes');
+}
+
+// ─── CORRETOR: AGENDA DE TAREFAS ─────────────────────────────────────────────
+async function openTarefaModal(id) {
+  let t = {};
+  if (id) {
+    const r = await get('/api/corretor/tarefas');
+    t = (r.data||[]).find(x => x.id === id) || {};
+  }
+  const tiposOpts = ['ligacao','visita','whatsapp','email','reuniao','outro']
+    .map(tp => `<option value="${tp}" ${(t.tipo||'ligacao')===tp?'selected':''}>${{ligacao:'📞 Ligação',visita:'🏠 Visita',whatsapp:'💬 WhatsApp',email:'📧 Email',reuniao:'🤝 Reunião',outro:'📌 Outro'}[tp]}</option>`).join('');
+
+  openModal(id ? 'Editar Tarefa' : 'Nova Tarefa', `
+    <div class="form-grid">
+      <div class="form-group span2"><label>Título *</label><input id="tf-titulo" value="${t.titulo||''}" placeholder="Ex: Ligar para João sobre proposta"></div>
+      <div class="form-group"><label>Tipo</label><select id="tf-tipo">${tiposOpts}</select></div>
+      <div class="form-group"><label>Cliente / Contato</label><input id="tf-cliente" value="${t.cliente_nome||''}" placeholder="Nome do cliente"></div>
+      <div class="form-group"><label>Data</label><input id="tf-data" type="date" value="${t.data_tarefa||today()}"></div>
+      <div class="form-group"><label>Hora</label><input id="tf-hora" type="time" value="${t.hora||''}"></div>
+      <div class="form-group span2"><label>Observações</label><textarea id="tf-obs" rows="2">${t.observacoes||''}</textarea></div>
+    </div>
+  `, async () => {
+    const body = {
+      titulo:       v('tf-titulo'),
+      tipo:         v('tf-tipo'),
+      cliente_nome: v('tf-cliente'),
+      data_tarefa:  v('tf-data'),
+      hora:         v('tf-hora') || null,
+      observacoes:  v('tf-obs'),
+    };
+    if (!body.titulo) return toast('Título é obrigatório', 'error');
+    const res = id
+      ? await put(`/api/corretor/tarefas/${id}`, body)
+      : await post('/api/corretor/tarefas', body);
+    if (!res.ok) return toast(res.error, 'error');
+    toast(id ? 'Tarefa atualizada!' : 'Tarefa criada! 📋');
+    closeModal();
+    renderCorretorPainel('agenda');
+  });
+}
+
+async function toggleTarefaConcluida(id, concluida) {
+  await put(`/api/corretor/tarefas/${id}`, { concluida: concluida ? 1 : 0 });
+  if (concluida) toast('Tarefa concluída! ✅');
+  renderCorretorPainel('agenda');
+}
+
+async function deleteTarefa(id) {
+  if (!confirm('Excluir esta tarefa?')) return;
+  const r = await del(`/api/corretor/tarefas/${id}`);
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Tarefa excluída');
+  renderCorretorPainel('agenda');
+}
+
+// ─── CORRETOR: META MENSAL ────────────────────────────────────────────────────
+async function openMetaCorretorModal() {
+  const agora = new Date();
+  const mes = agora.getMonth() + 1;
+  const ano = agora.getFullYear();
+  const mesNome = agora.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const r = await get(`/api/corretor/meta?mes=${mes}&ano=${ano}`);
+  const m = r.data || {};
+
+  openModal(`🎯 Meta de ${mesNome}`, `
+    <div class="form-grid">
+      <div class="form-group span2">
+        <div style="background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text2)">
+          Defina suas metas para acompanhar seu desempenho ao longo do mês.
+        </div>
+      </div>
+      <div class="form-group"><label>Meta de VGV (R$)</label><input id="mt-vgv" type="number" min="0" step="10000" value="${m.meta_vgv||''}" placeholder="Ex: 500000"></div>
+      <div class="form-group"><label>Meta de Vendas (qtd)</label><input id="mt-qtd" type="number" min="0" step="1" value="${m.meta_qtd||''}" placeholder="Ex: 5"></div>
+      <div class="form-group span2"><label>Meta de Comissão (R$)</label><input id="mt-com" type="number" min="0" step="1000" value="${m.meta_comissao||''}" placeholder="Ex: 25000"></div>
+    </div>
+  `, async () => {
+    const body = {
+      mes, ano,
+      meta_vgv:      parseFloat(document.getElementById('mt-vgv').value) || 0,
+      meta_qtd:      parseInt(document.getElementById('mt-qtd').value) || 0,
+      meta_comissao: parseFloat(document.getElementById('mt-com').value) || 0,
+    };
+    const res = await post('/api/corretor/meta', body);
+    if (!res.ok) return toast(res.error, 'error');
+    toast('Meta salva! 🎯');
+    closeModal();
+    renderCorretorPainel(_cpTab);
+  });
 }
 
 async function openVendaPropriaModal(id) {

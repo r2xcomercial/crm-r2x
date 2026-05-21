@@ -694,6 +694,21 @@ app.get("/api/corretor/painel", (req, res) => {
   const propComPend      = vendasProprias.filter(v=>v.status_comissao!=='recebido').reduce((s,v)=>s+Math.max(0,(v.comissao_valor||0)-(v.valor_recebido||0)),0);
   const propComPaga      = vendasProprias.reduce((s,v)=>s+(v.valor_recebido||0),0);
 
+  // Meta do mês atual
+  const agora = new Date();
+  const mesAtual = agora.getMonth() + 1;
+  const anoAtual = agora.getFullYear();
+  const meta = db.prepare(`SELECT * FROM corretor_metas_mensais WHERE corretor_id=? AND mes=? AND ano=?`)
+    .get(corretorId, mesAtual, anoAtual) || { meta_vgv: 0, meta_qtd: 0, meta_comissao: 0 };
+
+  // Clientes (para aniversariantes)
+  const clientes = db.prepare(`SELECT * FROM corretor_clientes WHERE corretor_id=? ORDER BY nome ASC`).all(corretorId);
+
+  // Tarefas de hoje e atrasadas
+  const hoje = agora.toISOString().split('T')[0];
+  const tarefasHoje      = db.prepare(`SELECT * FROM corretor_tarefas WHERE corretor_id=? AND data_tarefa=? AND concluida=0 ORDER BY hora ASC`).all(corretorId, hoje);
+  const tarefasAtrasadas = db.prepare(`SELECT * FROM corretor_tarefas WHERE corretor_id=? AND data_tarefa<? AND concluida=0 ORDER BY data_tarefa ASC`).all(corretorId, hoje);
+
   ok(res, {
     corretor,
     vendasR2X, r2xTotalVendido, r2xComPend, r2xComPaga,
@@ -703,6 +718,8 @@ app.get("/api/corretor/painel", (req, res) => {
     comPendente  : r2xComPend + propComPend,
     comPaga      : r2xComPaga + propComPaga,
     qtdVendas    : vendasR2X.length + vendasProprias.length,
+    // extras
+    meta, clientes, tarefasHoje, tarefasAtrasadas,
   });
 });
 
@@ -750,6 +767,68 @@ app.put("/api/corretor/vendas-proprias/:id", (req, res) => {
 app.delete("/api/corretor/vendas-proprias/:id", (req, res) => {
   const cid = guardaCorretor(req, res); if (!cid) return;
   db.prepare('DELETE FROM corretor_vendas_proprias WHERE id=? AND corretor_id=?').run(parseInt(req.params.id), cid);
+  ok(res, {});
+});
+
+// ─── CORRETOR: AGENDA DE TAREFAS ─────────────────────────────────────────────
+app.get("/api/corretor/tarefas", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  const { concluida } = req.query;
+  let sql = `SELECT * FROM corretor_tarefas WHERE corretor_id=?`;
+  const params = [cid];
+  if (concluida !== undefined) { sql += ` AND concluida=?`; params.push(parseInt(concluida)); }
+  sql += ` ORDER BY concluida ASC, data_tarefa ASC, hora ASC`;
+  ok(res, db.prepare(sql).all(...params));
+});
+
+app.post("/api/corretor/tarefas", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  const { titulo, tipo, cliente_nome, data_tarefa, hora, observacoes } = req.body;
+  if (!titulo) return err(res, 'Título obrigatório');
+  const r = db.prepare(`
+    INSERT INTO corretor_tarefas (corretor_id, titulo, tipo, cliente_nome, data_tarefa, hora, observacoes)
+    VALUES (?,?,?,?,?,?,?)
+  `).run(cid, titulo, tipo||'ligacao', cliente_nome||null, data_tarefa||null, hora||null, observacoes||null);
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.put("/api/corretor/tarefas/:id", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  const id = parseInt(req.params.id);
+  const row = db.prepare('SELECT * FROM corretor_tarefas WHERE id=? AND corretor_id=?').get(id, cid);
+  if (!row) return err(res, 'Não encontrado');
+  const { titulo, tipo, cliente_nome, data_tarefa, hora, concluida, observacoes } = req.body;
+  db.prepare(`
+    UPDATE corretor_tarefas SET titulo=?, tipo=?, cliente_nome=?, data_tarefa=?, hora=?, concluida=?, observacoes=?
+    WHERE id=? AND corretor_id=?
+  `).run(titulo??row.titulo, tipo??row.tipo, cliente_nome??null, data_tarefa??null, hora??null,
+         concluida!==undefined?parseInt(concluida):row.concluida, observacoes??null, id, cid);
+  ok(res, {});
+});
+
+app.delete("/api/corretor/tarefas/:id", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  db.prepare('DELETE FROM corretor_tarefas WHERE id=? AND corretor_id=?').run(parseInt(req.params.id), cid);
+  ok(res, {});
+});
+
+// ─── CORRETOR: META MENSAL ────────────────────────────────────────────────────
+app.get("/api/corretor/meta", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  const mes = parseInt(req.query.mes) || (new Date().getMonth() + 1);
+  const ano = parseInt(req.query.ano) || new Date().getFullYear();
+  const row = db.prepare(`SELECT * FROM corretor_metas_mensais WHERE corretor_id=? AND mes=? AND ano=?`).get(cid, mes, ano);
+  ok(res, row || { meta_vgv: 0, meta_qtd: 0, meta_comissao: 0, mes, ano });
+});
+
+app.post("/api/corretor/meta", (req, res) => {
+  const cid = guardaCorretor(req, res); if (!cid) return;
+  const { mes, ano, meta_vgv, meta_qtd, meta_comissao } = req.body;
+  db.prepare(`
+    INSERT INTO corretor_metas_mensais (corretor_id, mes, ano, meta_vgv, meta_qtd, meta_comissao)
+    VALUES (?,?,?,?,?,?)
+    ON CONFLICT(corretor_id, mes, ano) DO UPDATE SET meta_vgv=excluded.meta_vgv, meta_qtd=excluded.meta_qtd, meta_comissao=excluded.meta_comissao
+  `).run(cid, mes, ano, meta_vgv||0, meta_qtd||0, meta_comissao||0);
   ok(res, {});
 });
 

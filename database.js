@@ -270,6 +270,36 @@ db.exec(`
   );
 `);
 
+// Agenda de tarefas do corretor
+db.exec(`
+  CREATE TABLE IF NOT EXISTS corretor_tarefas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    corretor_id INTEGER NOT NULL REFERENCES corretores(id) ON DELETE CASCADE,
+    titulo TEXT NOT NULL,
+    tipo TEXT DEFAULT 'ligacao',
+    cliente_nome TEXT,
+    data_tarefa TEXT,
+    hora TEXT,
+    concluida INTEGER DEFAULT 0,
+    observacoes TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+// Metas mensais do corretor
+db.exec(`
+  CREATE TABLE IF NOT EXISTS corretor_metas_mensais (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    corretor_id INTEGER NOT NULL REFERENCES corretores(id) ON DELETE CASCADE,
+    mes INTEGER NOT NULL,
+    ano INTEGER NOT NULL,
+    meta_vgv REAL DEFAULT 0,
+    meta_qtd INTEGER DEFAULT 0,
+    meta_comissao REAL DEFAULT 0,
+    UNIQUE(corretor_id, mes, ano)
+  );
+`);
+
 // Tabela de clientes próprios do corretor (acesso privado por corretor)
 db.exec(`
   CREATE TABLE IF NOT EXISTS corretor_clientes (
