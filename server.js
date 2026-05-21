@@ -478,8 +478,11 @@ app.delete("/api/empreendimentos/:id", (req, res) => {
 
 app.get("/api/corretores", (req, res) => {
   const rows = db.prepare(`
-    SELECT c.*, COUNT(v.id) as total_vendas, COALESCE(SUM(v.valor),0) as vgv_vendido
-    FROM corretores c LEFT JOIN vendas v ON v.corretor_id = c.id AND v.status='ativo'
+    SELECT c.*, COUNT(v.id) as total_vendas, COALESCE(SUM(v.valor),0) as vgv_vendido,
+           u.id as usuario_id, u.email as usuario_email, u.ativo as usuario_ativo
+    FROM corretores c
+    LEFT JOIN vendas v ON v.corretor_id = c.id AND v.status='ativo'
+    LEFT JOIN usuarios u ON u.corretor_id = c.id
     GROUP BY c.id ORDER BY vgv_vendido DESC
   `).all();
   ok(res, rows);

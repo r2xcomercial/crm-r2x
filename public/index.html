@@ -1800,7 +1800,7 @@ async function renderCorretores(filter = '', cidadeFilter = '', sortByVendas = f
         </div>
       </div>
       <table>
-        <thead><tr>${sortByVendas?'<th>#</th>':''}<th>Nome</th><th>CRECI</th><th>Telefone</th><th>Imobiliária</th><th>Cidade</th><th>Vendas</th><th>VGV Vendido</th><th>Status</th><th></th></tr></thead>
+        <thead><tr>${sortByVendas?'<th>#</th>':''}<th>Nome</th><th>CRECI</th><th>Telefone</th><th>Imobiliária</th><th>Cidade</th><th>Vendas</th><th>VGV Vendido</th><th>Status</th><th>Login</th><th></th></tr></thead>
         <tbody>
           ${rows.length ? rows.map((c, i) => `
             <tr>
@@ -1813,13 +1813,18 @@ async function renderCorretores(filter = '', cidadeFilter = '', sortByVendas = f
               <td style="text-align:center"><span class="badge badge-blue">${c.total_vendas}</span></td>
               <td style="color:var(--success)">${fmt(c.vgv_vendido)}</td>
               <td><span class="badge ${c.ativo?'badge-green':'badge-red'}">${c.ativo?'Ativo':'Inativo'}</span></td>
+              <td>
+                ${c.usuario_id
+                  ? `<span class="badge badge-green" style="cursor:pointer" title="${c.usuario_email}" onclick="gerenciarLoginCorretor(${JSON.stringify(c).replace(/"/g,'&quot;')})">🔑 Ativo</span>`
+                  : `<span class="badge badge-gray" style="cursor:pointer" onclick="criarLoginCorretor(${JSON.stringify(c).replace(/"/g,'&quot;')})">➕ Criar</span>`}
+              </td>
               <td style="white-space:nowrap">
                 <button class="btn-icon" title="Relatório do corretor" onclick="gerarRelatorioCorretor(${c.id})" style="color:var(--accent)">📄</button>
                 <button class="btn-icon btn-edit" onclick="editCorretor(${c.id})">✏️</button>
                 <button class="btn-icon btn-delete" onclick="deleteCorretor(${c.id})">🗑️</button>
               </td>
             </tr>
-          `).join('') : `<tr class="empty-row"><td colspan="${sortByVendas?10:9}">Nenhum corretor cadastrado</td></tr>`}
+          `).join('') : `<tr class="empty-row"><td colspan="${sortByVendas?11:10}">Nenhum corretor cadastrado</td></tr>`}
         </tbody>
       </table>
     </div>
@@ -1830,6 +1835,96 @@ async function renderCorretores(filter = '', cidadeFilter = '', sortByVendas = f
     const sortAtivo = document.getElementById('sort-vendas').dataset.ativo === '1';
     renderCorretores('', this.value, sortAtivo);
   });
+}
+
+function criarLoginCorretor(c) {
+  openModal(`🔑 Criar Login — ${c.nome}`, `
+    <div style="background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--text2)">
+      Este login dará acesso ao painel do corretor com as vendas, clientes, agenda e financeiro dele.
+    </div>
+    <div class="form-grid">
+      <div class="form-group span2">
+        <label>Nome</label>
+        <input id="cl-nome" value="${c.nome||''}" readonly style="opacity:.7;cursor:not-allowed">
+      </div>
+      <div class="form-group">
+        <label>E-mail / Usuário *</label>
+        <input id="cl-email" type="email" value="${c.email||''}" placeholder="email@exemplo.com">
+      </div>
+      <div class="form-group">
+        <label>Senha *</label>
+        <input id="cl-senha" type="password" placeholder="Mínimo 6 caracteres">
+      </div>
+      <div class="form-group span2" style="display:flex;align-items:center;gap:8px;margin-top:4px">
+        <input type="checkbox" id="cl-mostrar" onchange="document.getElementById('cl-senha').type=this.checked?'text':'password'" style="accent-color:var(--accent)">
+        <label for="cl-mostrar" style="font-size:12px;cursor:pointer">Mostrar senha</label>
+      </div>
+    </div>
+  `, async () => {
+    const email = document.getElementById('cl-email').value.trim();
+    const senha = document.getElementById('cl-senha').value;
+    if (!email) return toast('E-mail obrigatório', 'error');
+    if (!senha || senha.length < 6) return toast('Senha deve ter ao menos 6 caracteres', 'error');
+    const r = await post('/api/usuarios', { nome: c.nome, email, senha, perfil: 'corretor', corretor_id: c.id });
+    if (!r.ok) return toast(r.error, 'error');
+    toast(`Login criado! ✅ Corretor pode acessar com ${email}`);
+    closeModal();
+    renderCorretores();
+  });
+}
+
+function gerenciarLoginCorretor(c) {
+  openModal(`🔑 Gerenciar Login — ${c.nome}`, `
+    <div style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:8px;padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:600;color:var(--success)">✅ Login ativo</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:4px">Usuário: <strong>${c.usuario_email}</strong></div>
+    </div>
+    <div class="form-grid">
+      <div class="form-group span2">
+        <label>E-mail / Usuário</label>
+        <input id="gl-email" type="email" value="${c.usuario_email||''}">
+      </div>
+      <div class="form-group span2">
+        <label>Nova Senha <span style="color:var(--text2);font-weight:400">(deixe em branco para manter)</span></label>
+        <input id="gl-senha" type="password" placeholder="••••••••">
+      </div>
+      <div class="form-group span2" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="gl-mostrar" onchange="document.getElementById('gl-senha').type=this.checked?'text':'password'" style="accent-color:var(--accent)">
+        <label for="gl-mostrar" style="font-size:12px;cursor:pointer">Mostrar senha</label>
+      </div>
+      <div class="form-group span2">
+        <label>Status do acesso</label>
+        <select id="gl-ativo">
+          <option value="1" ${c.usuario_ativo?'selected':''}>✅ Ativo — corretor pode entrar</option>
+          <option value="0" ${!c.usuario_ativo?'selected':''}>🚫 Bloqueado — acesso suspenso</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <button onclick="revogarLoginCorretor(${c.usuario_id})" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--danger);border-radius:7px;padding:7px 14px;font-size:12px;cursor:pointer">
+        🗑️ Revogar acesso completamente
+      </button>
+    </div>
+  `, async () => {
+    const body = { email: document.getElementById('gl-email').value.trim(), ativo: parseInt(document.getElementById('gl-ativo').value) };
+    const senha = document.getElementById('gl-senha').value;
+    if (senha) { if (senha.length < 6) return toast('Senha deve ter ao menos 6 caracteres', 'error'); body.senha = senha; }
+    if (!body.email) return toast('E-mail obrigatório', 'error');
+    const r = await put(`/api/usuarios/${c.usuario_id}`, body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Login atualizado! ✅');
+    closeModal();
+    renderCorretores();
+  });
+}
+
+async function revogarLoginCorretor(usuarioId) {
+  if (!confirm('Revogar acesso? O corretor não conseguirá mais entrar no sistema.')) return;
+  const r = await del(`/api/usuarios/${usuarioId}`);
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Acesso revogado');
+  closeModal();
+  renderCorretores();
 }
 
 function openCorretorModal(c = {}) {
@@ -4220,24 +4315,43 @@ function initUsuarioUI() {
 // ─── USUÁRIOS CRUD ────────────────────────────────────────────────────────────
 
 async function renderUsuarios() {
-  const r = await get('/api/usuarios');
-  const usuarios = r.data || [];
+  const [ru, rc] = await Promise.all([get('/api/usuarios'), get('/api/corretores')]);
+  const usuarios  = ru.data || [];
+  const corretores = rc.data || [];
+  // Corretores sem login
+  const semLogin  = corretores.filter(c => c.ativo && !c.usuario_id);
+
   document.getElementById('content').innerHTML = `
+    ${semLogin.length ? `
+    <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-weight:700;color:var(--warning);font-size:13px">⚠️ ${semLogin.length} corretor(es) sem acesso ao sistema</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">${semLogin.map(c=>c.nome).join(', ')}</div>
+      </div>
+      <button onclick="navigate('corretores')" style="font-size:12px;padding:6px 14px;background:var(--warning);color:#000;border:none;border-radius:7px;font-weight:700;cursor:pointer">Ir para Corretores →</button>
+    </div>` : ''}
     <div class="table-card">
-      <div class="table-header"><div class="table-title">👤 Usuários do Sistema (${usuarios.length})</div></div>
+      <div class="table-header">
+        <div class="table-title">👤 Usuários do Sistema (${usuarios.length})</div>
+        <div style="font-size:12px;color:var(--text2)">💡 Para criar login de corretor, use o botão 🔑 na lista de Corretores</div>
+      </div>
       <table>
-        <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Ativo</th><th>Criado em</th><th></th></tr></thead>
+        <thead><tr><th>Nome</th><th>E-mail / Usuário</th><th>Perfil</th><th>Corretor vinculado</th><th>Ativo</th><th>Criado em</th><th></th></tr></thead>
         <tbody>
           ${usuarios.length ? usuarios.map(u => `
             <tr>
               <td><strong>${u.nome}</strong></td>
-              <td>${u.email}</td>
+              <td style="font-family:monospace;font-size:12px">${u.email}</td>
               <td><span class="badge ${u.perfil==='admin'?'badge-accent':u.perfil==='gestor'?'badge-blue':'badge-gray'}">${u.perfil}</span></td>
-              <td><span class="badge ${u.ativo?'badge-green':'badge-red'}">${u.ativo?'Sim':'Não'}</span></td>
-              <td>${fmtDate(u.criado_em)}</td>
-              <td><button class="btn-icon btn-edit" onclick="openUsuarioModal(${JSON.stringify(u).replace(/"/g,'&quot;')})">✏️</button><button class="btn-icon btn-delete" onclick="deleteUsuario(${u.id})">🗑️</button></td>
+              <td>${u.corretor_nome ? `<span style="color:var(--accent)">🔗 ${u.corretor_nome}</span>` : '<span style="color:var(--text2)">—</span>'}</td>
+              <td><span class="badge ${u.ativo?'badge-green':'badge-red'}">${u.ativo?'✅ Sim':'🚫 Não'}</span></td>
+              <td style="font-size:12px">${fmtDate(u.criado_em)}</td>
+              <td style="white-space:nowrap">
+                <button class="btn-icon btn-edit" onclick="openUsuarioModal(${JSON.stringify(u).replace(/"/g,'&quot;')})">✏️</button>
+                <button class="btn-icon btn-delete" onclick="deleteUsuario(${u.id})">🗑️</button>
+              </td>
             </tr>
-          `).join('') : '<tr class="empty-row"><td colspan="6">Nenhum usuário</td></tr>'}
+          `).join('') : '<tr class="empty-row"><td colspan="7">Nenhum usuário cadastrado</td></tr>'}
         </tbody>
       </table>
     </div>`;
