@@ -68,7 +68,7 @@
       const data = await r.json();
       if (data.ok) {
         localStorage.setItem('crm_token', data.data.token);
-        localStorage.setItem('crm_usuario', JSON.stringify({ nome: data.data.nome, perfil: data.data.perfil, corretor_id: data.data.corretor_id }));
+        localStorage.setItem('crm_usuario', JSON.stringify({ nome: data.data.nome, perfil: data.data.perfil, corretor_id: data.data.corretor_id, cliente_id: data.data.cliente_id }));
         window.location.href = '/';
       } else {
         errEl.textContent = data.error || 'Credenciais inválidas';

@@ -30,12 +30,12 @@ function autenticar(req, res, next) {
   const token = req.headers["x-crm-token"] || req.query.token;
   if (!token) return res.status(401).json({ ok: false, error: "Não autorizado" });
   const sessao = db.prepare(`
-    SELECT s.token, u.id, u.nome, u.email, u.perfil, u.corretor_id
+    SELECT s.token, u.id, u.nome, u.email, u.perfil, u.corretor_id, u.cliente_id
     FROM sessoes s JOIN usuarios u ON u.id = s.usuario_id
     WHERE s.token=? AND s.expira_em > datetime('now') AND u.ativo=1
   `).get(token);
   if (!sessao) return res.status(401).json({ ok: false, error: "Sessão inválida ou expirada" });
-  req.usuario = { id: sessao.id, nome: sessao.nome, email: sessao.email, perfil: sessao.perfil, corretor_id: sessao.corretor_id };
+  req.usuario = { id: sessao.id, nome: sessao.nome, email: sessao.email, perfil: sessao.perfil, corretor_id: sessao.corretor_id, cliente_id: sessao.cliente_id };
   next();
 }
 
@@ -75,7 +75,7 @@ app.post('/api/auth/login', (req, res) => {
   const expira = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().replace('T',' ').slice(0,19);
   db.prepare('INSERT INTO sessoes(token, usuario_id, expira_em) VALUES(?,?,?)').run(token, u.id, expira);
   db.prepare("DELETE FROM sessoes WHERE expira_em < datetime('now')").run();
-  ok(res, { token, nome: u.nome, email: u.email, perfil: u.perfil, corretor_id: u.corretor_id });
+  ok(res, { token, nome: u.nome, email: u.email, perfil: u.perfil, corretor_id: u.corretor_id, cliente_id: u.cliente_id });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -96,17 +96,24 @@ function soAdmin(req, res, next) {
 }
 
 app.get('/api/usuarios', soAdmin, (req, res) => {
-  const rows = db.prepare(`SELECT u.id, u.nome, u.email, u.perfil, u.corretor_id, u.ativo, u.criado_em, c.nome as corretor_nome FROM usuarios u LEFT JOIN corretores c ON c.id = u.corretor_id ORDER BY u.nome`).all();
+  const rows = db.prepare(`
+    SELECT u.id, u.nome, u.email, u.perfil, u.corretor_id, u.cliente_id, u.ativo, u.criado_em,
+           c.nome as corretor_nome, cl.razao_social as cliente_nome
+    FROM usuarios u
+    LEFT JOIN corretores c ON c.id = u.corretor_id
+    LEFT JOIN clientes cl ON cl.id = u.cliente_id
+    ORDER BY u.nome
+  `).all();
   ok(res, rows);
 });
 
 app.post('/api/usuarios', soAdmin, (req, res) => {
-  const { nome, email, senha, perfil, corretor_id } = req.body;
+  const { nome, email, senha, perfil, corretor_id, cliente_id } = req.body;
   if (!nome || !email || !senha) return err(res, 'Nome, email e senha obrigatórios');
   const salt = gerarSalt();
   const hash = hashSenha(senha, salt);
   try {
-    const r = db.prepare('INSERT INTO usuarios(nome,email,senha_hash,salt,perfil,corretor_id) VALUES(?,?,?,?,?,?)').run(nome, email, hash, salt, perfil||'corretor', corretor_id||null);
+    const r = db.prepare('INSERT INTO usuarios(nome,email,senha_hash,salt,perfil,corretor_id,cliente_id) VALUES(?,?,?,?,?,?,?)').run(nome, email, hash, salt, perfil||'corretor', corretor_id||null, cliente_id||null);
     ok(res, { id: r.lastInsertRowid });
   } catch(e) {
     if (e.message.includes('UNIQUE')) return err(res, 'E-mail já cadastrado');
@@ -115,13 +122,13 @@ app.post('/api/usuarios', soAdmin, (req, res) => {
 });
 
 app.put('/api/usuarios/:id', soAdmin, (req, res) => {
-  const { nome, email, senha, perfil, corretor_id, ativo } = req.body;
+  const { nome, email, senha, perfil, corretor_id, cliente_id, ativo } = req.body;
   const u = db.prepare('SELECT * FROM usuarios WHERE id=?').get(parseInt(req.params.id));
   if (!u) return err(res, 'Usuário não encontrado', 404);
   let hash = u.senha_hash, salt = u.salt;
   if (senha) { salt = gerarSalt(); hash = hashSenha(senha, salt); }
-  db.prepare('UPDATE usuarios SET nome=?,email=?,senha_hash=?,salt=?,perfil=?,corretor_id=?,ativo=? WHERE id=?')
-    .run(nome||u.nome, email||u.email, hash, salt, perfil||u.perfil, corretor_id??u.corretor_id, ativo??u.ativo, u.id);
+  db.prepare('UPDATE usuarios SET nome=?,email=?,senha_hash=?,salt=?,perfil=?,corretor_id=?,cliente_id=?,ativo=? WHERE id=?')
+    .run(nome||u.nome, email||u.email, hash, salt, perfil||u.perfil, corretor_id??u.corretor_id, cliente_id??u.cliente_id, ativo??u.ativo, u.id);
   ok(res, {});
 });
 
@@ -249,8 +256,11 @@ app.get("/api/dashboard", (req, res) => {
 
 app.get("/api/clientes", (req, res) => {
   const rows = db.prepare(`
-    SELECT c.*, COUNT(e.id) as total_empreendimentos
-    FROM clientes c LEFT JOIN empreendimentos e ON e.cliente_id = c.id
+    SELECT c.*, COUNT(e.id) as total_empreendimentos,
+           u.id as usuario_id, u.email as usuario_email, u.ativo as usuario_ativo
+    FROM clientes c
+    LEFT JOIN empreendimentos e ON e.cliente_id = c.id
+    LEFT JOIN usuarios u ON u.cliente_id = c.id
     GROUP BY c.id ORDER BY c.razao_social
   `).all();
   ok(res, rows);
@@ -1653,6 +1663,76 @@ app.get('/api/portal/:token', (req, res) => {
   const vendas = db.prepare("SELECT COUNT(*) as n, SUM(valor) as vgv FROM vendas WHERE empreendimento_id=? AND status='ativo'").get(empId);
   const checklist = db.prepare('SELECT material, status FROM checklist_marketing WHERE empreendimento_id=? ORDER BY ordem').all(empId);
   ok(res, { emp, unidades, vendas, checklist });
+});
+
+// ─── INCORPORADOR ─────────────────────────────────────────────────────────────
+
+function guardaIncorporador(req, res) {
+  const id = req.usuario?.cliente_id;
+  if (!id) { err(res, 'Usuário não vinculado a um incorporador'); return null; }
+  return id;
+}
+
+app.get('/api/incorporador/painel', (req, res) => {
+  const clienteId = guardaIncorporador(req, res);
+  if (!clienteId) return;
+
+  const cliente = db.prepare('SELECT * FROM clientes WHERE id=?').get(clienteId);
+  if (!cliente) return err(res, 'Incorporador não encontrado', 404);
+
+  const empreendimentos = db.prepare(`
+    SELECT e.*,
+      (SELECT COUNT(*) FROM unidades WHERE empreendimento_id=e.id) as total_unidades,
+      (SELECT COUNT(*) FROM unidades WHERE empreendimento_id=e.id AND status='vendido') as unidades_vendidas,
+      (SELECT COUNT(*) FROM unidades WHERE empreendimento_id=e.id AND status='reservado') as unidades_reservadas,
+      (SELECT COUNT(*) FROM unidades WHERE empreendimento_id=e.id AND status='disponivel') as unidades_disponiveis,
+      (SELECT COALESCE(SUM(valor),0) FROM vendas WHERE empreendimento_id=e.id AND status='ativo') as vgv_vendido,
+      (SELECT COUNT(*) FROM vendas WHERE empreendimento_id=e.id AND status='ativo') as total_vendas
+    FROM empreendimentos e
+    WHERE e.cliente_id=?
+    ORDER BY e.criado_em DESC
+  `).all(clienteId);
+
+  // Detalhes por empreendimento
+  const detalhes = empreendimentos.map(emp => {
+    const vendas = db.prepare(`
+      SELECT v.data_venda, v.imovel, v.valor, v.status,
+             c.nome as corretor_nome
+      FROM vendas v
+      LEFT JOIN corretores c ON c.id = v.corretor_id
+      WHERE v.empreendimento_id=? AND v.status='ativo'
+      ORDER BY v.data_venda DESC
+    `).all(emp.id);
+
+    const checklist = db.prepare(`
+      SELECT material, responsavel, data_entrega, status
+      FROM checklist_marketing
+      WHERE empreendimento_id=?
+      ORDER BY ordem
+    `).all(emp.id);
+
+    const unidades = db.prepare(`
+      SELECT quadra, lote, area_m2, preco, status
+      FROM unidades WHERE empreendimento_id=?
+      ORDER BY quadra, lote
+    `).all(emp.id);
+
+    return { ...emp, vendas, checklist, unidades };
+  });
+
+  // KPIs globais
+  const totalUnidades = empreendimentos.reduce((s, e) => s + (e.total_unidades||0), 0);
+  const totalVendidas = empreendimentos.reduce((s, e) => s + (e.unidades_vendidas||0), 0);
+  const totalReservadas = empreendimentos.reduce((s, e) => s + (e.unidades_reservadas||0), 0);
+  const vgvTotal = empreendimentos.reduce((s, e) => s + (e.vgv_estimado||0), 0);
+  const vgvVendido = empreendimentos.reduce((s, e) => s + (e.vgv_vendido||0), 0);
+
+  ok(res, {
+    cliente,
+    empreendimentos: detalhes,
+    kpis: { totalUnidades, totalVendidas, totalReservadas, vgvTotal, vgvVendido,
+            totalEmpreendimentos: empreendimentos.length }
+  });
 });
 
 // ─── WEBHOOK — CAPTURA DE LEADS DE PORTAIS ────────────────────────────────────

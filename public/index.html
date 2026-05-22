@@ -333,6 +333,11 @@
     <div class="nav-item active" onclick="navigate('corretor-painel')"><span class="icon">📊</span> Meu Painel</div>
     <div class="nav-item" onclick="navigate('calculadora')"><span class="icon">🧮</span> Calculadora</div>
   </nav>
+  <!-- Nav incorporador -->
+  <nav id="nav-incorporador" style="display:none">
+    <div class="nav-section">Portal do Incorporador</div>
+    <div class="nav-item active" onclick="navigate('incorporador-painel')"><span class="icon">🏗️</span> Meus Empreendimentos</div>
+  </nav>
   <div id="sidebar-user" style="padding:12px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--text2)">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div>
@@ -416,7 +421,7 @@ const pageTitles = {
   clientes: 'Incorporadores', empreendimentos: 'Empreendimentos', corretores: 'Corretores',
   financeiro: 'Financeiro', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
   painel: 'Painel de Lançamento', usuarios: 'Usuários do Sistema', calculadora: 'Calculadora de Financiamento',
-  'corretor-painel': 'Meu Painel'
+  'corretor-painel': 'Meu Painel', 'incorporador-painel': 'Portal do Incorporador'
 };
 const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario','usuarios'];
 
@@ -440,6 +445,7 @@ async function renderPage(page) {
       case 'usuarios': await renderUsuarios(); break;
       case 'calculadora': renderCalculadora(); break;
       case 'corretor-painel': await renderCorretorPainel(); break;
+      case 'incorporador-painel': await renderIncorporadorPainel(); break;
     }
   } catch(e) {
     c.innerHTML = `<div style="color:var(--danger);padding:24px">Erro ao carregar: ${e.message}</div>`;
@@ -1277,7 +1283,7 @@ async function renderClientes(filter = '') {
     <div class="table-card">
       <div class="table-header"><div class="table-title">🏢 Incorporadores (${rows.length})</div></div>
       <table>
-        <thead><tr><th>Razão Social</th><th>CNPJ</th><th>Contato</th><th>Telefone</th><th>Cidade</th><th>Empreend.</th><th></th></tr></thead>
+        <thead><tr><th>Razão Social</th><th>CNPJ</th><th>Contato</th><th>Telefone</th><th>Cidade</th><th>Empreend.</th><th>Login</th><th></th></tr></thead>
         <tbody>
           ${rows.length ? rows.map(c => `
             <tr>
@@ -1287,9 +1293,14 @@ async function renderClientes(filter = '') {
               <td>${c.telefone ? `<a href="https://wa.me/55${c.telefone}" target="_blank" style="color:var(--accent)">📱 ${fmtPhone(c.telefone)}</a>` : '—'}</td>
               <td>${c.cidade||'—'}${c.estado?'/'+c.estado:''}</td>
               <td><span class="badge badge-blue">${c.total_empreendimentos}</span></td>
+              <td>
+                ${c.usuario_id
+                  ? `<span class="badge badge-green" style="cursor:pointer" title="${c.usuario_email}" onclick="gerenciarLoginIncorporador(${JSON.stringify(c).replace(/"/g,'&quot;')})">🔑 Ativo</span>`
+                  : `<span class="badge badge-gray" style="cursor:pointer" onclick="criarLoginIncorporador(${JSON.stringify(c).replace(/"/g,'&quot;')})">➕ Criar</span>`}
+              </td>
               <td><button class="btn-icon btn-edit" onclick="editCliente(${c.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteCliente(${c.id})">🗑️</button></td>
             </tr>
-          `).join('') : '<tr class="empty-row"><td colspan="7">Nenhum cliente cadastrado</td></tr>'}
+          `).join('') : '<tr class="empty-row"><td colspan="8">Nenhum cliente cadastrado</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -1353,6 +1364,96 @@ function openClienteModal(c = {}) {
 }
 async function editCliente(id) { openClienteModal(currentData.clientes.find(c => c.id === id)); }
 async function deleteCliente(id) { if(!confirm('Excluir este cliente?')) return; await del(`/api/clientes/${id}`); toast('Excluído'); renderClientes(); }
+
+function criarLoginIncorporador(c) {
+  openModal(`🔑 Criar Acesso — ${c.razao_social}`, `
+    <div style="background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--text2)">
+      O incorporador terá acesso ao portal com dados em tempo real dos empreendimentos dele cadastrados na R2X.
+    </div>
+    <div class="form-grid">
+      <div class="form-group span2">
+        <label>Empresa</label>
+        <input value="${c.razao_social||''}" readonly style="opacity:.7;cursor:not-allowed">
+      </div>
+      <div class="form-group">
+        <label>E-mail / Usuário *</label>
+        <input id="ci-email" type="email" value="${c.email||''}" placeholder="email@exemplo.com">
+      </div>
+      <div class="form-group">
+        <label>Senha *</label>
+        <input id="ci-senha" type="password" placeholder="Mínimo 6 caracteres">
+      </div>
+      <div class="form-group span2" style="display:flex;align-items:center;gap:8px;margin-top:4px">
+        <input type="checkbox" id="ci-mostrar" onchange="document.getElementById('ci-senha').type=this.checked?'text':'password'" style="accent-color:var(--accent)">
+        <label for="ci-mostrar" style="font-size:12px;cursor:pointer">Mostrar senha</label>
+      </div>
+    </div>
+  `, async () => {
+    const email = document.getElementById('ci-email').value.trim();
+    const senha = document.getElementById('ci-senha').value;
+    if (!email) return toast('E-mail obrigatório', 'error');
+    if (!senha || senha.length < 6) return toast('Senha deve ter ao menos 6 caracteres', 'error');
+    const r = await post('/api/usuarios', { nome: c.razao_social, email, senha, perfil: 'incorporador', cliente_id: c.id });
+    if (!r.ok) return toast(r.error, 'error');
+    toast(`Acesso criado! ✅ Incorporador pode acessar com ${email}`);
+    closeModal();
+    renderClientes();
+  });
+}
+
+function gerenciarLoginIncorporador(c) {
+  openModal(`🔑 Gerenciar Acesso — ${c.razao_social}`, `
+    <div style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:8px;padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:600;color:var(--success)">✅ Acesso ativo</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:4px">Usuário: <strong>${c.usuario_email}</strong></div>
+    </div>
+    <div class="form-grid">
+      <div class="form-group span2">
+        <label>E-mail / Usuário</label>
+        <input id="gi-email" type="email" value="${c.usuario_email||''}">
+      </div>
+      <div class="form-group span2">
+        <label>Nova Senha <span style="color:var(--text2);font-weight:400">(deixe em branco para manter)</span></label>
+        <input id="gi-senha" type="password" placeholder="••••••••">
+      </div>
+      <div class="form-group span2" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="gi-mostrar" onchange="document.getElementById('gi-senha').type=this.checked?'text':'password'" style="accent-color:var(--accent)">
+        <label for="gi-mostrar" style="font-size:12px;cursor:pointer">Mostrar senha</label>
+      </div>
+      <div class="form-group span2">
+        <label>Status do acesso</label>
+        <select id="gi-ativo">
+          <option value="1" ${c.usuario_ativo?'selected':''}>✅ Ativo — incorporador pode entrar</option>
+          <option value="0" ${!c.usuario_ativo?'selected':''}>🚫 Bloqueado — acesso suspenso</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+      <button onclick="revogarLoginIncorporador(${c.usuario_id})" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--danger);border-radius:7px;padding:7px 14px;font-size:12px;cursor:pointer">
+        🗑️ Revogar acesso completamente
+      </button>
+    </div>
+  `, async () => {
+    const body = { email: document.getElementById('gi-email').value.trim(), ativo: parseInt(document.getElementById('gi-ativo').value) };
+    const senha = document.getElementById('gi-senha').value;
+    if (senha) { if (senha.length < 6) return toast('Senha deve ter ao menos 6 caracteres', 'error'); body.senha = senha; }
+    if (!body.email) return toast('E-mail obrigatório', 'error');
+    const r = await put(`/api/usuarios/${c.usuario_id}`, body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Acesso atualizado! ✅');
+    closeModal();
+    renderClientes();
+  });
+}
+
+async function revogarLoginIncorporador(usuarioId) {
+  if (!confirm('Revogar acesso? O incorporador não conseguirá mais entrar no sistema.')) return;
+  const r = await del(`/api/usuarios/${usuarioId}`);
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Acesso revogado');
+  closeModal();
+  renderClientes();
+}
 
 // ─── EMPREENDIMENTOS ──────────────────────────────────────────────────────────
 
@@ -4294,20 +4395,156 @@ async function fazerLogout() {
   window.location.href = '/login';
 }
 
+// ─── PORTAL DO INCORPORADOR ───────────────────────────────────────────────────
+
+async function renderIncorporadorPainel() {
+  const r = await get('/api/incorporador/painel');
+  if (!r.ok) {
+    document.getElementById('content').innerHTML = `<div style="text-align:center;padding:60px;color:var(--danger)">${r.error || 'Erro ao carregar dados'}</div>`;
+    return;
+  }
+  const { cliente, empreendimentos, kpis } = r.data;
+  const el = document.getElementById('content');
+
+  const statusLabel = { prospecto:'Prospecto', planejamento:'Planejamento', pre_lancamento:'Pré-lançamento', lancamento:'Lançamento', vendas:'Em Vendas', encerrado:'Encerrado' };
+  const statusBadge = { prospecto:'badge-gray', planejamento:'badge-gray', pre_lancamento:'badge-yellow', lancamento:'badge-accent', vendas:'badge-green', encerrado:'badge-red' };
+  const checkIcon   = { concluido:'✅', em_andamento:'🔄', a_definir:'⏳', cancelado:'❌' };
+
+  const vsoGlobal = kpis.totalUnidades > 0 ? ((kpis.totalVendidas + kpis.totalReservadas) / kpis.totalUnidades * 100).toFixed(1) : 0;
+
+  el.innerHTML = `
+    <div style="margin-bottom:20px">
+      <h1 style="font-size:20px;font-weight:900">🏗️ ${cliente.razao_social}</h1>
+      <div style="color:var(--text2);font-size:13px;margin-top:4px">${cliente.cidade||''}${cliente.estado?'/'+cliente.estado:''} · Portal do Incorporador</div>
+    </div>
+
+    <!-- KPIs Globais -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:24px">
+      <div class="kpi-card"><div class="kpi-label">Empreendimentos</div><div class="kpi-value">${kpis.totalEmpreendimentos}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Total Unidades</div><div class="kpi-value">${kpis.totalUnidades}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Vendidas</div><div class="kpi-value" style="color:var(--danger)">${kpis.totalVendidas}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Reservadas</div><div class="kpi-value" style="color:var(--warning)">${kpis.totalReservadas}</div></div>
+      <div class="kpi-card"><div class="kpi-label">VSO Global</div><div class="kpi-value">${vsoGlobal}%</div></div>
+      <div class="kpi-card"><div class="kpi-label">VGV Total</div><div class="kpi-value" style="font-size:15px">${(kpis.vgvTotal||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0})}</div><div class="kpi-sub">Vendido: ${(kpis.vgvVendido||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0})}</div></div>
+    </div>
+
+    <!-- Empreendimentos -->
+    ${empreendimentos.length === 0 ? `<div style="text-align:center;padding:60px;color:var(--text2)">Nenhum empreendimento cadastrado ainda.</div>` : ''}
+    ${empreendimentos.map(emp => {
+      const total  = emp.total_unidades || 0;
+      const vend   = emp.unidades_vendidas || 0;
+      const res    = emp.unidades_reservadas || 0;
+      const disp   = emp.unidades_disponiveis || 0;
+      const vso    = total > 0 ? ((vend + res) / total * 100).toFixed(1) : 0;
+      const vendPct= total > 0 ? (vend / total * 100) : 0;
+      const resPct = total > 0 ? (res  / total * 100) : 0;
+
+      return `
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:20px;overflow:hidden">
+        <!-- Header do empreendimento -->
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-size:16px;font-weight:800">${emp.nome}</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:2px">
+              ${emp.cidade||''}${emp.estado?'/'+emp.estado:''} ·
+              <span class="badge ${statusBadge[emp.status]||'badge-gray'}">${statusLabel[emp.status]||emp.status}</span>
+              ${emp.data_lancamento ? ` · Lançamento: ${fmtDate(emp.data_lancamento)}` : ''}
+            </div>
+          </div>
+          <div style="font-size:20px;font-weight:700;color:var(--success)">${(emp.vgv_vendido||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0})}</div>
+        </div>
+
+        <!-- KPIs do empreendimento -->
+        <div style="padding:14px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;border-bottom:1px solid var(--border)">
+          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Total</div><div style="font-weight:700;font-size:18px">${total}</div></div>
+          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Vendidas</div><div style="font-weight:700;font-size:18px;color:var(--danger)">${vend}</div></div>
+          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Reservadas</div><div style="font-weight:700;font-size:18px;color:var(--warning)">${res}</div></div>
+          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Disponíveis</div><div style="font-weight:700;font-size:18px;color:var(--success)">${disp}</div></div>
+          <div>
+            <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">VSO</div>
+            <div style="font-weight:700;font-size:18px">${vso}%</div>
+            <div style="background:var(--navy3);border-radius:4px;height:8px;overflow:hidden;margin-top:4px;display:flex">
+              <div style="height:100%;background:var(--danger);width:${vendPct}%"></div>
+              <div style="height:100%;background:var(--warning);width:${resPct}%"></div>
+            </div>
+          </div>
+          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">VGV Total</div><div style="font-weight:700;font-size:14px">${(emp.vgv_estimado||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0})}</div></div>
+        </div>
+
+        <!-- Tabs: Vendas e Checklist -->
+        <div style="padding:14px 20px">
+          ${emp.vendas && emp.vendas.length ? `
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:10px">🏆 Vendas Registradas (${emp.vendas.length})</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+            <thead><tr>
+              <th style="text-align:left;padding:6px 8px;background:var(--card2);color:var(--text2);font-size:10px;text-transform:uppercase;border-radius:4px 0 0 0">Data</th>
+              <th style="text-align:left;padding:6px 8px;background:var(--card2);color:var(--text2);font-size:10px;text-transform:uppercase">Imóvel</th>
+              <th style="text-align:left;padding:6px 8px;background:var(--card2);color:var(--text2);font-size:10px;text-transform:uppercase">Corretor</th>
+              <th style="text-align:left;padding:6px 8px;background:var(--card2);color:var(--text2);font-size:10px;text-transform:uppercase;border-radius:0 4px 0 0">Valor</th>
+            </tr></thead>
+            <tbody>
+              ${emp.vendas.map(v => `
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:7px 8px">${fmtDate(v.data_venda)}</td>
+                  <td style="padding:7px 8px">${v.imovel||'—'}</td>
+                  <td style="padding:7px 8px;color:var(--text2)">${v.corretor_nome||'—'}</td>
+                  <td style="padding:7px 8px;color:var(--success);font-weight:600">${(v.valor||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0})}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>` : '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Nenhuma venda registrada ainda.</div>'}
+
+          ${emp.checklist && emp.checklist.length ? `
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:10px">✅ Checklist de Marketing (${emp.checklist.length} itens)</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px">
+            ${emp.checklist.map(item => `
+              <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--navy3);border-radius:7px;font-size:12px">
+                <span>${checkIcon[item.status]||'⏳'}</span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${item.material}</div>
+                  ${item.data_entrega ? `<div style="font-size:10px;color:var(--text2)">${fmtDate(item.data_entrega)}</div>` : ''}
+                </div>
+              </div>
+            `).join('')}
+          </div>` : ''}
+        </div>
+      </div>`;
+    }).join('')}
+
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);text-align:center;font-size:11px;color:var(--text2)">
+      Portal R2X CRM · Dados em tempo real · ${new Date().toLocaleString('pt-BR')}
+    </div>
+  `;
+}
+
 // ─── INIT USUARIO UI ──────────────────────────────────────────────────────────
 
 function initUsuarioUI() {
-  const nomeEl      = document.getElementById('sidebar-user-nome');
-  const perfilEl    = document.getElementById('sidebar-user-perfil');
-  const navUsuarios = document.getElementById('nav-usuarios');
-  const navAdmin    = document.getElementById('nav-admin');
-  const navCorretor = document.getElementById('nav-corretor');
+  const nomeEl         = document.getElementById('sidebar-user-nome');
+  const perfilEl       = document.getElementById('sidebar-user-perfil');
+  const navUsuarios    = document.getElementById('nav-usuarios');
+  const navAdmin       = document.getElementById('nav-admin');
+  const navCorretor    = document.getElementById('nav-corretor');
+  const navIncorporador= document.getElementById('nav-incorporador');
   if (nomeEl) nomeEl.textContent = USUARIO.nome || 'Usuário';
   if (perfilEl) perfilEl.textContent = USUARIO.perfil || '';
   if (USUARIO.perfil === 'corretor') {
     // Corretor vê apenas o nav simplificado
-    if (navAdmin)    navAdmin.style.display = 'none';
-    if (navCorretor) navCorretor.style.display = 'block';
+    if (navAdmin)        navAdmin.style.display = 'none';
+    if (navCorretor)     navCorretor.style.display = 'block';
+    if (navIncorporador) navIncorporador.style.display = 'none';
+  } else if (USUARIO.perfil === 'incorporador') {
+    // Incorporador vê apenas o portal dele
+    if (navAdmin)        navAdmin.style.display = 'none';
+    if (navCorretor)     navCorretor.style.display = 'none';
+    if (navIncorporador) navIncorporador.style.display = 'block';
+    // Esconde botão de privacidade e busca (irrelevante para incorporador)
+    const btnPrivacy = document.getElementById('btn-privacy');
+    const searchBox  = document.getElementById('search-box');
+    const addBtn     = document.getElementById('add-btn');
+    if (btnPrivacy) btnPrivacy.style.display = 'none';
+    if (searchBox)  searchBox.style.display  = 'none';
+    if (addBtn)     addBtn.style.display     = 'none';
   } else {
     if (navUsuarios && USUARIO.perfil === 'admin') navUsuarios.style.display = 'flex';
   }
@@ -4337,14 +4574,14 @@ async function renderUsuarios() {
         <div style="font-size:12px;color:var(--text2)">💡 Para criar login de corretor, use o botão 🔑 na lista de Corretores</div>
       </div>
       <table>
-        <thead><tr><th>Nome</th><th>E-mail / Usuário</th><th>Perfil</th><th>Corretor vinculado</th><th>Ativo</th><th>Criado em</th><th></th></tr></thead>
+        <thead><tr><th>Nome</th><th>E-mail / Usuário</th><th>Perfil</th><th>Vínculo</th><th>Ativo</th><th>Criado em</th><th></th></tr></thead>
         <tbody>
           ${usuarios.length ? usuarios.map(u => `
             <tr>
               <td><strong>${u.nome}</strong></td>
               <td style="font-family:monospace;font-size:12px">${u.email}</td>
-              <td><span class="badge ${u.perfil==='admin'?'badge-accent':u.perfil==='gestor'?'badge-blue':'badge-gray'}">${u.perfil}</span></td>
-              <td>${u.corretor_nome ? `<span style="color:var(--accent)">🔗 ${u.corretor_nome}</span>` : '<span style="color:var(--text2)">—</span>'}</td>
+              <td><span class="badge ${u.perfil==='admin'?'badge-accent':u.perfil==='gestor'?'badge-blue':u.perfil==='incorporador'?'badge-yellow':'badge-gray'}">${u.perfil}</span></td>
+              <td>${u.corretor_nome ? `<span style="color:var(--accent)">👤 ${u.corretor_nome}</span>` : u.cliente_nome ? `<span style="color:var(--warning)">🏢 ${u.cliente_nome}</span>` : '<span style="color:var(--text2)">—</span>'}</td>
               <td><span class="badge ${u.ativo?'badge-green':'badge-red'}">${u.ativo?'✅ Sim':'🚫 Não'}</span></td>
               <td style="font-size:12px">${fmtDate(u.criado_em)}</td>
               <td style="white-space:nowrap">
@@ -5586,8 +5823,11 @@ iniciarNotificacoes();
   const btn = document.getElementById('btn-privacy');
   if (btn && _privacyMode) { btn.textContent = '🙈'; btn.title = 'Mostrar valores'; }
 })();
-// Corretor vai direto ao painel dele; demais usuários ao dashboard
-renderPage(USUARIO.perfil === 'corretor' ? 'corretor-painel' : 'dashboard');
+// Cada perfil vai direto ao seu painel
+const _initPage = USUARIO.perfil === 'corretor' ? 'corretor-painel'
+                : USUARIO.perfil === 'incorporador' ? 'incorporador-painel'
+                : 'dashboard';
+renderPage(_initPage);
 
 // PWA — registra service worker
 if ('serviceWorker' in navigator) {

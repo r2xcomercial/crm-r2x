@@ -181,6 +181,7 @@ db.exec(`
 
 // Migrations: adiciona colunas que podem estar faltando em bancos antigos
 const migrations = [
+  "ALTER TABLE usuarios ADD COLUMN cliente_id INTEGER REFERENCES clientes(id)",
   "ALTER TABLE leads ADD COLUMN aniversario TEXT",
   "ALTER TABLE leads ADD COLUMN cpf TEXT",
   "ALTER TABLE leads ADD COLUMN tipo TEXT",
