@@ -4402,10 +4402,13 @@ async function abrirModalMidia(numero) {
 
 // Navega da lista de leads → painel Débora, abrindo a conversa desse telefone
 async function abrirDeboraParaLead(telefone) {
-  const numero = '55' + telefone.replace(/\D/g, '');
-  await navigate('debora');
-  // Aguarda render e abre a conversa
-  setTimeout(() => abrirConversaDebora(numero), 600);
+  // Normaliza: remove não-dígitos e garante prefixo 55 sem duplicar
+  let numero = telefone.replace(/\D/g, '');
+  if (!numero.startsWith('55')) numero = '55' + numero;
+  navigate('debora');
+  // Aguarda renderDebora() + carregarConversasDebora() terminarem
+  await new Promise(r => setTimeout(r, 900));
+  abrirConversaDebora(numero);
 }
 
 // Navega do painel Débora → lista de leads filtrada pelo telefone
