@@ -1893,8 +1893,17 @@ async function renderCorretores(filter = '', cidadeFilter = '', sortByVendas = f
   if (sortByVendas) rows = [...rows].sort((a, b) => (b.total_vendas - a.total_vendas) || (b.vgv_vendido - a.vgv_vendido));
 
   const cidades = [...new Set(r.data.map(c => c.cidade).filter(Boolean))].sort();
+  const linkCorretor = `${window.location.origin}/login`;
 
   document.getElementById('content').innerHTML = `
+    <div class="mini-card" style="margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:4px">🔑 Link de acesso e cadastro do corretor</div>
+        <code style="background:var(--navy3);padding:6px 12px;border-radius:6px;font-size:12px;color:var(--accent)">${linkCorretor}</code>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">A página já tem "Ainda não tem cadastro? Clique aqui" para novos corretores.</div>
+      </div>
+      <button class="btn btn-secondary" onclick="copyLink('${linkCorretor}')">📋 Copiar Link</button>
+    </div>
     <div class="table-card">
       <div class="table-header">
         <div class="table-title">👥 Corretores (${rows.length})</div>
