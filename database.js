@@ -362,4 +362,32 @@ db.exec(`
   );
 `);
 
+// Eventos de lançamento e checklists
+db.exec(`
+  CREATE TABLE IF NOT EXISTS eventos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    titulo TEXT NOT NULL,
+    data TEXT NOT NULL,
+    hora TEXT,
+    local TEXT,
+    empreendimento_id INTEGER REFERENCES empreendimentos(id),
+    descricao TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS evento_checklist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    evento_id INTEGER NOT NULL REFERENCES eventos(id) ON DELETE CASCADE,
+    fase TEXT NOT NULL DEFAULT 'pre',
+    categoria TEXT,
+    texto TEXT NOT NULL,
+    sub_texto TEXT,
+    responsavel TEXT,
+    observacoes TEXT,
+    concluido INTEGER DEFAULT 0,
+    ordem INTEGER DEFAULT 0,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 module.exports = db;

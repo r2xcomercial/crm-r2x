@@ -644,7 +644,7 @@ app.post("/api/leads/whatsapp", (req, res) => {
     (nome,telefone,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,tipo,score,resumo,status,origem)
     VALUES (?,?,?,?,?,?,?,?,?,?,'novo','whatsapp')`)
     .run(nome, telefone, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, tipo||null, score||0, resumo||null);
-  ok(res, { id: r.lastInsertRowid, atualizado: false });
+  ok(res, { id: r.lastInsertRowid, criado: true });
 });
 
 // ─── VENDAS ───────────────────────────────────────────────────────────────────
@@ -1663,6 +1663,140 @@ app.get('/api/portal/:token', (req, res) => {
   const vendas = db.prepare("SELECT COUNT(*) as n, SUM(valor) as vgv FROM vendas WHERE empreendimento_id=? AND status='ativo'").get(empId);
   const checklist = db.prepare('SELECT material, status FROM checklist_marketing WHERE empreendimento_id=? ORDER BY ordem').all(empId);
   ok(res, { emp, unidades, vendas, checklist });
+});
+
+// ─── EVENTOS ──────────────────────────────────────────────────────────────────
+
+// Template padrão de checklist de lançamento
+const CHECKLIST_TEMPLATE = [
+  // Pré-evento — Logística
+  { fase:'pre', categoria:'Logística e estrutura', ordem:1,  texto:'Confirmar contrato e reserva do espaço de eventos', sub_texto:'Verificar capacidade, horário de entrada e saída' },
+  { fase:'pre', categoria:'Logística e estrutura', ordem:2,  texto:'Contratar buffet para jantar por consumê', sub_texto:'Definir cardápio, número de convidados e serviço de garçons' },
+  { fase:'pre', categoria:'Logística e estrutura', ordem:3,  texto:'Definir bebidas — bar e sommelier', sub_texto:'Vinhos, espumante para brinde, drinks e opções sem álcool' },
+  { fase:'pre', categoria:'Logística e estrutura', ordem:4,  texto:'Contratar estrutura audiovisual', sub_texto:'Projetor ou LED, sistema de som, microfone e iluminação cênica' },
+  { fase:'pre', categoria:'Logística e estrutura', ordem:5,  texto:'Planejar layout do espaço', sub_texto:'Disposição das mesas, palco/púlpito, área de coquetel de entrada' },
+  { fase:'pre', categoria:'Logística e estrutura', ordem:6,  texto:'Contratar fotógrafo e/ou videomaker', sub_texto:'Cobertura do evento para uso em marketing pós-evento' },
+  { fase:'pre', categoria:'Logística e estrutura', ordem:7,  texto:'Definir decoração com identidade visual do empreendimento', sub_texto:'Totem, backdrop, centros de mesa, sinalização' },
+  { fase:'pre', categoria:'Logística e estrutura', ordem:8,  texto:'Produzir material impresso', sub_texto:'Pasta/brochura do empreendimento, tabela de preços, book de plantas' },
+  { fase:'pre', categoria:'Logística e estrutura', ordem:9,  texto:'Preparar kit brinde / lembrança para convidados', sub_texto:'Item personalizado com a marca do empreendimento' },
+  { fase:'pre', categoria:'Logística e estrutura', ordem:10, texto:'Montar lista de convidados com RSVP', sub_texto:'Corretores parceiros, investidores, imprensa, clientes VIP' },
+  { fase:'pre', categoria:'Logística e estrutura', ordem:11, texto:'Credenciar recepcionistas para entrada', sub_texto:'Check-in com crachá/nome na lista e entrega do material' },
+  { fase:'pre', categoria:'Logística e estrutura', ordem:12, texto:'Preparar apresentação (slides) do empreendimento', sub_texto:'História, diferenciais, plantas, acabamentos, localização, condições' },
+  { fase:'pre', categoria:'Logística e estrutura', ordem:13, texto:'Ensaio/passagem de áudio e apresentação no espaço', sub_texto:'Testar equipamentos e definir ordem da programação' },
+  // Pré-evento — Marketing
+  { fase:'pre', categoria:'Marketing pré-evento', ordem:14, texto:'Criar identidade visual do evento', sub_texto:'Artes para convite, stories, feed e WhatsApp' },
+  { fase:'pre', categoria:'Marketing pré-evento', ordem:15, texto:'Enviar convite formal — e-mail e WhatsApp', sub_texto:'Texto profissional com data, horário, local e RSVP (3 semanas antes)' },
+  { fase:'pre', categoria:'Marketing pré-evento', ordem:16, texto:'Publicar teaser nas redes sociais', sub_texto:'"Algo está chegando..." — gerar expectativa sem revelar tudo' },
+  { fase:'pre', categoria:'Marketing pré-evento', ordem:17, texto:'Criar contagem regressiva nos stories', sub_texto:'Posts diários na semana do evento' },
+  { fase:'pre', categoria:'Marketing pré-evento', ordem:18, texto:'Disparar lembrete 1 semana antes', sub_texto:'WhatsApp individual para corretores confirmados' },
+  { fase:'pre', categoria:'Marketing pré-evento', ordem:19, texto:'Disparar lembrete 48h antes', sub_texto:'Confirmar presença + informar endereço e estacionamento' },
+  { fase:'pre', categoria:'Marketing pré-evento', ordem:20, texto:'Preparar conteúdo de bastidores para stories no dia', sub_texto:'Montagem do espaço, decoração, equipe — humaniza a marca' },
+  // No evento — Recepção
+  { fase:'evento', categoria:'Chegada e recepção', ordem:1, texto:'Equipe presente no espaço 2h antes para montagem final', sub_texto:'' },
+  { fase:'evento', categoria:'Chegada e recepção', ordem:2, texto:'Check-in funcionando — lista de convidados e crachás prontos', sub_texto:'' },
+  { fase:'evento', categoria:'Chegada e recepção', ordem:3, texto:'Coquetel de boas-vindas disponível na chegada', sub_texto:'Espumante, drinks e canapés enquanto aguardam o jantar' },
+  { fase:'evento', categoria:'Chegada e recepção', ordem:4, texto:'Música ambiente ativa (playlist preparada)', sub_texto:'' },
+  { fase:'evento', categoria:'Chegada e recepção', ordem:5, texto:'Material impresso disponível nas mesas ou na entrada', sub_texto:'' },
+  { fase:'evento', categoria:'Chegada e recepção', ordem:6, texto:'Fotógrafo registrando chegada e ambiente', sub_texto:'' },
+  // No evento — Programação
+  { fase:'evento', categoria:'Programação', ordem:7,  texto:'Abertura e boas-vindas pelo apresentador/diretor', sub_texto:'Agradecimento aos presentes, apresentação da incorporadora' },
+  { fase:'evento', categoria:'Programação', ordem:8,  texto:'Apresentação do empreendimento', sub_texto:'Conceito, localização, plantas, acabamentos, condições comerciais' },
+  { fase:'evento', categoria:'Programação', ordem:9,  texto:'Jantar por consumê servido durante ou após a apresentação', sub_texto:'' },
+  { fase:'evento', categoria:'Programação', ordem:10, texto:'Brinde oficial com espumante', sub_texto:'Momento simbólico de lançamento — ótimo para foto' },
+  { fase:'evento', categoria:'Programação', ordem:11, texto:'Espaço para dúvidas e networking', sub_texto:'Corretores com acesso à equipe comercial e materiais' },
+  // No evento — Conteúdo
+  { fase:'evento', categoria:'Conteúdo em tempo real', ordem:12, texto:'Publicar stories ao vivo do evento', sub_texto:'Ambiente, apresentação, brinde, bastidores' },
+  { fase:'evento', categoria:'Conteúdo em tempo real', ordem:13, texto:'Coletar depoimentos rápidos em vídeo no evento', sub_texto:'Corretores e convidados falando sobre o empreendimento' },
+  { fase:'evento', categoria:'Conteúdo em tempo real', ordem:14, texto:'Entregar kit brinde / lembrança na saída', sub_texto:'' },
+  // Pós-evento — Follow-up
+  { fase:'pos', categoria:'Follow-up comercial', ordem:1, texto:'Enviar agradecimento a todos os presentes', sub_texto:'Mensagem personalizada por WhatsApp ou e-mail (até 24h depois)' },
+  { fase:'pos', categoria:'Follow-up comercial', ordem:2, texto:'Enviar tabela de preços e book digital para corretores', sub_texto:'PDF ou link de acesso — facilitar o processo de venda' },
+  { fase:'pos', categoria:'Follow-up comercial', ordem:3, texto:'Contatar convidados que confirmaram mas não compareceram', sub_texto:'Enviar o material e agendar visita ou reunião individual' },
+  { fase:'pos', categoria:'Follow-up comercial', ordem:4, texto:'Agendar reuniões de follow-up com corretores de interesse', sub_texto:'' },
+  { fase:'pos', categoria:'Follow-up comercial', ordem:5, texto:'Registrar leads e intenções de compra captados no evento', sub_texto:'' },
+  // Pós-evento — Marketing
+  { fase:'pos', categoria:'Marketing pós-evento', ordem:6,  texto:'Editar e publicar fotos do evento nas redes sociais', sub_texto:'Feed e stories — gerar prova social e ampliar alcance' },
+  { fase:'pos', categoria:'Marketing pós-evento', ordem:7,  texto:'Editar e publicar vídeo/reels do lançamento', sub_texto:'Destaque para o ambiente, apresentação e brinde' },
+  { fase:'pos', categoria:'Marketing pós-evento', ordem:8,  texto:'Publicar depoimentos coletados no evento', sub_texto:'Stories, reels e feed — voz dos corretores/convidados' },
+  { fase:'pos', categoria:'Marketing pós-evento', ordem:9,  texto:'Disparar e-mail marketing de pós-lançamento', sub_texto:'"Empreendimento lançado. Unidades disponíveis." + CTA para contato' },
+  { fase:'pos', categoria:'Marketing pós-evento', ordem:10, texto:'Criar campanha de anúncios pós-evento', sub_texto:'Usar fotos/vídeos reais do lançamento como criativo' },
+  { fase:'pos', categoria:'Marketing pós-evento', ordem:11, texto:'Publicar Press Release / nota à imprensa local', sub_texto:'Divulgação nos portais de notícias e grupos do setor' },
+  // Pós-evento — Avaliação
+  { fase:'pos', categoria:'Avaliação interna', ordem:12, texto:'Reunião de debriefing com a equipe', sub_texto:'O que funcionou, o que melhorar para o próximo lançamento' },
+  { fase:'pos', categoria:'Avaliação interna', ordem:13, texto:'Contabilizar leads, propostas e reservas geradas', sub_texto:'' },
+  { fase:'pos', categoria:'Avaliação interna', ordem:14, texto:'Enviar pesquisa de satisfação aos corretores presentes', sub_texto:'' },
+];
+
+app.get('/api/eventos', (req, res) => {
+  const rows = db.prepare(`
+    SELECT e.*,
+      emp.nome as empreendimento_nome,
+      (SELECT COUNT(*) FROM evento_checklist WHERE evento_id=e.id) as total_itens,
+      (SELECT COUNT(*) FROM evento_checklist WHERE evento_id=e.id AND concluido=1) as itens_concluidos
+    FROM eventos e
+    LEFT JOIN empreendimentos emp ON emp.id = e.empreendimento_id
+    ORDER BY e.data ASC
+  `).all();
+  ok(res, rows);
+});
+
+app.post('/api/eventos', (req, res) => {
+  const { titulo, data, hora, local, empreendimento_id, descricao, usar_template } = req.body;
+  if (!titulo || !data) return err(res, 'Título e data obrigatórios');
+  const r = db.prepare('INSERT INTO eventos(titulo,data,hora,local,empreendimento_id,descricao) VALUES(?,?,?,?,?,?)')
+    .run(titulo, data, hora||null, local||null, empreendimento_id||null, descricao||null);
+  const eventoId = r.lastInsertRowid;
+  if (usar_template) {
+    const ins = db.prepare('INSERT INTO evento_checklist(evento_id,fase,categoria,texto,sub_texto,ordem) VALUES(?,?,?,?,?,?)');
+    for (const item of CHECKLIST_TEMPLATE) ins.run(eventoId, item.fase, item.categoria, item.texto, item.sub_texto||null, item.ordem);
+  }
+  ok(res, { id: eventoId });
+});
+
+app.get('/api/eventos/:id', (req, res) => {
+  const ev = db.prepare('SELECT e.*, emp.nome as empreendimento_nome FROM eventos e LEFT JOIN empreendimentos emp ON emp.id=e.empreendimento_id WHERE e.id=?').get(parseInt(req.params.id));
+  if (!ev) return err(res, 'Evento não encontrado', 404);
+  const checklist = db.prepare('SELECT * FROM evento_checklist WHERE evento_id=? ORDER BY fase, ordem').all(ev.id);
+  ok(res, { ...ev, checklist });
+});
+
+app.put('/api/eventos/:id', (req, res) => {
+  const { titulo, data, hora, local, empreendimento_id, descricao } = req.body;
+  const id = parseInt(req.params.id);
+  const ev = db.prepare('SELECT id FROM eventos WHERE id=?').get(id);
+  if (!ev) return err(res, 'Evento não encontrado', 404);
+  db.prepare('UPDATE eventos SET titulo=?,data=?,hora=?,local=?,empreendimento_id=?,descricao=? WHERE id=?')
+    .run(titulo, data, hora||null, local||null, empreendimento_id||null, descricao||null, id);
+  ok(res, {});
+});
+
+app.delete('/api/eventos/:id', (req, res) => {
+  db.prepare('DELETE FROM eventos WHERE id=?').run(parseInt(req.params.id));
+  ok(res, {});
+});
+
+app.post('/api/eventos/:id/checklist', (req, res) => {
+  const { fase, categoria, texto, sub_texto, ordem } = req.body;
+  if (!texto) return err(res, 'Texto obrigatório');
+  const maxOrdem = db.prepare('SELECT COALESCE(MAX(ordem),0) as m FROM evento_checklist WHERE evento_id=? AND fase=?').get(parseInt(req.params.id), fase||'pre').m;
+  const r = db.prepare('INSERT INTO evento_checklist(evento_id,fase,categoria,texto,sub_texto,ordem) VALUES(?,?,?,?,?,?)')
+    .run(parseInt(req.params.id), fase||'pre', categoria||null, texto, sub_texto||null, ordem||maxOrdem+1);
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.put('/api/evento-checklist/:id', (req, res) => {
+  const { concluido, responsavel, observacoes, texto, sub_texto, categoria } = req.body;
+  const id = parseInt(req.params.id);
+  const item = db.prepare('SELECT * FROM evento_checklist WHERE id=?').get(id);
+  if (!item) return err(res, 'Item não encontrado', 404);
+  db.prepare('UPDATE evento_checklist SET concluido=?,responsavel=?,observacoes=?,texto=?,sub_texto=?,categoria=? WHERE id=?')
+    .run(concluido??item.concluido, responsavel??item.responsavel, observacoes??item.observacoes, texto||item.texto, sub_texto??item.sub_texto, categoria??item.categoria, id);
+  ok(res, {});
+});
+
+app.delete('/api/evento-checklist/:id', (req, res) => {
+  db.prepare('DELETE FROM evento_checklist WHERE id=?').run(parseInt(req.params.id));
+  ok(res, {});
 });
 
 // ─── INCORPORADOR ─────────────────────────────────────────────────────────────

@@ -320,6 +320,9 @@
     <div class="nav-item" onclick="navigate('empreendimentos')"><span class="icon">🏗️</span> Empreendimentos</div>
     <div class="nav-item" onclick="navigate('corretores')"><span class="icon">👥</span> Corretores</div>
 
+    <div class="nav-section">Eventos</div>
+    <div class="nav-item" onclick="navigate('eventos')"><span class="icon">🎪</span> Eventos</div>
+
     <div class="nav-section">Financeiro</div>
     <div class="nav-item" onclick="navigate('financeiro')"><span class="icon">💰</span> Financeiro</div>
     <div class="nav-item" onclick="navigate('calculadora')" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px"><span class="icon">🧮</span> Calculadora</div>
@@ -421,9 +424,10 @@ const pageTitles = {
   clientes: 'Incorporadores', empreendimentos: 'Empreendimentos', corretores: 'Corretores',
   financeiro: 'Financeiro', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
   painel: 'Painel de Lançamento', usuarios: 'Usuários do Sistema', calculadora: 'Calculadora de Financiamento',
-  'corretor-painel': 'Meu Painel', 'incorporador-painel': 'Portal do Incorporador'
+  'corretor-painel': 'Meu Painel', 'incorporador-painel': 'Portal do Incorporador',
+  eventos: 'Eventos de Lançamento'
 };
-const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario','usuarios'];
+const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario','usuarios','eventos'];
 
 async function renderPage(page) {
   const c = document.getElementById('content');
@@ -446,6 +450,7 @@ async function renderPage(page) {
       case 'calculadora': renderCalculadora(); break;
       case 'corretor-painel': await renderCorretorPainel(); break;
       case 'incorporador-painel': await renderIncorporadorPainel(); break;
+      case 'eventos': await renderEventos(); break;
     }
   } catch(e) {
     c.innerHTML = `<div style="color:var(--danger);padding:24px">Erro ao carregar: ${e.message}</div>`;
@@ -4170,8 +4175,21 @@ function renderChatDebora(dados) {
   if (msgs) msgs.scrollTop = msgs.scrollHeight;
 }
 
+function fmtMsgTs(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const hoje = new Date();
+  const ontem = new Date(hoje); ontem.setDate(hoje.getDate() - 1);
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const mesmaData = (a, b) => a.getDate()===b.getDate() && a.getMonth()===b.getMonth() && a.getFullYear()===b.getFullYear();
+  if (mesmaData(d, hoje)) return hora;
+  if (mesmaData(d, ontem)) return `ontem ${hora}`;
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + hora;
+}
+
 function renderMensagensDebora(historico) {
   if (!historico || !historico.length) return `<div style="text-align:center;color:var(--text2);font-size:13px">Sem mensagens ainda</div>`;
+  let lastDate = null;
   return historico.map(m => {
     const isUser = m.role === 'user';
     const isRamon = m.content?.startsWith('[RAMON]:');
@@ -4179,10 +4197,23 @@ function renderMensagensDebora(historico) {
     const bg = isUser ? 'var(--navy3)' : isRamon ? 'rgba(245,158,11,.15)' : 'rgba(0,196,180,.12)';
     const label = isUser ? '👤 Lead' : isRamon ? '🙋 Ramon' : '🤖 Débora';
     const align = isUser ? 'flex-start' : 'flex-end';
-    return `
+    const hora = m.ts ? fmtMsgTs(m.ts) : '';
+
+    // Separador de data quando muda o dia
+    let separador = '';
+    if (m.ts) {
+      const diaStr = new Date(m.ts).toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
+      if (diaStr !== lastDate) {
+        lastDate = diaStr;
+        separador = `<div style="text-align:center;margin:12px 0 6px;font-size:11px;color:var(--text2);opacity:.7">${diaStr}</div>`;
+      }
+    }
+
+    return separador + `
       <div style="display:flex;flex-direction:column;align-items:${align};max-width:75%;${isUser?'':'align-self:flex-end'}">
         <div style="font-size:10px;color:var(--text2);margin-bottom:3px;padding:0 4px">${label}</div>
         <div style="background:${bg};padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;word-break:break-word">${texto}</div>
+        ${hora ? `<div style="font-size:10px;color:var(--text2);margin-top:2px;padding:0 4px;opacity:.7">${hora}</div>` : ''}
       </div>`;
   }).join('');
 }
@@ -4246,9 +4277,11 @@ function iniciarSSEDebora() {
               const align = isUser ? 'flex-start' : 'flex-end';
               const div = document.createElement('div');
               div.style.cssText = `display:flex;flex-direction:column;align-items:${align};max-width:75%;${!isUser?'align-self:flex-end':''}`;
+              const hora = ev.ts ? fmtMsgTs(ev.ts) : fmtMsgTs(Date.now());
               div.innerHTML = `
                 <div style="font-size:10px;color:var(--text2);margin-bottom:3px;padding:0 4px">${label}</div>
-                <div style="background:${bg};padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;word-break:break-word">${ev.content}</div>`;
+                <div style="background:${bg};padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;word-break:break-word">${ev.content}</div>
+                <div style="font-size:10px;color:var(--text2);margin-top:2px;padding:0 4px;opacity:.7">${hora}</div>`;
               msgs.appendChild(div);
               msgs.scrollTop = msgs.scrollHeight;
             }
@@ -4438,6 +4471,304 @@ async function fazerLogout() {
   localStorage.removeItem('crm_token');
   localStorage.removeItem('crm_usuario');
   window.location.href = '/login';
+}
+
+// ─── EVENTOS ──────────────────────────────────────────────────────────────────
+
+let _eventoAtual = null; // id do evento aberto no detalhe
+
+async function renderEventos() {
+  const [er, empr] = await Promise.all([get('/api/eventos'), get('/api/empreendimentos')]);
+  const eventos   = er.data   || [];
+  const emps      = empr.data || [];
+  const el = document.getElementById('content');
+
+  const hoje = new Date().toISOString().slice(0,10);
+
+  function badgeEvento(data) {
+    if (data < hoje) return '<span class="badge badge-gray">Realizado</span>';
+    if (data === hoje) return '<span class="badge badge-accent">Hoje!</span>';
+    return '<span class="badge badge-green">Agendado</span>';
+  }
+
+  el.innerHTML = `
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">🎪 Eventos de Lançamento (${eventos.length})</div>
+      </div>
+      ${eventos.length ? `
+      <table>
+        <thead><tr><th>Evento</th><th>Data</th><th>Horário</th><th>Local</th><th>Empreendimento</th><th>Progresso</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${eventos.map(ev => {
+            const pct = ev.total_itens > 0 ? Math.round(ev.itens_concluidos / ev.total_itens * 100) : 0;
+            return `
+            <tr style="cursor:pointer" onclick="abrirEvento(${ev.id})">
+              <td><strong>${ev.titulo}</strong></td>
+              <td>${fmtDate(ev.data)}</td>
+              <td>${ev.hora||'—'}</td>
+              <td>${ev.local||'—'}</td>
+              <td>${ev.empreendimento_nome||'—'}</td>
+              <td style="min-width:120px">
+                <div style="font-size:11px;color:var(--text2);margin-bottom:3px">${ev.itens_concluidos}/${ev.total_itens} itens</div>
+                <div style="background:var(--navy3);border-radius:4px;height:6px;overflow:hidden">
+                  <div style="height:100%;width:${pct}%;background:${pct===100?'var(--success)':'var(--accent)'};transition:width .3s"></div>
+                </div>
+              </td>
+              <td>${badgeEvento(ev.data)}</td>
+              <td style="white-space:nowrap" onclick="event.stopPropagation()">
+                <button class="btn-icon btn-edit" onclick="openEventoModal(${JSON.stringify(ev).replace(/"/g,'&quot;')})">✏️</button>
+                <button class="btn-icon btn-delete" onclick="deleteEvento(${ev.id})">🗑️</button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>` : `<div style="text-align:center;padding:60px;color:var(--text2)">Nenhum evento cadastrado. Clique em <strong>+ Novo</strong> para criar.</div>`}
+    </div>`;
+}
+
+function openEventoModal(ev = {}) {
+  get('/api/empreendimentos').then(empr => {
+    const emps = empr.data || [];
+    openModal(ev.id ? 'Editar Evento' : 'Novo Evento', `
+      <div class="form-grid">
+        <div class="form-group span2"><label>Título do evento *</label><input id="ev-titulo" value="${ev.titulo||''}" placeholder="Ex: Lançamento OSLO"></div>
+        <div class="form-group"><label>Data *</label><input id="ev-data" type="date" value="${ev.data||''}"></div>
+        <div class="form-group"><label>Horário</label><input id="ev-hora" type="time" value="${ev.hora||''}"></div>
+        <div class="form-group span2"><label>Local</label><input id="ev-local" value="${ev.local||''}" placeholder="Ex: Espaço de eventos Centro"></div>
+        <div class="form-group span2"><label>Empreendimento</label>
+          <select id="ev-emp">
+            <option value="">— nenhum —</option>
+            ${emps.map(e => `<option value="${e.id}" ${ev.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group span2"><label>Descrição / observações gerais</label><textarea id="ev-desc">${ev.descricao||''}</textarea></div>
+        ${!ev.id ? `
+        <div class="form-group span2" style="background:rgba(0,196,180,.06);border:1px solid rgba(0,196,180,.2);border-radius:8px;padding:12px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+            <input type="checkbox" id="ev-template" checked style="accent-color:var(--accent);width:16px;height:16px">
+            Iniciar com checklist padrão de lançamento (${48} itens pré-cadastrados)
+          </label>
+          <div style="font-size:11px;color:var(--text2);margin-top:4px;margin-left:24px">Pré-evento, no evento e pós-evento — você pode editar, adicionar ou remover depois</div>
+        </div>` : ''}
+      </div>
+    `, async () => {
+      const body = { titulo: v('ev-titulo'), data: v('ev-data'), hora: v('ev-hora'), local: v('ev-local'), empreendimento_id: v('ev-emp')||null, descricao: v('ev-desc') };
+      if (!body.titulo || !body.data) return toast('Título e data obrigatórios', 'error');
+      if (!ev.id) body.usar_template = document.getElementById('ev-template').checked;
+      const r = ev.id ? await put(`/api/eventos/${ev.id}`, body) : await post('/api/eventos', body);
+      if (!r.ok) return toast(r.error, 'error');
+      toast(ev.id ? 'Evento atualizado!' : 'Evento criado!');
+      closeModal();
+      if (!ev.id && r.data?.id) { abrirEvento(r.data.id); }
+      else { renderEventos(); }
+    });
+  });
+}
+
+async function deleteEvento(id) {
+  if (!confirm('Excluir este evento e todo o checklist?')) return;
+  await del(`/api/eventos/${id}`);
+  toast('Evento excluído');
+  renderEventos();
+}
+
+async function abrirEvento(id) {
+  _eventoAtual = id;
+  const r = await get(`/api/eventos/${id}`);
+  if (!r.ok) return toast('Erro ao carregar evento', 'error');
+  const ev = r.data;
+  const checklist = ev.checklist || [];
+
+  const fases = [
+    { key:'pre',    label:'Pré-evento',  icon:'⏳' },
+    { key:'evento', label:'No evento',   icon:'🎯' },
+    { key:'pos',    label:'Pós-evento',  icon:'📣' },
+  ];
+
+  let faseSel = 'pre';
+
+  const el = document.getElementById('content');
+
+  function pct(fase) {
+    const items = checklist.filter(i => i.fase === fase);
+    if (!items.length) return 0;
+    return Math.round(items.filter(i => i.concluido).length / items.length * 100);
+  }
+
+  function renderFase(fase) {
+    const items = checklist.filter(i => i.fase === fase);
+    const cats  = [...new Set(items.map(i => i.categoria).filter(Boolean))];
+    // Itens sem categoria
+    const semCat = items.filter(i => !i.categoria);
+
+    function renderItem(item) {
+      const done = item.concluido;
+      return `
+        <div class="ev-item ${done?'done':''}" id="evitem-${item.id}">
+          <div class="ev-check" onclick="toggleCheckItem(${item.id})">
+            ${done ? `<svg width="11" height="9" viewBox="0 0 11 9"><polyline points="1,4.5 4,7.5 10,1" stroke="currentColor" stroke-width="2" fill="none"/></svg>` : ''}
+          </div>
+          <div class="ev-item-body">
+            <div class="ev-item-text">${item.texto}</div>
+            ${item.sub_texto ? `<div class="ev-item-sub">${item.sub_texto}</div>` : ''}
+            <div class="ev-item-meta">
+              <span onclick="editCheckItem(${item.id})" title="Editar responsável/observações" style="cursor:pointer;color:var(--text2);font-size:11px">
+                ${item.responsavel ? `👤 ${item.responsavel}` : '<span style="color:var(--border)">+ responsável</span>'}
+                ${item.observacoes ? ` · 💬 ${item.observacoes.slice(0,40)}${item.observacoes.length>40?'…':''}` : ''}
+              </span>
+            </div>
+          </div>
+          <div class="ev-item-actions">
+            <button class="btn-icon" style="font-size:13px" onclick="editCheckItem(${item.id})" title="Editar">✏️</button>
+            <button class="btn-icon btn-delete" style="font-size:13px" onclick="deleteCheckItem(${item.id})">🗑️</button>
+          </div>
+        </div>`;
+    }
+
+    if (!items.length) return `
+      <div style="text-align:center;padding:32px;color:var(--text2);font-size:13px">
+        Nenhum item nesta fase.
+        <br><button onclick="openAddCheckItem('${fase}')" style="margin-top:8px;background:var(--accent);border:none;color:var(--navy);border-radius:6px;padding:6px 14px;font-weight:700;cursor:pointer;font-size:12px">+ Adicionar item</button>
+      </div>`;
+
+    return (cats.length ? cats.map(cat => `
+      <div style="margin-bottom:18px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">${cat}</div>
+        ${items.filter(i => i.categoria===cat).map(renderItem).join('')}
+      </div>`).join('') : '') +
+      (semCat.length ? `<div style="margin-bottom:18px">${semCat.map(renderItem).join('')}</div>` : '');
+  }
+
+  el.innerHTML = `
+    <style>
+      .ev-item { display:flex;align-items:flex-start;gap:10px;padding:9px 10px;border-radius:8px;border:1px solid transparent;margin-bottom:4px;transition:background .1s; }
+      .ev-item:hover { background:var(--card2); }
+      .ev-item.done .ev-item-text { text-decoration:line-through;opacity:.5; }
+      .ev-check { width:20px;height:20px;border-radius:5px;border:1.5px solid var(--border);flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-top:1px;transition:all .15s;color:var(--navy); }
+      .ev-item.done .ev-check { background:var(--success);border-color:var(--success); }
+      .ev-item-body { flex:1;min-width:0; }
+      .ev-item-text { font-size:14px;line-height:1.4; }
+      .ev-item-sub { font-size:12px;color:var(--text2);margin-top:2px; }
+      .ev-item-meta { margin-top:4px; }
+      .ev-item-actions { display:flex;gap:2px;opacity:0;transition:opacity .1s; }
+      .ev-item:hover .ev-item-actions { opacity:1; }
+      .ev-fase-tabs { display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:18px; }
+      .ev-fase-tab { padding:8px 20px;font-size:14px;cursor:pointer;border:none;background:none;color:var(--text2);border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s; }
+      .ev-fase-tab.active { color:var(--text);border-bottom-color:var(--accent);font-weight:600; }
+    </style>
+
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+      <button onclick="renderEventos()" style="background:none;border:1px solid var(--border);color:var(--text2);border-radius:7px;padding:6px 12px;cursor:pointer;font-size:13px">← Voltar</button>
+      <div style="flex:1">
+        <h2 style="font-size:18px;font-weight:900">${ev.titulo}</h2>
+        <div style="font-size:13px;color:var(--text2);margin-top:3px">
+          ${ev.data ? `📅 ${fmtDate(ev.data)}` : ''}${ev.hora ? ` · ${ev.hora}` : ''}${ev.local ? ` · 📍 ${ev.local}` : ''}${ev.empreendimento_nome ? ` · 🏗️ ${ev.empreendimento_nome}` : ''}
+        </div>
+      </div>
+      <button onclick="openEventoModal(${JSON.stringify(ev).replace(/"/g,'&quot;')})" style="background:none;border:1px solid var(--border);color:var(--text2);border-radius:7px;padding:6px 12px;cursor:pointer;font-size:13px">✏️ Editar</button>
+    </div>
+
+    <!-- Progresso global -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+      ${fases.map(f => {
+        const p = pct(f.key);
+        const tot = checklist.filter(i => i.fase===f.key).length;
+        const done = checklist.filter(i => i.fase===f.key && i.concluido).length;
+        return `
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+          <div style="font-size:12px;color:var(--text2);margin-bottom:4px">${f.icon} ${f.label}</div>
+          <div style="font-size:18px;font-weight:700">${p}%</div>
+          <div style="font-size:11px;color:var(--text2)">${done} de ${tot} itens</div>
+          <div style="background:var(--navy3);border-radius:4px;height:5px;margin-top:6px;overflow:hidden">
+            <div style="height:100%;width:${p}%;background:${p===100?'var(--success)':'var(--accent)'};transition:width .3s"></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <!-- Tabs de fase -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div class="ev-fase-tabs" id="ev-fase-tabs">
+          ${fases.map(f => `<button class="ev-fase-tab ${f.key==='pre'?'active':''}" onclick="switchEvFase('${f.key}')">${f.icon} ${f.label} <span style="font-size:11px;opacity:.7">(${checklist.filter(i=>i.fase===f.key).length})</span></button>`).join('')}
+        </div>
+        <button onclick="openAddCheckItem(document.querySelector('.ev-fase-tab.active').dataset.fase)" style="background:var(--accent);border:none;color:var(--navy);border-radius:7px;padding:7px 14px;font-weight:700;cursor:pointer;font-size:13px">+ Adicionar item</button>
+      </div>
+      ${fases.map(f => `<div id="ev-fase-${f.key}" class="ev-fase-content" style="display:${f.key==='pre'?'block':'none'}" data-fase="${f.key}">${renderFase(f.key)}</div>`).join('')}
+    </div>`;
+
+  // Armazena data-fase nos tabs
+  document.querySelectorAll('.ev-fase-tab').forEach((btn, i) => btn.dataset.fase = fases[i].key);
+}
+
+function switchEvFase(fase) {
+  document.querySelectorAll('.ev-fase-tab').forEach(t => t.classList.toggle('active', t.dataset.fase===fase));
+  document.querySelectorAll('.ev-fase-content').forEach(c => c.style.display = c.id===`ev-fase-${fase}`?'block':'none');
+}
+
+async function toggleCheckItem(id) {
+  const el = document.getElementById(`evitem-${id}`);
+  const done = !el.classList.contains('done');
+  await put(`/api/evento-checklist/${id}`, { concluido: done ? 1 : 0 });
+  abrirEvento(_eventoAtual);
+}
+
+function editCheckItem(id) {
+  // Busca item no DOM para pegar texto atual
+  get(`/api/eventos/${_eventoAtual}`).then(r => {
+    const item = (r.data?.checklist||[]).find(i => i.id === id);
+    if (!item) return;
+    openModal('✏️ Editar item do checklist', `
+      <div class="form-grid">
+        <div class="form-group span2"><label>Tarefa</label><input id="ci-texto" value="${item.texto||''}"></div>
+        <div class="form-group span2"><label>Detalhe / sub-texto</label><input id="ci-sub" value="${item.sub_texto||''}"></div>
+        <div class="form-group span2"><label>Responsável</label><input id="ci-resp" value="${item.responsavel||''}" placeholder="Nome ou área responsável"></div>
+        <div class="form-group span2"><label>Observações</label><textarea id="ci-obs">${item.observacoes||''}</textarea></div>
+      </div>
+    `, async () => {
+      const r2 = await put(`/api/evento-checklist/${id}`, { texto: v('ci-texto'), sub_texto: v('ci-sub'), responsavel: v('ci-resp'), observacoes: v('ci-obs') });
+      if (!r2.ok) return toast(r2.error, 'error');
+      toast('Item atualizado!');
+      closeModal();
+      abrirEvento(_eventoAtual);
+    });
+  });
+}
+
+function openAddCheckItem(fase) {
+  openModal('➕ Novo item no checklist', `
+    <div class="form-grid">
+      <div class="form-group span2"><label>Fase</label>
+        <select id="ci-fase">
+          <option value="pre"   ${fase==='pre'   ?'selected':''}>⏳ Pré-evento</option>
+          <option value="evento"${fase==='evento'?'selected':''}>🎯 No evento</option>
+          <option value="pos"   ${fase==='pos'   ?'selected':''}>📣 Pós-evento</option>
+        </select>
+      </div>
+      <div class="form-group span2"><label>Categoria</label><input id="ci-cat" placeholder="Ex: Logística, Marketing..."></div>
+      <div class="form-group span2"><label>Tarefa *</label><input id="ci-texto" placeholder="Descreva a tarefa"></div>
+      <div class="form-group span2"><label>Detalhe / sub-texto</label><input id="ci-sub" placeholder="Informação adicional opcional"></div>
+      <div class="form-group span2"><label>Responsável</label><input id="ci-resp" placeholder="Nome ou área"></div>
+      <div class="form-group span2"><label>Observações</label><textarea id="ci-obs" placeholder="Notas adicionais"></textarea></div>
+    </div>
+  `, async () => {
+    const texto = v('ci-texto');
+    if (!texto) return toast('Tarefa obrigatória', 'error');
+    const r = await post(`/api/eventos/${_eventoAtual}/checklist`, { fase: v('ci-fase'), categoria: v('ci-cat'), texto, sub_texto: v('ci-sub') });
+    if (!r.ok) return toast(r.error, 'error');
+    // Salva responsável/observações se preenchidos
+    if (v('ci-resp') || v('ci-obs')) await put(`/api/evento-checklist/${r.data.id}`, { responsavel: v('ci-resp'), observacoes: v('ci-obs') });
+    toast('Item adicionado!');
+    closeModal();
+    abrirEvento(_eventoAtual);
+  });
+}
+
+async function deleteCheckItem(id) {
+  if (!confirm('Remover este item?')) return;
+  await del(`/api/evento-checklist/${id}`);
+  abrirEvento(_eventoAtual);
 }
 
 // ─── PORTAL DO INCORPORADOR ───────────────────────────────────────────────────
