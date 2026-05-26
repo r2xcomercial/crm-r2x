@@ -4202,6 +4202,8 @@ function fmtMsgTs(ts) {
 
 function renderMensagensDebora(historico) {
   if (!historico || !historico.length) return `<div style="text-align:center;color:var(--text2);font-size:13px">Sem mensagens ainda</div>`;
+  // Log temporário para identificar campos de timestamp disponíveis
+  if (historico.length) console.log('[Débora] campos da mensagem:', Object.keys(historico[0]), historico[0]);
   let lastDate = null;
   return historico.map(m => {
     const isUser = m.role === 'user';
@@ -4210,12 +4212,14 @@ function renderMensagensDebora(historico) {
     const bg = isUser ? 'var(--navy3)' : isRamon ? 'rgba(245,158,11,.15)' : 'rgba(0,196,180,.12)';
     const label = isUser ? '👤 Lead' : isRamon ? '🙋 Ramon' : '🤖 Débora';
     const align = isUser ? 'flex-start' : 'flex-end';
-    const hora = m.ts ? fmtMsgTs(m.ts) : '';
+    // Tenta todos os campos de timestamp possíveis
+    const rawTs = m.ts ?? m.timestamp ?? m.time ?? m.created_at ?? m.createdAt ?? m.date ?? null;
+    const hora = rawTs ? fmtMsgTs(rawTs) : '';
 
     // Separador de data quando muda o dia
     let separador = '';
-    if (m.ts) {
-      const ms = m.ts < 1e12 ? m.ts * 1000 : m.ts;
+    if (rawTs) {
+      const ms = (typeof rawTs === 'number' && rawTs < 1e12) ? rawTs * 1000 : new Date(rawTs).getTime();
       const diaStr = new Date(ms).toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
       if (diaStr !== lastDate) {
         lastDate = diaStr;
