@@ -4187,7 +4187,10 @@ function renderChatDebora(dados) {
 
 function fmtMsgTs(ts) {
   if (!ts) return '';
-  const d = new Date(ts);
+  // API pode enviar em segundos (Unix) ou milissegundos — converte se necessário
+  const ms = ts < 1e12 ? ts * 1000 : ts;
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return '';
   const hoje = new Date();
   const ontem = new Date(hoje); ontem.setDate(hoje.getDate() - 1);
   const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -4212,7 +4215,8 @@ function renderMensagensDebora(historico) {
     // Separador de data quando muda o dia
     let separador = '';
     if (m.ts) {
-      const diaStr = new Date(m.ts).toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
+      const ms = m.ts < 1e12 ? m.ts * 1000 : m.ts;
+      const diaStr = new Date(ms).toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
       if (diaStr !== lastDate) {
         lastDate = diaStr;
         separador = `<div style="text-align:center;margin:12px 0 6px;font-size:11px;color:var(--text2);opacity:.7">${diaStr}</div>`;
