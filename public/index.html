@@ -4453,13 +4453,17 @@ async function abrirModalMidia(numero) {
 
 // Navega da lista de leads → painel Débora, abrindo a conversa desse telefone
 async function abrirDeboraParaLead(telefone) {
-  // Normaliza: remove não-dígitos e garante prefixo 55 sem duplicar
   let numero = telefone.replace(/\D/g, '');
   if (!numero.startsWith('55')) numero = '55' + numero;
-  navigate('debora');
-  // Aguarda renderDebora() + carregarConversasDebora() terminarem
-  await new Promise(r => setTimeout(r, 900));
-  abrirConversaDebora(numero);
+  // Atualiza UI de navegação sem chamar navigate() (que não awaita renderDebora)
+  currentPage = 'debora';
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.nav-item[onclick="navigate('debora')"]`)?.classList.add('active');
+  document.getElementById('page-title').textContent = 'Débora IA';
+  document.getElementById('add-btn').style.display = 'none';
+  // Aguarda o painel renderizar completamente antes de abrir a conversa
+  await renderDebora();
+  await abrirConversaDebora(numero);
 }
 
 // Navega do painel Débora → lista de leads filtrada pelo telefone

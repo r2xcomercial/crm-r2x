@@ -622,28 +622,27 @@ app.delete('/api/visitas/:id', (req, res) => {
 
 // Webhook para receber leads do chatbot WhatsApp
 app.post("/api/leads/whatsapp", (req, res) => {
-  const { telefone, nome, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, tipo, score, resumo } = req.body;
+  const { telefone, nome, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, tipo, score, resumo } = req.body;
   if (!telefone) return err(res, "Telefone obrigatório");
   const existente = db.prepare("SELECT id, status FROM leads WHERE telefone=?").get(telefone);
   if (existente) {
-    // Sobe status automaticamente se score melhorou
     let novoStatus = existente.status;
     if (score >= 60 && existente.status === 'novo') novoStatus = 'qualificado';
     db.prepare(`UPDATE leads SET
-      nome=COALESCE(?,nome), cidade=COALESCE(?,cidade), objetivo=COALESCE(?,objetivo),
+      nome=COALESCE(?,nome), email=COALESCE(?,email), cidade=COALESCE(?,cidade), objetivo=COALESCE(?,objetivo),
       faixa_investimento=COALESCE(?,faixa_investimento), prazo=COALESCE(?,prazo),
       empreendimento_interesse=COALESCE(?,empreendimento_interesse),
       tipo=COALESCE(?,tipo), score=COALESCE(?,score), resumo=COALESCE(?,resumo),
       status=?, atualizado_em=CURRENT_TIMESTAMP WHERE id=?`)
-      .run(nome||null, cidade||null, objetivo||null, faixa_investimento||null, prazo||null,
+      .run(nome||null, email||null, cidade||null, objetivo||null, faixa_investimento||null, prazo||null,
            empreendimento_interesse||null, tipo||null, score||null, resumo||null,
            novoStatus, existente.id);
     return ok(res, { id: existente.id, atualizado: true });
   }
   const r = db.prepare(`INSERT INTO leads
-    (nome,telefone,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,tipo,score,resumo,status,origem)
-    VALUES (?,?,?,?,?,?,?,?,?,?,'novo','whatsapp')`)
-    .run(nome, telefone, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, tipo||null, score||0, resumo||null);
+    (nome,email,telefone,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,tipo,score,resumo,status,origem)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,'novo','whatsapp')`)
+    .run(nome, email||null, telefone, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, tipo||null, score||0, resumo||null);
   ok(res, { id: r.lastInsertRowid, criado: true });
 });
 
