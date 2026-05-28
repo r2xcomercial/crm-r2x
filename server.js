@@ -1911,14 +1911,19 @@ app.post('/api/vendas/extrair-contrato', uploadContrato.single('contrato'), asyn
     const textoLimitado = texto.slice(0, 12000);
 
     const prompt = `Você é um assistente especializado em contratos imobiliários brasileiros.
-Leia o contrato abaixo e extraia as informações da venda no formato JSON.
+Leia o contrato abaixo e extraia todas as informações no formato JSON.
 
 Retorne APENAS um objeto JSON válido com estes campos (use null se não encontrar):
 {
   "comprador_nome": "nome completo do comprador/cliente",
+  "comprador_cpf": "CPF do comprador (apenas números ou formatado)",
+  "comprador_telefone": "telefone do comprador (apenas números, com DDD)",
+  "comprador_email": "email do comprador",
+  "comprador_cidade": "cidade do comprador",
+  "comprador_estado": "UF do comprador (2 letras)",
   "imovel": "identificação do imóvel (lote, quadra, unidade, bloco, apartamento etc)",
   "valor": número sem formatação (ex: 185000.00),
-  "data_venda": "data no formato YYYY-MM-DD",
+  "data_venda": "data de assinatura/venda no formato YYYY-MM-DD",
   "empreendimento": "nome do empreendimento/loteamento/condomínio",
   "corretor": "nome do corretor/intermediário se mencionado",
   "observacoes": "outras informações relevantes em até 2 linhas"
@@ -1929,7 +1934,7 @@ ${textoLimitado}`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4.1-mini',
-      max_tokens: 400,
+      max_tokens: 600,
       temperature: 0,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -1941,7 +1946,49 @@ ${textoLimitado}`;
     if (!jsonMatch) return err(res, 'IA não retornou dados estruturados');
 
     const dados = JSON.parse(jsonMatch[0]);
-    ok(res, dados);
+
+    // Tenta criar/atualizar lead automaticamente
+    let lead_id = null;
+    let lead_criado = false;
+    if (dados.comprador_nome || dados.comprador_telefone) {
+      const tel = dados.comprador_telefone ? dados.comprador_telefone.replace(/\D/g,'') : null;
+
+      // Busca lead existente pelo telefone ou nome
+      let leadExistente = null;
+      if (tel) leadExistente = db.prepare('SELECT id FROM leads WHERE telefone=?').get(tel);
+      if (!leadExistente && dados.comprador_nome) {
+        leadExistente = db.prepare('SELECT id FROM leads WHERE nome=? LIMIT 1').get(dados.comprador_nome);
+      }
+
+      if (leadExistente) {
+        lead_id = leadExistente.id;
+        // Atualiza campos vazios do lead existente
+        db.prepare(`UPDATE leads SET
+          nome = COALESCE(NULLIF(nome,''), ?),
+          telefone = COALESCE(NULLIF(telefone,''), ?),
+          email = COALESCE(NULLIF(email,''), ?),
+          cidade = COALESCE(NULLIF(cidade,''), ?),
+          cpf = COALESCE(NULLIF(cpf,''), ?),
+          status = CASE WHEN status='novo' THEN 'vendido' ELSE status END,
+          atualizado_em = datetime('now')
+          WHERE id=?`)
+          .run(dados.comprador_nome||null, tel, dados.comprador_email||null,
+               dados.comprador_cidade||null, dados.comprador_cpf||null, lead_id);
+      } else {
+        // Cria novo lead
+        const r2 = db.prepare(`INSERT INTO leads
+          (nome, telefone, email, cidade, cpf, status, origem, empreendimento_interesse, observacoes)
+          VALUES (?,?,?,?,?,'vendido','contrato',?,?)`)
+          .run(dados.comprador_nome||null, tel, dados.comprador_email||null,
+               dados.comprador_cidade||null, dados.comprador_cpf||null,
+               dados.empreendimento||null,
+               `Lead criado automaticamente via importação de contrato${dados.observacoes ? ': ' + dados.observacoes : ''}`);
+        lead_id = r2.lastInsertRowid;
+        lead_criado = true;
+      }
+    }
+
+    ok(res, { ...dados, lead_id, lead_criado });
 
   } catch(e) {
     console.error('[extrair-contrato]', e.message);

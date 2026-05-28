@@ -1333,7 +1333,7 @@ async function importarContrato(input) {
       if (match) corrSel.value = match.value;
     }
 
-    // Tenta encontrar cliente pelo nome do comprador
+    // Tenta encontrar cliente (incorporador) pelo nome do comprador
     if (d.comprador_nome) {
       const cliSel = document.getElementById('f-cliente');
       const opts = [...cliSel.options];
@@ -1341,9 +1341,34 @@ async function importarContrato(input) {
       if (match) cliSel.value = match.value;
     }
 
+    // Seleciona o lead criado/encontrado pela IA
+    let leadInfo = '';
+    if (d.lead_id) {
+      const leadSel = document.getElementById('f-lead');
+      // Verifica se o lead já está nas options
+      const existingOpt = [...leadSel.options].find(o => o.value == d.lead_id);
+      if (existingOpt) {
+        leadSel.value = d.lead_id;
+        toggleNovoLead(d.lead_id);
+        leadInfo = d.lead_criado
+          ? `<br>👤 <b>Novo lead criado:</b> ${existingOpt.text}`
+          : `<br>👤 <b>Lead vinculado:</b> ${existingOpt.text}`;
+      } else {
+        // Lead não está no select ainda — adiciona a option dinamicamente
+        const novaOpt = document.createElement('option');
+        novaOpt.value = d.lead_id;
+        novaOpt.text = d.comprador_nome || `Lead #${d.lead_id}`;
+        novaOpt.selected = true;
+        leadSel.appendChild(novaOpt);
+        toggleNovoLead(d.lead_id);
+        leadInfo = d.lead_criado
+          ? `<br>👤 <b>Novo lead criado:</b> ${novaOpt.text}`
+          : `<br>👤 <b>Lead vinculado:</b> ${novaOpt.text}`;
+      }
+    }
+
     // Resumo do que foi extraído
     const itens = [
-      d.comprador_nome && `👤 ${d.comprador_nome}`,
       d.empreendimento && `🏗️ ${d.empreendimento}`,
       d.imovel         && `🏠 ${d.imovel}`,
       d.valor          && `💰 R$ ${Number(d.valor).toLocaleString('pt-BR')}`,
@@ -1352,7 +1377,7 @@ async function importarContrato(input) {
 
     status.style.background = 'rgba(34,197,94,.08)';
     status.style.color = 'var(--success)';
-    status.innerHTML = `✅ Dados extraídos: ${itens.join(' · ')}<br><span style="font-size:11px;opacity:.7">Confira os campos e ajuste se necessário.</span>`;
+    status.innerHTML = `✅ Dados extraídos: ${itens.join(' · ')}${leadInfo}<br><span style="font-size:11px;opacity:.7">Confira os campos e ajuste se necessário.</span>`;
 
   } catch(e) {
     status.style.background = 'rgba(239,68,68,.08)';
@@ -2232,6 +2257,7 @@ async function renderFinanceiro(filter = '') {
       <button class="fin-tab ${finTab==='distribuicoes'?'active':''}" onclick="setFinTab('distribuicoes')">💸 Distribuição</button>
       <button class="fin-tab ${finTab==='resumo'?'active':''}" onclick="setFinTab('resumo')">📊 Por Empreendimento</button>
       <button class="fin-tab ${finTab==='comissoes'?'active':''}" onclick="setFinTab('comissoes')">💳 Comissões Corretores</button>
+      <button class="fin-tab ${finTab==='fluxo'?'active':''}" onclick="setFinTab('fluxo')">📅 Fluxo de Caixa</button>
     </div>
     <div id="fin-content"></div>
   `;
@@ -2240,7 +2266,7 @@ async function renderFinanceiro(filter = '') {
 
 function setFinTab(tab) {
   finTab = tab;
-  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss' };
+  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo' };
   document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(keys[tab]||'')));
   renderFinTab();
 }
@@ -2351,6 +2377,8 @@ function renderFinTab() {
           </table>
         </div>`;
     });
+  } else if (finTab === 'fluxo') {
+    renderFluxoCaixa(el);
   } else {
     // resumo por empreendimento
     const rows = (currentData.emp || []);
@@ -2377,6 +2405,157 @@ function renderFinTab() {
       }).join('') : '<tr class="empty-row"><td colspan="6">Nenhum empreendimento</td></tr>';
     });
   }
+}
+
+function renderFluxoCaixa(el) {
+  const entradas = currentData.entradas || [];
+  const saidas = currentData.saidas || [];
+  const emp = currentData.emp || [];
+
+  // Agrupa entradas por mês (data_prevista para pendentes, data_recebimento para recebidas)
+  const mesesMap = {};
+
+  const addMes = (mesKey, tipo, valor, status) => {
+    if (!mesesMap[mesKey]) mesesMap[mesKey] = { entradas_rec: 0, entradas_pend: 0, saidas_paga: 0, saidas_pend: 0 };
+    if (tipo === 'entrada') {
+      if (status === 'recebido') mesesMap[mesKey].entradas_rec += valor;
+      else mesesMap[mesKey].entradas_pend += valor;
+    } else {
+      if (status === 'pago') mesesMap[mesKey].saidas_paga += valor;
+      else mesesMap[mesKey].saidas_pend += valor;
+    }
+  };
+
+  entradas.forEach(e => {
+    const dt = e.status === 'recebido' ? (e.data_recebimento || e.data_prevista) : e.data_prevista;
+    if (!dt) return;
+    const mes = dt.slice(0, 7); // YYYY-MM
+    addMes(mes, 'entrada', e.valor, e.status);
+  });
+  saidas.forEach(s => {
+    const dt = s.data_pagamento;
+    if (!dt) return;
+    const mes = dt.slice(0, 7);
+    addMes(mes, 'saida', s.valor, s.status);
+  });
+
+  // Ordena os meses
+  const meses = Object.keys(mesesMap).sort();
+
+  // Determina range: de 6 meses atrás até 12 meses à frente do mês atual
+  const hoje = new Date();
+  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+  const rangeStart = new Date(hoje.getFullYear(), hoje.getMonth() - 6, 1);
+  const rangeEnd   = new Date(hoje.getFullYear(), hoje.getMonth() + 13, 1);
+
+  // Gera todos os meses do range
+  const allMeses = [];
+  let cur = new Date(rangeStart);
+  while (cur < rangeEnd) {
+    const k = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`;
+    allMeses.push(k);
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  // Adiciona meses com dados que estejam fora do range
+  meses.forEach(m => { if (!allMeses.includes(m)) allMeses.push(m); });
+  allMeses.sort();
+
+  const nomeMes = (ym) => {
+    const [y, m] = ym.split('-');
+    const nomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    return `${nomes[parseInt(m)-1]}/${y}`;
+  };
+
+  // Filtra por empreendimento se selecionado
+  const empFiltro = document.getElementById?.('fluxo-emp-filtro')?.value || '';
+
+  // Cálculo acumulado
+  let acumulado = 0;
+  const linhas = allMeses.map(mes => {
+    const d = mesesMap[mes] || { entradas_rec: 0, entradas_pend: 0, saidas_paga: 0, saidas_pend: 0 };
+    const liquido = (d.entradas_rec + d.entradas_pend) - (d.saidas_paga + d.saidas_pend);
+    acumulado += liquido;
+    const isAtual = mes === mesAtual;
+    const isPast = mes < mesAtual;
+    return { mes, ...d, liquido, acumulado, isAtual, isPast };
+  });
+
+  const totalRec = linhas.reduce((s,l) => s+l.entradas_rec, 0);
+  const totalPend = linhas.reduce((s,l) => s+l.entradas_pend, 0);
+  const totalSaidaPaga = linhas.reduce((s,l) => s+l.saidas_paga, 0);
+  const totalSaidaPend = linhas.reduce((s,l) => s+l.saidas_pend, 0);
+
+  el.innerHTML = `
+    <div class="kpi-grid" style="margin-bottom:16px">
+      ${kpi('📥', 'Entradas Recebidas', fmt(totalRec), 'total confirmado')}
+      ${kpi('⏳', 'Entradas Previstas', fmt(totalPend), 'a receber')}
+      ${kpi('📤', 'Saídas Pagas', fmt(totalSaidaPaga), 'total pago')}
+      ${kpi('🔮', 'Saídas Previstas', fmt(totalSaidaPend), 'a pagar')}
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">📅 Fluxo de Caixa Mensal</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:11px;color:var(--text2)">
+            <span style="color:var(--success)">■</span> Recebido
+            <span style="color:var(--warning);margin-left:8px">■</span> Previsto
+            <span style="color:var(--danger);margin-left:8px">■</span> Saída
+          </span>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="min-width:760px">
+          <thead>
+            <tr>
+              <th>Mês</th>
+              <th style="text-align:right;color:var(--success)">↑ Recebido</th>
+              <th style="text-align:right;color:var(--warning)">↑ Previsto</th>
+              <th style="text-align:right;color:var(--danger)">↓ Saídas Pagas</th>
+              <th style="text-align:right;color:var(--danger)">↓ Saídas Prev.</th>
+              <th style="text-align:right">Líquido</th>
+              <th style="text-align:right">Acumulado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linhas.map(l => {
+              const temDados = l.entradas_rec || l.entradas_pend || l.saidas_paga || l.saidas_pend;
+              if (!temDados && !l.isAtual) return '';
+              const bg = l.isAtual ? 'rgba(0,196,180,.07)' : '';
+              const fw = l.isAtual ? '600' : '400';
+              const liqColor = l.liquido >= 0 ? 'var(--success)' : 'var(--danger)';
+              const accColor = l.acumulado >= 0 ? 'var(--success)' : 'var(--danger)';
+              return `<tr style="background:${bg};font-weight:${fw}">
+                <td style="white-space:nowrap">${l.isAtual?'👉 ':''}${nomeMes(l.mes)}${l.isAtual?' <span style="font-size:10px;background:var(--accent);color:var(--navy);border-radius:4px;padding:1px 5px">hoje</span>':''}</td>
+                <td style="text-align:right;color:var(--success)">${l.entradas_rec?fmt(l.entradas_rec):'—'}</td>
+                <td style="text-align:right;color:var(--warning)">${l.entradas_pend?fmt(l.entradas_pend):'—'}</td>
+                <td style="text-align:right;color:var(--danger)">${l.saidas_paga?fmt(l.saidas_paga):'—'}</td>
+                <td style="text-align:right;color:var(--danger)">${l.saidas_pend?fmt(l.saidas_pend):'—'}</td>
+                <td style="text-align:right;font-weight:700;color:${liqColor}">${fmt(l.liquido)}</td>
+                <td style="text-align:right;font-weight:700;color:${accColor}">${fmt(l.acumulado)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="font-weight:700;border-top:2px solid var(--border)">
+              <td>TOTAL</td>
+              <td style="text-align:right;color:var(--success)">${fmt(totalRec)}</td>
+              <td style="text-align:right;color:var(--warning)">${fmt(totalPend)}</td>
+              <td style="text-align:right;color:var(--danger)">${fmt(totalSaidaPaga)}</td>
+              <td style="text-align:right;color:var(--danger)">${fmt(totalSaidaPend)}</td>
+              <td style="text-align:right"></td>
+              <td style="text-align:right;color:${(totalRec+totalPend-totalSaidaPaga-totalSaidaPend)>=0?'var(--success)':'var(--danger)'}">
+                ${fmt(totalRec+totalPend-totalSaidaPaga-totalSaidaPend)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div style="margin-top:12px;padding:10px 12px;background:var(--navy3);border-radius:8px;font-size:12px;color:var(--text2);line-height:1.7">
+        💡 <b>Como funciona:</b> Entradas com status <b>recebido</b> aparecem em verde pelo mês de recebimento.
+        Entradas <b>pendentes</b> aparecem em amarelo pela data prevista.
+        Use o ✅ nas Entradas para confirmar o recebimento — o fluxo atualiza em tempo real.
+      </div>
+    </div>`;
 }
 
 const TIPOS_ENTRADA = ['comissao_venda','fee_fixo_mensal','consultoria','bonus','outro'];
@@ -3998,7 +4177,7 @@ function handleAdd() {
     case 'clientes': openClienteModal(); break;
     case 'empreendimentos': openEmpModal(); break;
     case 'corretores': openCorretorModal(); break;
-    case 'financeiro': finTab==='entradas' ? openEntradaModal() : finTab==='saidas' ? openSaidaModal() : finTab==='distribuicoes' ? openDistModal() : openCalModal(); break;
+    case 'financeiro': finTab==='entradas' ? openEntradaModal() : finTab==='saidas' ? openSaidaModal() : finTab==='distribuicoes' ? openDistModal() : finTab==='fluxo' ? null : openCalModal(); break;
     case 'calendario': openCalModal(); break;
     case 'eventos': openEventoModal(); break;
   }
