@@ -198,6 +198,8 @@ const migrations = [
   "ALTER TABLE vendas ADD COLUMN comissao_corretor_pct REAL",
   "ALTER TABLE vendas ADD COLUMN comissao_corretor_valor REAL",
   "ALTER TABLE vendas ADD COLUMN comissao_corretor_status TEXT DEFAULT 'pendente'",
+  "ALTER TABLE vendas ADD COLUMN valor_entrada REAL",
+  "ALTER TABLE vendas ADD COLUMN entrada_parcelas TEXT",
 ];
 for (const sql of migrations) {
   try { db.exec(sql); } catch (_) { /* coluna já existe */ }

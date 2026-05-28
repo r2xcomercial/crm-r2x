@@ -998,12 +998,12 @@ app.delete("/api/corretor/clientes/:id", (req, res) => {
   ok(res, {});
 });
 
-// Helper: gera/atualiza entrada financeira de comissão de uma venda
+// Helper: gera/atualiza entradas financeiras de comissão de uma venda
 function sincronizarComissaoVenda(vendaId) {
   const v = db.prepare("SELECT * FROM vendas WHERE id=?").get(vendaId);
   if (!v) return null;
 
-  // Remove entrada antiga vinculada
+  // Remove entradas antigas vinculadas
   db.prepare("DELETE FROM financeiro_entradas WHERE venda_id=? AND tipo='comissao_venda'").run(vendaId);
 
   if (v.status === 'distrato' || !v.empreendimento_id) return null;
@@ -1012,22 +1012,62 @@ function sincronizarComissaoVenda(vendaId) {
 
   const comissao = parseFloat(((v.valor * emp.percentual_r2x) / 100).toFixed(2));
   const imovelDesc = v.imovel ? ` — ${v.imovel}` : '';
-  db.prepare(`INSERT INTO financeiro_entradas (empreendimento_id,venda_id,descricao,tipo,valor,data_prevista,status) VALUES (?,?,?,?,?,?,?)`).run(
-    v.empreendimento_id, vendaId,
-    `Comissão R2X ${emp.percentual_r2x}% — ${emp.nome}${imovelDesc}`,
-    'comissao_venda', comissao, v.data_venda, 'pendente'
-  );
+  const descBase = `Comissão R2X ${emp.percentual_r2x}% — ${emp.nome}${imovelDesc}`;
 
-  // Atualiza valores na venda também
+  // Tenta ler parcelas de entrada (JSON: [{data, valor}, ...])
+  let parcelas = null;
+  try { parcelas = v.entrada_parcelas ? JSON.parse(v.entrada_parcelas) : null; } catch(_) {}
+
+  if (parcelas && parcelas.length > 0) {
+    // Comissão parcelada — uma entrada financeira por parcela de entrada
+    const totalEntrada = parcelas.reduce((s, p) => s + (Number(p.valor) || 0), 0);
+    const n = parcelas.length;
+    let somaAlocada = 0;
+    parcelas.forEach((p, i) => {
+      const isUltima = i === n - 1;
+      const pesoValor = totalEntrada > 0 ? (Number(p.valor) / totalEntrada) : (1 / n);
+      // Última parcela leva o restante para evitar diferença de arredondamento
+      const valorParcela = isUltima
+        ? parseFloat((comissao - somaAlocada).toFixed(2))
+        : parseFloat((comissao * pesoValor).toFixed(2));
+      somaAlocada += valorParcela;
+      const desc = n > 1 ? `${descBase} (${i+1}/${n})` : descBase;
+      db.prepare(`INSERT INTO financeiro_entradas
+        (empreendimento_id,venda_id,descricao,tipo,valor,data_prevista,status,parcela_num,parcela_total)
+        VALUES (?,?,?,?,?,?,?,?,?)`)
+        .run(v.empreendimento_id, vendaId, desc, 'comissao_venda',
+             valorParcela, p.data || v.data_venda, 'pendente',
+             n > 1 ? i+1 : null, n > 1 ? n : null);
+    });
+  } else {
+    // Sem parcelas de entrada — entrada única na data da venda
+    db.prepare(`INSERT INTO financeiro_entradas
+      (empreendimento_id,venda_id,descricao,tipo,valor,data_prevista,status)
+      VALUES (?,?,?,?,?,?,?)`)
+      .run(v.empreendimento_id, vendaId, descBase, 'comissao_venda', comissao, v.data_venda, 'pendente');
+  }
+
+  // Atualiza valores calculados na venda
   db.prepare("UPDATE vendas SET percentual_r2x=?, comissao_r2x=? WHERE id=?").run(emp.percentual_r2x, comissao, vendaId);
   return comissao;
 }
 
 app.post("/api/vendas", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas } = req.body;
   if (!valor || !data_venda) return err(res, "Valor e data obrigatórios");
 
-  const r = db.prepare(`INSERT INTO vendas (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,valor,data_venda,observacoes,status,comissao_corretor_pct,comissao_corretor_valor,comissao_corretor_status) VALUES (?,?,?,?,?,?,?,?,?,'ativo',?,?,?)`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, valor, data_venda, observacoes, comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente');
+  // Serializa parcelas de entrada como JSON
+  const parcelasJson = entrada_parcelas && Array.isArray(entrada_parcelas) && entrada_parcelas.length > 0
+    ? JSON.stringify(entrada_parcelas) : null;
+
+  const r = db.prepare(`INSERT INTO vendas
+    (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,valor,data_venda,observacoes,status,
+     comissao_corretor_pct,comissao_corretor_valor,comissao_corretor_status,valor_entrada,entrada_parcelas)
+    VALUES (?,?,?,?,?,?,?,?,?,'ativo',?,?,?,?,?)`)
+    .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null,
+         valor, data_venda, observacoes,
+         comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente',
+         valor_entrada||null, parcelasJson);
 
   if (lead_id) db.prepare("UPDATE leads SET status='vendido' WHERE id=?").run(lead_id);
   if (unidade_id) db.prepare("UPDATE unidades SET status='vendido' WHERE id=?").run(unidade_id);
@@ -1039,10 +1079,23 @@ app.post("/api/vendas", (req, res) => {
 });
 
 app.put("/api/vendas/:id", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas } = req.body;
   const vendaAntiga = db.prepare("SELECT unidade_id, status FROM vendas WHERE id=?").get(req.params.id);
 
-  db.prepare(`UPDATE vendas SET lead_id=?,empreendimento_id=?,corretor_id=?,cliente_id=?,imovel=?,unidade_id=?,valor=?,data_venda=?,status=?,observacoes=?,comissao_corretor_pct=?,comissao_corretor_valor=?,comissao_corretor_status=? WHERE id=?`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, valor, data_venda, status, observacoes, comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente', req.params.id);
+  // Serializa parcelas de entrada como JSON
+  const parcelasJson = entrada_parcelas && Array.isArray(entrada_parcelas) && entrada_parcelas.length > 0
+    ? JSON.stringify(entrada_parcelas) : null;
+
+  db.prepare(`UPDATE vendas SET
+    lead_id=?,empreendimento_id=?,corretor_id=?,cliente_id=?,imovel=?,unidade_id=?,valor=?,data_venda=?,
+    status=?,observacoes=?,comissao_corretor_pct=?,comissao_corretor_valor=?,comissao_corretor_status=?,
+    valor_entrada=?,entrada_parcelas=?
+    WHERE id=?`)
+    .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null,
+         valor, data_venda, status, observacoes,
+         comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente',
+         valor_entrada||null, parcelasJson,
+         req.params.id);
 
   // Se mudou unidade, libera a anterior e marca a nova
   if (vendaAntiga?.unidade_id && vendaAntiga.unidade_id != unidade_id) {
@@ -1926,15 +1979,22 @@ Retorne APENAS um objeto JSON válido com estes campos (use null se não encontr
   "data_venda": "data de assinatura/venda no formato YYYY-MM-DD",
   "empreendimento": "nome do empreendimento/loteamento/condomínio",
   "corretor": "nome do corretor/intermediário se mencionado",
+  "valor_entrada": número sem formatação — valor total da entrada/ato/sinal (ex: 30000.00). Se não houver, null,
+  "entrada_parcelas": array de objetos com as parcelas da entrada. Cada objeto: {"data": "YYYY-MM-DD", "valor": número}. Se a entrada for à vista (pagamento único), array com um único objeto. Se parcelada, um objeto por parcela. Se não houver entrada mencionada, null,
   "observacoes": "outras informações relevantes em até 2 linhas"
 }
+
+IMPORTANTE sobre entrada_parcelas:
+- Procure por termos como: entrada, ato, sinal, parcelas de entrada, pagamento inicial, 1ª parcela, 2ª parcela etc.
+- Se encontrar datas de pagamento da entrada (mesmo que parcial), inclua todas no array.
+- Se encontrar apenas o valor total da entrada sem datas, coloque a data da assinatura como data da parcela.
 
 CONTRATO:
 ${textoLimitado}`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4.1-mini',
-      max_tokens: 600,
+      max_tokens: 900,
       temperature: 0,
       messages: [{ role: 'user', content: prompt }],
     });
