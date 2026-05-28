@@ -1182,6 +1182,18 @@ async function carregarUnidadesVenda(empId) {
 function openVendaModal(venda = {}) {
   const { vendas, corretores, emp, leads, clientes } = currentData;
   openModal(venda.id ? 'Editar Venda' : 'Nova Venda', `
+    ${!venda.id ? `
+    <div style="background:rgba(0,196,180,.07);border:1px solid rgba(0,196,180,.25);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--accent)">📄 Preencher a partir do contrato</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">Envie o PDF ou DOCX — a IA extrai os dados automaticamente</div>
+      </div>
+      <label style="cursor:pointer;background:var(--accent);color:var(--navy);border:none;border-radius:7px;padding:7px 16px;font-weight:700;font-size:13px;white-space:nowrap">
+        📂 Selecionar contrato
+        <input type="file" accept=".pdf,.docx" style="display:none" onchange="importarContrato(this)">
+      </label>
+    </div>
+    <div id="contrato-status" style="display:none;font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:7px;background:var(--navy3);color:var(--text2)"></div>` : ''}
     <div class="form-grid">
       <div class="form-group"><label>Data da Venda *</label><input id="f-data" type="date" value="${venda.data_venda||today()}"></div>
       <div class="form-group"><label>Status</label>
@@ -1275,6 +1287,80 @@ function openVendaModal(venda = {}) {
   if (venda.empreendimento_id) setTimeout(() => carregarUnidadesVenda(venda.empreendimento_id), 100);
 }
 async function editVenda(id) { openVendaModal(currentData.vendas.find(v => v.id === id)); }
+
+async function importarContrato(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const status = document.getElementById('contrato-status');
+  status.style.display = 'block';
+  status.style.background = 'var(--navy3)';
+  status.style.color = 'var(--text2)';
+  status.textContent = '⏳ Lendo contrato com IA... aguarde.';
+
+  try {
+    const fd = new FormData();
+    fd.append('contrato', file);
+    const resp = await fetch('/api/vendas/extrair-contrato', {
+      method: 'POST',
+      headers: { 'x-crm-token': TOKEN },
+      body: fd,
+    });
+    const r = await resp.json();
+    if (!r.ok) throw new Error(r.error || 'Erro ao processar');
+
+    const d = r.data;
+
+    // Preenche os campos do formulário
+    if (d.data_venda) document.getElementById('f-data').value = d.data_venda;
+    if (d.valor)      document.getElementById('f-valor').value = d.valor;
+    if (d.imovel)     document.getElementById('f-imovel').value = d.imovel;
+    if (d.observacoes) document.getElementById('f-obs').value = d.observacoes;
+
+    // Tenta encontrar empreendimento pelo nome
+    if (d.empreendimento) {
+      const empSel = document.getElementById('f-emp');
+      const opts = [...empSel.options];
+      const match = opts.find(o => o.text.toLowerCase().includes(d.empreendimento.toLowerCase()) ||
+                                    d.empreendimento.toLowerCase().includes(o.text.toLowerCase()));
+      if (match) { empSel.value = match.value; carregarUnidadesVenda(match.value); }
+    }
+
+    // Tenta encontrar corretor pelo nome
+    if (d.corretor) {
+      const corrSel = document.getElementById('f-corretor');
+      const opts = [...corrSel.options];
+      const match = opts.find(o => o.text.toLowerCase().includes(d.corretor.toLowerCase()));
+      if (match) corrSel.value = match.value;
+    }
+
+    // Tenta encontrar cliente pelo nome do comprador
+    if (d.comprador_nome) {
+      const cliSel = document.getElementById('f-cliente');
+      const opts = [...cliSel.options];
+      const match = opts.find(o => o.text.toLowerCase().includes(d.comprador_nome.toLowerCase()));
+      if (match) cliSel.value = match.value;
+    }
+
+    // Resumo do que foi extraído
+    const itens = [
+      d.comprador_nome && `👤 ${d.comprador_nome}`,
+      d.empreendimento && `🏗️ ${d.empreendimento}`,
+      d.imovel         && `🏠 ${d.imovel}`,
+      d.valor          && `💰 R$ ${Number(d.valor).toLocaleString('pt-BR')}`,
+      d.data_venda     && `📅 ${fmtDate(d.data_venda)}`,
+    ].filter(Boolean);
+
+    status.style.background = 'rgba(34,197,94,.08)';
+    status.style.color = 'var(--success)';
+    status.innerHTML = `✅ Dados extraídos: ${itens.join(' · ')}<br><span style="font-size:11px;opacity:.7">Confira os campos e ajuste se necessário.</span>`;
+
+  } catch(e) {
+    status.style.background = 'rgba(239,68,68,.08)';
+    status.style.color = 'var(--danger)';
+    status.textContent = '❌ ' + e.message;
+  }
+  input.value = '';
+}
 async function deleteVenda(id) { if(!confirm('Excluir esta venda?')) return; await del(`/api/vendas/${id}`); toast('Venda excluída'); renderVendas(); }
 
 // ─── CLIENTES ────────────────────────────────────────────────────────────────

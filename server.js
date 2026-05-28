@@ -9,6 +9,10 @@ const PizZip = require("pizzip");
 const Docxtemplater = require("docxtemplater");
 const crypto = require("crypto");
 const db = require("./database");
+const OpenAI = require("openai");
+const pdfParse = require("pdf-parse");
+
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }); // 8 MB máx
 
@@ -1866,6 +1870,83 @@ app.get('/api/incorporador/painel', (req, res) => {
     kpis: { totalUnidades, totalVendidas, totalReservadas, vgvTotal, vgvVendido,
             totalEmpreendimentos: empreendimentos.length }
   });
+});
+
+// ─── EXTRAÇÃO DE CONTRATO COM IA ─────────────────────────────────────────────
+
+const uploadContrato = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+async function extrairTextoDocx(buffer) {
+  const zip = new PizZip(buffer);
+  const xml = zip.file('word/document.xml')?.asText() || '';
+  // Remove tags XML e preserva quebras de parágrafo
+  return xml
+    .replace(/<w:p[ >]/g, '\n<w:p>')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+app.post('/api/vendas/extrair-contrato', uploadContrato.single('contrato'), async (req, res) => {
+  if (!req.file) return err(res, 'Arquivo não enviado');
+  if (!openai) return err(res, 'Chave OpenAI não configurada no servidor');
+
+  try {
+    let texto = '';
+    const mime = req.file.mimetype;
+    const nome = req.file.originalname.toLowerCase();
+
+    if (mime === 'application/pdf' || nome.endsWith('.pdf')) {
+      const parsed = await pdfParse(req.file.buffer);
+      texto = parsed.text;
+    } else if (nome.endsWith('.docx') || mime.includes('wordprocessingml')) {
+      texto = await extrairTextoDocx(req.file.buffer);
+    } else {
+      return err(res, 'Formato não suportado. Envie PDF ou DOCX.');
+    }
+
+    if (!texto || texto.length < 50) return err(res, 'Não foi possível extrair texto do arquivo');
+
+    // Limita o texto para não exceder o contexto (aprox. 12k chars)
+    const textoLimitado = texto.slice(0, 12000);
+
+    const prompt = `Você é um assistente especializado em contratos imobiliários brasileiros.
+Leia o contrato abaixo e extraia as informações da venda no formato JSON.
+
+Retorne APENAS um objeto JSON válido com estes campos (use null se não encontrar):
+{
+  "comprador_nome": "nome completo do comprador/cliente",
+  "imovel": "identificação do imóvel (lote, quadra, unidade, bloco, apartamento etc)",
+  "valor": número sem formatação (ex: 185000.00),
+  "data_venda": "data no formato YYYY-MM-DD",
+  "empreendimento": "nome do empreendimento/loteamento/condomínio",
+  "corretor": "nome do corretor/intermediário se mencionado",
+  "observacoes": "outras informações relevantes em até 2 linhas"
+}
+
+CONTRATO:
+${textoLimitado}`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4.1-mini',
+      max_tokens: 400,
+      temperature: 0,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const resposta = completion.choices[0].message.content.trim();
+
+    // Extrai o JSON da resposta
+    const jsonMatch = resposta.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return err(res, 'IA não retornou dados estruturados');
+
+    const dados = JSON.parse(jsonMatch[0]);
+    ok(res, dados);
+
+  } catch(e) {
+    console.error('[extrair-contrato]', e.message);
+    err(res, 'Erro ao processar contrato: ' + e.message);
+  }
 });
 
 // ─── WEBHOOK — CAPTURA DE LEADS DE PORTAIS ────────────────────────────────────
