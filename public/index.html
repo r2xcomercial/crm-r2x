@@ -2578,21 +2578,21 @@ function openEntradaModal(e = {}) {
       </div>
       <div class="form-group"><label>Data Prevista</label><input id="f-prev" type="date" value="${e.data_prevista||''}"></div>
       <div class="form-group"><label>Data Recebimento</label><input id="f-rec" type="date" value="${e.data_recebimento||''}"></div>
-      ${isNew ? `
       <div class="form-group span2" style="background:var(--navy3);border-radius:8px;padding:12px">
         <label style="margin-bottom:8px;display:block">📆 Parcelamento (opcional)</label>
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
           <label style="font-size:13px;display:flex;align-items:center;gap:6px">
             <input type="checkbox" id="f-parcelar" onchange="toggleParcelamento(this.checked)"> Parcelar recebimento
           </label>
-          <div id="parcela-fields" style="display:none;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div id="parcela-fields" style="display:none;gap:8px;align-items:center;flex-wrap:wrap">
             <label style="font-size:13px">Nº de parcelas:</label>
-            <input id="f-nparcelas" type="number" min="2" max="60" value="2" style="width:70px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1)">
+            <input id="f-nparcelas" type="number" min="2" max="60" value="${e.parcela_total||2}" style="width:70px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1)">
             <label style="font-size:13px">1ª parcela em:</label>
-            <input id="f-data-ini" type="date" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1)">
+            <input id="f-data-ini" type="date" value="${e.data_prevista||''}" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1)">
           </div>
         </div>
-      </div>` : ''}
+        ${!isNew ? `<div style="font-size:11px;color:var(--warning);margin-top:8px">⚠️ Ao parcelar uma entrada existente, ela será substituída pelas novas parcelas.</div>` : ''}
+      </div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${e.observacoes||''}</textarea></div>
     </div>
   `, async () => {
@@ -2600,16 +2600,20 @@ function openEntradaModal(e = {}) {
     if (!body.descricao || !body.valor) return toast('Descrição e valor obrigatórios', 'error');
 
     const parcelar = document.getElementById('f-parcelar')?.checked;
-    if (isNew && parcelar) {
+    if (parcelar) {
       const n = parseInt(document.getElementById('f-nparcelas')?.value) || 2;
       const dataIni = document.getElementById('f-data-ini')?.value;
       if (!dataIni) return toast('Informe a data da 1ª parcela', 'error');
+      if (n < 2) return toast('Mínimo de 2 parcelas', 'error');
+      // Se é edição, remove a entrada original antes de criar as parcelas
+      if (!isNew && e.id) await del(`/api/financeiro/entradas/${e.id}`);
+      const descBase = body.descricao.replace(/\s*\(\d+\/\d+\)$/, ''); // remove "(X/Y)" se já tinha
       const valorParcela = parseFloat((body.valor / n).toFixed(2));
       for (let i = 0; i < n; i++) {
         const d = new Date(dataIni + 'T12:00:00');
         d.setMonth(d.getMonth() + i);
         const dataStr = d.toISOString().slice(0,10);
-        await post('/api/financeiro/entradas', { ...body, valor: valorParcela, data_prevista: dataStr, parcela_num: i+1, parcela_total: n, descricao: `${body.descricao} (${i+1}/${n})` });
+        await post('/api/financeiro/entradas', { ...body, valor: valorParcela, data_prevista: dataStr, status: 'pendente', data_recebimento: null, parcela_num: i+1, parcela_total: n, descricao: `${descBase} (${i+1}/${n})` });
       }
       toast(`${n} parcelas criadas!`); closeModal(); renderFinanceiro(); return;
     }
