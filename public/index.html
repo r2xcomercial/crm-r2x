@@ -237,9 +237,9 @@
   .kanban-card .kc-move button:hover { background: var(--accent); color: var(--navy); border-color: var(--accent); }
 
   /* ── PAINEL ── */
-  .painel-big { font-size: clamp(36px, 6vw, 72px); font-weight: 900; line-height: 1; }
-  .painel-label { font-size: 13px; color: var(--text2); margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
-  .painel-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px 28px; text-align: center; }
+  .painel-big { font-size: clamp(24px, 3.5vw, 48px); font-weight: 900; line-height: 1.1; word-break: break-word; overflow-wrap: break-word; }
+  .painel-label { font-size: 13px; color: var(--text2); margin-top: 6px; text-transform: uppercase; letter-spacing: .5px; }
+  .painel-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px 20px; text-align: center; min-width: 0; overflow: hidden; }
   .painel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 16px; margin-bottom: 24px; }
   .vso-gauge { position: relative; width: 120px; height: 120px; margin: 0 auto; }
   .vso-gauge svg { transform: rotate(-90deg); }
