@@ -4369,7 +4369,11 @@ function deboraApi(method, path, body) {
     method,
     headers: { 'Content-Type': 'application/json', 'X-Painel-Token': PAINEL_TOKEN },
     body: body ? JSON.stringify(body) : undefined,
-  }).then(r => r.json());
+  }).then(async r => {
+    const data = await r.json();
+    if (!r.ok) throw Object.assign(new Error(data.erro || `HTTP ${r.status}`), { status: r.status, data });
+    return data;
+  });
 }
 
 function fmtTel(n) {
@@ -4437,7 +4441,12 @@ async function carregarConversasDebora() {
     }
   } catch(e) {
     const el = document.getElementById('deb-conversas-lista');
-    if (el) el.innerHTML = `<div style="color:var(--danger);padding:16px;font-size:12px">Erro ao conectar com a Débora</div>`;
+    if (el) el.innerHTML = `
+      <div style="padding:20px;text-align:center">
+        <div style="color:var(--danger);font-size:12px;margin-bottom:8px">⚠️ Erro ao conectar com a Débora</div>
+        <div style="font-size:11px;color:var(--text2)">${e.message || 'Serviço indisponível'}</div>
+        <button onclick="carregarConversasDebora()" style="margin-top:10px;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:11px">↺ Tentar novamente</button>
+      </div>`;
   }
 }
 
@@ -4498,7 +4507,16 @@ async function abrirConversaDebora(numero) {
     const r = await deboraApi('GET', `/painel/conversa/${numero}`);
     renderChatDebora(r);
   } catch(e) {
-    area.innerHTML = `<div style="color:var(--danger);padding:24px">Erro: ${e.message}</div>`;
+    if (e.status === 404) {
+      area.innerHTML = `
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--text2);padding:40px;text-align:center">
+          <div style="font-size:32px">💬</div>
+          <div style="font-weight:600;color:var(--text)">Conversa não encontrada</div>
+          <div style="font-size:12px;max-width:280px;line-height:1.6">Este lead ainda não iniciou conversa com a Débora, ou o histórico foi resetado.</div>
+        </div>`;
+    } else {
+      area.innerHTML = `<div style="color:var(--danger);padding:24px;font-size:13px">⚠️ Erro ao carregar conversa: ${e.message}</div>`;
+    }
   }
 }
 
