@@ -1201,12 +1201,13 @@ async function carregarUnidadesVenda(empId) {
 
   // Atualiza preview de comissão quando muda empreendimento
   const emp = (currentData.emp||[]).find(e => e.id == empId);
-  if (emp?.percentual_r2x && infoComissao) {
-    infoComissao.textContent = `% R2X: ${emp.percentual_r2x}% — comissão calculada automaticamente ao salvar`;
-    infoComissao.style.color = 'var(--accent)';
-  } else if (infoComissao) {
-    infoComissao.textContent = 'Este empreendimento não tem % R2X configurado.';
-    infoComissao.style.color = 'var(--text2)';
+  const pctInput = document.getElementById('f-pct-r2x');
+  if (emp?.percentual_r2x) {
+    if (infoComissao) { infoComissao.textContent = `Padrão do empreendimento: ${emp.percentual_r2x}%. Edite o campo ao lado para negociar um % diferente nesta venda.`; infoComissao.style.color = 'var(--text2)'; }
+    // Só preenche automaticamente se o campo estiver vazio (não sobrescreve edição manual)
+    if (pctInput && !pctInput.value) pctInput.value = emp.percentual_r2x;
+  } else {
+    if (infoComissao) { infoComissao.textContent = 'Empreendimento sem % R2X configurado.'; infoComissao.style.color = 'var(--warning)'; }
   }
 }
 
@@ -1238,8 +1239,16 @@ function openVendaModal(venda = {}) {
       </div>
       <div class="form-group"><label>Valor (R$) *</label><input id="f-valor" type="number" value="${venda.valor||''}" placeholder="350000" oninput="calcComissaoCorretor()"></div>
       <div class="form-group"><label>Imóvel (descrição)</label><input id="f-imovel" value="${venda.imovel||''}" placeholder="Lote 42 - Quadra 5"></div>
-      <div class="form-group span2" style="font-size:12px;padding:8px 12px;background:var(--navy3);border-radius:6px">
-        <span id="info-comissao" style="color:var(--text2)">Selecione o empreendimento para ver o % R2X</span>
+      <div class="form-group span2" style="background:var(--navy3);border-radius:6px;padding:10px 14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <span id="info-comissao" style="font-size:12px;color:var(--text2);flex:1">Selecione o empreendimento para ver o % R2X</span>
+        <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:8px;white-space:nowrap">
+          % Comissão R2X:
+          <input id="f-pct-r2x" type="number" step="0.01" min="0" max="100"
+            value="${venda.percentual_r2x||''}"
+            placeholder="auto"
+            style="width:80px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--accent);font-size:13px;font-weight:700"
+            title="Pré-preenchido com o % do empreendimento. Edite para negociar um valor diferente nesta venda.">
+        </label>
       </div>
 
       <!-- Seção de Entrada -->
@@ -1344,6 +1353,7 @@ function openVendaModal(venda = {}) {
       valor: parseFloat(row.querySelector('.ep-valor')?.value) || 0
     })).filter(p => p.data && p.valor > 0);
 
+    const pctR2xCustom = parseFloat(document.getElementById('f-pct-r2x')?.value) || null;
     const body = {
       data_venda: v('f-data'), valor, imovel: v('f-imovel'), status: v('f-status'),
       lead_id: leadId, corretor_id: v('f-corretor')||null,
@@ -1352,7 +1362,8 @@ function openVendaModal(venda = {}) {
       comissao_corretor_pct: comPct, comissao_corretor_valor: comValor,
       comissao_corretor_status: comPct ? (v('f-com-status')||'pendente') : null,
       valor_entrada: valorEntrada,
-      entrada_parcelas: entradaParcelas.length > 0 ? entradaParcelas : null
+      entrada_parcelas: entradaParcelas.length > 0 ? entradaParcelas : null,
+      percentual_r2x_override: pctR2xCustom
     };
     if (!body.valor || !body.data_venda) return toast('Valor e data são obrigatórios', 'error');
     const r = venda.id ? await put(`/api/vendas/${venda.id}`, body) : await post('/api/vendas', body);

@@ -1008,11 +1008,15 @@ function sincronizarComissaoVenda(vendaId) {
 
   if (v.status === 'distrato' || !v.empreendimento_id) return null;
   const emp = db.prepare("SELECT percentual_r2x, nome FROM empreendimentos WHERE id=?").get(v.empreendimento_id);
-  if (!emp?.percentual_r2x) return null;
 
-  const comissao = parseFloat(((v.valor * emp.percentual_r2x) / 100).toFixed(2));
+  // Usa override da venda se informado, senão usa % padrão do empreendimento
+  const pctUsado = v.percentual_r2x_override ?? emp?.percentual_r2x;
+  if (!pctUsado) return null;
+
+  const comissao = parseFloat(((v.valor * pctUsado) / 100).toFixed(2));
   const imovelDesc = v.imovel ? ` — ${v.imovel}` : '';
-  const descBase = `Comissão R2X ${emp.percentual_r2x}% — ${emp.nome}${imovelDesc}`;
+  const overrideLabel = v.percentual_r2x_override ? ` (negociado)` : '';
+  const descBase = `Comissão R2X ${pctUsado}%${overrideLabel} — ${emp.nome}${imovelDesc}`;
 
   // Tenta ler parcelas de entrada (JSON: [{data, valor}, ...])
   let parcelas = null;
@@ -1047,13 +1051,13 @@ function sincronizarComissaoVenda(vendaId) {
       .run(v.empreendimento_id, vendaId, descBase, 'comissao_venda', comissao, v.data_venda, 'pendente');
   }
 
-  // Atualiza valores calculados na venda
-  db.prepare("UPDATE vendas SET percentual_r2x=?, comissao_r2x=? WHERE id=?").run(emp.percentual_r2x, comissao, vendaId);
+  // Atualiza valores calculados na venda (salva o % efetivamente usado)
+  db.prepare("UPDATE vendas SET percentual_r2x=?, comissao_r2x=? WHERE id=?").run(pctUsado, comissao, vendaId);
   return comissao;
 }
 
 app.post("/api/vendas", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, percentual_r2x_override } = req.body;
   if (!valor || !data_venda) return err(res, "Valor e data obrigatórios");
 
   // Serializa parcelas de entrada como JSON
@@ -1062,12 +1066,12 @@ app.post("/api/vendas", (req, res) => {
 
   const r = db.prepare(`INSERT INTO vendas
     (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,valor,data_venda,observacoes,status,
-     comissao_corretor_pct,comissao_corretor_valor,comissao_corretor_status,valor_entrada,entrada_parcelas)
-    VALUES (?,?,?,?,?,?,?,?,?,'ativo',?,?,?,?,?)`)
+     comissao_corretor_pct,comissao_corretor_valor,comissao_corretor_status,valor_entrada,entrada_parcelas,percentual_r2x_override)
+    VALUES (?,?,?,?,?,?,?,?,?,'ativo',?,?,?,?,?,?)`)
     .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null,
          valor, data_venda, observacoes,
          comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente',
-         valor_entrada||null, parcelasJson);
+         valor_entrada||null, parcelasJson, percentual_r2x_override||null);
 
   if (lead_id) db.prepare("UPDATE leads SET status='vendido' WHERE id=?").run(lead_id);
   if (unidade_id) db.prepare("UPDATE unidades SET status='vendido' WHERE id=?").run(unidade_id);
@@ -1079,7 +1083,7 @@ app.post("/api/vendas", (req, res) => {
 });
 
 app.put("/api/vendas/:id", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, percentual_r2x_override } = req.body;
   const vendaAntiga = db.prepare("SELECT unidade_id, status FROM vendas WHERE id=?").get(req.params.id);
 
   // Serializa parcelas de entrada como JSON
@@ -1089,12 +1093,12 @@ app.put("/api/vendas/:id", (req, res) => {
   db.prepare(`UPDATE vendas SET
     lead_id=?,empreendimento_id=?,corretor_id=?,cliente_id=?,imovel=?,unidade_id=?,valor=?,data_venda=?,
     status=?,observacoes=?,comissao_corretor_pct=?,comissao_corretor_valor=?,comissao_corretor_status=?,
-    valor_entrada=?,entrada_parcelas=?
+    valor_entrada=?,entrada_parcelas=?,percentual_r2x_override=?
     WHERE id=?`)
     .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null,
          valor, data_venda, status, observacoes,
          comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente',
-         valor_entrada||null, parcelasJson,
+         valor_entrada||null, parcelasJson, percentual_r2x_override||null,
          req.params.id);
 
   // Se mudou unidade, libera a anterior e marca a nova
