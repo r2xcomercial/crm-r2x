@@ -1416,9 +1416,39 @@ async function importarContrato(input) {
     if (d.empreendimento) {
       const empSel = document.getElementById('f-emp');
       const opts = [...empSel.options];
-      const match = opts.find(o => o.text.toLowerCase().includes(d.empreendimento.toLowerCase()) ||
-                                    d.empreendimento.toLowerCase().includes(o.text.toLowerCase()));
-      if (match) { empSel.value = match.value; carregarUnidadesVenda(match.value); }
+      const empMatch = opts.find(o => o.text.toLowerCase().includes(d.empreendimento.toLowerCase()) ||
+                                      d.empreendimento.toLowerCase().includes(o.text.toLowerCase()));
+      if (empMatch) {
+        empSel.value = empMatch.value;
+        // Aguarda carregar as unidades antes de tentar selecionar a correta
+        await carregarUnidadesVenda(empMatch.value);
+
+        // Preenche incorporador automaticamente via empreendimento (não via nome do comprador)
+        const empData = (currentData.emp||[]).find(e => e.id == empMatch.value);
+        if (empData?.cliente_id) {
+          const cliSel = document.getElementById('f-cliente');
+          if (cliSel) cliSel.value = empData.cliente_id;
+        }
+
+        // Tenta selecionar a unidade pelo imovel extraído (ex: "Lote 42 Quadra 5")
+        if (d.imovel) {
+          const unidSel = document.getElementById('f-unidade');
+          if (unidSel) {
+            // Extrai números do imovel extraído para comparação
+            const nums = (d.imovel.match(/\d+/g) || []);
+            if (nums.length > 0) {
+              const unidMatch = [...unidSel.options].find(o => {
+                const label = (o.dataset.label || o.text).toLowerCase();
+                return nums.every(n => label.includes(n));
+              });
+              if (unidMatch) {
+                unidSel.value = unidMatch.value;
+                preencherUnidade(unidSel);
+              }
+            }
+          }
+        }
+      }
     }
 
     // Tenta encontrar corretor pelo nome
@@ -1427,14 +1457,6 @@ async function importarContrato(input) {
       const opts = [...corrSel.options];
       const match = opts.find(o => o.text.toLowerCase().includes(d.corretor.toLowerCase()));
       if (match) corrSel.value = match.value;
-    }
-
-    // Tenta encontrar cliente (incorporador) pelo nome do comprador
-    if (d.comprador_nome) {
-      const cliSel = document.getElementById('f-cliente');
-      const opts = [...cliSel.options];
-      const match = opts.find(o => o.text.toLowerCase().includes(d.comprador_nome.toLowerCase()));
-      if (match) cliSel.value = match.value;
     }
 
     // Seleciona o lead criado/encontrado pela IA
