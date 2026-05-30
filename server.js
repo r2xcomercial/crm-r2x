@@ -1931,7 +1931,19 @@ app.get('/api/incorporador/painel', (req, res) => {
 
 // ─── EXTRAÇÃO DE CONTRATO COM IA ─────────────────────────────────────────────
 
-const uploadContrato = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+const IMAGENS_ACEITAS = ['image/jpeg','image/jpg','image/png','image/webp','image/heic','image/heif','image/gif'];
+const uploadContrato = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = ['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+      .concat(IMAGENS_ACEITAS)
+      .includes(file.mimetype) ||
+      file.originalname.toLowerCase().endsWith('.pdf') ||
+      file.originalname.toLowerCase().endsWith('.docx');
+    cb(null, ok);
+  }
+});
 
 async function extrairTextoDocx(buffer) {
   const zip = new PizZip(buffer);
@@ -1949,26 +1961,13 @@ app.post('/api/vendas/extrair-contrato', uploadContrato.single('contrato'), asyn
   if (!openai) return err(res, 'Chave OpenAI não configurada no servidor');
 
   try {
-    let texto = '';
     const mime = req.file.mimetype;
     const nome = req.file.originalname.toLowerCase();
+    const ehImagem = IMAGENS_ACEITAS.includes(mime) ||
+      ['.jpg','.jpeg','.png','.webp','.heic','.heif','.gif'].some(ext => nome.endsWith(ext));
 
-    if (mime === 'application/pdf' || nome.endsWith('.pdf')) {
-      const parsed = await pdfParse(req.file.buffer);
-      texto = parsed.text;
-    } else if (nome.endsWith('.docx') || mime.includes('wordprocessingml')) {
-      texto = await extrairTextoDocx(req.file.buffer);
-    } else {
-      return err(res, 'Formato não suportado. Envie PDF ou DOCX.');
-    }
-
-    if (!texto || texto.length < 50) return err(res, 'Não foi possível extrair texto do arquivo');
-
-    // Limita o texto para não exceder o contexto (aprox. 12k chars)
-    const textoLimitado = texto.slice(0, 12000);
-
-    const prompt = `Você é um assistente especializado em contratos imobiliários brasileiros.
-Leia o contrato abaixo e extraia todas as informações no formato JSON.
+    const promptSistema = `Você é um assistente especializado em contratos imobiliários brasileiros.
+Leia o documento e extraia todas as informações no formato JSON.
 
 Retorne APENAS um objeto JSON válido com estes campos (use null se não encontrar):
 {
@@ -1984,24 +1983,53 @@ Retorne APENAS um objeto JSON válido com estes campos (use null se não encontr
   "empreendimento": "nome do empreendimento/loteamento/condomínio",
   "corretor": "nome do corretor/intermediário se mencionado",
   "valor_entrada": número sem formatação — valor total da entrada/ato/sinal (ex: 30000.00). Se não houver, null,
-  "entrada_parcelas": array de objetos com as parcelas da entrada. Cada objeto: {"data": "YYYY-MM-DD", "valor": número}. Se a entrada for à vista (pagamento único), array com um único objeto. Se parcelada, um objeto por parcela. Se não houver entrada mencionada, null,
+  "entrada_parcelas": array de objetos com as parcelas da entrada. Cada objeto: {"data": "YYYY-MM-DD", "valor": número}. Se a entrada for à vista, array com um único objeto. Se parcelada, um objeto por parcela. Se não houver entrada, null,
   "observacoes": "outras informações relevantes em até 2 linhas"
 }
 
 IMPORTANTE sobre entrada_parcelas:
 - Procure por termos como: entrada, ato, sinal, parcelas de entrada, pagamento inicial, 1ª parcela, 2ª parcela etc.
-- Se encontrar datas de pagamento da entrada (mesmo que parcial), inclua todas no array.
-- Se encontrar apenas o valor total da entrada sem datas, coloque a data da assinatura como data da parcela.
+- Se encontrar datas de pagamento da entrada, inclua todas no array.
+- Se encontrar apenas o valor total sem datas, use a data da assinatura como data da parcela.`;
 
-CONTRATO:
-${textoLimitado}`;
+    let completion;
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4.1-mini',
-      max_tokens: 900,
-      temperature: 0,
-      messages: [{ role: 'user', content: prompt }],
-    });
+    if (ehImagem) {
+      // Visão direta: envia a imagem para GPT-4o que lê o texto visualmente
+      const mimeReal = mime.startsWith('image/') ? mime : 'image/jpeg';
+      const b64 = req.file.buffer.toString('base64');
+      completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        max_tokens: 1200,
+        temperature: 0,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: promptSistema },
+            { type: 'image_url', image_url: { url: `data:${mimeReal};base64,${b64}`, detail: 'high' } }
+          ]
+        }],
+      });
+    } else {
+      // Texto: extrai do PDF ou DOCX e envia como texto
+      let texto = '';
+      if (mime === 'application/pdf' || nome.endsWith('.pdf')) {
+        const parsed = await pdfParse(req.file.buffer);
+        texto = parsed.text;
+      } else if (nome.endsWith('.docx') || mime.includes('wordprocessingml')) {
+        texto = await extrairTextoDocx(req.file.buffer);
+      } else {
+        return err(res, 'Formato não suportado. Envie PDF, DOCX ou imagem (JPG, PNG, WEBP, HEIC).');
+      }
+      if (!texto || texto.length < 50) return err(res, 'Não foi possível extrair texto do arquivo');
+      const textoLimitado = texto.slice(0, 12000);
+      completion = await openai.chat.completions.create({
+        model: 'gpt-4.1-mini',
+        max_tokens: 1000,
+        temperature: 0,
+        messages: [{ role: 'user', content: `${promptSistema}\n\nCONTRATO:\n${textoLimitado}` }],
+      });
+    }
 
     const resposta = completion.choices[0].message.content.trim();
 
