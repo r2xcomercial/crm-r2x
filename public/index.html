@@ -2426,7 +2426,10 @@ function renderFinTab() {
           <tbody>
             ${rows.length ? rows.map(e => `
               <tr>
-                <td>${e.descricao}${e.parcela_num?` <span style="font-size:11px;color:var(--text2)">(${e.parcela_num}/${e.parcela_total})</span>`:''}</td>
+                <td>
+                  ${e.descricao}${e.parcela_num?` <span style="font-size:11px;color:var(--text2)">(${e.parcela_num}/${e.parcela_total})</span>`:''}
+                  ${(e.tem_nf_propria===0||e.tem_nf_propria==='0')?`<span title="Sem NF própria — não computa em impostos" style="font-size:10px;background:#7c3aed22;color:#a78bfa;border:1px solid #7c3aed44;border-radius:4px;padding:1px 5px;margin-left:4px">sem NF</span>`:(e.nf_numero?`<span title="NF ${e.nf_numero}${e.nf_data?' de '+fmtDate(e.nf_data):''}" style="font-size:10px;background:#15803d22;color:#4ade80;border:1px solid #15803d44;border-radius:4px;padding:1px 5px;margin-left:4px">NF ${e.nf_numero}</span>`:'')}
+                </td>
                 <td>${e.tipo||'—'}</td>
                 <td>${e.empreendimento_nome||'Institucional'}</td>
                 <td style="color:var(--success);font-weight:600">${fmt(e.valor)}</td>
@@ -3127,9 +3130,32 @@ function openEntradaModal(e = {}) {
         ${!isNew ? `<div style="font-size:11px;color:var(--warning);margin-top:8px">⚠️ Ao parcelar uma entrada existente, ela será substituída pelas novas parcelas.</div>` : ''}
       </div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${e.observacoes||''}</textarea></div>
+      <div class="form-group span2" style="background:var(--navy3);border-radius:8px;padding:12px">
+        <label style="margin-bottom:10px;display:block;font-weight:600">🧾 Nota Fiscal</label>
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="f-nf-propria" ${(e.tem_nf_propria===0||e.tem_nf_propria==='0')?'':'checked'} onchange="toggleNFPropria(this.checked)">
+            <span>Emiti NF própria (inclui no cálculo de impostos)</span>
+          </label>
+        </div>
+        <div id="nf-fields" style="display:flex;gap:12px;flex-wrap:wrap;${(e.tem_nf_propria===0||e.tem_nf_propria==='0')?'display:none':''}" >
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:12px;color:var(--text2)">Número da NF</label>
+            <input id="f-nf-num" value="${e.nf_numero||''}" placeholder="Ex: 000123" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);width:120px">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label style="font-size:12px;color:var(--text2)">Data de emissão</label>
+            <input id="f-nf-data" type="date" value="${e.nf_data||''}" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1)">
+          </div>
+        </div>
+        <div id="nf-sem-aviso" style="font-size:12px;color:var(--warning);margin-top:6px;${(e.tem_nf_propria===0||e.tem_nf_propria==='0')?'':'display:none'}">
+          ⚠️ Sem NF própria — esta entrada não será computada nos impostos (PIS, COFINS, ISS, IRPJ, CSLL).
+        </div>
+      </div>
     </div>
   `, async () => {
-    const body = { descricao: v('f-desc'), tipo: v('f-tipo'), empreendimento_id: v('f-emp')||null, valor: parseFloat(v('f-valor')), status: v('f-status'), data_prevista: v('f-prev'), data_recebimento: v('f-rec'), observacoes: v('f-obs') };
+    const temNF = document.getElementById('f-nf-propria')?.checked ? 1 : 0;
+    const body = { descricao: v('f-desc'), tipo: v('f-tipo'), empreendimento_id: v('f-emp')||null, valor: parseFloat(v('f-valor')), status: v('f-status'), data_prevista: v('f-prev'), data_recebimento: v('f-rec'), observacoes: v('f-obs'), tem_nf_propria: temNF, nf_numero: v('f-nf-num')||null, nf_data: v('f-nf-data')||null };
     if (!body.descricao || !body.valor) return toast('Descrição e valor obrigatórios', 'error');
 
     const parcelar = document.getElementById('f-parcelar')?.checked;
@@ -3160,6 +3186,13 @@ function openEntradaModal(e = {}) {
 function toggleParcelamento(checked) {
   const el = document.getElementById('parcela-fields');
   if (el) el.style.display = checked ? 'flex' : 'none';
+}
+
+function toggleNFPropria(checked) {
+  const fields = document.getElementById('nf-fields');
+  const aviso = document.getElementById('nf-sem-aviso');
+  if (fields) fields.style.display = checked ? 'flex' : 'none';
+  if (aviso) aviso.style.display = checked ? 'none' : 'block';
 }
 
 async function marcarRecebido(id) {

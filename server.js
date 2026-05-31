@@ -1150,15 +1150,17 @@ app.get("/api/financeiro/entradas", (req, res) => {
 });
 
 app.post("/api/financeiro/entradas", (req, res) => {
-  const { empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num, parcela_total } = req.body;
+  const { empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num, parcela_total, tem_nf_propria, nf_numero, nf_data } = req.body;
   if (!descricao || !valor) return err(res, "Descrição e valor obrigatórios");
-  const r = db.prepare(`INSERT INTO financeiro_entradas (empreendimento_id,venda_id,descricao,tipo,valor,data_prevista,data_recebimento,status,observacoes,parcela_num,parcela_total) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, data_recebimento, status || 'pendente', observacoes, parcela_num||null, parcela_total||null);
+  const nfFlag = tem_nf_propria === false || tem_nf_propria === 0 || tem_nf_propria === '0' ? 0 : 1;
+  const r = db.prepare(`INSERT INTO financeiro_entradas (empreendimento_id,venda_id,descricao,tipo,valor,data_prevista,data_recebimento,status,observacoes,parcela_num,parcela_total,tem_nf_propria,nf_numero,nf_data) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, data_recebimento, status || 'pendente', observacoes, parcela_num||null, parcela_total||null, nfFlag, nf_numero||null, nf_data||null);
   ok(res, { id: r.lastInsertRowid });
 });
 
 app.put("/api/financeiro/entradas/:id", (req, res) => {
-  const { empreendimento_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num, parcela_total } = req.body;
-  db.prepare(`UPDATE financeiro_entradas SET empreendimento_id=?,descricao=?,tipo=?,valor=?,data_prevista=?,data_recebimento=?,status=?,observacoes=?,parcela_num=?,parcela_total=? WHERE id=?`).run(empreendimento_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num||null, parcela_total||null, req.params.id);
+  const { empreendimento_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num, parcela_total, tem_nf_propria, nf_numero, nf_data } = req.body;
+  const nfFlag = tem_nf_propria === false || tem_nf_propria === 0 || tem_nf_propria === '0' ? 0 : 1;
+  db.prepare(`UPDATE financeiro_entradas SET empreendimento_id=?,descricao=?,tipo=?,valor=?,data_prevista=?,data_recebimento=?,status=?,observacoes=?,parcela_num=?,parcela_total=?,tem_nf_propria=?,nf_numero=?,nf_data=? WHERE id=?`).run(empreendimento_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num||null, parcela_total||null, nfFlag, nf_numero||null, nf_data||null, req.params.id);
   ok(res, {});
 });
 
@@ -1347,14 +1349,30 @@ app.post('/api/impostos/apurar', (req, res) => {
     meses = [periodo];
   }
 
+  // Soma apenas entradas COM NF própria (tem_nf_propria=1 ou NULL para registros antigos)
+  // Entradas de NF de terceiros são excluídas de toda a base tributária
   for (const mes of meses) {
     const row = db.prepare(`
       SELECT COALESCE(SUM(valor),0) as total
       FROM financeiro_entradas
       WHERE status='recebido'
+        AND (tem_nf_propria IS NULL OR tem_nf_propria=1)
         AND (substr(data_recebimento,1,7)=? OR substr(data_prevista,1,7)=?)
     `).get(mes, mes);
     receitaBase += row.total;
+  }
+
+  // Calcula também o total excluído (NF de terceiros) para info
+  let receitaExcluida = 0;
+  for (const mes of meses) {
+    const row = db.prepare(`
+      SELECT COALESCE(SUM(valor),0) as total
+      FROM financeiro_entradas
+      WHERE status='recebido'
+        AND tem_nf_propria=0
+        AND (substr(data_recebimento,1,7)=? OR substr(data_prevista,1,7)=?)
+    `).get(mes, mes);
+    receitaExcluida += row.total;
   }
 
   let todosImpostos = [];
@@ -1412,7 +1430,7 @@ app.post('/api/impostos/apurar', (req, res) => {
     result.push({ id: r.lastInsertRowid, tipo: imp.tipo, valor, adicional, vencimento: imp.vencimento });
   }
 
-  ok(res, { periodo, receita_base: receitaBase, impostos: result, ignorados });
+  ok(res, { periodo, receita_base: receitaBase, receita_excluida: receitaExcluida, impostos: result, ignorados });
 });
 
 // Marca imposto como pago e cria saída financeira
