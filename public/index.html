@@ -2630,26 +2630,52 @@ async function renderImpostos(el) {
     <!-- Apuração -->
     <div class="mini-card" style="margin-bottom:20px">
       <h4 style="margin:0 0 14px">📋 Apurar Impostos</h4>
-      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-        <div>
-          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">Mês (PIS, COFINS, ISS)</label>
-          <input id="apur-mes" type="month" value="${anoAtual}-${mesAtual}"
-            style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+
+        <!-- Mensal -->
+        <div style="flex:1;min-width:260px;background:var(--navy3);border-radius:8px;padding:12px 14px">
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">Mensal</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+            <input id="apur-mes" type="month" value="${anoAtual}-${mesAtual}"
+              style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          </div>
+          <div style="display:flex;gap:14px;margin-bottom:12px;flex-wrap:wrap">
+            <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="inc-pis" checked style="accent-color:var(--accent)"> PIS
+            </label>
+            <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="inc-cofins" checked style="accent-color:var(--accent)"> COFINS
+            </label>
+            <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="inc-iss" checked style="accent-color:var(--accent)"> ISS
+              <span style="font-size:10px;color:var(--text2)">(desmarque se outra empresa emite a NF)</span>
+            </label>
+          </div>
+          <button class="btn btn-primary" onclick="apurarImpostos('mensal')" style="width:100%;font-size:13px">⚡ Apurar mês</button>
         </div>
-        <button class="btn btn-primary" onclick="apurarImpostos('mensal')" style="font-size:13px">⚡ Apurar mês</button>
-        <div style="border-left:1px solid var(--border);height:36px;margin:0 4px"></div>
-        <div>
-          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">Trimestre (IRPJ, CSLL)</label>
+
+        <!-- Trimestral -->
+        <div style="flex:1;min-width:260px;background:var(--navy3);border-radius:8px;padding:12px 14px">
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">Trimestral</div>
           <select id="apur-trim"
-            style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+            style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;margin-bottom:10px">
             ${[1,2,3,4].map(t => `<option value="${anoAtual}-T${t}" ${t===trimestreAtual?'selected':''}>T${t}/${anoAtual}</option>`).join('')}
             ${[1,2,3,4].map(t => `<option value="${anoAtual-1}-T${t}">T${t}/${anoAtual-1}</option>`).join('')}
           </select>
+          <div style="display:flex;gap:14px;margin-bottom:12px">
+            <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="inc-irpj" checked style="accent-color:var(--accent)"> IRPJ
+            </label>
+            <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="inc-csll" checked style="accent-color:var(--accent)"> CSLL
+            </label>
+          </div>
+          <button class="btn btn-primary" onclick="apurarImpostos('trimestral')" style="width:100%;font-size:13px">⚡ Apurar trimestre</button>
         </div>
-        <button class="btn btn-primary" onclick="apurarImpostos('trimestral')" style="font-size:13px">⚡ Apurar trimestre</button>
+
       </div>
-      <div style="font-size:11px;color:var(--text2);margin-top:8px">
-        A apuração soma todas as entradas com status <b>recebido</b> no período e calcula cada imposto. Você pode reapurar quantas vezes quiser.
+      <div style="font-size:11px;color:var(--text2);margin-top:10px">
+        💡 Desmarque os impostos que não se aplicam antes de apurar. Você pode reapurar o mesmo período quantas vezes quiser — substitui a apuração anterior.
       </div>
     </div>
 
@@ -2701,18 +2727,27 @@ async function salvarConfigImpostos() {
 
 async function apurarImpostos(tipo) {
   let periodo;
+  let incluir = [];
   if (tipo === 'mensal') {
     const mes = document.getElementById('apur-mes').value;
     if (!mes) return toast('Selecione o mês', 'error');
-    periodo = mes; // YYYY-MM
+    periodo = mes;
+    if (document.getElementById('inc-pis')?.checked)    incluir.push('pis');
+    if (document.getElementById('inc-cofins')?.checked) incluir.push('cofins');
+    if (document.getElementById('inc-iss')?.checked)    incluir.push('iss');
+    if (!incluir.length) return toast('Selecione pelo menos um imposto', 'error');
   } else {
-    periodo = document.getElementById('apur-trim').value; // YYYY-TN
+    periodo = document.getElementById('apur-trim').value;
+    if (document.getElementById('inc-irpj')?.checked) incluir.push('irpj');
+    if (document.getElementById('inc-csll')?.checked) incluir.push('csll');
+    if (!incluir.length) return toast('Selecione pelo menos um imposto', 'error');
   }
-  const r = await post('/api/impostos/apurar', { periodo });
+  const r = await post('/api/impostos/apurar', { periodo, incluir });
   if (!r.ok) return toast(r.error, 'error');
   const d = r.data;
   const totalImpostos = d.impostos.reduce((s,i) => s + i.valor + (i.adicional||0), 0);
-  toast(`✅ Apuração ${periodo}: receita R$ ${(d.receita_base||0).toLocaleString('pt-BR')} → impostos ${fmt(totalImpostos).replace(/<[^>]+>/g,'')}`);
+  const ignorados = d.ignorados?.length ? ` (${d.ignorados.join(', ').toUpperCase()} não incluídos)` : '';
+  toast(`✅ Apuração ${periodo}: receita R$ ${(d.receita_base||0).toLocaleString('pt-BR')} → impostos R$ ${totalImpostos.toLocaleString('pt-BR')}${ignorados}`);
   setFinTab('impostos');
 }
 
