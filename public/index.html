@@ -2639,6 +2639,10 @@ async function renderImpostos(el) {
             <input id="apur-mes" type="month" value="${anoAtual}-${mesAtual}"
               style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
           </div>
+          <label style="font-size:12px;display:flex;align-items:center;gap:7px;cursor:pointer;margin-bottom:10px;padding:7px 10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:7px">
+            <input type="checkbox" id="inc-nf-outra" style="accent-color:var(--danger);width:15px;height:15px" onchange="toggleNFOutra(this.checked)">
+            <span>Outra empresa emitiu a NF — <b style="color:var(--danger)">nenhum imposto</b> neste mês</span>
+          </label>
           <div style="display:flex;gap:14px;margin-bottom:12px;flex-wrap:wrap">
             <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer">
               <input type="checkbox" id="inc-pis" checked style="accent-color:var(--accent)"> PIS
@@ -2648,7 +2652,6 @@ async function renderImpostos(el) {
             </label>
             <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer">
               <input type="checkbox" id="inc-iss" checked style="accent-color:var(--accent)"> ISS
-              <span style="font-size:10px;color:var(--text2)">(desmarque se outra empresa emite a NF)</span>
             </label>
           </div>
           <button class="btn btn-primary" onclick="apurarImpostos('mensal')" style="width:100%;font-size:13px">⚡ Apurar mês</button>
@@ -2709,6 +2712,13 @@ async function renderImpostos(el) {
       </table>
     </div>
   `;
+}
+
+function toggleNFOutra(outra) {
+  ['inc-pis','inc-cofins','inc-iss'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.checked = !outra;
+  });
 }
 
 async function salvarConfigImpostos() {
