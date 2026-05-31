@@ -1295,6 +1295,139 @@ app.post('/api/financeiro/importar-fatura', (req, res) => {
   ok(res, { importados });
 });
 
+// ─── IMPOSTOS (LUCRO PRESUMIDO) ───────────────────────────────────────────────
+
+app.get('/api/impostos/config', (req, res) => {
+  const cfg = db.prepare('SELECT * FROM imposto_config WHERE id=1').get();
+  ok(res, cfg || {});
+});
+
+app.put('/api/impostos/config', (req, res) => {
+  const { iss_pct, pis_pct, cofins_pct, irpj_base_presumida_pct, csll_base_presumida_pct, municipio } = req.body;
+  db.prepare(`UPDATE imposto_config SET
+    iss_pct=?, pis_pct=?, cofins_pct=?, irpj_base_presumida_pct=?, csll_base_presumida_pct=?, municipio=?
+    WHERE id=1`)
+    .run(iss_pct||3, pis_pct||0.65, cofins_pct||3, irpj_base_presumida_pct||32, csll_base_presumida_pct||32, municipio||'');
+  ok(res, {});
+});
+
+app.get('/api/impostos/apuracoes', (req, res) => {
+  ok(res, db.prepare('SELECT * FROM imposto_apuracao ORDER BY periodo DESC, tipo ASC').all());
+});
+
+// Apura impostos de um mês ou trimestre
+app.post('/api/impostos/apurar', (req, res) => {
+  const { periodo } = req.body; // formato: YYYY-MM (mensal) ou YYYY-TN (trimestral ex: 2025-T2)
+  if (!periodo) return err(res, 'Período obrigatório');
+
+  const cfg = db.prepare('SELECT * FROM imposto_config WHERE id=1').get();
+  if (!cfg) return err(res, 'Configure as alíquotas primeiro');
+
+  // Remove apuração anterior do mesmo período para reapurar
+  db.prepare("DELETE FROM imposto_apuracao WHERE periodo=?").run(periodo);
+
+  let receitaBase = 0;
+  let meses = [];
+
+  if (periodo.includes('-T')) {
+    // Trimestral: extrai os 3 meses do trimestre
+    const [ano, tStr] = periodo.split('-T');
+    const t = parseInt(tStr);
+    const mesInicio = (t - 1) * 3 + 1;
+    for (let m = mesInicio; m < mesInicio + 3; m++) {
+      meses.push(`${ano}-${String(m).padStart(2,'0')}`);
+    }
+  } else {
+    meses = [periodo];
+  }
+
+  // Soma entradas RECEBIDAS nos meses do período
+  for (const mes of meses) {
+    const row = db.prepare(`
+      SELECT COALESCE(SUM(valor),0) as total
+      FROM financeiro_entradas
+      WHERE status='recebido'
+        AND (substr(data_recebimento,1,7)=? OR substr(data_prevista,1,7)=?)
+    `).get(mes, mes);
+    receitaBase += row.total;
+  }
+
+  const impostos = [];
+
+  if (!periodo.includes('-T')) {
+    // Mensais: PIS, COFINS, ISS
+    const [ano, mes] = periodo.split('-');
+    const vencMensal = `${parseInt(mes) === 12 ? parseInt(ano)+1 : ano}-${String(parseInt(mes)===12?1:parseInt(mes)+1).padStart(2,'0')}-25`;
+    const vencISS    = `${parseInt(mes) === 12 ? parseInt(ano)+1 : ano}-${String(parseInt(mes)===12?1:parseInt(mes)+1).padStart(2,'0')}-15`;
+
+    impostos.push({ tipo:'pis',    aliquota: cfg.pis_pct,    vencimento: vencMensal });
+    impostos.push({ tipo:'cofins', aliquota: cfg.cofins_pct, vencimento: vencMensal });
+    impostos.push({ tipo:'iss',    aliquota: cfg.iss_pct,    vencimento: vencISS });
+  } else {
+    // Trimestrais: IRPJ e CSLL
+    const [ano, tStr] = periodo.split('-T');
+    const t = parseInt(tStr);
+    const mesVenc = t * 3; // fim do trimestre + 1 mês = mês de vencimento
+    const vencTrim = `${mesVenc > 12 ? parseInt(ano)+1 : ano}-${String(mesVenc > 12 ? mesVenc-12 : mesVenc).padStart(2,'0')}-31`;
+
+    const baseIRPJ = parseFloat((receitaBase * cfg.irpj_base_presumida_pct / 100).toFixed(2));
+    const baseCSLL = parseFloat((receitaBase * cfg.csll_base_presumida_pct / 100).toFixed(2));
+
+    // Adicional IRPJ: 10% sobre lucro presumido que exceder R$60.000 no trimestre
+    const adicional = baseIRPJ > 60000 ? parseFloat(((baseIRPJ - 60000) * 0.10).toFixed(2)) : 0;
+
+    impostos.push({ tipo:'irpj', aliquota: 15, base: baseIRPJ, adicional, vencimento: vencTrim });
+    impostos.push({ tipo:'csll', aliquota:  9, base: baseCSLL, vencimento: vencTrim });
+  }
+
+  const stmt = db.prepare(`INSERT INTO imposto_apuracao
+    (periodo, tipo, receita_base, aliquota, valor, adicional_irpj, vencimento)
+    VALUES (?,?,?,?,?,?,?)`);
+
+  const result = [];
+  for (const imp of impostos) {
+    const base = imp.base ?? receitaBase;
+    const valor = parseFloat((base * imp.aliquota / 100).toFixed(2));
+    const adicional = imp.adicional || 0;
+    const r = stmt.run(periodo, imp.tipo, receitaBase, imp.aliquota, valor, adicional, imp.vencimento || null);
+    result.push({ id: r.lastInsertRowid, tipo: imp.tipo, valor, adicional, vencimento: imp.vencimento });
+  }
+
+  ok(res, { periodo, receita_base: receitaBase, impostos: result });
+});
+
+// Marca imposto como pago e cria saída financeira
+app.post('/api/impostos/apuracoes/:id/pagar', (req, res) => {
+  const { data_pagamento } = req.body;
+  const apur = db.prepare('SELECT * FROM imposto_apuracao WHERE id=?').get(req.params.id);
+  if (!apur) return err(res, 'Apuração não encontrada');
+
+  const nomes = { pis:'PIS', cofins:'COFINS', iss:'ISS', irpj:'IRPJ', csll:'CSLL' };
+  const valorTotal = apur.valor + (apur.adicional_irpj || 0);
+
+  const r = db.prepare(`INSERT INTO financeiro_saidas
+    (descricao, categoria, valor, data_pagamento, status, observacoes)
+    VALUES (?,?,?,?,?,?)`)
+    .run(
+      `${nomes[apur.tipo] || apur.tipo} — ${apur.periodo}`,
+      'imposto',
+      valorTotal,
+      data_pagamento || new Date().toISOString().slice(0,10),
+      'pago',
+      `Apuração automática Lucro Presumido — base R$ ${apur.receita_base.toLocaleString('pt-BR')}`
+    );
+
+  db.prepare(`UPDATE imposto_apuracao SET status='pago', data_pagamento=?, saida_id=? WHERE id=?`)
+    .run(data_pagamento || new Date().toISOString().slice(0,10), r.lastInsertRowid, req.params.id);
+
+  ok(res, { saida_id: r.lastInsertRowid });
+});
+
+app.delete('/api/impostos/apuracoes/:id', (req, res) => {
+  db.prepare('DELETE FROM imposto_apuracao WHERE id=?').run(req.params.id);
+  ok(res, {});
+});
+
 // ─── DISTRIBUIÇÕES ────────────────────────────────────────────────────────────
 
 app.get("/api/financeiro/distribuicoes", (req, res) => {

@@ -2399,6 +2399,7 @@ async function renderFinanceiro(filter = '') {
       <button class="fin-tab ${finTab==='comissoes'?'active':''}" onclick="setFinTab('comissoes')">💳 Comissões Corretores</button>
       <button class="fin-tab ${finTab==='fluxo'?'active':''}" onclick="setFinTab('fluxo')">📅 Fluxo de Caixa</button>
       <button class="fin-tab ${finTab==='fixas'?'active':''}" onclick="setFinTab('fixas')">🔁 Despesas Fixas</button>
+      <button class="fin-tab ${finTab==='impostos'?'active':''}" onclick="setFinTab('impostos')">🏛️ Impostos</button>
     </div>
     <div id="fin-content"></div>
   `;
@@ -2407,7 +2408,7 @@ async function renderFinanceiro(filter = '') {
 
 function setFinTab(tab) {
   finTab = tab;
-  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo', fixas:'Fixas' };
+  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo', fixas:'Fixas', impostos:'Impost' };
   document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(keys[tab]||'')));
   renderFinTab();
 }
@@ -2527,6 +2528,8 @@ function renderFinTab() {
           </table>
         </div>`;
     });
+  } else if (finTab === 'impostos') {
+    renderImpostos(el);
   } else if (finTab === 'fixas') {
     renderDespesasFixas(el);
   } else if (finTab === 'fluxo') {
@@ -2557,6 +2560,176 @@ function renderFinTab() {
       }).join('') : '<tr class="empty-row"><td colspan="6">Nenhum empreendimento</td></tr>';
     });
   }
+}
+
+async function renderImpostos(el) {
+  el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text2)">Carregando...</div>';
+  const [cfgR, apurR] = await Promise.all([get('/api/impostos/config'), get('/api/impostos/apuracoes')]);
+  const cfg = cfgR.data || {};
+  const apuracoes = apurR.data || [];
+
+  const hoje = new Date();
+  const anoAtual = hoje.getFullYear();
+  const mesAtual = String(hoje.getMonth()+1).padStart(2,'0');
+  const trimestreAtual = Math.ceil((hoje.getMonth()+1)/3);
+
+  // KPIs: total apurado vs pago
+  const totalApurado  = apuracoes.reduce((s,a) => s + (a.valor||0) + (a.adicional_irpj||0), 0);
+  const totalPago     = apuracoes.filter(a=>a.status==='pago').reduce((s,a) => s + (a.valor||0) + (a.adicional_irpj||0), 0);
+  const totalPendente = totalApurado - totalPago;
+
+  const nomeImposto = { pis:'PIS', cofins:'COFINS', iss:'ISS', irpj:'IRPJ', csll:'CSLL' };
+  const corImposto  = { pis:'var(--warning)', cofins:'var(--warning)', iss:'#a78bfa', irpj:'var(--danger)', csll:'var(--danger)' };
+
+  el.innerHTML = `
+    <div class="kpi-grid" style="margin-bottom:16px">
+      ${kpi('🏛️','Total Apurado', fmt(totalApurado), 'todos os períodos')}
+      ${kpi('✅','Total Pago', fmt(totalPago), 'guias recolhidas')}
+      ${kpi('⏳','Pendente', fmt(totalPendente), 'a recolher')}
+    </div>
+
+    <!-- Configuração de alíquotas -->
+    <div class="mini-card" style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <h4 style="margin:0">⚙️ Alíquotas — Lucro Presumido (Serviços)</h4>
+        <button class="btn btn-secondary" onclick="salvarConfigImpostos()" style="font-size:12px">💾 Salvar alíquotas</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">ISS % (seu município)</label>
+          <input id="cfg-iss" type="number" step="0.01" min="2" max="5" value="${cfg.iss_pct??3}"
+            style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">PIS % (fixo 0,65)</label>
+          <input id="cfg-pis" type="number" step="0.01" value="${cfg.pis_pct??0.65}"
+            style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">COFINS % (fixo 3,0)</label>
+          <input id="cfg-cofins" type="number" step="0.01" value="${cfg.cofins_pct??3}"
+            style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">Base presumida IRPJ/CSLL %</label>
+          <input id="cfg-base" type="number" step="0.1" value="${cfg.irpj_base_presumida_pct??32}"
+            style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">Município</label>
+          <input id="cfg-mun" type="text" value="${cfg.municipio||''}" placeholder="Ex: Curitiba/PR"
+            style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--text2)">
+        Taxa efetiva aproximada: ISS ${cfg.iss_pct??3}% + PIS 0,65% + COFINS 3% + IRPJ ~${((cfg.irpj_base_presumida_pct??32)*0.15).toFixed(2)}% + CSLL ~${((cfg.csll_base_presumida_pct??32)*0.09).toFixed(2)}% =
+        <strong style="color:var(--accent)">~${(parseFloat(cfg.iss_pct??3)+0.65+3+parseFloat((cfg.irpj_base_presumida_pct??32)*0.15/100*100)+parseFloat((cfg.csll_base_presumida_pct??32)*0.09/100*100)).toFixed(2)}% da receita bruta</strong>
+      </div>
+    </div>
+
+    <!-- Apuração -->
+    <div class="mini-card" style="margin-bottom:20px">
+      <h4 style="margin:0 0 14px">📋 Apurar Impostos</h4>
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">Mês (PIS, COFINS, ISS)</label>
+          <input id="apur-mes" type="month" value="${anoAtual}-${mesAtual}"
+            style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+        </div>
+        <button class="btn btn-primary" onclick="apurarImpostos('mensal')" style="font-size:13px">⚡ Apurar mês</button>
+        <div style="border-left:1px solid var(--border);height:36px;margin:0 4px"></div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">Trimestre (IRPJ, CSLL)</label>
+          <select id="apur-trim"
+            style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+            ${[1,2,3,4].map(t => `<option value="${anoAtual}-T${t}" ${t===trimestreAtual?'selected':''}>T${t}/${anoAtual}</option>`).join('')}
+            ${[1,2,3,4].map(t => `<option value="${anoAtual-1}-T${t}">T${t}/${anoAtual-1}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="apurarImpostos('trimestral')" style="font-size:13px">⚡ Apurar trimestre</button>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-top:8px">
+        A apuração soma todas as entradas com status <b>recebido</b> no período e calcula cada imposto. Você pode reapurar quantas vezes quiser.
+      </div>
+    </div>
+
+    <!-- Histórico de apurações -->
+    <div class="table-card">
+      <div class="table-header"><div class="table-title">🗂️ Histórico de Apurações (${apuracoes.length})</div></div>
+      <table>
+        <thead><tr><th>Período</th><th>Imposto</th><th>Base (receita)</th><th>Alíquota</th><th>Valor</th><th>Adicional IRPJ</th><th>Total</th><th>Vencimento</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${apuracoes.length ? apuracoes.map(a => {
+            const total = (a.valor||0) + (a.adicional_irpj||0);
+            return `<tr>
+              <td style="font-weight:600">${a.periodo}</td>
+              <td><span style="font-weight:700;color:${corImposto[a.tipo]||'var(--text1)'}">${nomeImposto[a.tipo]||a.tipo}</span></td>
+              <td style="color:var(--text2);font-size:12px">${fmt(a.receita_base)}</td>
+              <td style="text-align:center;color:var(--text2)">${a.aliquota}%</td>
+              <td style="font-weight:600">${fmt(a.valor)}</td>
+              <td style="color:var(--warning)">${a.adicional_irpj>0?fmt(a.adicional_irpj):'—'}</td>
+              <td style="font-weight:700;color:${a.status==='pago'?'var(--success)':'var(--danger)'}">
+                ${fmt(total)}
+              </td>
+              <td style="color:var(--text2);font-size:12px">${a.vencimento?fmtDate(a.vencimento):'—'}</td>
+              <td><span class="badge ${a.status==='pago'?'badge-green':'badge-yellow'}">${a.status==='pago'?'✅ Pago':'⏳ Pendente'}</span></td>
+              <td style="display:flex;gap:4px">
+                ${a.status!=='pago'?`<button class="btn-icon" title="Marcar como pago" onclick="pagarImposto(${a.id})" style="font-size:12px">✅ Pagar</button>`:''}
+                <button class="btn-icon btn-delete" onclick="deleteApuracao(${a.id})" title="Excluir apuração">🗑️</button>
+              </td>
+            </tr>`;
+          }).join('') : '<tr class="empty-row"><td colspan="10">Nenhuma apuração ainda — selecione um período e clique em Apurar</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function salvarConfigImpostos() {
+  const body = {
+    iss_pct: parseFloat(document.getElementById('cfg-iss').value)||3,
+    pis_pct: parseFloat(document.getElementById('cfg-pis').value)||0.65,
+    cofins_pct: parseFloat(document.getElementById('cfg-cofins').value)||3,
+    irpj_base_presumida_pct: parseFloat(document.getElementById('cfg-base').value)||32,
+    csll_base_presumida_pct: parseFloat(document.getElementById('cfg-base').value)||32,
+    municipio: document.getElementById('cfg-mun').value,
+  };
+  const r = await put('/api/impostos/config', body);
+  if (r.ok) { toast('Alíquotas salvas!'); renderFinanceiro(); }
+  else toast(r.error, 'error');
+}
+
+async function apurarImpostos(tipo) {
+  let periodo;
+  if (tipo === 'mensal') {
+    const mes = document.getElementById('apur-mes').value;
+    if (!mes) return toast('Selecione o mês', 'error');
+    periodo = mes; // YYYY-MM
+  } else {
+    periodo = document.getElementById('apur-trim').value; // YYYY-TN
+  }
+  const r = await post('/api/impostos/apurar', { periodo });
+  if (!r.ok) return toast(r.error, 'error');
+  const d = r.data;
+  const totalImpostos = d.impostos.reduce((s,i) => s + i.valor + (i.adicional||0), 0);
+  toast(`✅ Apuração ${periodo}: receita R$ ${(d.receita_base||0).toLocaleString('pt-BR')} → impostos ${fmt(totalImpostos).replace(/<[^>]+>/g,'')}`);
+  setFinTab('impostos');
+}
+
+async function pagarImposto(id) {
+  const data = prompt('Data do pagamento (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
+  if (!data) return;
+  const r = await post(`/api/impostos/apuracoes/${id}/pagar`, { data_pagamento: data });
+  if (!r.ok) return toast(r.error, 'error');
+  toast('✅ Imposto marcado como pago e lançado no Financeiro!');
+  setFinTab('impostos');
+}
+
+async function deleteApuracao(id) {
+  if (!confirm('Excluir esta apuração?')) return;
+  await del(`/api/impostos/apuracoes/${id}`);
+  toast('Apuração excluída');
+  setFinTab('impostos');
 }
 
 function renderDespesasFixas(el) {
@@ -2873,8 +3046,8 @@ function renderFluxoCaixa(el) {
 
 const TIPOS_ENTRADA = ['comissao_venda','fee_fixo_mensal','consultoria','bonus','outro'];
 const TIPOS_ENTRADA_LABEL = { comissao_venda:'Comissão Venda', fee_fixo_mensal:'Fee Fixo Mensal', consultoria:'Consultoria', bonus:'Bônus', outro:'Outro' };
-const CATEGORIAS_SAIDA = ['marketing','operacional','pessoal','evento','tecnologia','juridico','contabilidade','outro'];
-const CATEGORIAS_SAIDA_LABEL = { marketing:'Marketing', operacional:'Operacional', pessoal:'Pessoal', evento:'Evento', tecnologia:'Tecnologia', juridico:'Jurídico', contabilidade:'Contabilidade', outro:'Outro' };
+const CATEGORIAS_SAIDA = ['marketing','operacional','pessoal','evento','tecnologia','juridico','contabilidade','imposto','outro'];
+const CATEGORIAS_SAIDA_LABEL = { marketing:'Marketing', operacional:'Operacional', pessoal:'Pessoal', evento:'Evento', tecnologia:'Tecnologia', juridico:'Jurídico', contabilidade:'Contabilidade', imposto:'Imposto', outro:'Outro' };
 
 function openEntradaModal(e = {}) {
   const isNew = !e.id;

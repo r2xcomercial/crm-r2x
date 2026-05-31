@@ -391,6 +391,33 @@ db.exec(`
     ordem INTEGER DEFAULT 0,
     criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS imposto_config (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    iss_pct REAL DEFAULT 3.0,
+    pis_pct REAL DEFAULT 0.65,
+    cofins_pct REAL DEFAULT 3.0,
+    irpj_base_presumida_pct REAL DEFAULT 32.0,
+    csll_base_presumida_pct REAL DEFAULT 32.0,
+    municipio TEXT DEFAULT ''
+  );
+
+  CREATE TABLE IF NOT EXISTS imposto_apuracao (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    periodo TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    receita_base REAL NOT NULL DEFAULT 0,
+    aliquota REAL NOT NULL DEFAULT 0,
+    valor REAL NOT NULL DEFAULT 0,
+    adicional_irpj REAL DEFAULT 0,
+    vencimento TEXT,
+    status TEXT DEFAULT 'pendente',
+    data_pagamento TEXT,
+    saida_id INTEGER REFERENCES financeiro_saidas(id),
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  INSERT OR IGNORE INTO imposto_config (id) VALUES (1);
 `);
 
 module.exports = db;
