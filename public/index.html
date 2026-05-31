@@ -2943,153 +2943,223 @@ async function gerarDespesasFixasMes() {
 
 function renderFluxoCaixa(el) {
   const entradas = currentData.entradas || [];
-  const saidas = currentData.saidas || [];
-  const emp = currentData.emp || [];
+  const saidas   = currentData.saidas   || [];
 
-  // Agrupa entradas por mês (data_prevista para pendentes, data_recebimento para recebidas)
+  // ── Agrupa por mês ─────────────────────────────────────────────────────────
   const mesesMap = {};
-
   const addMes = (mesKey, tipo, valor, status) => {
-    if (!mesesMap[mesKey]) mesesMap[mesKey] = { entradas_rec: 0, entradas_pend: 0, saidas_paga: 0, saidas_pend: 0 };
+    if (!mesesMap[mesKey]) mesesMap[mesKey] = { entradas_rec:0, entradas_pend:0, saidas_paga:0, saidas_pend:0 };
     if (tipo === 'entrada') {
       if (status === 'recebido') mesesMap[mesKey].entradas_rec += valor;
-      else mesesMap[mesKey].entradas_pend += valor;
+      else                       mesesMap[mesKey].entradas_pend += valor;
     } else {
       if (status === 'pago') mesesMap[mesKey].saidas_paga += valor;
-      else mesesMap[mesKey].saidas_pend += valor;
+      else                   mesesMap[mesKey].saidas_pend += valor;
     }
   };
-
   entradas.forEach(e => {
     const dt = e.status === 'recebido' ? (e.data_recebimento || e.data_prevista) : e.data_prevista;
-    if (!dt) return;
-    const mes = dt.slice(0, 7); // YYYY-MM
-    addMes(mes, 'entrada', e.valor, e.status);
+    if (dt) addMes(dt.slice(0,7), 'entrada', e.valor, e.status);
   });
   saidas.forEach(s => {
-    const dt = s.data_pagamento;
-    if (!dt) return;
-    const mes = dt.slice(0, 7);
-    addMes(mes, 'saida', s.valor, s.status);
+    if (s.data_pagamento) addMes(s.data_pagamento.slice(0,7), 'saida', s.valor, s.status);
   });
 
-  // Ordena os meses
-  const meses = Object.keys(mesesMap).sort();
-
-  // Determina range: de 6 meses atrás até 12 meses à frente do mês atual
-  const hoje = new Date();
-  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
-  const rangeStart = new Date(hoje.getFullYear(), hoje.getMonth() - 6, 1);
+  // ── Range de meses ─────────────────────────────────────────────────────────
+  const hoje      = new Date();
+  const mesAtual  = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+  const rangeStart = new Date(hoje.getFullYear(), hoje.getMonth() - 4, 1);
   const rangeEnd   = new Date(hoje.getFullYear(), hoje.getMonth() + 13, 1);
-
-  // Gera todos os meses do range
-  const allMeses = [];
+  const allMeses   = [];
   let cur = new Date(rangeStart);
   while (cur < rangeEnd) {
-    const k = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`;
-    allMeses.push(k);
+    allMeses.push(`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}`);
     cur.setMonth(cur.getMonth() + 1);
   }
-  // Adiciona meses com dados que estejam fora do range
-  meses.forEach(m => { if (!allMeses.includes(m)) allMeses.push(m); });
+  Object.keys(mesesMap).forEach(m => { if (!allMeses.includes(m)) allMeses.push(m); });
   allMeses.sort();
 
   const nomeMes = (ym) => {
     const [y, m] = ym.split('-');
-    const nomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-    return `${nomes[parseInt(m)-1]}/${y}`;
+    return ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][parseInt(m)-1] + '/' + y.slice(2);
+  };
+  const fmtK = v => {
+    if (!v) return '—';
+    if (Math.abs(v) >= 1000000) return 'R$' + (v/1000000).toFixed(1).replace('.',',') + 'M';
+    if (Math.abs(v) >= 1000)    return 'R$' + Math.round(v/1000) + 'k';
+    return fmt(v);
   };
 
-  // Filtra por empreendimento se selecionado
-  const empFiltro = document.getElementById?.('fluxo-emp-filtro')?.value || '';
-
-  // Cálculo acumulado
+  // ── Calcula linhas com acumulado ───────────────────────────────────────────
   let acumulado = 0;
   const linhas = allMeses.map(mes => {
-    const d = mesesMap[mes] || { entradas_rec: 0, entradas_pend: 0, saidas_paga: 0, saidas_pend: 0 };
-    const liquido = (d.entradas_rec + d.entradas_pend) - (d.saidas_paga + d.saidas_pend);
+    const d = mesesMap[mes] || { entradas_rec:0, entradas_pend:0, saidas_paga:0, saidas_pend:0 };
+    const entTotal = d.entradas_rec + d.entradas_pend;
+    const saiTotal = d.saidas_paga  + d.saidas_pend;
+    const liquido  = entTotal - saiTotal;
     acumulado += liquido;
-    const isAtual = mes === mesAtual;
-    const isPast = mes < mesAtual;
-    return { mes, ...d, liquido, acumulado, isAtual, isPast };
+    return { mes, ...d, entTotal, saiTotal, liquido, acumulado,
+      isAtual: mes === mesAtual,
+      isPast:  mes <  mesAtual,
+      temDados: !!(d.entradas_rec || d.entradas_pend || d.saidas_paga || d.saidas_pend) };
   });
 
-  const totalRec = linhas.reduce((s,l) => s+l.entradas_rec, 0);
-  const totalPend = linhas.reduce((s,l) => s+l.entradas_pend, 0);
-  const totalSaidaPaga = linhas.reduce((s,l) => s+l.saidas_paga, 0);
-  const totalSaidaPend = linhas.reduce((s,l) => s+l.saidas_pend, 0);
+  const maxBar       = Math.max(...linhas.map(l => Math.max(l.entTotal, l.saiTotal)), 1);
+  const totalRec     = linhas.reduce((s,l) => s + l.entradas_rec,  0);
+  const totalPend    = linhas.reduce((s,l) => s + l.entradas_pend, 0);
+  const totalSaiPaga = linhas.reduce((s,l) => s + l.saidas_paga,   0);
+  const totalSaiPend = linhas.reduce((s,l) => s + l.saidas_pend,   0);
+  const saldoFinal   = linhas[linhas.length-1]?.acumulado || 0;
+  const visiveis     = linhas.filter(l => l.temDados || l.isAtual);
 
-  el.innerHTML = `
-    <div class="kpi-grid" style="margin-bottom:16px">
-      ${kpi('📥', 'Entradas Recebidas', fmt(totalRec), 'total confirmado')}
-      ${kpi('⏳', 'Entradas Previstas', fmt(totalPend), 'a receber')}
-      ${kpi('📤', 'Saídas Pagas', fmt(totalSaidaPaga), 'total pago')}
-      ${kpi('🔮', 'Saídas Previstas', fmt(totalSaidaPend), 'a pagar')}
-    </div>
-    <div class="table-card">
-      <div class="table-header">
-        <div class="table-title">📅 Fluxo de Caixa Mensal</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <span style="font-size:11px;color:var(--text2)">
-            <span style="color:var(--success)">■</span> Recebido
-            <span style="color:var(--warning);margin-left:8px">■</span> Previsto
-            <span style="color:var(--danger);margin-left:8px">■</span> Saída
-          </span>
+  // ── Card de cada mês ───────────────────────────────────────────────────────
+  const card = (l) => {
+    const liqPos = l.liquido  >= 0;
+    const accPos = l.acumulado >= 0;
+    const borda  = !l.temDados ? 'var(--border)' : liqPos ? '#22c55e' : '#ef4444';
+    const pEnt   = l.entTotal ? Math.round((l.entTotal / maxBar) * 100) : 0;
+    const pEntR  = l.entTotal ? Math.round((l.entradas_rec / l.entTotal) * pEnt) : 0;
+    const pEntP  = pEnt - pEntR;
+    const pSai   = l.saiTotal ? Math.round((l.saiTotal / maxBar) * 100) : 0;
+    const pSaiP  = l.saiTotal ? Math.round((l.saidas_paga / l.saiTotal) * pSai) : 0;
+    const pSaiPv = pSai - pSaiP;
+
+    return `
+      <div style="
+        background:var(--card); border:1px solid var(--border); border-radius:14px;
+        border-top:3px solid ${borda};
+        padding:16px 16px 14px;
+        ${l.isAtual ? 'box-shadow:0 0 0 2px var(--accent);' : ''}
+        display:flex; flex-direction:column; gap:0; min-width:0;
+        ${!l.temDados ? 'opacity:.5' : ''}
+      ">
+        <!-- cabeçalho -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div style="font-weight:800;font-size:15px;letter-spacing:.3px">${nomeMes(l.mes)}</div>
+          ${l.isAtual ? `<span style="font-size:10px;background:var(--accent);color:var(--navy);border-radius:10px;padding:2px 8px;font-weight:700;letter-spacing:.5px">HOJE</span>` : ''}
+          ${!l.isAtual && l.isPast && l.temDados ? `<span style="font-size:10px;color:var(--text2)">passado</span>` : ''}
+          ${!l.isAtual && !l.isPast && !l.isAtual ? `<span style="font-size:10px;color:var(--text2)">futuro</span>` : ''}
         </div>
+
+        <!-- barra entrada -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="font-size:10px;color:#22c55e;font-weight:700;width:14px">↑</div>
+          <div style="flex:1;height:8px;background:var(--navy3);border-radius:4px;overflow:hidden;display:flex">
+            <div style="width:${pEntR}%;background:#22c55e;transition:width .3s" title="Recebido: ${fmt(l.entradas_rec)}"></div>
+            <div style="width:${pEntP}%;background:#eab308;opacity:.8;transition:width .3s" title="Previsto: ${fmt(l.entradas_pend)}"></div>
+          </div>
+          <div style="font-size:11px;font-weight:700;color:#22c55e;min-width:48px;text-align:right">${l.entTotal ? fmtK(l.entTotal) : '—'}</div>
+        </div>
+
+        <!-- barra saída -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <div style="font-size:10px;color:#ef4444;font-weight:700;width:14px">↓</div>
+          <div style="flex:1;height:8px;background:var(--navy3);border-radius:4px;overflow:hidden;display:flex">
+            <div style="width:${pSaiP}%;background:#ef4444;transition:width .3s" title="Pago: ${fmt(l.saidas_paga)}"></div>
+            <div style="width:${pSaiPv}%;background:#f97316;opacity:.8;transition:width .3s" title="Previsto: ${fmt(l.saidas_pend)}"></div>
+          </div>
+          <div style="font-size:11px;font-weight:700;color:#ef4444;min-width:48px;text-align:right">${l.saiTotal ? fmtK(l.saiTotal) : '—'}</div>
+        </div>
+
+        <!-- separador -->
+        <div style="border-top:1px solid var(--border);margin-bottom:10px"></div>
+
+        <!-- líquido + acumulado -->
+        <div style="display:flex;justify-content:space-between;align-items:flex-end">
+          <div>
+            <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Líquido</div>
+            <div style="font-size:20px;font-weight:900;line-height:1;color:${liqPos ? '#22c55e' : '#ef4444'}">
+              ${l.temDados ? (liqPos?'+':'') + fmtK(l.liquido) : '—'}
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Acumulado</div>
+            <div style="font-size:13px;font-weight:700;color:${accPos ? '#22c55e' : '#ef4444'}">
+              ${(accPos?'+':'')}${fmtK(l.acumulado)}
+            </div>
+          </div>
+        </div>
+      </div>`;
+  };
+
+  // ── Render final ───────────────────────────────────────────────────────────
+  el.innerHTML = `
+    <!-- KPIs -->
+    <div class="kpi-grid" style="margin-bottom:20px">
+      ${kpi('✅', 'Recebido', fmtK(totalRec), 'confirmado')}
+      ${kpi('⏳', 'A Receber', fmtK(totalPend), 'previsto')}
+      ${kpi('💸', 'Saídas', fmtK(totalSaiPaga + totalSaiPend), `${fmtK(totalSaiPaga)} pago · ${fmtK(totalSaiPend)} prev.`)}
+      ${kpi(saldoFinal >= 0 ? '📈' : '📉', 'Saldo Projetado', (saldoFinal >= 0 ? '+' : '') + fmtK(saldoFinal), 'acumulado total')}
+    </div>
+
+    <!-- Título + legenda -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div style="font-weight:700;font-size:14px">📅 Fluxo de Caixa — ${visiveis.length} meses</div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text2);align-items:center">
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;background:#22c55e;border-radius:3px;display:inline-block"></span>Recebido</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;background:#eab308;border-radius:3px;display:inline-block;opacity:.8"></span>Previsto</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;background:#ef4444;border-radius:3px;display:inline-block"></span>Saída paga</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;background:#f97316;border-radius:3px;display:inline-block;opacity:.8"></span>Saída prevista</span>
       </div>
-      <div style="overflow-x:auto">
-        <table style="min-width:760px">
-          <thead>
-            <tr>
-              <th>Mês</th>
-              <th style="text-align:right;color:var(--success)">↑ Recebido</th>
-              <th style="text-align:right;color:var(--warning)">↑ Previsto</th>
-              <th style="text-align:right;color:var(--danger)">↓ Saídas Pagas</th>
-              <th style="text-align:right;color:var(--danger)">↓ Saídas Prev.</th>
-              <th style="text-align:right">Líquido</th>
-              <th style="text-align:right">Acumulado</th>
-            </tr>
-          </thead>
+    </div>
+
+    <!-- Grid de cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px">
+      ${visiveis.map(card).join('')}
+    </div>
+
+    <!-- Tabela resumo (detalhes) -->
+    <details style="margin-bottom:16px">
+      <summary style="cursor:pointer;padding:10px 14px;background:var(--navy3);border-radius:8px;font-size:13px;font-weight:600;list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+        <span>▾ Ver tabela detalhada</span>
+      </summary>
+      <div style="overflow-x:auto;margin-top:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+        <table style="min-width:700px">
+          <thead><tr>
+            <th>Mês</th>
+            <th style="text-align:right;color:#22c55e">↑ Recebido</th>
+            <th style="text-align:right;color:#eab308">↑ Previsto</th>
+            <th style="text-align:right;color:#ef4444">↓ Pago</th>
+            <th style="text-align:right;color:#f97316">↓ Prev.</th>
+            <th style="text-align:right">Líquido</th>
+            <th style="text-align:right">Acumulado</th>
+          </tr></thead>
           <tbody>
-            ${linhas.map(l => {
-              const temDados = l.entradas_rec || l.entradas_pend || l.saidas_paga || l.saidas_pend;
-              if (!temDados && !l.isAtual) return '';
-              const bg = l.isAtual ? 'rgba(0,196,180,.07)' : '';
-              const fw = l.isAtual ? '600' : '400';
-              const liqColor = l.liquido >= 0 ? 'var(--success)' : 'var(--danger)';
-              const accColor = l.acumulado >= 0 ? 'var(--success)' : 'var(--danger)';
-              return `<tr style="background:${bg};font-weight:${fw}">
-                <td style="white-space:nowrap">${l.isAtual?'👉 ':''}${nomeMes(l.mes)}${l.isAtual?' <span style="font-size:10px;background:var(--accent);color:var(--navy);border-radius:4px;padding:1px 5px">hoje</span>':''}</td>
-                <td style="text-align:right;color:var(--success)">${l.entradas_rec?fmt(l.entradas_rec):'—'}</td>
-                <td style="text-align:right;color:var(--warning)">${l.entradas_pend?fmt(l.entradas_pend):'—'}</td>
-                <td style="text-align:right;color:var(--danger)">${l.saidas_paga?fmt(l.saidas_paga):'—'}</td>
-                <td style="text-align:right;color:var(--danger)">${l.saidas_pend?fmt(l.saidas_pend):'—'}</td>
-                <td style="text-align:right;font-weight:700;color:${liqColor}">${fmt(l.liquido)}</td>
-                <td style="text-align:right;font-weight:700;color:${accColor}">${fmt(l.acumulado)}</td>
+            ${visiveis.map(l => {
+              const liqC = l.liquido  >= 0 ? '#22c55e' : '#ef4444';
+              const accC = l.acumulado >= 0 ? '#22c55e' : '#ef4444';
+              return `<tr style="${l.isAtual?'background:rgba(0,196,180,.07);font-weight:600':''}">
+                <td style="white-space:nowrap">${l.isAtual ? '👉 ' : ''}${nomeMes(l.mes)}${l.isAtual ? ' <span style="font-size:10px;background:var(--accent);color:var(--navy);border-radius:4px;padding:1px 5px">hoje</span>' : ''}</td>
+                <td style="text-align:right;color:#22c55e">${l.entradas_rec ? fmt(l.entradas_rec) : '—'}</td>
+                <td style="text-align:right;color:#eab308">${l.entradas_pend ? fmt(l.entradas_pend) : '—'}</td>
+                <td style="text-align:right;color:#ef4444">${l.saidas_paga ? fmt(l.saidas_paga) : '—'}</td>
+                <td style="text-align:right;color:#f97316">${l.saidas_pend ? fmt(l.saidas_pend) : '—'}</td>
+                <td style="text-align:right;font-weight:700;color:${liqC}">${l.temDados ? fmt(l.liquido) : '—'}</td>
+                <td style="text-align:right;font-weight:700;color:${accC}">${fmt(l.acumulado)}</td>
               </tr>`;
             }).join('')}
           </tbody>
-          <tfoot>
-            <tr style="font-weight:700;border-top:2px solid var(--border)">
-              <td>TOTAL</td>
-              <td style="text-align:right;color:var(--success)">${fmt(totalRec)}</td>
-              <td style="text-align:right;color:var(--warning)">${fmt(totalPend)}</td>
-              <td style="text-align:right;color:var(--danger)">${fmt(totalSaidaPaga)}</td>
-              <td style="text-align:right;color:var(--danger)">${fmt(totalSaidaPend)}</td>
-              <td style="text-align:right"></td>
-              <td style="text-align:right;color:${(totalRec+totalPend-totalSaidaPaga-totalSaidaPend)>=0?'var(--success)':'var(--danger)'}">
-                ${fmt(totalRec+totalPend-totalSaidaPaga-totalSaidaPend)}
-              </td>
-            </tr>
-          </tfoot>
+          <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
+            <td>TOTAL</td>
+            <td style="text-align:right;color:#22c55e">${fmt(totalRec)}</td>
+            <td style="text-align:right;color:#eab308">${fmt(totalPend)}</td>
+            <td style="text-align:right;color:#ef4444">${fmt(totalSaiPaga)}</td>
+            <td style="text-align:right;color:#f97316">${fmt(totalSaiPend)}</td>
+            <td style="text-align:right"></td>
+            <td style="text-align:right;color:${saldoFinal>=0?'#22c55e':'#ef4444'};font-weight:800">${saldoFinal>=0?'+':''}${fmt(saldoFinal)}</td>
+          </tr></tfoot>
         </table>
       </div>
-      <div style="margin-top:12px;padding:10px 12px;background:var(--navy3);border-radius:8px;font-size:12px;color:var(--text2);line-height:1.7">
-        💡 <b>Como funciona:</b> Entradas com status <b>recebido</b> aparecem em verde pelo mês de recebimento.
-        Entradas <b>pendentes</b> aparecem em amarelo pela data prevista.
-        Use o ✅ nas Entradas para confirmar o recebimento — o fluxo atualiza em tempo real.
-      </div>
-    </div>`;
+    </details>
+
+    <!-- Dica -->
+    <div style="padding:10px 14px;background:var(--navy3);border-radius:8px;font-size:12px;color:var(--text2);line-height:1.7">
+      💡 <b>Barra verde</b> = entradas (escuro recebido · claro previsto) &nbsp;·&nbsp;
+      <b>Barra vermelha</b> = saídas (escuro pago · laranja previsto) &nbsp;·&nbsp;
+      <b>Borda do card</b>: <span style="color:#22c55e">verde</span> = mês positivo · <span style="color:#ef4444">vermelho</span> = mês negativo.
+      Use ✅ nas Entradas para confirmar recebimento — o fluxo atualiza em tempo real.
+    </div>
+  `;
 }
 
 const TIPOS_ENTRADA = ['comissao_venda','fee_fixo_mensal','consultoria','bonus','outro'];
