@@ -2398,6 +2398,7 @@ async function renderFinanceiro(filter = '') {
       <button class="fin-tab ${finTab==='resumo'?'active':''}" onclick="setFinTab('resumo')">📊 Por Empreendimento</button>
       <button class="fin-tab ${finTab==='comissoes'?'active':''}" onclick="setFinTab('comissoes')">💳 Comissões Corretores</button>
       <button class="fin-tab ${finTab==='fluxo'?'active':''}" onclick="setFinTab('fluxo')">📅 Fluxo de Caixa</button>
+      <button class="fin-tab ${finTab==='fixas'?'active':''}" onclick="setFinTab('fixas')">🔁 Despesas Fixas</button>
     </div>
     <div id="fin-content"></div>
   `;
@@ -2406,7 +2407,7 @@ async function renderFinanceiro(filter = '') {
 
 function setFinTab(tab) {
   finTab = tab;
-  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo' };
+  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo', fixas:'Fixas' };
   document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(keys[tab]||'')));
   renderFinTab();
 }
@@ -2526,6 +2527,8 @@ function renderFinTab() {
           </table>
         </div>`;
     });
+  } else if (finTab === 'fixas') {
+    renderDespesasFixas(el);
   } else if (finTab === 'fluxo') {
     renderFluxoCaixa(el);
   } else {
@@ -2554,6 +2557,167 @@ function renderFinTab() {
       }).join('') : '<tr class="empty-row"><td colspan="6">Nenhum empreendimento</td></tr>';
     });
   }
+}
+
+function renderDespesasFixas(el) {
+  const fixas = (currentData.saidas || []).filter(s => s.recorrente);
+  const totalFixo = fixas.reduce((s, d) => s + (d.valor || 0), 0);
+  const empOpts = (currentData.emp || []).map(e => `<option value="${e.id}">${e.nome}</option>`).join('');
+
+  el.innerHTML = `
+    <div class="kpi-grid" style="margin-bottom:16px">
+      ${kpi('🔁', 'Total Fixo/Mês', fmt(totalFixo), `${fixas.length} despesa${fixas.length !== 1 ? 's' : ''} cadastrada${fixas.length !== 1 ? 's' : ''}`)}
+      ${kpi('📅', 'Custo Anual', fmt(totalFixo * 12), 'projeção 12 meses')}
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">🔁 Despesas Fixas Mensais (${fixas.length})</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" onclick="gerarDespesasFixasMes()" title="Cria lançamentos de saída para o mês atual com base nas despesas fixas cadastradas">📋 Gerar este mês</button>
+          <button class="btn btn-primary" onclick="openDespesaFixaModal()">+ Nova Despesa Fixa</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Descrição</th><th>Categoria</th><th>Empreendimento</th><th>Valor/mês</th><th>Dia venc.</th><th></th></tr></thead>
+        <tbody>
+          ${fixas.length ? fixas.map(d => `
+            <tr>
+              <td><strong>${d.descricao}</strong></td>
+              <td>${CATEGORIAS_SAIDA_LABEL[d.categoria] || d.categoria || '—'}</td>
+              <td>${d.empreendimento_nome || '<span style="color:var(--text2)">Institucional</span>'}</td>
+              <td style="font-weight:700;color:var(--danger)">${fmt(d.valor)}</td>
+              <td style="color:var(--text2);text-align:center">${d.data_pagamento ? 'Dia ' + d.data_pagamento.split('-')[2] : '—'}</td>
+              <td style="display:flex;gap:4px">
+                <button class="btn-icon btn-edit" onclick="openDespesaFixaModal(${d.id})">✏️</button>
+                <button class="btn-icon btn-delete" onclick="deleteDespesaFixa(${d.id})">🗑️</button>
+              </td>
+            </tr>
+          `).join('') : '<tr class="empty-row"><td colspan="6">Nenhuma despesa fixa cadastrada</td></tr>'}
+        </tbody>
+      </table>
+      <div style="margin-top:12px;padding:10px 14px;background:var(--navy3);border-radius:8px;font-size:12px;color:var(--text2);line-height:1.7">
+        💡 <b>Como funciona:</b> Cadastre aqui despesas que se repetem todo mês (aluguel, contador, internet, etc.).
+        Use <b>Gerar este mês</b> para criar os lançamentos de saída do mês atual com um clique —
+        eles aparecem na aba Saídas e no Fluxo de Caixa. Você pode gerar quando quiser, sem duplicar.
+      </div>
+    </div>
+  `;
+}
+
+function openDespesaFixaModal(id = null) {
+  const d = id ? (currentData.saidas || []).find(s => s.id === id) : {};
+  const empOpts = (currentData.emp || []).map(e => `<option value="${e.id}" ${d?.empreendimento_id == e.id ? 'selected' : ''}>${e.nome}</option>`).join('');
+  const catOpts = CATEGORIAS_SAIDA.map(c => `<option value="${c}" ${(d?.categoria || 'operacional') === c ? 'selected' : ''}>${CATEGORIAS_SAIDA_LABEL[c]}</option>`).join('');
+
+  openModal(id ? 'Editar Despesa Fixa' : 'Nova Despesa Fixa', `
+    <div class="form-grid">
+      <div class="form-group span2">
+        <label>Descrição *</label>
+        <input id="ff-desc" value="${d?.descricao || ''}" placeholder="Ex: Aluguel escritório, Contador, Internet...">
+      </div>
+      <div class="form-group">
+        <label>Categoria</label>
+        <select id="ff-cat">${catOpts}</select>
+      </div>
+      <div class="form-group">
+        <label>Empreendimento</label>
+        <select id="ff-emp"><option value="">Institucional</option>${empOpts}</select>
+      </div>
+      <div class="form-group">
+        <label>Valor mensal (R$) *</label>
+        <input id="ff-valor" type="number" step="0.01" value="${d?.valor || ''}" placeholder="0,00">
+      </div>
+      <div class="form-group">
+        <label>Dia do vencimento</label>
+        <input id="ff-dia" type="number" min="1" max="31" value="${d?.data_pagamento ? parseInt(d.data_pagamento.split('-')[2]) : ''}" placeholder="Ex: 5, 10, 15...">
+      </div>
+      <div class="form-group span2">
+        <label>Observações</label>
+        <textarea id="ff-obs">${d?.observacoes || ''}</textarea>
+      </div>
+    </div>
+  `, async () => {
+    const descricao = document.getElementById('ff-desc').value.trim();
+    const valor = parseFloat(document.getElementById('ff-valor').value);
+    if (!descricao || !valor) return toast('Descrição e valor são obrigatórios', 'error');
+
+    const dia = parseInt(document.getElementById('ff-dia').value) || null;
+    // Usa a data atual com o dia de vencimento como referência
+    const hoje = new Date();
+    const mesRef = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+    const dataRef = dia ? `${mesRef}-${String(dia).padStart(2, '0')}` : null;
+
+    const body = {
+      descricao,
+      categoria: document.getElementById('ff-cat').value,
+      empreendimento_id: document.getElementById('ff-emp').value || null,
+      valor,
+      data_pagamento: dataRef,
+      status: 'pendente',
+      recorrente: true,
+      observacoes: document.getElementById('ff-obs').value || null,
+    };
+
+    const r = id ? await put(`/api/financeiro/saidas/${id}`, body) : await post('/api/financeiro/saidas', body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast(id ? 'Despesa fixa atualizada!' : 'Despesa fixa cadastrada!');
+    closeModal();
+    renderFinanceiro();
+  });
+}
+
+async function deleteDespesaFixa(id) {
+  if (!confirm('Excluir esta despesa fixa?')) return;
+  await del(`/api/financeiro/saidas/${id}`);
+  toast('Despesa fixa excluída');
+  renderFinanceiro();
+}
+
+async function gerarDespesasFixasMes() {
+  const fixas = (currentData.saidas || []).filter(s => s.recorrente);
+  if (!fixas.length) return toast('Nenhuma despesa fixa cadastrada', 'error');
+
+  const hoje = new Date();
+  const anoMes = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+
+  // Verifica duplicatas: busca saídas do mês atual que já foram geradas a partir das fixas
+  const saidasMes = (currentData.saidas || []).filter(s =>
+    !s.recorrente && s.data_pagamento && s.data_pagamento.startsWith(anoMes)
+  );
+
+  let geradas = 0;
+  let ignoradas = 0;
+  for (const fixa of fixas) {
+    // Evita duplicar: verifica se já existe saída com mesma descrição e mesmo mês
+    const jaExiste = saidasMes.some(s =>
+      s.descricao === `${fixa.descricao} (${anoMes.replace('-', '/')})` ||
+      s.descricao === fixa.descricao && s.empreendimento_id == fixa.empreendimento_id
+    );
+    if (jaExiste) { ignoradas++; continue; }
+
+    // Calcula o dia de vencimento no mês atual
+    const dia = fixa.data_pagamento ? fixa.data_pagamento.split('-')[2] : '01';
+    const dataLanc = `${anoMes}-${dia}`;
+
+    await post('/api/financeiro/saidas', {
+      descricao: `${fixa.descricao} (${anoMes.replace('-', '/')})`,
+      categoria: fixa.categoria,
+      empreendimento_id: fixa.empreendimento_id || null,
+      valor: fixa.valor,
+      data_pagamento: dataLanc,
+      status: 'pendente',
+      recorrente: false,
+      observacoes: fixa.observacoes || null,
+    });
+    geradas++;
+  }
+
+  if (geradas === 0 && ignoradas > 0) {
+    toast(`As despesas fixas deste mês já foram geradas anteriormente.`, 'error');
+  } else {
+    toast(`✅ ${geradas} lançamento${geradas !== 1 ? 's' : ''} gerado${geradas !== 1 ? 's' : ''} para ${anoMes.replace('-', '/')}!${ignoradas ? ` (${ignoradas} já existiam)` : ''}`);
+  }
+  renderFinanceiro();
 }
 
 function renderFluxoCaixa(el) {
@@ -4514,7 +4678,7 @@ function handleAdd() {
     case 'clientes': openClienteModal(); break;
     case 'empreendimentos': openEmpModal(); break;
     case 'corretores': openCorretorModal(); break;
-    case 'financeiro': finTab==='entradas' ? openEntradaModal() : finTab==='saidas' ? openSaidaModal() : finTab==='distribuicoes' ? openDistModal() : finTab==='fluxo' ? null : openCalModal(); break;
+    case 'financeiro': finTab==='entradas' ? openEntradaModal() : finTab==='saidas' ? openSaidaModal() : finTab==='distribuicoes' ? openDistModal() : finTab==='fluxo' ? null : finTab==='fixas' ? openDespesaFixaModal() : openCalModal(); break;
     case 'calendario': openCalModal(); break;
     case 'eventos': openEventoModal(); break;
   }
