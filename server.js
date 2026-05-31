@@ -1197,6 +1197,104 @@ app.delete("/api/financeiro/saidas/:id", (req, res) => {
   ok(res, {});
 });
 
+// ─── IMPORTAÇÃO DE FATURA DE CARTÃO ──────────────────────────────────────────
+
+const uploadFatura = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } });
+
+app.post('/api/financeiro/extrair-fatura', uploadFatura.single('fatura'), async (req, res) => {
+  if (!req.file) return err(res, 'Arquivo não enviado');
+  if (!openai) return err(res, 'Chave OpenAI não configurada no servidor');
+
+  try {
+    let texto = '';
+    const mime = req.file.mimetype;
+    const nome = req.file.originalname.toLowerCase();
+
+    if (mime === 'application/pdf' || nome.endsWith('.pdf')) {
+      const parsed = await pdfParse(req.file.buffer);
+      texto = parsed.text;
+    } else if (nome.endsWith('.docx') || mime.includes('wordprocessingml')) {
+      texto = await extrairTextoDocx(req.file.buffer);
+    } else {
+      return err(res, 'Formato não suportado. Envie PDF ou DOCX.');
+    }
+
+    if (!texto || texto.length < 30) return err(res, 'Não foi possível extrair texto do arquivo');
+
+    const textoLimitado = texto.slice(0, 15000);
+
+    const prompt = `Você é um assistente especializado em extrair lançamentos de faturas de cartão de crédito brasileiras.
+Leia a fatura abaixo e extraia TODOS os lançamentos (compras, créditos, tarifas, etc).
+
+Retorne APENAS um objeto JSON válido com este formato:
+{
+  "vencimento": "YYYY-MM-DD ou null",
+  "total": número sem formatação ou null,
+  "lancamentos": [
+    {
+      "data": "YYYY-MM-DD",
+      "descricao": "descrição da compra exatamente como aparece na fatura",
+      "valor": número positivo (ex: 150.00),
+      "tipo": "debito" ou "credito"
+    }
+  ]
+}
+
+Regras:
+- Inclua TODOS os lançamentos, inclusive tarifas, IOF, juros, pagamentos e créditos
+- Para créditos/estornos, use tipo "credito" e valor positivo
+- Para compras/débitos, use tipo "debito" e valor positivo
+- Se a data aparecer apenas como dia/mês, use o ano do vencimento ou o ano atual
+- Não invente lançamentos — extraia somente o que estiver explicitamente na fatura
+
+FATURA:
+${textoLimitado}`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4.1-mini',
+      max_tokens: 4000,
+      temperature: 0,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const resposta = completion.choices[0].message.content.trim();
+    const jsonMatch = resposta.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return err(res, 'IA não retornou dados estruturados');
+
+    const dados = JSON.parse(jsonMatch[0]);
+    ok(res, dados);
+  } catch(e) {
+    console.error('[extrair-fatura]', e.message);
+    err(res, 'Erro ao processar fatura: ' + e.message);
+  }
+});
+
+// Importação em lote de lançamentos classificados
+app.post('/api/financeiro/importar-fatura', (req, res) => {
+  const { lancamentos } = req.body;
+  if (!Array.isArray(lancamentos) || lancamentos.length === 0) return err(res, 'Nenhum lançamento enviado');
+
+  const stmt = db.prepare(`INSERT INTO financeiro_saidas
+    (empreendimento_id, descricao, categoria, valor, data_pagamento, status, observacoes)
+    VALUES (?,?,?,?,?,?,?)`);
+
+  let importados = 0;
+  for (const l of lancamentos) {
+    if (!l.incluir) continue;
+    stmt.run(
+      l.empreendimento_id || null,
+      l.descricao,
+      l.categoria || 'outro',
+      Math.abs(parseFloat(l.valor) || 0),
+      l.data || null,
+      'pago',
+      l.observacoes || null
+    );
+    importados++;
+  }
+  ok(res, { importados });
+});
+
 // ─── DISTRIBUIÇÕES ────────────────────────────────────────────────────────────
 
 app.get("/api/financeiro/distribuicoes", (req, res) => {

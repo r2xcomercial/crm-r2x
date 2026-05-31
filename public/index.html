@@ -2446,7 +2446,16 @@ function renderFinTab() {
     const rows = currentData.saidas || [];
     el.innerHTML = `
       <div class="table-card">
-        <div class="table-header"><div class="table-title">📤 Saídas (${rows.length})</div><button class="btn btn-primary" onclick="openSaidaModal()">+ Nova Saída</button></div>
+        <div class="table-header">
+          <div class="table-title">📤 Saídas (${rows.length})</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <label style="cursor:pointer;background:var(--navy3);border:1px solid var(--border);color:var(--accent);border-radius:7px;padding:6px 14px;font-size:13px;font-weight:600;white-space:nowrap" title="Importe a fatura do cartão — a IA extrai os lançamentos e você classifica antes de importar">
+              💳 Importar Fatura
+              <input type="file" accept=".pdf,.docx" style="display:none" onchange="iniciarImportacaoFatura(this)">
+            </label>
+            <button class="btn btn-primary" onclick="openSaidaModal()">+ Nova Saída</button>
+          </div>
+        </div>
         <table>
           <thead><tr><th>Descrição</th><th>Categoria</th><th>Empreendimento</th><th>Valor</th><th>Data</th><th>Recorrente</th><th>Status</th><th></th></tr></thead>
           <tbody>
@@ -2700,6 +2709,8 @@ function renderFluxoCaixa(el) {
 
 const TIPOS_ENTRADA = ['comissao_venda','fee_fixo_mensal','consultoria','bonus','outro'];
 const TIPOS_ENTRADA_LABEL = { comissao_venda:'Comissão Venda', fee_fixo_mensal:'Fee Fixo Mensal', consultoria:'Consultoria', bonus:'Bônus', outro:'Outro' };
+const CATEGORIAS_SAIDA = ['marketing','operacional','pessoal','evento','tecnologia','juridico','contabilidade','outro'];
+const CATEGORIAS_SAIDA_LABEL = { marketing:'Marketing', operacional:'Operacional', pessoal:'Pessoal', evento:'Evento', tecnologia:'Tecnologia', juridico:'Jurídico', contabilidade:'Contabilidade', outro:'Outro' };
 
 function openEntradaModal(e = {}) {
   const isNew = !e.id;
@@ -2827,6 +2838,188 @@ function emitirRecibo(id) {
 
 async function editEntrada(id) { openEntradaModal(currentData.entradas.find(e => e.id === id)); }
 async function deleteEntrada(id) { if(!confirm('Excluir?')) return; await del(`/api/financeiro/entradas/${id}`); toast('Excluído'); renderFinanceiro(); }
+
+// ─── IMPORTAÇÃO DE FATURA DE CARTÃO ──────────────────────────────────────────
+
+async function iniciarImportacaoFatura(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+
+  const empOpts = (currentData.emp||[]).map(e => `<option value="${e.id}">${e.nome}</option>`).join('');
+  const catOpts = CATEGORIAS_SAIDA.map(c => `<option value="${c}">${CATEGORIAS_SAIDA_LABEL[c]||c}</option>`).join('');
+
+  // Abre modal de carregamento
+  openModal('💳 Importar Fatura de Cartão', `
+    <div id="fatura-loading" style="text-align:center;padding:40px 20px">
+      <div style="font-size:32px;margin-bottom:12px">⏳</div>
+      <div style="font-size:14px;color:var(--text2)">Lendo fatura com IA... pode levar alguns segundos.</div>
+    </div>
+    <div id="fatura-content" style="display:none"></div>
+  `, async () => { await confirmarImportacaoFatura(); }, { saveLabel: '💳 Importar selecionados' });
+  document.getElementById('modal').classList.add('modal-wide');
+
+  // Envia o arquivo
+  try {
+    const fd = new FormData();
+    fd.append('fatura', file);
+    const resp = await fetch('/api/financeiro/extrair-fatura', {
+      method: 'POST',
+      headers: { 'x-crm-token': TOKEN },
+      body: fd,
+    });
+    const r = await resp.json();
+    if (!r.ok) throw new Error(r.error || 'Erro ao processar');
+
+    const d = r.data;
+    const lancamentos = (d.lancamentos || []);
+
+    const loading = document.getElementById('fatura-loading');
+    const content = document.getElementById('fatura-content');
+    if (!content) return;
+
+    if (!lancamentos.length) {
+      if (loading) loading.innerHTML = '<div style="color:var(--warning);padding:24px;text-align:center">⚠️ Nenhum lançamento encontrado na fatura.</div>';
+      return;
+    }
+    if (loading) loading.style.display = 'none';
+
+    // Monta a tabela de classificação
+    content.style.display = 'block';
+    content.innerHTML = `
+      <div style="margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        ${d.vencimento ? `<span style="font-size:13px;color:var(--text2)">📅 Vencimento: <b style="color:var(--text1)">${fmtDate(d.vencimento)}</b></span>` : ''}
+        ${d.total ? `<span style="font-size:13px;color:var(--text2)">💳 Total fatura: <b style="color:var(--danger)">${fmt(d.total)}</b></span>` : ''}
+        <span style="font-size:13px;color:var(--text2)">${lancamentos.length} lançamentos extraídos</span>
+        <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-left:auto;cursor:pointer">
+          <input type="checkbox" id="fatura-sel-todos" checked onchange="toggleTodosFatura(this.checked)"> Selecionar todos
+        </label>
+      </div>
+      <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label style="font-size:12px;color:var(--text2)">Aplicar a todos selecionados:</label>
+        <select id="fatura-emp-global" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px">
+          <option value="">— Empreendimento —</option>
+          <option value="institucional">🏢 Institucional</option>
+          ${empOpts}
+        </select>
+        <select id="fatura-cat-global" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px">
+          <option value="">— Categoria —</option>
+          ${catOpts}
+        </select>
+        <button type="button" onclick="aplicarGlobalFatura()" style="padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--accent);cursor:pointer;font-size:12px">Aplicar</button>
+      </div>
+      <div style="overflow-x:auto;max-height:420px;overflow-y:auto">
+        <table style="min-width:700px;font-size:12px">
+          <thead style="position:sticky;top:0;background:var(--navy2);z-index:1">
+            <tr>
+              <th style="width:32px;padding:6px 4px"></th>
+              <th style="padding:6px 8px;text-align:left">Data</th>
+              <th style="padding:6px 8px;text-align:left">Descrição</th>
+              <th style="padding:6px 8px;text-align:right">Valor</th>
+              <th style="padding:6px 8px">Empreendimento</th>
+              <th style="padding:6px 8px">Categoria</th>
+            </tr>
+          </thead>
+          <tbody id="fatura-tbody">
+            ${lancamentos.map((l, i) => `
+              <tr id="fatura-row-${i}" style="border-bottom:1px solid var(--border);${l.tipo==='credito'?'opacity:.55':''}">
+                <td style="padding:4px;text-align:center">
+                  <input type="checkbox" class="fatura-chk" data-idx="${i}" ${l.tipo!=='credito'?'checked':''} onchange="toggleFaturaRow(${i},this.checked)">
+                </td>
+                <td style="padding:4px 8px;white-space:nowrap;color:var(--text2)">${l.data?fmtDate(l.data):'—'}</td>
+                <td style="padding:4px 8px;max-width:220px">
+                  <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(l.descricao||'').replace(/"/g,'&quot;')}">${l.descricao||'—'}</div>
+                  ${l.tipo==='credito'?'<div style="font-size:10px;color:var(--success)">crédito/estorno</div>':''}
+                </td>
+                <td style="padding:4px 8px;text-align:right;font-weight:700;color:${l.tipo==='credito'?'var(--success)':'var(--danger)'}">
+                  ${l.tipo==='credito'?'+':''}${fmt(l.valor)}
+                </td>
+                <td style="padding:4px 6px">
+                  <select class="fatura-emp" data-idx="${i}" style="width:130px;padding:3px 5px;border-radius:5px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px">
+                    <option value="">Institucional</option>
+                    ${empOpts}
+                  </select>
+                </td>
+                <td style="padding:4px 6px">
+                  <select class="fatura-cat" data-idx="${i}" style="width:120px;padding:3px 5px;border-radius:5px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px">
+                    ${catOpts}
+                  </select>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--text2)">
+        💡 Créditos/estornos estão desmarcados por padrão. Marque os que quiser importar como receita.
+        Após importar, os lançamentos aparecem nas Saídas com status <b>Pago</b>.
+      </div>
+    `;
+
+    // Guarda dados no elemento para usar no submit
+    content.dataset.lancamentos = JSON.stringify(lancamentos);
+
+  } catch(e) {
+    const loading = document.getElementById('fatura-loading');
+    if (loading) {
+      loading.innerHTML = `<div style="color:var(--danger);padding:24px;text-align:center">❌ ${e.message}</div>`;
+    }
+  }
+}
+
+function toggleTodosFatura(checked) {
+  document.querySelectorAll('.fatura-chk').forEach(chk => {
+    chk.checked = checked;
+    toggleFaturaRow(parseInt(chk.dataset.idx), checked);
+  });
+}
+
+function toggleFaturaRow(idx, checked) {
+  const row = document.getElementById(`fatura-row-${idx}`);
+  if (row) row.style.opacity = checked ? '1' : '0.35';
+}
+
+function aplicarGlobalFatura() {
+  const empVal = document.getElementById('fatura-emp-global')?.value;
+  const catVal = document.getElementById('fatura-cat-global')?.value;
+  document.querySelectorAll('.fatura-chk:checked').forEach(chk => {
+    const idx = chk.dataset.idx;
+    if (empVal !== '') {
+      const empSel = document.querySelector(`.fatura-emp[data-idx="${idx}"]`);
+      if (empSel) empSel.value = empVal === 'institucional' ? '' : empVal;
+    }
+    if (catVal) {
+      const catSel = document.querySelector(`.fatura-cat[data-idx="${idx}"]`);
+      if (catSel) catSel.value = catVal;
+    }
+  });
+}
+
+async function confirmarImportacaoFatura() {
+  const content = document.getElementById('fatura-content');
+  if (!content?.dataset.lancamentos) return;
+
+  const base = JSON.parse(content.dataset.lancamentos);
+  const lancamentos = base.map((l, i) => {
+    const chk = document.querySelector(`.fatura-chk[data-idx="${i}"]`);
+    const emp = document.querySelector(`.fatura-emp[data-idx="${i}"]`);
+    const cat = document.querySelector(`.fatura-cat[data-idx="${i}"]`);
+    return {
+      ...l,
+      incluir: chk?.checked || false,
+      empreendimento_id: emp?.value || null,
+      categoria: cat?.value || 'outro',
+    };
+  });
+
+  const total = lancamentos.filter(l => l.incluir).length;
+  if (total === 0) { toast('Nenhum lançamento selecionado', 'error'); return; }
+
+  const r = await post('/api/financeiro/importar-fatura', { lancamentos });
+  if (!r.ok) { toast(r.error, 'error'); return; }
+  toast(`✅ ${r.data.importados} lançamentos importados para o Financeiro!`);
+  renderFinanceiro();
+}
 
 function openSaidaModal(e = {}) {
   openModal(e.id ? 'Editar Saída' : 'Nova Saída', `
@@ -4340,7 +4533,7 @@ function openModal(title, bodyHtml, onSave, options = {}) {
     foot.style.display = '';
     foot.innerHTML = `
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="modalSave()">Salvar</button>
+      <button class="btn btn-primary" onclick="modalSave()">${options.saveLabel || 'Salvar'}</button>
     `;
   }
   window._modalSave = onSave;
