@@ -405,6 +405,8 @@ function closeSidebar() {
 }
 
 function navigate(page) {
+  // Incorporador: acesso restrito ao próprio portal
+  if (USUARIO.perfil === 'incorporador' && page !== 'incorporador-painel') return;
   // Limpa refresh automático do painel ao sair
   if (currentPage === 'painel' && page !== 'painel' && _painelInterval) {
     clearInterval(_painelInterval); _painelInterval = null;
@@ -430,6 +432,12 @@ const pageTitles = {
 const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario','usuarios','eventos'];
 
 async function renderPage(page) {
+  // Incorporador: bloqueia acesso a qualquer página fora do portal
+  if (USUARIO.perfil === 'incorporador' && page !== 'incorporador-painel') {
+    document.getElementById('content').innerHTML =
+      `<div style="text-align:center;padding:80px;color:var(--danger)">⛔ Acesso não autorizado</div>`;
+    return;
+  }
   const c = document.getElementById('content');
   c.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text2)">Carregando...</div>`;
   try {
@@ -6008,123 +6016,242 @@ async function deleteCheckItem(id) {
 
 // ─── PORTAL DO INCORPORADOR ───────────────────────────────────────────────────
 
-async function renderIncorporadorPainel() {
+async function renderIncorporadorPainel(aba = 'empreendimentos') {
   const r = await get('/api/incorporador/painel');
   if (!r.ok) {
     document.getElementById('content').innerHTML = `<div style="text-align:center;padding:60px;color:var(--danger)">${r.error || 'Erro ao carregar dados'}</div>`;
     return;
   }
-  const { cliente, empreendimentos, kpis } = r.data;
+  const { cliente, empreendimentos, ranking, kpis } = r.data;
   const el = document.getElementById('content');
 
-  const statusLabel = { prospecto:'Prospecto', planejamento:'Planejamento', pre_lancamento:'Pré-lançamento', lancamento:'Lançamento', vendas:'Em Vendas', encerrado:'Encerrado' };
-  const statusBadge = { prospecto:'badge-gray', planejamento:'badge-gray', pre_lancamento:'badge-yellow', lancamento:'badge-accent', vendas:'badge-green', encerrado:'badge-red' };
-  const checkIcon   = { concluido:'✅', em_andamento:'🔄', a_definir:'⏳', cancelado:'❌' };
-
+  const SL = { prospecto:'Prospecto', planejamento:'Planejamento', pre_lancamento:'Pré-lançamento', lancamento:'Lançamento', vendas:'Em Vendas', encerrado:'Encerrado' };
+  const SB = { prospecto:'badge-gray', planejamento:'badge-gray', pre_lancamento:'badge-yellow', lancamento:'badge-accent', vendas:'badge-green', encerrado:'badge-red' };
+  const CI = { concluido:'✅', em_andamento:'🔄', a_definir:'⏳', cancelado:'❌' };
   const vsoGlobal = kpis.totalUnidades > 0 ? ((kpis.totalVendidas + kpis.totalReservadas) / kpis.totalUnidades * 100).toFixed(1) : 0;
+
+  // Todas as vendas de todos os empreendimentos (para abas Vendas e Comissões)
+  const todasVendas = empreendimentos.flatMap(e => (e.vendas||[]).map(v => ({ ...v, empreendimento_nome: e.nome })));
+
+  // ── Conteúdo de cada aba ────────────────────────────────────────────────────
+  const tabContent = {
+
+    empreendimentos: `
+      <div class="kpi-grid" style="margin-bottom:20px">
+        ${kpi('🏗️','Empreendimentos', kpis.totalEmpreendimentos, '')}
+        ${kpi('🏘️','Total Unidades', kpis.totalUnidades, '')}
+        ${kpi('🔴','Vendidas', kpis.totalVendidas, `+ ${kpis.totalReservadas} reservadas`)}
+        ${kpi('📊','VSO Global', vsoGlobal+'%', 'vend. + reserv.')}
+        ${kpi('💰','VGV Vendido', fmt(kpis.vgvVendido), `de ${fmt(kpis.vgvTotal)} total`)}
+      </div>
+      ${empreendimentos.length === 0 ? `<div style="text-align:center;padding:60px;color:var(--text2)">Nenhum empreendimento cadastrado.</div>` : ''}
+      ${empreendimentos.map(emp => {
+        const total   = emp.total_unidades    || 0;
+        const vend    = emp.unidades_vendidas  || 0;
+        const res     = emp.unidades_reservadas|| 0;
+        const disp    = emp.unidades_disponiveis||0;
+        const vso     = total > 0 ? ((vend+res)/total*100).toFixed(1) : 0;
+        const vendPct = total > 0 ? (vend/total*100) : 0;
+        const resPct  = total > 0 ? (res /total*100) : 0;
+        return `
+        <div class="table-card" style="margin-bottom:16px">
+          <div class="table-header" style="flex-wrap:wrap;gap:8px">
+            <div>
+              <div style="font-size:15px;font-weight:800">${emp.nome}</div>
+              <div style="font-size:12px;color:var(--text2);margin-top:2px">
+                ${emp.cidade||''}${emp.estado?'/'+emp.estado:''} ·
+                <span class="badge ${SB[emp.status]||'badge-gray'}">${SL[emp.status]||emp.status}</span>
+                ${emp.data_lancamento?` · Lançamento: ${fmtDate(emp.data_lancamento)}`:''}
+              </div>
+            </div>
+            <div style="font-size:18px;font-weight:700;color:var(--success)">${fmt(emp.vgv_vendido||0)}</div>
+          </div>
+          <div style="padding:14px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;border-bottom:1px solid var(--border)">
+            <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Total</div><div style="font-weight:700;font-size:20px">${total}</div></div>
+            <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Vendidas</div><div style="font-weight:700;font-size:20px;color:var(--danger)">${vend}</div></div>
+            <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Reservadas</div><div style="font-weight:700;font-size:20px;color:var(--warning)">${res}</div></div>
+            <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Disponíveis</div><div style="font-weight:700;font-size:20px;color:var(--success)">${disp}</div></div>
+            <div>
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase">VSO</div>
+              <div style="font-weight:700;font-size:20px">${vso}%</div>
+              <div style="background:var(--navy3);border-radius:4px;height:6px;overflow:hidden;margin-top:4px;display:flex">
+                <div style="height:100%;background:var(--danger);width:${vendPct}%"></div>
+                <div style="height:100%;background:var(--warning);width:${resPct}%"></div>
+              </div>
+            </div>
+          </div>
+          ${emp.checklist&&emp.checklist.length?`
+          <div style="padding:12px 20px">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);margin-bottom:8px">✅ Checklist de Marketing</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px">
+              ${emp.checklist.map(c=>`
+                <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--navy3);border-radius:7px;font-size:12px">
+                  <span>${CI[c.status]||'⏳'}</span>
+                  <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.material}</div>
+                  ${c.data_entrega?`<div style="font-size:10px;color:var(--text2);flex-shrink:0">${fmtDate(c.data_entrega)}</div>`:''}
+                </div>`).join('')}
+            </div>
+          </div>`:``}
+        </div>`;
+      }).join('')}`,
+
+    vendas: `
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">📋 Vendas (${todasVendas.length})</div>
+        </div>
+        ${todasVendas.length ? `
+        <div style="overflow-x:auto">
+          <table style="min-width:680px">
+            <thead><tr>
+              <th>Data</th><th>Empreendimento</th><th>Imóvel</th><th>Corretor</th>
+              <th style="text-align:right">Valor Venda</th>
+            </tr></thead>
+            <tbody>
+              ${todasVendas.map(v=>`
+                <tr>
+                  <td style="white-space:nowrap">${fmtDate(v.data_venda)}</td>
+                  <td style="color:var(--text2)">${v.empreendimento_nome||'—'}</td>
+                  <td>${v.imovel||'—'}</td>
+                  <td>${v.corretor_nome||'—'}${v.imobiliaria?`<div style="font-size:11px;color:var(--text2)">${v.imobiliaria}</div>`:''}</td>
+                  <td style="text-align:right;font-weight:600;color:var(--success)">${fmt(v.valor)}</td>
+                </tr>`).join('')}
+            </tbody>
+            <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
+              <td colspan="4">Total</td>
+              <td style="text-align:right;color:var(--success)">${fmt(todasVendas.reduce((s,v)=>s+(v.valor||0),0))}</td>
+            </tr></tfoot>
+          </table>
+        </div>` : `<div style="padding:40px;text-align:center;color:var(--text2)">Nenhuma venda registrada.</div>`}
+      </div>`,
+
+    ranking: `
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">🥇 Ranking de Corretores</div></div>
+        ${ranking&&ranking.length ? `
+        <div style="overflow-x:auto">
+          <table style="min-width:600px">
+            <thead><tr>
+              <th style="width:36px">#</th><th>Corretor</th><th>Imobiliária</th>
+              <th style="text-align:right">Vendas</th>
+              <th style="text-align:right">VGV Total</th>
+            </tr></thead>
+            <tbody>
+              ${ranking.map((c,i)=>{
+                const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+                return `<tr ${i===0?'style="background:rgba(0,196,180,.05)"':''}>
+                  <td style="font-weight:700;color:var(--text2)">${medal||i+1}</td>
+                  <td style="font-weight:600">${c.corretor_nome||'—'}</td>
+                  <td style="color:var(--text2)">${c.imobiliaria||'—'}</td>
+                  <td style="text-align:right;font-weight:700">${c.total_vendas}</td>
+                  <td style="text-align:right;font-weight:600;color:var(--success)">${fmt(c.total_vgv)}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>` : `<div style="padding:40px;text-align:center;color:var(--text2)">Sem dados de vendas.</div>`}
+      </div>`,
+
+    comissoes: `
+      <!-- Comissão dos Corretores -->
+      <div class="table-card" style="margin-bottom:20px">
+        <div class="table-header"><div class="table-title">👤 Comissão a Pagar — Corretores</div></div>
+        ${todasVendas.some(v=>v.comissao_corretor_valor) ? `
+        <div style="overflow-x:auto">
+          <table style="min-width:700px">
+            <thead><tr>
+              <th>Data</th><th>Imóvel</th><th>Corretor</th>
+              <th style="text-align:right">Valor Venda</th>
+              <th style="text-align:right">% Comissão</th>
+              <th style="text-align:right">Valor Comissão</th>
+              <th>Status</th>
+            </tr></thead>
+            <tbody>
+              ${todasVendas.filter(v=>v.comissao_corretor_valor).map(v=>`
+                <tr>
+                  <td style="white-space:nowrap">${fmtDate(v.data_venda)}</td>
+                  <td>${v.imovel||'—'}<div style="font-size:11px;color:var(--text2)">${v.empreendimento_nome}</div></td>
+                  <td>${v.corretor_nome||'—'}</td>
+                  <td style="text-align:right">${fmt(v.valor)}</td>
+                  <td style="text-align:right">${v.comissao_corretor_pct?v.comissao_corretor_pct+'%':'—'}</td>
+                  <td style="text-align:right;font-weight:700;color:${v.comissao_corretor_status==='pago'?'var(--success)':'var(--warning)'}">
+                    ${fmt(v.comissao_corretor_valor)}
+                  </td>
+                  <td><span class="badge ${v.comissao_corretor_status==='pago'?'badge-green':'badge-yellow'}">
+                    ${v.comissao_corretor_status==='pago'?'✅ Pago':'⏳ Pendente'}
+                  </span></td>
+                </tr>`).join('')}
+            </tbody>
+            <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
+              <td colspan="5">Total</td>
+              <td style="text-align:right">${fmt(todasVendas.reduce((s,v)=>s+(v.comissao_corretor_valor||0),0))}</td>
+              <td></td>
+            </tr></tfoot>
+          </table>
+        </div>` : `<div style="padding:40px;text-align:center;color:var(--text2)">Nenhuma comissão de corretor registrada.</div>`}
+      </div>
+
+      <!-- Comissão R2X -->
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">🏢 Comissão a Pagar — R2X</div></div>
+        ${todasVendas.some(v=>v.comissao_r2x) ? `
+        <div style="overflow-x:auto">
+          <table style="min-width:620px">
+            <thead><tr>
+              <th>Data</th><th>Imóvel</th>
+              <th style="text-align:right">Valor Venda</th>
+              <th style="text-align:right">% R2X</th>
+              <th style="text-align:right">Comissão R2X</th>
+            </tr></thead>
+            <tbody>
+              ${todasVendas.filter(v=>v.comissao_r2x).map(v=>`
+                <tr>
+                  <td style="white-space:nowrap">${fmtDate(v.data_venda)}</td>
+                  <td>${v.imovel||'—'}<div style="font-size:11px;color:var(--text2)">${v.empreendimento_nome}</div></td>
+                  <td style="text-align:right">${fmt(v.valor)}</td>
+                  <td style="text-align:right">${v.percentual_r2x?v.percentual_r2x+'%':'—'}</td>
+                  <td style="text-align:right;font-weight:700;color:var(--accent)">${fmt(v.comissao_r2x)}</td>
+                </tr>`).join('')}
+            </tbody>
+            <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
+              <td colspan="4">Total</td>
+              <td style="text-align:right;color:var(--accent)">${fmt(todasVendas.reduce((s,v)=>s+(v.comissao_r2x||0),0))}</td>
+            </tr></tfoot>
+          </table>
+        </div>` : `<div style="padding:40px;text-align:center;color:var(--text2)">Nenhuma comissão R2X registrada.</div>`}
+      </div>`
+  };
+
+  const tabBtn = (id, icon, label) =>
+    `<button onclick="renderIncorporadorPainel('${id}')"
+      style="padding:8px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;
+             background:${aba===id?'var(--accent)':'var(--navy3)'};
+             color:${aba===id?'var(--navy)':'var(--text2)'};
+             transition:all .15s">
+      ${icon} ${label}
+    </button>`;
 
   el.innerHTML = `
     <div style="margin-bottom:20px">
-      <h1 style="font-size:20px;font-weight:900">🏗️ ${cliente.razao_social}</h1>
-      <div style="color:var(--text2);font-size:13px;margin-top:4px">${cliente.cidade||''}${cliente.estado?'/'+cliente.estado:''} · Portal do Incorporador</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div>
+          <h1 style="font-size:20px;font-weight:900">🏗️ ${cliente.razao_social}</h1>
+          <div style="color:var(--text2);font-size:13px;margin-top:3px">${cliente.cidade||''}${cliente.estado?'/'+cliente.estado:''} · Portal do Incorporador</div>
+        </div>
+        <div style="font-size:11px;color:var(--text2)">Dados em tempo real · ${new Date().toLocaleString('pt-BR')}</div>
+      </div>
     </div>
 
-    <!-- KPIs Globais -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:24px">
-      <div class="kpi-card"><div class="kpi-label">Empreendimentos</div><div class="kpi-value">${kpis.totalEmpreendimentos}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Total Unidades</div><div class="kpi-value">${kpis.totalUnidades}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Vendidas</div><div class="kpi-value" style="color:var(--danger)">${kpis.totalVendidas}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Reservadas</div><div class="kpi-value" style="color:var(--warning)">${kpis.totalReservadas}</div></div>
-      <div class="kpi-card"><div class="kpi-label">VSO Global</div><div class="kpi-value">${vsoGlobal}%</div></div>
-      <div class="kpi-card"><div class="kpi-label">VGV Total</div><div class="kpi-value" style="font-size:15px">${(kpis.vgvTotal||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0})}</div><div class="kpi-sub">Vendido: ${(kpis.vgvVendido||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0})}</div></div>
+    <!-- Abas -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+      ${tabBtn('empreendimentos','🏗️','Empreendimentos')}
+      ${tabBtn('vendas','📋','Vendas')}
+      ${tabBtn('ranking','🥇','Ranking')}
+      ${tabBtn('comissoes','💰','Comissões')}
     </div>
 
-    <!-- Empreendimentos -->
-    ${empreendimentos.length === 0 ? `<div style="text-align:center;padding:60px;color:var(--text2)">Nenhum empreendimento cadastrado ainda.</div>` : ''}
-    ${empreendimentos.map(emp => {
-      const total  = emp.total_unidades || 0;
-      const vend   = emp.unidades_vendidas || 0;
-      const res    = emp.unidades_reservadas || 0;
-      const disp   = emp.unidades_disponiveis || 0;
-      const vso    = total > 0 ? ((vend + res) / total * 100).toFixed(1) : 0;
-      const vendPct= total > 0 ? (vend / total * 100) : 0;
-      const resPct = total > 0 ? (res  / total * 100) : 0;
-
-      return `
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:20px;overflow:hidden">
-        <!-- Header do empreendimento -->
-        <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-          <div>
-            <div style="font-size:16px;font-weight:800">${emp.nome}</div>
-            <div style="font-size:12px;color:var(--text2);margin-top:2px">
-              ${emp.cidade||''}${emp.estado?'/'+emp.estado:''} ·
-              <span class="badge ${statusBadge[emp.status]||'badge-gray'}">${statusLabel[emp.status]||emp.status}</span>
-              ${emp.data_lancamento ? ` · Lançamento: ${fmtDate(emp.data_lancamento)}` : ''}
-            </div>
-          </div>
-          <div style="font-size:20px;font-weight:700;color:var(--success)">${(emp.vgv_vendido||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0})}</div>
-        </div>
-
-        <!-- KPIs do empreendimento -->
-        <div style="padding:14px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;border-bottom:1px solid var(--border)">
-          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Total</div><div style="font-weight:700;font-size:18px">${total}</div></div>
-          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Vendidas</div><div style="font-weight:700;font-size:18px;color:var(--danger)">${vend}</div></div>
-          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Reservadas</div><div style="font-weight:700;font-size:18px;color:var(--warning)">${res}</div></div>
-          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Disponíveis</div><div style="font-weight:700;font-size:18px;color:var(--success)">${disp}</div></div>
-          <div>
-            <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">VSO</div>
-            <div style="font-weight:700;font-size:18px">${vso}%</div>
-            <div style="background:var(--navy3);border-radius:4px;height:8px;overflow:hidden;margin-top:4px;display:flex">
-              <div style="height:100%;background:var(--danger);width:${vendPct}%"></div>
-              <div style="height:100%;background:var(--warning);width:${resPct}%"></div>
-            </div>
-          </div>
-          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">VGV Total</div><div style="font-weight:700;font-size:14px">${(emp.vgv_estimado||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0})}</div></div>
-        </div>
-
-        <!-- Tabs: Vendas e Checklist -->
-        <div style="padding:14px 20px">
-          ${emp.vendas && emp.vendas.length ? `
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:10px">🏆 Vendas Registradas (${emp.vendas.length})</div>
-          <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
-            <thead><tr>
-              <th style="text-align:left;padding:6px 8px;background:var(--card2);color:var(--text2);font-size:10px;text-transform:uppercase;border-radius:4px 0 0 0">Data</th>
-              <th style="text-align:left;padding:6px 8px;background:var(--card2);color:var(--text2);font-size:10px;text-transform:uppercase">Imóvel</th>
-              <th style="text-align:left;padding:6px 8px;background:var(--card2);color:var(--text2);font-size:10px;text-transform:uppercase">Corretor</th>
-              <th style="text-align:left;padding:6px 8px;background:var(--card2);color:var(--text2);font-size:10px;text-transform:uppercase;border-radius:0 4px 0 0">Valor</th>
-            </tr></thead>
-            <tbody>
-              ${emp.vendas.map(v => `
-                <tr style="border-bottom:1px solid var(--border)">
-                  <td style="padding:7px 8px">${fmtDate(v.data_venda)}</td>
-                  <td style="padding:7px 8px">${v.imovel||'—'}</td>
-                  <td style="padding:7px 8px;color:var(--text2)">${v.corretor_nome||'—'}</td>
-                  <td style="padding:7px 8px;color:var(--success);font-weight:600">${(v.valor||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0})}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>` : '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Nenhuma venda registrada ainda.</div>'}
-
-          ${emp.checklist && emp.checklist.length ? `
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:10px">✅ Checklist de Marketing (${emp.checklist.length} itens)</div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px">
-            ${emp.checklist.map(item => `
-              <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--navy3);border-radius:7px;font-size:12px">
-                <span>${checkIcon[item.status]||'⏳'}</span>
-                <div style="flex:1;min-width:0">
-                  <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${item.material}</div>
-                  ${item.data_entrega ? `<div style="font-size:10px;color:var(--text2)">${fmtDate(item.data_entrega)}</div>` : ''}
-                </div>
-              </div>
-            `).join('')}
-          </div>` : ''}
-        </div>
-      </div>`;
-    }).join('')}
-
-    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);text-align:center;font-size:11px;color:var(--text2)">
-      Portal R2X CRM · Dados em tempo real · ${new Date().toLocaleString('pt-BR')}
-    </div>
+    <!-- Conteúdo da aba ativa -->
+    ${tabContent[aba] || ''}
   `;
 }
 

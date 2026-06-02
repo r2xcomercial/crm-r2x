@@ -44,6 +44,17 @@ function autenticar(req, res, next) {
 }
 
 app.use(autenticar);
+
+// Incorporador só pode acessar /api/auth/* e /api/incorporador/*
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+  if (req.usuario?.perfil === 'incorporador') {
+    const permitido = req.path.startsWith('/api/auth/') || req.path.startsWith('/api/incorporador/');
+    if (!permitido) return err(res, 'Acesso não autorizado', 403);
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 // Rotas sem extensão → arquivos HTML correspondentes
@@ -2168,8 +2179,10 @@ app.get('/api/incorporador/painel', (req, res) => {
   // Detalhes por empreendimento
   const detalhes = empreendimentos.map(emp => {
     const vendas = db.prepare(`
-      SELECT v.data_venda, v.imovel, v.valor, v.status,
-             c.nome as corretor_nome
+      SELECT v.id, v.data_venda, v.imovel, v.valor,
+             v.comissao_corretor_pct, v.comissao_corretor_valor, v.comissao_corretor_status,
+             v.percentual_r2x, v.comissao_r2x,
+             c.nome as corretor_nome, c.imobiliaria
       FROM vendas v
       LEFT JOIN corretores c ON c.id = v.corretor_id
       WHERE v.empreendimento_id=? AND v.status='ativo'
@@ -2183,14 +2196,24 @@ app.get('/api/incorporador/painel', (req, res) => {
       ORDER BY ordem
     `).all(emp.id);
 
-    const unidades = db.prepare(`
-      SELECT quadra, lote, area_m2, preco, status
-      FROM unidades WHERE empreendimento_id=?
-      ORDER BY quadra, lote
-    `).all(emp.id);
-
-    return { ...emp, vendas, checklist, unidades };
+    return { ...emp, vendas, checklist };
   });
+
+  // Ranking de corretores (todas as vendas dos empreendimentos do incorporador)
+  const allEmpIds = empreendimentos.map(e => e.id);
+  const rankingRows = allEmpIds.length ? db.prepare(`
+    SELECT c.nome as corretor_nome, c.imobiliaria,
+           COUNT(*) as total_vendas,
+           SUM(v.valor) as total_vgv,
+           SUM(COALESCE(v.comissao_corretor_valor,0)) as total_comissao_corretor,
+           SUM(CASE WHEN v.comissao_corretor_status='pago' THEN COALESCE(v.comissao_corretor_valor,0) ELSE 0 END) as comissao_paga,
+           SUM(CASE WHEN v.comissao_corretor_status!='pago' THEN COALESCE(v.comissao_corretor_valor,0) ELSE 0 END) as comissao_pendente
+    FROM vendas v
+    LEFT JOIN corretores c ON c.id = v.corretor_id
+    WHERE v.empreendimento_id IN (${allEmpIds.map(()=>'?').join(',')}) AND v.status='ativo'
+    GROUP BY v.corretor_id
+    ORDER BY total_vendas DESC, total_vgv DESC
+  `).all(...allEmpIds) : [];
 
   // KPIs globais
   const totalUnidades = empreendimentos.reduce((s, e) => s + (e.total_unidades||0), 0);
@@ -2202,6 +2225,7 @@ app.get('/api/incorporador/painel', (req, res) => {
   ok(res, {
     cliente,
     empreendimentos: detalhes,
+    ranking: rankingRows,
     kpis: { totalUnidades, totalVendidas, totalReservadas, vgvTotal, vgvVendido,
             totalEmpreendimentos: empreendimentos.length }
   });
