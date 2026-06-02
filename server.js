@@ -1987,10 +1987,20 @@ app.get('/api/portal/:token', (req, res) => {
   const empId = pt.empreendimento_id;
   const emp = db.prepare('SELECT * FROM empreendimentos WHERE id=?').get(empId);
   if (!emp) return err(res, 'Empreendimento não encontrado', 404);
-  const unidades = db.prepare('SELECT status, COUNT(*) as n FROM unidades WHERE empreendimento_id=? GROUP BY status').all(empId);
-  const vendas = db.prepare("SELECT COUNT(*) as n, SUM(valor) as vgv FROM vendas WHERE empreendimento_id=? AND status='ativo'").get(empId);
-  const checklist = db.prepare('SELECT material, status FROM checklist_marketing WHERE empreendimento_id=? ORDER BY ordem').all(empId);
-  ok(res, { emp, unidades, vendas, checklist });
+  const unidadesGrupo = db.prepare('SELECT status, COUNT(*) as n FROM unidades WHERE empreendimento_id=? GROUP BY status').all(empId);
+  const vendas = db.prepare(`
+    SELECT v.data_venda, v.imovel, v.valor, c.nome as corretor_nome
+    FROM vendas v
+    LEFT JOIN corretores c ON c.id = v.corretor_id
+    WHERE v.empreendimento_id=? AND v.status='ativo'
+    ORDER BY v.data_venda DESC
+  `).all(empId);
+  const checklist = db.prepare('SELECT material, responsavel, status, data_entrega FROM checklist_marketing WHERE empreendimento_id=? ORDER BY ordem').all(empId);
+  const totalUnidades = unidadesGrupo.reduce((s, u) => s + u.n, 0);
+  const vendidas   = unidadesGrupo.find(u => u.status === 'vendido')?.n   || 0;
+  const reservadas = unidadesGrupo.find(u => u.status === 'reservado')?.n || 0;
+  const disponiveis= unidadesGrupo.find(u => u.status === 'disponivel')?.n|| 0;
+  ok(res, { emp, totalUnidades, vendidas, reservadas, disponiveis, vendas, checklist });
 });
 
 // ─── EVENTOS ──────────────────────────────────────────────────────────────────

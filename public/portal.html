@@ -8,38 +8,35 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png">
 <style>
-  :root { --navy: #0D1B2E; --accent: #00C4B4; --border: #243650; --card: #162032; --card2: #1A2840; --navy3: #1E3352; --text: #E8EDF5; --text2: #94A3B8; --success: #22C55E; --warning: #F59E0B; --danger: #EF4444; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--navy); color: var(--text); min-height: 100vh; padding: 0; }
-  .topbar { background: var(--card); border-bottom: 1px solid var(--border); padding: 14px 28px; display: flex; align-items: center; gap: 14px; }
-  .logo-mark { width: 36px; height: 36px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 900; color: var(--navy); font-size: 16px; flex-shrink: 0; }
-  .logo-text { font-size: 15px; font-weight: 700; color: var(--text); }
-  .logo-sub { font-size: 11px; color: var(--text2); }
-  main { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
-  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px,1fr)); gap: 14px; margin-bottom: 24px; }
-  .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
-  .kpi-label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
-  .kpi-value { font-weight: 700; font-size: 20px; color: var(--text); }
-  .kpi-sub { font-size: 11px; color: var(--text2); margin-top: 2px; }
-  .section-title { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; }
-  .table-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 24px; }
-  table { width: 100%; border-collapse: collapse; }
-  th { padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase; color: var(--text2); background: var(--card2); border-bottom: 1px solid var(--border); white-space: nowrap; }
-  td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid var(--border); }
-  tr:last-child td { border-bottom: none; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
-  .badge-green { background: rgba(34,197,94,.15); color: #4ade80; }
-  .badge-yellow { background: rgba(245,158,11,.15); color: #fbbf24; }
-  .badge-red { background: rgba(239,68,68,.15); color: #f87171; }
-  .badge-gray { background: rgba(148,163,184,.12); color: var(--text2); }
-  .badge-accent { background: rgba(0,196,180,.15); color: var(--accent); }
-  .vso-bar-wrap { background: var(--navy3); border-radius: 6px; height: 10px; overflow: hidden; }
-  .vso-fill-vend { height: 100%; background: var(--danger); display: inline-block; vertical-align: top; }
-  .vso-fill-res { height: 100%; background: var(--warning); display: inline-block; vertical-align: top; }
-  .error-box { text-align: center; padding: 80px 20px; color: var(--text2); }
-  .error-box h2 { font-size: 24px; margin-bottom: 8px; }
-  .checklist-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
-  .checklist-item:last-child { border-bottom: none; }
+  :root { --navy:#0D1B2E; --accent:#00C4B4; --border:#243650; --card:#162032; --card2:#1A2840; --navy3:#1E3352; --text:#E8EDF5; --text2:#94A3B8; --success:#22C55E; --warning:#F59E0B; --danger:#EF4444; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--navy); color:var(--text); min-height:100vh; }
+  .topbar { background:var(--card); border-bottom:1px solid var(--border); padding:14px 28px; display:flex; align-items:center; gap:14px; }
+  .logo-text { font-size:15px; font-weight:700; }
+  .logo-sub  { font-size:11px; color:var(--text2); }
+  main { max-width:1100px; margin:0 auto; padding:28px 20px; }
+  .kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:12px; margin-bottom:24px; }
+  .kpi-card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px; }
+  .kpi-label { font-size:11px; color:var(--text2); text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px; }
+  .kpi-value { font-weight:700; font-size:22px; color:var(--text); }
+  .kpi-sub   { font-size:11px; color:var(--text2); margin-top:2px; }
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--text2); margin:20px 0 10px; }
+  .table-card { background:var(--card); border:1px solid var(--border); border-radius:10px; overflow:hidden; margin-bottom:20px; }
+  table { width:100%; border-collapse:collapse; }
+  th { padding:10px 14px; text-align:left; font-size:11px; text-transform:uppercase; color:var(--text2); background:var(--card2); border-bottom:1px solid var(--border); white-space:nowrap; }
+  td { padding:10px 14px; font-size:13px; border-bottom:1px solid var(--border); }
+  tr:last-child td { border-bottom:none; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:600; }
+  .badge-green  { background:rgba(34,197,94,.15);  color:#4ade80; }
+  .badge-yellow { background:rgba(245,158,11,.15); color:#fbbf24; }
+  .badge-red    { background:rgba(239,68,68,.15);  color:#f87171; }
+  .badge-gray   { background:rgba(148,163,184,.12);color:var(--text2); }
+  .badge-accent { background:rgba(0,196,180,.15);  color:var(--accent); }
+  .checklist-item { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--border); font-size:13px; }
+  .checklist-item:last-child { border-bottom:none; }
+  .empty { text-align:center; padding:32px; color:var(--text2); font-size:13px; }
+  .error-box { text-align:center; padding:80px 20px; color:var(--text2); }
+  .error-box h2 { font-size:22px; margin-bottom:8px; color:var(--danger); }
 </style>
 </head>
 <body>
@@ -47,120 +44,142 @@
 <div class="topbar">
   <img src="/icon-192.png" style="width:36px;height:36px;border-radius:8px">
   <div>
-    <div class="logo-text">R2X CRM — Portal do Incorporador</div>
+    <div class="logo-text">R2X — Portal do Incorporador</div>
     <div class="logo-sub">Visão em tempo real do seu empreendimento</div>
   </div>
   <div style="margin-left:auto;font-size:12px;color:var(--text2)" id="portal-emp-nome"></div>
 </div>
 
 <main id="main">
-  <div style="text-align:center;padding:60px;color:var(--text2)">Carregando dados...</div>
+  <div style="text-align:center;padding:60px;color:var(--text2)">Carregando...</div>
 </main>
 
 <script>
 const token = window.location.pathname.split('/portal/')[1];
-if (!token) { document.getElementById('main').innerHTML = '<div class="error-box"><h2>Link inválido</h2><p>Este link de portal não é válido.</p></div>'; }
+if (!token) {
+  document.getElementById('main').innerHTML = '<div class="error-box"><h2>Link inválido</h2><p>Este link de portal não é válido.</p></div>';
+}
 
-function fmt(n) { return (n||0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
-function fmtDate(d) { if (!d) return '—'; const [y,m,day] = d.split('T')[0].split('-'); return `${day}/${m}/${y}`; }
+const fmt     = n => (n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0});
+const fmtDate = d => { if (!d) return '—'; const [y,m,day] = d.split('T')[0].split('-'); return `${day}/${m}/${y}`; };
+
+const STATUS_LABEL = { prospecto:'Prospecto', planejamento:'Planejamento', pre_lancamento:'Pré-lançamento', lancamento:'Lançamento', vendas:'Em Vendas', encerrado:'Encerrado' };
+const STATUS_BADGE = { prospecto:'badge-gray', planejamento:'badge-gray', pre_lancamento:'badge-yellow', lancamento:'badge-accent', vendas:'badge-green', encerrado:'badge-red' };
+const CHECK_ICON  = { concluido:'✅', em_andamento:'🔄', a_definir:'⏳', cancelado:'❌' };
 
 async function load() {
   try {
     const r = await fetch(`/api/portal/${token}`);
-    const data = await r.json();
-    if (!data.ok) throw new Error(data.error || 'Acesso negado');
-    render(data.data);
+    const json = await r.json();
+    if (!json.ok) throw new Error(json.error || 'Acesso negado');
+    render(json.data);
   } catch(e) {
     document.getElementById('main').innerHTML = `<div class="error-box"><h2>Erro ao carregar</h2><p>${e.message}</p></div>`;
   }
 }
 
 function render(d) {
-  const emp = d.empreendimento;
-  const unidades = d.unidades || [];
-  const vendas = d.vendas || [];
-  const checklist = d.checklist || [];
+  const emp        = d.emp;
+  const total      = d.totalUnidades   || 0;
+  const vendidas   = d.vendidas        || 0;
+  const reservadas = d.reservadas      || 0;
+  const disponiveis= d.disponiveis     || 0;
+  const vendas     = d.vendas          || [];
+  const checklist  = d.checklist       || [];
+
+  const vso       = total > 0 ? ((vendidas + reservadas) / total * 100).toFixed(1) : 0;
+  const vgvVendido= vendas.reduce((s, v) => s + (v.valor || 0), 0);
+  const vendPct   = total > 0 ? (vendidas   / total * 100) : 0;
+  const resPct    = total > 0 ? (reservadas / total * 100) : 0;
 
   document.getElementById('portal-emp-nome').textContent = emp.nome;
   document.title = `Portal — ${emp.nome}`;
 
-  const total = unidades.length;
-  const vendidas = unidades.filter(u => u.status === 'vendido').length;
-  const reservadas = unidades.filter(u => u.status === 'reservado').length;
-  const disponiveis = unidades.filter(u => u.status === 'disponivel').length;
-  const vso = total > 0 ? ((vendidas + reservadas) / total * 100).toFixed(1) : 0;
-  const vgvVendido = vendas.filter(v => v.status === 'ativo').reduce((s, v) => s + v.valor, 0);
-
-  const statusBadge = {
-    prospecto: 'badge-gray', planejamento: 'badge-gray', pre_lancamento: 'badge-yellow',
-    lancamento: 'badge-accent', vendas: 'badge-green', encerrado: 'badge-red'
-  };
-
-  const checkStatusIcon = { concluido: '✅', em_andamento: '🔄', a_definir: '⏳', cancelado: '❌' };
-
   document.getElementById('main').innerHTML = `
-    <div style="margin-bottom:20px">
+    <!-- Cabeçalho do empreendimento -->
+    <div style="margin-bottom:24px">
       <h1 style="font-size:22px;font-weight:900">${emp.nome}</h1>
-      <div style="color:var(--text2);font-size:13px;margin-top:4px">
-        ${emp.cidade||''}${emp.estado?'/'+emp.estado:''} ·
-        <span class="badge ${statusBadge[emp.status]||'badge-gray'}">${emp.status}</span>
-        ${emp.data_lancamento ? ` · Lançamento: ${fmtDate(emp.data_lancamento)}` : ''}
+      <div style="font-size:13px;color:var(--text2);margin-top:4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        ${emp.cidade||''}${emp.estado?'/'+emp.estado:''}
+        <span class="badge ${STATUS_BADGE[emp.status]||'badge-gray'}">${STATUS_LABEL[emp.status]||emp.status}</span>
+        ${emp.data_lancamento ? `<span>📅 Lançamento: ${fmtDate(emp.data_lancamento)}</span>` : ''}
+        ${emp.num_unidades    ? `<span>🏘️ ${emp.num_unidades} unidades no projeto</span>` : ''}
       </div>
     </div>
 
+    <!-- KPIs -->
     <div class="kpi-grid">
-      <div class="kpi-card"><div class="kpi-label">Total Unidades</div><div class="kpi-value">${total}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Vendidas</div><div class="kpi-value" style="color:var(--danger)">${vendidas}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Reservadas</div><div class="kpi-value" style="color:var(--warning)">${reservadas}</div></div>
-      <div class="kpi-card"><div class="kpi-label">Disponíveis</div><div class="kpi-value" style="color:var(--success)">${disponiveis}</div></div>
       <div class="kpi-card">
-        <div class="kpi-label">VSO (Vendidos+Res.)</div>
+        <div class="kpi-label">Total Unidades</div>
+        <div class="kpi-value">${total}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Vendidas</div>
+        <div class="kpi-value" style="color:var(--danger)">${vendidas}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Reservadas</div>
+        <div class="kpi-value" style="color:var(--warning)">${reservadas}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Disponíveis</div>
+        <div class="kpi-value" style="color:var(--success)">${disponiveis}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">VSO (Vend. + Res.)</div>
         <div class="kpi-value">${vso}%</div>
-        <div style="margin-top:6px">
-          <div class="vso-bar-wrap"><div style="height:100%;display:flex">
-            <div class="vso-fill-vend" style="width:${total?vendidas/total*100:0}%"></div>
-            <div class="vso-fill-res" style="width:${total?reservadas/total*100:0}%"></div>
-          </div></div>
+        <div style="background:var(--navy3);border-radius:4px;height:8px;overflow:hidden;margin-top:6px;display:flex">
+          <div style="width:${vendPct}%;background:var(--danger)"></div>
+          <div style="width:${resPct}%;background:var(--warning)"></div>
         </div>
       </div>
-      <div class="kpi-card"><div class="kpi-label">VGV Vendido</div><div class="kpi-value" style="font-size:16px;color:var(--success)">${fmt(vgvVendido)}</div><div class="kpi-sub">VGV Total: ${fmt(emp.vgv_estimado)}</div></div>
+      <div class="kpi-card">
+        <div class="kpi-label">VGV Vendido</div>
+        <div class="kpi-value" style="font-size:17px;color:var(--success)">${fmt(vgvVendido)}</div>
+        ${emp.vgv_estimado ? `<div class="kpi-sub">VGV Total: ${fmt(emp.vgv_estimado)}</div>` : ''}
+      </div>
     </div>
 
+    <!-- Vendas -->
+    <div class="section-title">🏆 Vendas Registradas (${vendas.length})</div>
     ${vendas.length ? `
-    <div class="section-title" style="margin-bottom:12px">🏆 Vendas Registradas</div>
     <div class="table-card">
       <table>
-        <thead><tr><th>Data</th><th>Imóvel</th><th>Valor</th><th>Status</th></tr></thead>
+        <thead><tr>
+          <th>Data</th><th>Imóvel</th><th>Corretor</th><th>Valor</th>
+        </tr></thead>
         <tbody>
           ${vendas.map(v => `
             <tr>
-              <td>${fmtDate(v.data_venda)}</td>
+              <td style="white-space:nowrap">${fmtDate(v.data_venda)}</td>
               <td>${v.imovel||'—'}</td>
+              <td style="color:var(--text2)">${v.corretor_nome||'—'}</td>
               <td style="color:var(--success);font-weight:600">${fmt(v.valor)}</td>
-              <td><span class="badge ${v.status==='ativo'?'badge-green':'badge-red'}">${v.status}</span></td>
             </tr>
           `).join('')}
         </tbody>
       </table>
-    </div>` : ''}
+    </div>` : `<div class="table-card"><div class="empty">Nenhuma venda registrada ainda.</div></div>`}
 
+    <!-- Checklist de Marketing -->
     ${checklist.length ? `
-    <div class="section-title" style="margin-bottom:12px">✅ Checklist de Marketing</div>
-    <div class="table-card" style="padding:0 16px">
+    <div class="section-title">✅ Checklist de Marketing (${checklist.length} itens)</div>
+    <div class="table-card">
       ${checklist.map(item => `
         <div class="checklist-item">
-          <span style="font-size:16px">${checkStatusIcon[item.status]||'⏳'}</span>
-          <div style="flex:1">
+          <span style="font-size:16px;flex-shrink:0">${CHECK_ICON[item.status]||'⏳'}</span>
+          <div style="flex:1;min-width:0">
             <div style="font-weight:500">${item.material}</div>
             ${item.responsavel ? `<div style="font-size:11px;color:var(--text2)">Resp: ${item.responsavel}</div>` : ''}
           </div>
-          ${item.data_entrega ? `<div style="font-size:11px;color:var(--text2)">${fmtDate(item.data_entrega)}</div>` : ''}
+          ${item.data_entrega ? `<div style="font-size:11px;color:var(--text2);white-space:nowrap;flex-shrink:0">${fmtDate(item.data_entrega)}</div>` : ''}
         </div>
       `).join('')}
     </div>` : ''}
 
-    <div style="margin-top:32px;padding-top:16px;border-top:1px solid var(--border);text-align:center;font-size:11px;color:var(--text2)">
-      Portal R2X CRM · Acesso somente leitura · Gerado em ${new Date().toLocaleString('pt-BR')}
+    <!-- Rodapé -->
+    <div style="margin-top:24px;padding-top:14px;border-top:1px solid var(--border);text-align:center;font-size:11px;color:var(--text2)">
+      Portal R2X CRM &nbsp;·&nbsp; Acesso somente leitura &nbsp;·&nbsp; Atualizado em ${new Date().toLocaleString('pt-BR')}
     </div>
   `;
 }
