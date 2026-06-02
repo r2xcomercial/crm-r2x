@@ -6155,50 +6155,75 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
     comissoes: `
       <!-- Comissão dos Corretores -->
       <div class="table-card" style="margin-bottom:20px">
-        <div class="table-header"><div class="table-title">👤 Comissão a Pagar — Corretores</div></div>
+        <div class="table-header">
+          <div class="table-title">👤 Comissão a Pagar — Corretores</div>
+          <div style="font-size:12px;color:var(--text2)">Você pode confirmar o pagamento das comissões</div>
+        </div>
         ${todasVendas.some(v=>v.comissao_corretor_valor) ? `
         <div style="overflow-x:auto">
-          <table style="min-width:700px">
+          <table style="min-width:760px">
             <thead><tr>
-              <th>Data</th><th>Imóvel</th><th>Corretor</th>
+              <th>Data</th><th>Imóvel / Empreendimento</th><th>Corretor</th>
               <th style="text-align:right">Valor Venda</th>
-              <th style="text-align:right">% Comissão</th>
-              <th style="text-align:right">Valor Comissão</th>
+              <th style="text-align:right">Comissão</th>
               <th>Status</th>
+              <th></th>
             </tr></thead>
             <tbody>
               ${todasVendas.filter(v=>v.comissao_corretor_valor).map(v=>`
-                <tr>
+                <tr id="inc-comm-row-${v.id}">
                   <td style="white-space:nowrap">${fmtDate(v.data_venda)}</td>
                   <td>${v.imovel||'—'}<div style="font-size:11px;color:var(--text2)">${v.empreendimento_nome}</div></td>
-                  <td>${v.corretor_nome||'—'}</td>
+                  <td>${v.corretor_nome||'—'}${v.imobiliaria?`<div style="font-size:11px;color:var(--text2)">${v.imobiliaria}</div>`:''}</td>
                   <td style="text-align:right">${fmt(v.valor)}</td>
-                  <td style="text-align:right">${v.comissao_corretor_pct?v.comissao_corretor_pct+'%':'—'}</td>
                   <td style="text-align:right;font-weight:700;color:${v.comissao_corretor_status==='pago'?'var(--success)':'var(--warning)'}">
                     ${fmt(v.comissao_corretor_valor)}
+                    ${v.comissao_corretor_pct?`<div style="font-size:10px;font-weight:400;color:var(--text2)">${v.comissao_corretor_pct}%</div>`:''}
                   </td>
-                  <td><span class="badge ${v.comissao_corretor_status==='pago'?'badge-green':'badge-yellow'}">
-                    ${v.comissao_corretor_status==='pago'?'✅ Pago':'⏳ Pendente'}
-                  </span></td>
+                  <td>
+                    <span class="badge ${v.comissao_corretor_status==='pago'?'badge-green':'badge-yellow'}">
+                      ${v.comissao_corretor_status==='pago'?'✅ Pago':'⏳ Pendente'}
+                    </span>
+                    ${v.comissao_corretor_data_pagamento?`<div style="font-size:10px;color:var(--text2);margin-top:2px">em ${fmtDate(v.comissao_corretor_data_pagamento)}</div>`:''}
+                  </td>
+                  <td>
+                    ${v.comissao_corretor_status!=='pago'
+                      ? `<button onclick="incMarcarComissaoPaga(${v.id})"
+                           style="padding:5px 12px;background:var(--success);color:#000;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+                           ✅ Confirmar pagamento
+                         </button>`
+                      : `<button onclick="incEstornarComissao(${v.id})"
+                           style="padding:5px 12px;background:var(--navy3);color:var(--text2);border:1px solid var(--border);border-radius:7px;font-size:11px;cursor:pointer;white-space:nowrap">
+                           ↩ Estornar
+                         </button>`}
+                  </td>
                 </tr>`).join('')}
             </tbody>
-            <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
-              <td colspan="5">Total</td>
-              <td style="text-align:right">${fmt(todasVendas.reduce((s,v)=>s+(v.comissao_corretor_valor||0),0))}</td>
-              <td></td>
-            </tr></tfoot>
+            <tfoot>
+              <tr style="font-weight:700;border-top:2px solid var(--border)">
+                <td colspan="4">Total comissões</td>
+                <td style="text-align:right">${fmt(todasVendas.reduce((s,v)=>s+(v.comissao_corretor_valor||0),0))}</td>
+                <td colspan="2" style="font-size:12px;color:var(--text2)">
+                  ✅ ${fmt(todasVendas.filter(v=>v.comissao_corretor_status==='pago').reduce((s,v)=>s+(v.comissao_corretor_valor||0),0))} pago &nbsp;·&nbsp;
+                  ⏳ ${fmt(todasVendas.filter(v=>v.comissao_corretor_status!=='pago').reduce((s,v)=>s+(v.comissao_corretor_valor||0),0))} pendente
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>` : `<div style="padding:40px;text-align:center;color:var(--text2)">Nenhuma comissão de corretor registrada.</div>`}
       </div>
 
       <!-- Comissão R2X -->
       <div class="table-card">
-        <div class="table-header"><div class="table-title">🏢 Comissão a Pagar — R2X</div></div>
+        <div class="table-header">
+          <div class="table-title">🏢 Comissão a Pagar — R2X</div>
+          <div style="font-size:12px;color:var(--text2)">🔒 Confirmação feita pela R2X</div>
+        </div>
         ${todasVendas.some(v=>v.comissao_r2x) ? `
         <div style="overflow-x:auto">
           <table style="min-width:620px">
             <thead><tr>
-              <th>Data</th><th>Imóvel</th>
+              <th>Data</th><th>Imóvel / Empreendimento</th>
               <th style="text-align:right">Valor Venda</th>
               <th style="text-align:right">% R2X</th>
               <th style="text-align:right">Comissão R2X</th>
@@ -6253,6 +6278,32 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
     <!-- Conteúdo da aba ativa -->
     ${tabContent[aba] || ''}
   `;
+}
+
+function incMarcarComissaoPaga(vendaId) {
+  const hoje = new Date().toISOString().slice(0,10);
+  openModal('✅ Confirmar Pagamento de Comissão', `
+    <div class="form-group">
+      <label>Data do pagamento *</label>
+      <input id="inc-data-pag" type="date" value="${hoje}">
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-top:8px">
+      Ao confirmar, o status da comissão do corretor será atualizado para <b>Pago</b> no sistema da R2X.
+    </div>
+  `, async () => {
+    const data = document.getElementById('inc-data-pag')?.value;
+    if (!data) return toast('Informe a data de pagamento', 'error');
+    const r = await put(`/api/incorporador/vendas/${vendaId}/comissao-corretor`, { status: 'pago', data_pagamento: data });
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Comissão marcada como paga ✅'); closeModal(); renderIncorporadorPainel('comissoes');
+  }, { saveLabel: '✅ Confirmar pagamento' });
+}
+
+async function incEstornarComissao(vendaId) {
+  if (!confirm('Reverter para pendente?')) return;
+  const r = await put(`/api/incorporador/vendas/${vendaId}/comissao-corretor`, { status: 'pendente', data_pagamento: null });
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Revertido para pendente'); renderIncorporadorPainel('comissoes');
 }
 
 // ─── INIT USUARIO UI ──────────────────────────────────────────────────────────

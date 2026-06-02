@@ -2181,6 +2181,7 @@ app.get('/api/incorporador/painel', (req, res) => {
     const vendas = db.prepare(`
       SELECT v.id, v.data_venda, v.imovel, v.valor,
              v.comissao_corretor_pct, v.comissao_corretor_valor, v.comissao_corretor_status,
+             v.comissao_corretor_data_pagamento,
              v.percentual_r2x, v.comissao_r2x,
              c.nome as corretor_nome, c.imobiliaria
       FROM vendas v
@@ -2229,6 +2230,25 @@ app.get('/api/incorporador/painel', (req, res) => {
     kpis: { totalUnidades, totalVendidas, totalReservadas, vgvTotal, vgvVendido,
             totalEmpreendimentos: empreendimentos.length }
   });
+});
+
+// Incorporador pode marcar comissão do corretor como paga (somente vendas dos empreendimentos dele)
+app.put('/api/incorporador/vendas/:id/comissao-corretor', (req, res) => {
+  const clienteId = guardaIncorporador(req, res);
+  if (!clienteId) return;
+  const vendaId = parseInt(req.params.id);
+  const { status, data_pagamento } = req.body;
+  if (!['pendente','pago'].includes(status)) return err(res, 'Status inválido');
+  // Verifica que a venda pertence a um empreendimento deste incorporador
+  const venda = db.prepare(`
+    SELECT v.id FROM vendas v
+    JOIN empreendimentos e ON e.id = v.empreendimento_id
+    WHERE v.id=? AND e.cliente_id=?
+  `).get(vendaId, clienteId);
+  if (!venda) return err(res, 'Venda não encontrada ou sem permissão', 403);
+  db.prepare('UPDATE vendas SET comissao_corretor_status=?, comissao_corretor_data_pagamento=? WHERE id=?')
+    .run(status, data_pagamento || null, vendaId);
+  ok(res, {});
 });
 
 // ─── EXTRAÇÃO DE CONTRATO COM IA ─────────────────────────────────────────────
