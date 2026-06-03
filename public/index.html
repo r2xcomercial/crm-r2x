@@ -3052,8 +3052,8 @@ function renderFluxoCaixa(el) {
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
           <div style="font-size:10px;color:#22c55e;font-weight:700;width:12px;flex-shrink:0">↑</div>
           <div style="flex:1;min-width:0;height:7px;background:var(--navy3);border-radius:4px;overflow:hidden;display:flex">
-            <div style="width:${pEntR}%;background:#22c55e" title="Recebido: ${fmt(l.entradas_rec)}"></div>
-            <div style="width:${pEntP}%;background:#eab308;opacity:.8" title="Previsto: ${fmt(l.entradas_pend)}"></div>
+            <div style="width:${pEntR}%;background:#22c55e" title="Recebido: ${fmtPlain(l.entradas_rec)}"></div>
+            <div style="width:${pEntP}%;background:#eab308;opacity:.8" title="Previsto: ${fmtPlain(l.entradas_pend)}"></div>
           </div>
           <div style="font-size:11px;font-weight:700;color:#22c55e;width:46px;flex-shrink:0;text-align:right;white-space:nowrap">${l.entTotal ? fmtK(l.entTotal) : '—'}</div>
         </div>
@@ -3062,8 +3062,8 @@ function renderFluxoCaixa(el) {
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">
           <div style="font-size:10px;color:#ef4444;font-weight:700;width:12px;flex-shrink:0">↓</div>
           <div style="flex:1;min-width:0;height:7px;background:var(--navy3);border-radius:4px;overflow:hidden;display:flex">
-            <div style="width:${pSaiP}%;background:#ef4444" title="Pago: ${fmt(l.saidas_paga)}"></div>
-            <div style="width:${pSaiPv}%;background:#f97316;opacity:.8" title="Previsto: ${fmt(l.saidas_pend)}"></div>
+            <div style="width:${pSaiP}%;background:#ef4444" title="Pago: ${fmtPlain(l.saidas_paga)}"></div>
+            <div style="width:${pSaiPv}%;background:#f97316;opacity:.8" title="Previsto: ${fmtPlain(l.saidas_pend)}"></div>
           </div>
           <div style="font-size:11px;font-weight:700;color:#ef4444;width:46px;flex-shrink:0;text-align:right;white-space:nowrap">${l.saiTotal ? fmtK(l.saiTotal) : '—'}</div>
         </div>
@@ -4311,7 +4311,7 @@ function renderMarkers() {
         line-height:1;
         padding:2px;
       "
-      title="${u.quadra ? `Qd ${u.quadra} - ` : ''}${u.lote}${u.area_m2 ? ` · ${u.area_m2}m²` : ''}${u.preco ? ` · ${fmt(u.preco)}` : ''}"
+      title="${u.quadra ? `Qd ${u.quadra} - ` : ''}${u.lote}${u.area_m2 ? ` · ${u.area_m2}m²` : ''}${u.preco ? ` · ${fmtPlain(u.preco)}` : ''}"
     >${u.lote}</div>`;
   }).join('');
 }
@@ -4546,7 +4546,7 @@ function renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId) {
         <div class="espelho-tiles">
           ${items.map(u => `
             <div class="espelho-tile ${u.status}" onclick="abrirUnidade(${u.id},${empId})"
-              title="${lblB} ${u.lote}${u.area_m2?' · '+u.area_m2+'m²':''}${u.preco?' · '+fmt(u.preco):''}">
+              title="${lblB} ${u.lote}${u.area_m2?' · '+u.area_m2+'m²':''}${u.preco?' · '+fmtPlain(u.preco):''}">
               <div class="tile-num">${u.lote}</div>
               ${u.area_m2 ? `<div class="tile-area">${u.area_m2}m²</div>` : ''}
               ${u.preco ? `<div class="tile-preco">${fmtK(u.preco)}</div>` : ''}
@@ -5157,6 +5157,19 @@ let _privacyMode = localStorage.getItem('crm_privacy') === '1';
 function fmt(n) {
   const val = (n||0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 });
   return `<span class="v-priv">${val}</span>`;
+}
+// Versão plain text do fmt — para uso em atributos HTML (title, data-*, etc.)
+function fmtPlain(n) {
+  return (n||0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+// Versão compacta global — R$400k, R$1,2M, R$850
+function fmtK(v) {
+  if (!v && v !== 0) return '—';
+  const s = v < 0 ? '-' : '';
+  const a = Math.abs(v);
+  if (a >= 1000000) return s + 'R$' + (a/1000000).toFixed(1).replace('.',',') + 'M';
+  if (a >= 1000)    return s + 'R$' + Math.round(a/1000) + 'k';
+  return s + 'R$' + Math.round(a);
 }
 function togglePrivacyMode() {
   _privacyMode = !_privacyMode;
