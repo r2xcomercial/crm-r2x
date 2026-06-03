@@ -496,9 +496,14 @@ const del = p => api('DELETE', p);
 let _dashCharts = {};
 
 async function renderDashboard() {
-  const [{ data }, vendasR, finR] = await Promise.all([
+  const [dashR, vendasR, finR] = await Promise.all([
     get('/api/dashboard'), get('/api/vendas'), get('/api/financeiro/entradas')
   ]);
+  if (!dashR.ok || !dashR.data) {
+    document.getElementById('content').innerHTML = `<div style="text-align:center;padding:60px;color:var(--danger)">⚠️ ${dashR.error || 'Erro ao carregar dashboard'}</div>`;
+    return;
+  }
+  const { data } = dashR;
   const { kpis, aniversarios_mes, aniversarios_hoje, proximos_lancamentos, funil, leads_esquecidos, followups_vencidos, followups_hoje } = data;
 
   document.getElementById('badge-leads').textContent = kpis.leads_novos;
@@ -7687,19 +7692,33 @@ async function verificarNotificacoes() {
 // Redireciona para login se não tiver token
 if (!TOKEN) { window.location.href = '/login'; }
 
-initUsuarioUI();
-iniciarNotificacoes();
 // Aplica estado inicial do modo privacidade
 (function initPrivacy() {
   if (_privacyMode) document.body.classList.add('mode-priv');
   const btn = document.getElementById('btn-privacy');
   if (btn && _privacyMode) { btn.textContent = '🙈'; btn.title = 'Mostrar valores'; }
 })();
-// Cada perfil vai direto ao seu painel
-const _initPage = USUARIO.perfil === 'corretor' ? 'corretor-painel'
-                : USUARIO.perfil === 'incorporador' ? 'incorporador-painel'
-                : 'dashboard';
-renderPage(_initPage);
+
+// Verifica sessão no servidor para garantir perfil atualizado antes de renderizar
+(async function iniciarApp() {
+  try {
+    const me = await get('/api/auth/me');
+    if (me && me.ok && me.data) {
+      // Atualiza USUARIO com dados frescos do servidor (resolve desatualização do localStorage)
+      USUARIO = { nome: me.data.nome, perfil: me.data.perfil,
+                  corretor_id: me.data.corretor_id, cliente_id: me.data.cliente_id };
+      localStorage.setItem('crm_usuario', JSON.stringify(USUARIO));
+    }
+  } catch(_) { /* usa dados do localStorage em caso de falha */ }
+
+  initUsuarioUI();
+  iniciarNotificacoes();
+
+  const _initPage = USUARIO.perfil === 'corretor'     ? 'corretor-painel'
+                  : USUARIO.perfil === 'incorporador' ? 'incorporador-painel'
+                  : 'dashboard';
+  renderPage(_initPage);
+})();
 
 // PWA — registra service worker
 if ('serviceWorker' in navigator) {
