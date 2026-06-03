@@ -6065,7 +6065,7 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
       </div>
       ${empreendimentos.length === 0 ? `<div style="text-align:center;padding:60px;color:var(--text2)">Nenhum empreendimento cadastrado.</div>` : ''}
       ${empreendimentos.map(emp => {
-        const total   = emp.total_unidades    || 0;
+        const total   = emp.num_unidades || emp.total_unidades || 0;
         const vend    = emp.unidades_vendidas  || 0;
         const res     = emp.unidades_reservadas|| 0;
         const disp    = emp.unidades_disponiveis||0;

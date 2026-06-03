@@ -2230,8 +2230,8 @@ app.get('/api/incorporador/painel', (req, res) => {
     ORDER BY total_vendas DESC, total_vgv DESC
   `).all(...allEmpIds) : [];
 
-  // KPIs globais
-  const totalUnidades = empreendimentos.reduce((s, e) => s + (e.total_unidades||0), 0);
+  // KPIs globais — usa num_unidades (campo do cadastro) como total oficial
+  const totalUnidades = empreendimentos.reduce((s, e) => s + (e.num_unidades||e.total_unidades||0), 0);
   const totalVendidas = empreendimentos.reduce((s, e) => s + (e.unidades_vendidas||0), 0);
   const totalReservadas = empreendimentos.reduce((s, e) => s + (e.unidades_reservadas||0), 0);
   const vgvTotal = empreendimentos.reduce((s, e) => s + (e.vgv_estimado||0), 0);
