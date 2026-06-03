@@ -489,6 +489,17 @@ app.put("/api/unidades/:id/status", (req, res) => {
   ok(res, {});
 });
 
+app.delete("/api/unidades/:id", (req, res) => {
+  const unidadeId = parseInt(req.params.id);
+  const u = db.prepare("SELECT * FROM unidades WHERE id=?").get(unidadeId);
+  if (!u) return err(res, "Unidade não encontrada", 404);
+  db.prepare("DELETE FROM unidades WHERE id=?").run(unidadeId);
+  // Atualiza contadores do empreendimento
+  const stats = db.prepare("SELECT COUNT(*) as total, COALESCE(SUM(preco),0) as vgv FROM unidades WHERE empreendimento_id=?").get(u.empreendimento_id);
+  db.prepare("UPDATE empreendimentos SET num_unidades=?, vgv_estimado=? WHERE id=?").run(stats.total, stats.vgv, u.empreendimento_id);
+  ok(res, {});
+});
+
 app.delete("/api/empreendimentos/:id/unidades", (req, res) => {
   db.prepare("DELETE FROM unidades WHERE empreendimento_id=? AND status='disponivel'").run(req.params.id);
   ok(res, {});

@@ -4614,8 +4614,21 @@ async function abrirUnidade(unidadeId, empId) {
       ${u.status==='vendido'?`<div style="font-size:11px;color:var(--text2);margin-top:10px">Para liberar uma unidade vendida, altere o status da venda para "Distrato" na aba Vendas.</div>`:''}
     </div>
   `;
-  document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
+  document.getElementById('modal-foot').innerHTML = `
+    <button class="btn btn-secondary" style="margin-right:auto;color:var(--danger);border-color:rgba(239,68,68,.4)"
+      onclick="deletarUnidade(${u.id},${empId})">🗑️ Excluir unidade</button>
+    <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>
+  `;
   document.getElementById('modal-overlay').classList.add('open');
+}
+
+async function deletarUnidade(unidadeId, empId) {
+  if (!confirm('Excluir esta unidade permanentemente? Esta ação não pode ser desfeita.')) return;
+  const r = await del(`/api/unidades/${unidadeId}`);
+  if (!r.ok) return toast(r.error||'Erro ao excluir', 'error');
+  toast('Unidade excluída ✓');
+  closeModal();
+  verEspelho(empId);
 }
 
 async function mudarStatusEspelho(unidadeId, status, empId) {
