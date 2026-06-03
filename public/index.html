@@ -7699,25 +7699,36 @@ if (!TOKEN) { window.location.href = '/login'; }
   if (btn && _privacyMode) { btn.textContent = '🙈'; btn.title = 'Mostrar valores'; }
 })();
 
-// Verifica sessão no servidor para garantir perfil atualizado antes de renderizar
-(async function iniciarApp() {
-  try {
-    const me = await get('/api/auth/me');
-    if (me && me.ok && me.data) {
-      // Atualiza USUARIO com dados frescos do servidor (resolve desatualização do localStorage)
-      USUARIO = { nome: me.data.nome, perfil: me.data.perfil,
-                  corretor_id: me.data.corretor_id, cliente_id: me.data.cliente_id };
-      localStorage.setItem('crm_usuario', JSON.stringify(USUARIO));
-    }
-  } catch(_) { /* usa dados do localStorage em caso de falha */ }
+// Renderiza imediatamente com dados do localStorage (sem delay)
+// e verifica sessão no servidor em paralelo — se o perfil mudar, re-renderiza
+(function iniciarApp() {
+  const perfilAtual = USUARIO.perfil;
+  const initPage = perfilAtual === 'corretor'     ? 'corretor-painel'
+                 : perfilAtual === 'incorporador' ? 'incorporador-painel'
+                 : 'dashboard';
 
   initUsuarioUI();
   iniciarNotificacoes();
+  renderPage(initPage);
 
-  const _initPage = USUARIO.perfil === 'corretor'     ? 'corretor-painel'
-                  : USUARIO.perfil === 'incorporador' ? 'incorporador-painel'
-                  : 'dashboard';
-  renderPage(_initPage);
+  // Verificação em background — corrige perfil desatualizado no localStorage
+  get('/api/auth/me').then(me => {
+    if (!me || !me.ok || !me.data) return;
+    const perfilServidor = me.data.perfil;
+    // Atualiza localStorage sempre
+    const novoUsuario = { nome: me.data.nome, perfil: perfilServidor,
+                          corretor_id: me.data.corretor_id, cliente_id: me.data.cliente_id };
+    localStorage.setItem('crm_usuario', JSON.stringify(novoUsuario));
+    // Se o perfil mudou, reinicia a navegação com o perfil correto
+    if (perfilServidor !== perfilAtual) {
+      USUARIO = novoUsuario;
+      const paginaCorreta = perfilServidor === 'corretor'     ? 'corretor-painel'
+                           : perfilServidor === 'incorporador' ? 'incorporador-painel'
+                           : 'dashboard';
+      initUsuarioUI();
+      renderPage(paginaCorreta);
+    }
+  }).catch(() => {});
 })();
 
 // PWA — registra service worker
