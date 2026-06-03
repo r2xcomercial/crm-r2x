@@ -2183,7 +2183,21 @@ app.get('/api/incorporador/painel', (req, res) => {
              v.comissao_corretor_pct, v.comissao_corretor_valor, v.comissao_corretor_status,
              v.comissao_corretor_data_pagamento,
              v.percentual_r2x, v.comissao_r2x,
-             c.nome as corretor_nome, c.imobiliaria
+             c.nome as corretor_nome, c.imobiliaria,
+             -- Status de recebimento da comissão R2X a partir de financeiro_entradas
+             (SELECT CASE
+                WHEN COUNT(fe.id) = 0 THEN 'pendente'
+                WHEN SUM(CASE WHEN fe.status='recebido' THEN 1 ELSE 0 END) = COUNT(fe.id) THEN 'recebido'
+                WHEN SUM(CASE WHEN fe.status='recebido' THEN 1 ELSE 0 END) > 0 THEN 'parcial'
+                ELSE 'pendente' END
+              FROM financeiro_entradas fe WHERE fe.venda_id=v.id AND fe.tipo='comissao_venda'
+             ) as comissao_r2x_status,
+             (SELECT COALESCE(SUM(CASE WHEN fe.status='recebido' THEN fe.valor ELSE 0 END),0)
+              FROM financeiro_entradas fe WHERE fe.venda_id=v.id AND fe.tipo='comissao_venda'
+             ) as comissao_r2x_recebido,
+             (SELECT MAX(fe.data_recebimento)
+              FROM financeiro_entradas fe WHERE fe.venda_id=v.id AND fe.tipo='comissao_venda' AND fe.status='recebido'
+             ) as comissao_r2x_data_recebimento
       FROM vendas v
       LEFT JOIN corretores c ON c.id = v.corretor_id
       WHERE v.empreendimento_id=? AND v.status='ativo'
