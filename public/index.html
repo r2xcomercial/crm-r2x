@@ -6452,11 +6452,9 @@ function initUsuarioUI() {
     if (navAdmin)        navAdmin.style.display = 'none';
     if (navCorretor)     navCorretor.style.display = 'none';
     if (navIncorporador) navIncorporador.style.display = 'block';
-    // Esconde botão de privacidade e busca (irrelevante para incorporador)
-    const btnPrivacy = document.getElementById('btn-privacy');
+    // Esconde busca e botão adicionar (irrelevante para incorporador)
     const searchBox  = document.getElementById('search-box');
     const addBtn     = document.getElementById('add-btn');
-    if (btnPrivacy) btnPrivacy.style.display = 'none';
     if (searchBox)  searchBox.style.display  = 'none';
     if (addBtn)     addBtn.style.display     = 'none';
   } else {
