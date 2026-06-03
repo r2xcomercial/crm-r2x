@@ -2192,7 +2192,7 @@ app.get('/api/incorporador/painel', (req, res) => {
     const vendas = db.prepare(`
       SELECT v.id, v.data_venda, v.imovel, v.valor,
              v.comissao_corretor_pct, v.comissao_corretor_valor, v.comissao_corretor_status,
-             v.comissao_corretor_data_pagamento,
+             v.comissao_corretor_data_pagamento, v.comissao_corretor_valor_pago,
              v.percentual_r2x, v.comissao_r2x,
              c.nome as corretor_nome, c.imobiliaria,
              -- Status de recebimento da comissão R2X a partir de financeiro_entradas
@@ -2257,22 +2257,31 @@ app.get('/api/incorporador/painel', (req, res) => {
   });
 });
 
-// Incorporador pode marcar comissão do corretor como paga (somente vendas dos empreendimentos dele)
+// Incorporador pode marcar comissão do corretor como paga (total ou parcial)
 app.put('/api/incorporador/vendas/:id/comissao-corretor', (req, res) => {
   const clienteId = guardaIncorporador(req, res);
   if (!clienteId) return;
   const vendaId = parseInt(req.params.id);
-  const { status, data_pagamento } = req.body;
-  if (!['pendente','pago'].includes(status)) return err(res, 'Status inválido');
+  const { status, data_pagamento, valor_pago } = req.body;
+  if (!['pendente','parcial','pago'].includes(status)) return err(res, 'Status inválido');
   // Verifica que a venda pertence a um empreendimento deste incorporador
   const venda = db.prepare(`
-    SELECT v.id FROM vendas v
+    SELECT v.id, v.comissao_corretor_valor FROM vendas v
     JOIN empreendimentos e ON e.id = v.empreendimento_id
     WHERE v.id=? AND e.cliente_id=?
   `).get(vendaId, clienteId);
   if (!venda) return err(res, 'Venda não encontrada ou sem permissão', 403);
-  db.prepare('UPDATE vendas SET comissao_corretor_status=?, comissao_corretor_data_pagamento=? WHERE id=?')
-    .run(status, data_pagamento || null, vendaId);
+
+  const valorPago = parseFloat(valor_pago) || 0;
+  // Auto-determina status se não enviado explicitamente
+  let statusFinal = status;
+  if (status === 'pago' && valorPago > 0 && valorPago < (venda.comissao_corretor_valor || 0)) {
+    statusFinal = 'parcial';
+  }
+
+  db.prepare(`UPDATE vendas SET comissao_corretor_status=?, comissao_corretor_data_pagamento=?,
+              comissao_corretor_valor_pago=? WHERE id=?`)
+    .run(statusFinal, data_pagamento || null, valorPago || null, vendaId);
   ok(res, {});
 });
 
