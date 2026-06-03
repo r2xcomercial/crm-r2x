@@ -53,8 +53,19 @@
 <script>
   const saved = localStorage.getItem('crm_token');
   if (saved) {
+    // Verifica sessão E atualiza crm_usuario (garante dados frescos como cliente_id)
     fetch('/api/auth/me', { headers: { 'x-crm-token': saved } })
-      .then(r => r.ok ? window.location.href = '/' : null).catch(() => {});
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          localStorage.setItem('crm_usuario', JSON.stringify({
+            nome: data.data.nome, perfil: data.data.perfil,
+            corretor_id: data.data.corretor_id, cliente_id: data.data.cliente_id
+          }));
+          window.location.href = '/';
+        }
+      })
+      .catch(() => {});
   }
 
   async function login(e) {
