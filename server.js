@@ -622,20 +622,33 @@ app.get("/api/leads", (req, res) => {
 });
 
 app.post("/api/leads", (req, res) => {
-  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, origem, observacoes, aniversario } = req.body;
-  const r = db.prepare(`INSERT INTO leads (nome,telefone,email,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,empreendimento_id,corretor_id,status,origem,observacoes,aniversario) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status || 'novo', origem || 'manual', observacoes, aniversario||null);
+  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, origem, observacoes, aniversario, tipo, creci, imobiliaria } = req.body;
+  const r = db.prepare(`INSERT INTO leads (nome,telefone,email,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,empreendimento_id,corretor_id,status,origem,observacoes,aniversario,tipo,creci,imobiliaria) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status || 'novo', origem || 'manual', observacoes, aniversario||null, tipo||null, creci||null, imobiliaria||null);
   ok(res, { id: r.lastInsertRowid });
 });
 
 app.put("/api/leads/:id", (req, res) => {
-  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, observacoes, aniversario } = req.body;
-  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,observacoes=?,aniversario=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, observacoes, aniversario||null, req.params.id);
+  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, observacoes, aniversario, tipo, creci, imobiliaria } = req.body;
+  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, observacoes, aniversario||null, tipo||null, creci||null, imobiliaria||null, req.params.id);
   ok(res, {});
 });
 
 app.delete("/api/leads/:id", (req, res) => {
   db.prepare("DELETE FROM leads WHERE id=?").run(req.params.id);
   ok(res, {});
+});
+
+// Converter lead-corretor em parceiro (cria registro em corretores)
+app.post("/api/leads/:id/converter-corretor", (req, res) => {
+  const lead = db.prepare("SELECT * FROM leads WHERE id=?").get(req.params.id);
+  if (!lead) return err(res, "Lead não encontrado", 404);
+  const r = db.prepare(`
+    INSERT INTO corretores (nome, telefone, email, cidade, creci, imobiliaria, ativo)
+    VALUES (?,?,?,?,?,?,1)
+  `).run(lead.nome||'', lead.telefone||null, lead.email||null, lead.cidade||null, lead.creci||null, lead.imobiliaria||null);
+  // Marca lead como qualificado e registra que virou parceiro
+  db.prepare("UPDATE leads SET tipo='corretor', status='qualificado', atualizado_em=CURRENT_TIMESTAMP WHERE id=?").run(lead.id);
+  ok(res, { corretor_id: r.lastInsertRowid });
 });
 
 // Follow-ups de leads

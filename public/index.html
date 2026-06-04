@@ -792,9 +792,17 @@ function renderLeadRow(l, statusColors) {
   const dias = l.atualizado_em ? Math.floor((Date.now() - new Date(l.atualizado_em.replace(' ','T'))) / 86400000) : 999;
   const esquecido = dias >= 3 && !['vendido','perdido'].includes(l.status);
   const nomeTitle = l.resumo ? ` title="${l.resumo.replace(/"/g,'&quot;')}"` : '';
+  const isCorretorLead = l.tipo === 'corretor';
   return `
-  <tr ${esquecido ? 'style="background:rgba(245,158,11,.04)"' : ''}>
-    <td><strong${nomeTitle}>${l.nome||'—'}</strong>${esquecido ? ` <span title="${dias}d sem contato" style="color:var(--warning);font-size:11px">⚠️${dias}d</span>` : ''}${l.resumo ? ` <span style="font-size:10px;color:var(--text2);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">${l.resumo}</span>` : ''}</td>
+  <tr ${esquecido ? 'style="background:rgba(245,158,11,.04)"' : isCorretorLead ? 'style="background:rgba(96,165,250,.04)"' : ''}>
+    <td>
+      <strong${nomeTitle}>${l.nome||'—'}</strong>
+      ${isCorretorLead ? `<span style="display:inline-block;margin-left:5px;font-size:10px;font-weight:700;background:rgba(96,165,250,.15);color:#60a5fa;border:1px solid rgba(96,165,250,.3);border-radius:4px;padding:1px 5px">🏷️ CORRETOR</span>` : ''}
+      ${l.tipo==='investidor' ? `<span style="display:inline-block;margin-left:5px;font-size:10px;font-weight:700;background:rgba(167,139,250,.15);color:#a78bfa;border:1px solid rgba(167,139,250,.3);border-radius:4px;padding:1px 5px">💼 INVEST.</span>` : ''}
+      ${esquecido ? ` <span title="${dias}d sem contato" style="color:var(--warning);font-size:11px">⚠️${dias}d</span>` : ''}
+      ${isCorretorLead && l.imobiliaria ? `<div style="font-size:11px;color:var(--text2);margin-top:1px">🏢 ${l.imobiliaria}${l.creci?' · '+l.creci:''}</div>` : ''}
+      ${l.resumo ? ` <span style="font-size:10px;color:var(--text2);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px">${l.resumo}</span>` : ''}
+    </td>
     <td><a href="https://wa.me/55${l.telefone}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${fmtPhone(l.telefone)}</a></td>
     <td>${l.cidade||'—'}</td>
     <td>${l.objetivo||'—'}</td>
@@ -808,6 +816,7 @@ function renderLeadRow(l, statusColors) {
       ${l.origem==='whatsapp' && l.telefone ? `<button class="btn-icon" title="Ver conversa na Débora" onclick="abrirDeboraParaLead('${l.telefone}')">🤖</button>` : ''}
       <button class="btn-icon" title="Follow-up" onclick='openFollowupModal(${JSON.stringify({id:l.id,nome:l.nome})})'>📞</button>
       <button class="btn-icon" title="Proposta Comercial" onclick="abrirProposta(${l.id})" style="color:var(--accent2)">📋</button>
+      ${isCorretorLead ? `<button class="btn-icon" title="Converter em Parceiro" onclick="converterLeadCorretor(${l.id},'${(l.nome||'').replace(/'/g,"\\'")}',event)" style="color:#60a5fa">🤝</button>` : ''}
       <button class="btn-icon btn-edit" onclick="editLead(${l.id})">✏️</button>
       <button class="btn-icon btn-delete" onclick="deleteLead(${l.id})">🗑️</button>
     </td>
@@ -815,12 +824,39 @@ function renderLeadRow(l, statusColors) {
 }
 
 function openLeadModal(lead = {}) {
+  const isCorretor = lead.tipo === 'corretor';
   openModal(lead.id ? 'Editar Lead' : 'Novo Lead', `
+    ${lead.tipo === 'corretor' ? `
+    <div style="background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.3);border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px">🏷️</span>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#60a5fa">Lead qualificado como Corretor Parceiro</div>
+        <div style="font-size:11px;color:var(--text2)">CRECI e imobiliária visíveis abaixo</div>
+      </div>
+    </div>` : ''}
     <div class="form-grid">
       <div class="form-group"><label>Nome</label><input id="f-nome" value="${lead.nome||''}" placeholder="Nome do lead"></div>
       <div class="form-group"><label>Telefone</label><input id="f-tel" value="${lead.telefone||''}" placeholder="48999999999"></div>
       <div class="form-group"><label>Email</label><input id="f-email" type="email" value="${lead.email||''}"></div>
       <div class="form-group"><label>Cidade</label><input id="f-cidade" value="${lead.cidade||''}"></div>
+      <div class="form-group"><label>Tipo de Lead</label>
+        <select id="f-tipo-lead" onchange="toggleCamposCorretor(this.value)">
+          <option value="" ${!lead.tipo?'selected':''}>— Comprador —</option>
+          <option value="corretor" ${lead.tipo==='corretor'?'selected':''}>🏷️ Corretor Parceiro</option>
+          <option value="investidor" ${lead.tipo==='investidor'?'selected':''}>💼 Investidor</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Status</label>
+        <select id="f-status">
+          ${['novo','qualificado','visitou','proposta','vendido','perdido'].map(s => `<option value="${s}" ${lead.status===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
+
+      <div id="campos-corretor" style="display:${isCorretor?'contents':'none'}">
+        <div class="form-group"><label>CRECI</label><input id="f-creci" value="${lead.creci||''}" placeholder="CRECI 12345-F"></div>
+        <div class="form-group"><label>Imobiliária</label><input id="f-imob" value="${lead.imobiliaria||''}" placeholder="Nome da imobiliária"></div>
+      </div>
+
       <div class="form-group"><label>Objetivo</label>
         <select id="f-obj"><option value="">—</option><option ${lead.objetivo==='morar'?'selected':''}>morar</option><option ${lead.objetivo==='investir'?'selected':''}>investir</option><option ${lead.objetivo==='ambos'?'selected':''}>ambos</option></select>
       </div>
@@ -828,18 +864,13 @@ function openLeadModal(lead = {}) {
       <div class="form-group"><label>Prazo</label>
         <select id="f-prazo"><option value="">—</option><option ${lead.prazo==='imediato'?'selected':''}>imediato</option><option ${lead.prazo==='curto'?'selected':''}>curto</option><option ${lead.prazo==='longo'?'selected':''}>longo</option></select>
       </div>
-      <div class="form-group"><label>Status</label>
-        <select id="f-status">
-          ${['novo','qualificado','visitou','proposta','vendido','perdido'].map(s => `<option value="${s}" ${lead.status===s?'selected':''}>${s}</option>`).join('')}
-        </select>
-      </div>
-      <div class="form-group"><label>Corretor</label>
+      <div class="form-group"><label>Corretor responsável</label>
         <select id="f-corretor">
           <option value="">— Sem corretor —</option>
           ${corretoresData.map(c => `<option value="${c.id}" ${lead.corretor_id==c.id?'selected':''}>${c.nome}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group"><label>Empreendimento</label>
+      <div class="form-group"><label>Empreendimento de interesse</label>
         <select id="f-emp">
           <option value="">— Não definido —</option>
           ${empData.map(e => `<option value="${e.id}" ${lead.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('')}
@@ -858,6 +889,11 @@ function openLeadModal(lead = {}) {
         style="margin-left:8px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer">
         📞 Follow-up & Templates
       </button>
+      ${lead.id && lead.tipo === 'corretor' ? `
+      <button onclick="converterLeadCorretor(${lead.id},'${(lead.nome||'').replace(/'/g,"\\'")}',event)" type="button"
+        style="margin-left:8px;background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.4);color:#60a5fa;border-radius:6px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer">
+        🤝 Converter em Parceiro
+      </button>` : ''}
     </div>` : ''}
     ${lead.id ? `
     <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
@@ -882,7 +918,8 @@ function openLeadModal(lead = {}) {
     </div>
     ` : ''}
   `, async () => {
-    const body = { nome: v('f-nome'), telefone: v('f-tel'), email: v('f-email'), cidade: v('f-cidade'), objetivo: v('f-obj'), faixa_investimento: v('f-faixa'), prazo: v('f-prazo'), status: v('f-status'), corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, aniversario: v('f-aniv')||null, observacoes: v('f-obs') };
+    const tipoLead = v('f-tipo-lead') || null;
+    const body = { nome: v('f-nome'), telefone: v('f-tel'), email: v('f-email'), cidade: v('f-cidade'), objetivo: v('f-obj'), faixa_investimento: v('f-faixa'), prazo: v('f-prazo'), status: v('f-status'), corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, aniversario: v('f-aniv')||null, observacoes: v('f-obs'), tipo: tipoLead, creci: tipoLead==='corretor' ? (v('f-creci')||null) : null, imobiliaria: tipoLead==='corretor' ? (v('f-imob')||null) : null };
     const r = lead.id ? await put(`/api/leads/${lead.id}`, body) : await post('/api/leads', body);
     if (!r.ok) return toast(r.error, 'error');
     toast(lead.id ? 'Lead atualizado!' : 'Lead criado!');
@@ -899,6 +936,22 @@ async function deleteLead(id) {
   if (!confirm('Excluir este lead?')) return;
   await del(`/api/leads/${id}`);
   toast('Lead excluído'); renderLeads();
+}
+
+function toggleCamposCorretor(tipo) {
+  const el = document.getElementById('campos-corretor');
+  if (!el) return;
+  el.style.display = tipo === 'corretor' ? 'contents' : 'none';
+}
+
+async function converterLeadCorretor(leadId, nome, evt) {
+  if (evt) evt.stopPropagation();
+  if (!confirm(`Converter "${nome}" em corretor parceiro?\n\nIsto vai criar um registro em Corretores com os dados deste lead.`)) return;
+  const r = await post(`/api/leads/${leadId}/converter-corretor`, {});
+  if (!r.ok) return toast(r.error || 'Erro ao converter', 'error');
+  toast(`✅ ${nome} adicionado como corretor parceiro!`);
+  closeModal();
+  if (currentPage === 'kanban') renderKanban(); else renderLeads();
 }
 
 async function importarLeads(input) {
@@ -953,11 +1006,17 @@ async function renderKanban(filter = '') {
         const nc = KANBAN_COLS.find(c => c.status === ns);
         return `<button onclick="moverLead(${l.id},'${ns}')" title="Mover para ${nc?.label}">${nc?.label}</button>`;
       }).join('');
-      return `<div class="kanban-card" onclick="editLead(${l.id})">
-        <div class="kc-nome">${l.nome||'—'}${esquecido ? ` <span class="kc-dias">⚠️${dias}d</span>` : ''}</div>
+      return `<div class="kanban-card" onclick="editLead(${l.id})" style="${l.tipo==='corretor'?'border-color:rgba(96,165,250,.4);background:rgba(96,165,250,.04)':''}">
+        <div class="kc-nome">
+          ${l.nome||'—'}${esquecido ? ` <span class="kc-dias">⚠️${dias}d</span>` : ''}
+          ${l.tipo==='corretor' ? `<span style="font-size:9px;font-weight:700;background:rgba(96,165,250,.15);color:#60a5fa;border:1px solid rgba(96,165,250,.3);border-radius:3px;padding:1px 4px;margin-left:4px">🏷️ CORRETOR</span>` : ''}
+          ${l.tipo==='investidor' ? `<span style="font-size:9px;font-weight:700;background:rgba(167,139,250,.15);color:#a78bfa;border:1px solid rgba(167,139,250,.3);border-radius:3px;padding:1px 4px;margin-left:4px">💼</span>` : ''}
+        </div>
         ${tel ? `<div class="kc-tel" onclick="event.stopPropagation()"><a href="https://wa.me/55${tel}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${fmtPhone(l.telefone)}</a></div>` : ''}
+        ${l.tipo==='corretor' && l.imobiliaria ? `<div class="kc-meta">🏢 ${l.imobiliaria}</div>` : ''}
         <div class="kc-meta">${l.corretor_nome ? `👤 ${l.corretor_nome.split(' ')[0]}` : ''}${l.empreendimento_nome||l.empreendimento_interesse ? ` · 🏗️ ${(l.empreendimento_nome||l.empreendimento_interesse||'').substring(0,18)}` : ''}</div>
         ${l.faixa_investimento ? `<div class="kc-meta" style="color:var(--success)">💰 ${l.faixa_investimento}</div>` : ''}
+        ${l.tipo==='corretor' ? `<div class="kc-move" onclick="event.stopPropagation()"><button onclick="converterLeadCorretor(${l.id},'${(l.nome||'').replace(/'/g,"\\'")}',event)" style="color:#60a5fa;border-color:rgba(96,165,250,.4)">🤝 Converter em parceiro</button></div>` : ''}
         ${nexts.length ? `<div class="kc-move" onclick="event.stopPropagation()">${moveButtons}</div>` : ''}
       </div>`;
     }).join('');

@@ -207,6 +207,8 @@ const migrations = [
   "ALTER TABLE vendas ADD COLUMN comissao_corretor_data_pagamento TEXT",
   "ALTER TABLE vendas ADD COLUMN comissao_corretor_valor_pago REAL DEFAULT 0",
   "ALTER TABLE vendas ADD COLUMN vaga_id INTEGER REFERENCES vagas_garagem(id)",
+  "ALTER TABLE leads ADD COLUMN creci TEXT",
+  "ALTER TABLE leads ADD COLUMN imobiliaria TEXT",
 ];
 for (const sql of migrations) {
   try { db.exec(sql); } catch (_) { /* coluna já existe */ }
