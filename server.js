@@ -510,6 +510,50 @@ app.delete("/api/empreendimentos/:id", (req, res) => {
   ok(res, {});
 });
 
+// ─── VAGAS DE GARAGEM ─────────────────────────────────────────────────────────
+
+app.get("/api/empreendimentos/:id/vagas", (req, res) => {
+  const rows = db.prepare(`
+    SELECT vg.*,
+      v.id as venda_ref_id,
+      l.nome as comprador,
+      v.imovel
+    FROM vagas_garagem vg
+    LEFT JOIN vendas v ON v.id = vg.venda_id AND v.status = 'ativo'
+    LEFT JOIN leads l ON l.id = v.lead_id
+    WHERE vg.empreendimento_id = ?
+    ORDER BY vg.bloco, vg.numero
+  `).all(req.params.id);
+  ok(res, rows);
+});
+
+app.post("/api/empreendimentos/:id/vagas", (req, res) => {
+  const { numero, bloco, tipo, preco, observacoes } = req.body;
+  if (!numero) return err(res, "Número da vaga é obrigatório");
+  const r = db.prepare(`
+    INSERT INTO vagas_garagem (empreendimento_id, numero, bloco, tipo, preco, observacoes)
+    VALUES (?,?,?,?,?,?)
+  `).run(req.params.id, numero, bloco||null, tipo||'coberta', preco||null, observacoes||null);
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.put("/api/vagas/:id", (req, res) => {
+  const { numero, bloco, tipo, preco, status, observacoes } = req.body;
+  const vaga = db.prepare("SELECT * FROM vagas_garagem WHERE id=?").get(req.params.id);
+  if (!vaga) return err(res, "Vaga não encontrada", 404);
+  db.prepare(`UPDATE vagas_garagem SET numero=?, bloco=?, tipo=?, preco=?, status=?, observacoes=? WHERE id=?`)
+    .run(numero||vaga.numero, bloco||null, tipo||vaga.tipo, preco||null, status||vaga.status, observacoes||null, req.params.id);
+  ok(res, {});
+});
+
+app.delete("/api/vagas/:id", (req, res) => {
+  const vaga = db.prepare("SELECT * FROM vagas_garagem WHERE id=?").get(req.params.id);
+  if (!vaga) return err(res, "Vaga não encontrada", 404);
+  if (vaga.status === 'vendida') return err(res, "Não é possível excluir uma vaga vendida. Cancele a venda primeiro.");
+  db.prepare("DELETE FROM vagas_garagem WHERE id=?").run(req.params.id);
+  ok(res, {});
+});
+
 // ─── CORRETORES ───────────────────────────────────────────────────────────────
 
 app.get("/api/corretores", (req, res) => {
@@ -678,12 +722,14 @@ app.get("/api/vendas", (req, res) => {
   let sql = `
     SELECT v.*, l.nome as lead_nome, l.telefone as lead_telefone,
            c.nome as corretor_nome, e.nome as empreendimento_nome,
-           cl.razao_social as cliente_nome
+           cl.razao_social as cliente_nome,
+           vg.numero as vaga_numero, vg.bloco as vaga_bloco, vg.tipo as vaga_tipo
     FROM vendas v
     LEFT JOIN leads l ON l.id = v.lead_id
     LEFT JOIN corretores c ON c.id = v.corretor_id
     LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
     LEFT JOIN clientes cl ON cl.id = v.cliente_id
+    LEFT JOIN vagas_garagem vg ON vg.id = v.vaga_id
     WHERE 1=1
   `;
   const params = [];
@@ -1079,7 +1125,7 @@ function sincronizarComissaoVenda(vendaId) {
 }
 
 app.post("/api/vendas", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, percentual_r2x_override } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, vaga_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, percentual_r2x_override } = req.body;
   if (!valor || !data_venda) return err(res, "Valor e data obrigatórios");
 
   // Serializa parcelas de entrada como JSON
@@ -1087,37 +1133,39 @@ app.post("/api/vendas", (req, res) => {
     ? JSON.stringify(entrada_parcelas) : null;
 
   const r = db.prepare(`INSERT INTO vendas
-    (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,valor,data_venda,observacoes,status,
+    (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,vaga_id,valor,data_venda,observacoes,status,
      comissao_corretor_pct,comissao_corretor_valor,comissao_corretor_status,valor_entrada,entrada_parcelas,percentual_r2x_override)
-    VALUES (?,?,?,?,?,?,?,?,?,'ativo',?,?,?,?,?,?)`)
-    .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null,
+    VALUES (?,?,?,?,?,?,?,?,?,?,'ativo',?,?,?,?,?,?)`)
+    .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, vaga_id || null,
          valor, data_venda, observacoes,
          comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente',
          valor_entrada||null, parcelasJson, percentual_r2x_override||null);
 
+  const vendaId = r.lastInsertRowid;
   if (lead_id) db.prepare("UPDATE leads SET status='vendido' WHERE id=?").run(lead_id);
   if (unidade_id) db.prepare("UPDATE unidades SET status='vendido' WHERE id=?").run(unidade_id);
+  if (vaga_id) db.prepare("UPDATE vagas_garagem SET status='vendida', venda_id=? WHERE id=?").run(vendaId, vaga_id);
 
-  const comissao = sincronizarComissaoVenda(r.lastInsertRowid);
+  const comissao = sincronizarComissaoVenda(vendaId);
   const aviso = (empreendimento_id && !comissao) ? 'Atenção: empreendimento sem % R2X cadastrado. Comissão não foi gerada.' : null;
 
-  ok(res, { id: r.lastInsertRowid, comissao_r2x: comissao, aviso });
+  ok(res, { id: vendaId, comissao_r2x: comissao, aviso });
 });
 
 app.put("/api/vendas/:id", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, percentual_r2x_override } = req.body;
-  const vendaAntiga = db.prepare("SELECT unidade_id, status FROM vendas WHERE id=?").get(req.params.id);
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, vaga_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, percentual_r2x_override } = req.body;
+  const vendaAntiga = db.prepare("SELECT unidade_id, vaga_id, status FROM vendas WHERE id=?").get(req.params.id);
 
   // Serializa parcelas de entrada como JSON
   const parcelasJson = entrada_parcelas && Array.isArray(entrada_parcelas) && entrada_parcelas.length > 0
     ? JSON.stringify(entrada_parcelas) : null;
 
   db.prepare(`UPDATE vendas SET
-    lead_id=?,empreendimento_id=?,corretor_id=?,cliente_id=?,imovel=?,unidade_id=?,valor=?,data_venda=?,
+    lead_id=?,empreendimento_id=?,corretor_id=?,cliente_id=?,imovel=?,unidade_id=?,vaga_id=?,valor=?,data_venda=?,
     status=?,observacoes=?,comissao_corretor_pct=?,comissao_corretor_valor=?,comissao_corretor_status=?,
     valor_entrada=?,entrada_parcelas=?,percentual_r2x_override=?
     WHERE id=?`)
-    .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null,
+    .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, vaga_id || null,
          valor, data_venda, status, observacoes,
          comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente',
          valor_entrada||null, parcelasJson, percentual_r2x_override||null,
@@ -1129,17 +1177,28 @@ app.put("/api/vendas/:id", (req, res) => {
   }
   if (unidade_id) db.prepare("UPDATE unidades SET status=? WHERE id=?").run(status === 'distrato' ? 'disponivel' : 'vendido', unidade_id);
 
+  // Gerencia vaga: libera a anterior se trocou, marca a nova
+  if (vendaAntiga?.vaga_id && vendaAntiga.vaga_id != vaga_id) {
+    db.prepare("UPDATE vagas_garagem SET status='disponivel', venda_id=NULL WHERE id=?").run(vendaAntiga.vaga_id);
+  }
+  if (vaga_id) {
+    const vagaStatus = status === 'distrato' ? 'disponivel' : 'vendida';
+    const vagaVendaId = status === 'distrato' ? null : req.params.id;
+    db.prepare("UPDATE vagas_garagem SET status=?, venda_id=? WHERE id=?").run(vagaStatus, vagaVendaId, vaga_id);
+  }
+
   // Recalcula comissão (cria, atualiza ou remove dependendo do estado)
   const comissao = sincronizarComissaoVenda(req.params.id);
   ok(res, { comissao_r2x: comissao });
 });
 
 app.delete("/api/vendas/:id", (req, res) => {
-  const v = db.prepare("SELECT unidade_id FROM vendas WHERE id=?").get(req.params.id);
+  const v = db.prepare("SELECT unidade_id, vaga_id FROM vendas WHERE id=?").get(req.params.id);
   // Remove entradas financeiras vinculadas
   db.prepare("DELETE FROM financeiro_entradas WHERE venda_id=?").run(req.params.id);
-  // Libera unidade
+  // Libera unidade e vaga
   if (v?.unidade_id) db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(v.unidade_id);
+  if (v?.vaga_id) db.prepare("UPDATE vagas_garagem SET status='disponivel', venda_id=NULL WHERE id=?").run(v.vaga_id);
   db.prepare("DELETE FROM vendas WHERE id=?").run(req.params.id);
   ok(res, {});
 });

@@ -206,10 +206,26 @@ const migrations = [
   "ALTER TABLE financeiro_entradas ADD COLUMN nf_data TEXT",
   "ALTER TABLE vendas ADD COLUMN comissao_corretor_data_pagamento TEXT",
   "ALTER TABLE vendas ADD COLUMN comissao_corretor_valor_pago REAL DEFAULT 0",
+  "ALTER TABLE vendas ADD COLUMN vaga_id INTEGER REFERENCES vagas_garagem(id)",
 ];
 for (const sql of migrations) {
   try { db.exec(sql); } catch (_) { /* coluna já existe */ }
 }
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vagas_garagem (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empreendimento_id INTEGER NOT NULL REFERENCES empreendimentos(id) ON DELETE CASCADE,
+    numero TEXT NOT NULL,
+    bloco TEXT,
+    tipo TEXT DEFAULT 'coberta',
+    preco REAL,
+    status TEXT DEFAULT 'disponivel',
+    venda_id INTEGER REFERENCES vendas(id),
+    observacoes TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS mapas (

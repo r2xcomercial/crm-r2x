@@ -1136,7 +1136,7 @@ async function renderVendas(filter = '') {
             <tr>
               <td>${fmtDate(v.data_venda)}</td>
               <td>${v.lead_nome||'—'}</td>
-              <td>${v.imovel||'—'}</td>
+              <td>${v.imovel||'—'}${v.vaga_numero?`<div style="font-size:11px;color:var(--text2);margin-top:2px">🅿️ Vaga ${v.vaga_numero}${v.vaga_bloco?' · Bloco '+v.vaga_bloco:''}</div>`:''}</td>
               <td style="font-weight:600;color:var(--success)">${fmt(v.valor)}</td>
               <td>${v.corretor_nome||'—'}</td>
               <td>${v.empreendimento_nome||'—'}</td>
@@ -1202,12 +1202,28 @@ function preencherUnidade(sel) {
   if (o.dataset.label) document.getElementById('f-imovel').value = o.dataset.label;
 }
 
+async function carregarVagasVenda(empId, vagaAtualId) {
+  const sel = document.getElementById('f-vaga');
+  if (!sel) return;
+  if (!empId) { sel.innerHTML = '<option value="">— Sem vaga —</option>'; return; }
+  const r = await get(`/api/empreendimentos/${empId}/vagas`);
+  const vagas = (r.data || []).filter(v => v.status === 'disponivel' || v.id == vagaAtualId);
+  if (!vagas.length) { sel.innerHTML = '<option value="">Nenhuma vaga disponível</option>'; return; }
+  sel.innerHTML = '<option value="">— Sem vaga —</option>' + vagas.map(v =>
+    `<option value="${v.id}" ${v.id == vagaAtualId ? 'selected' : ''}>Vaga ${v.numero}${v.bloco ? ' · Bloco '+v.bloco : ''} · ${v.tipo||'coberta'}${v.preco ? ' — R$ '+v.preco.toLocaleString('pt-BR') : ''}${v.status==='vendida'?' 🔴':''}</option>`
+  ).join('');
+}
+
 async function carregarUnidadesVenda(empId) {
   const sel = document.getElementById('f-unidade');
   const infoComissao = document.getElementById('info-comissao');
   if (!sel) return;
   sel.innerHTML = '<option value="">⏳ Carregando...</option>';
-  if (!empId) { sel.innerHTML = '<option value="">— Sem unidade —</option>'; return; }
+  if (!empId) {
+    sel.innerHTML = '<option value="">— Sem unidade —</option>';
+    carregarVagasVenda(null);
+    return;
+  }
   const r = await get(`/api/empreendimentos/${empId}/unidades`);
   const units = (r.data || []).filter(u => u.status === 'disponivel' || u.status === 'reservado');
   const empTipo = (currentData.emp||[]).find(e => e.id == empId)?.tipo || 'loteamento';
@@ -1216,6 +1232,11 @@ async function carregarUnidadesVenda(empId) {
   const lblB = isPredio ? 'Apto' : 'Lote';
   sel.innerHTML = '<option value="">— Selecione a unidade —</option>' + units.map(u => `<option value="${u.id}" data-preco="${u.preco||''}" data-label="${lblA} ${u.quadra||'?'} ${lblB} ${u.lote}">${u.quadra ? `${lblA} ${u.quadra} - ` : ''}${lblB} ${u.lote}${u.area_m2 ? ` (${u.area_m2}m²)` : ''}${u.preco ? ` — R$ ${u.preco.toLocaleString('pt-BR')}` : ''}${u.status==='reservado'?' 🟡 RESERVADO':''}</option>`).join('');
   if (!units.length) sel.innerHTML = '<option value="">Nenhuma unidade disponível</option>';
+
+  // Carrega vagas disponíveis para o empreendimento (só prédio tem vagas)
+  const empTipoCheck = (currentData.emp||[]).find(e => e.id == empId)?.tipo;
+  if (empTipoCheck === 'predio') carregarVagasVenda(empId);
+  else { const sv = document.getElementById('f-vaga'); if(sv) sv.innerHTML = '<option value="">— Sem vaga —</option>'; }
 
   // Atualiza preview de comissão quando muda empreendimento
   const emp = (currentData.emp||[]).find(e => e.id == empId);
@@ -1254,6 +1275,9 @@ function openVendaModal(venda = {}) {
       </div>
       <div class="form-group"><label>Unidade</label>
         <select id="f-unidade" onchange="preencherUnidade(this)"><option value="">— Selecione o empreendimento —</option></select>
+      </div>
+      <div class="form-group"><label>Vaga de Garagem</label>
+        <select id="f-vaga"><option value="">— Sem vaga —</option></select>
       </div>
       <div class="form-group"><label>Valor (R$) *</label><input id="f-valor" type="number" value="${venda.valor||''}" placeholder="350000" oninput="calcComissaoCorretor()"></div>
       <div class="form-group"><label>Imóvel (descrição)</label><input id="f-imovel" value="${venda.imovel||''}" placeholder="Lote 42 - Quadra 5"></div>
@@ -1376,7 +1400,7 @@ function openVendaModal(venda = {}) {
       data_venda: v('f-data'), valor, imovel: v('f-imovel'), status: v('f-status'),
       lead_id: leadId, corretor_id: v('f-corretor')||null,
       empreendimento_id: v('f-emp')||null, cliente_id: v('f-cliente')||null,
-      unidade_id: unidadeId, observacoes: v('f-obs'),
+      unidade_id: unidadeId, vaga_id: v('f-vaga')||null, observacoes: v('f-obs'),
       comissao_corretor_pct: comPct, comissao_corretor_valor: comValor,
       comissao_corretor_status: comPct ? (v('f-com-status')||'pendente') : null,
       valor_entrada: valorEntrada,
@@ -1397,8 +1421,19 @@ function openVendaModal(venda = {}) {
     closeModal(); renderVendas();
   });
 
-  // Carrega unidades se empreendimento já estiver selecionado
-  if (venda.empreendimento_id) setTimeout(() => carregarUnidadesVenda(venda.empreendimento_id), 100);
+  // Carrega unidades e vagas se empreendimento já estiver selecionado
+  if (venda.empreendimento_id) setTimeout(async () => {
+    await carregarUnidadesVenda(venda.empreendimento_id);
+    // Seleciona unidade atual
+    if (venda.unidade_id) {
+      const su = document.getElementById('f-unidade');
+      if (su) { su.value = venda.unidade_id; preencherUnidade(su); }
+    }
+    // Carrega e seleciona vaga atual
+    if (venda.vaga_id) {
+      await carregarVagasVenda(venda.empreendimento_id, venda.vaga_id);
+    }
+  }, 100);
 }
 async function editVenda(id) { openVendaModal(currentData.vendas.find(v => v.id === id)); }
 
@@ -1815,6 +1850,7 @@ async function renderEmpreendimentos(filter = '') {
               <td>${e.data_lancamento ? fmtDate(e.data_lancamento) : '—'}</td>
               <td style="white-space:nowrap">
                 ${e.num_unidades ? `<button class="btn-icon" title="Espelho de Vendas" onclick="verEspelho(${e.id})">🏠</button>` : ''}
+                ${e.tipo === 'predio' ? `<button class="btn-icon" title="Vagas de Garagem" onclick="verVagas(${e.id})" style="color:#60a5fa">🅿️</button>` : ''}
                 <button class="btn-icon" title="Checklist de Marketing" onclick="verChecklist(${e.id})" style="color:#a78bfa">✅</button>
                 <button class="btn-icon" title="Gerar Contrato (.docx)" onclick="gerarContrato(${e.id})" style="color:var(--success)">📄</button>
                 <button class="btn-icon" title="Relatório gerencial" onclick="gerarRelatorio(${e.id})" style="color:var(--accent)">📊</button>
@@ -6429,6 +6465,137 @@ async function incEstornarComissao(vendaId) {
   const r = await put(`/api/incorporador/vendas/${vendaId}/comissao-corretor`, { status: 'pendente', data_pagamento: null });
   if (!r.ok) return toast(r.error, 'error');
   toast('Revertido para pendente'); renderIncorporadorPainel('comissoes');
+}
+
+// ─── VAGAS DE GARAGEM ─────────────────────────────────────────────────────────
+
+async function verVagas(empId) {
+  const emp = (currentData.emp || []).find(e => e.id === empId);
+  const empNome = emp?.nome || `Empreendimento #${empId}`;
+
+  async function renderLista() {
+    const r = await get(`/api/empreendimentos/${empId}/vagas`);
+    const vagas = r.data || [];
+    const total      = vagas.length;
+    const disponiveis = vagas.filter(v => v.status === 'disponivel').length;
+    const vendidas    = vagas.filter(v => v.status === 'vendida').length;
+    const reservadas  = vagas.filter(v => v.status === 'reservada').length;
+
+    const cont = document.getElementById('vagas-list-content');
+    if (!cont) return;
+    cont.innerHTML = `
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+        <div style="background:var(--navy3);border-radius:8px;padding:8px 16px;text-align:center;min-width:64px">
+          <div style="font-size:22px;font-weight:700">${total}</div>
+          <div style="font-size:11px;color:var(--text2)">Total</div>
+        </div>
+        <div style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.2);border-radius:8px;padding:8px 16px;text-align:center;min-width:64px">
+          <div style="font-size:22px;font-weight:700;color:#4ade80">${disponiveis}</div>
+          <div style="font-size:11px;color:var(--text2)">Disponíveis</div>
+        </div>
+        <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:8px 16px;text-align:center;min-width:64px">
+          <div style="font-size:22px;font-weight:700;color:#f87171">${vendidas}</div>
+          <div style="font-size:11px;color:var(--text2)">Vendidas</div>
+        </div>
+        ${reservadas ? `<div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:8px 16px;text-align:center;min-width:64px">
+          <div style="font-size:22px;font-weight:700;color:#fbbf24">${reservadas}</div>
+          <div style="font-size:11px;color:var(--text2)">Reservadas</div>
+        </div>` : ''}
+      </div>
+      ${vagas.length ? `<div style="display:flex;flex-direction:column;gap:6px">
+        ${vagas.map(vg => {
+          const stCor = vg.status==='disponivel' ? '#4ade80' : vg.status==='vendida' ? '#f87171' : '#fbbf24';
+          const stTxt = vg.status==='disponivel' ? '● Disponível' : vg.status==='vendida' ? '● Vendida' : '● Reservada';
+          return `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--navy3);border-radius:8px;border:1px solid var(--border)">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;font-size:14px">Vaga ${vg.numero}${vg.bloco ? ' · Bloco '+vg.bloco : ''}</div>
+              <div style="font-size:12px;color:var(--text2)">${(vg.tipo||'coberta').charAt(0).toUpperCase()+(vg.tipo||'coberta').slice(1)}${vg.preco ? ' · '+fmtPlain(vg.preco) : ''}</div>
+              ${vg.status==='vendida'&&vg.comprador ? `<div style="font-size:11px;color:var(--text2);margin-top:2px">→ ${vg.comprador}${vg.imovel?' ('+vg.imovel+')':''}</div>` : ''}
+              ${vg.observacoes ? `<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${vg.observacoes}</div>` : ''}
+            </div>
+            <span style="font-size:12px;font-weight:600;color:${stCor};white-space:nowrap">${stTxt}</span>
+            <button onclick="abrirVagaModal(${empId},${JSON.stringify(vg).replace(/"/g,'&quot;')})" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px;color:var(--text2);cursor:pointer;font-size:13px">✏️</button>
+            ${vg.status!=='vendida' ? `<button onclick="deletarVaga(${vg.id},${empId})" style="background:none;border:1px solid rgba(239,68,68,.3);border-radius:6px;padding:4px 8px;color:var(--danger);cursor:pointer;font-size:13px">🗑️</button>` : ''}
+          </div>`;
+        }).join('')}
+      </div>` : `<div style="text-align:center;padding:40px;color:var(--text2)">Nenhuma vaga cadastrada ainda.<br><small>Clique em "+ Nova Vaga" para começar.</small></div>`}
+    `;
+  }
+
+  openModal(`🅿️ Vagas — ${empNome}`, `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+      <button class="btn" onclick="abrirVagaModal(${empId})" style="font-size:13px;padding:7px 16px">+ Nova Vaga</button>
+    </div>
+    <div id="vagas-list-content">⏳ Carregando...</div>
+  `, null, { hideFooter: false, saveLabel: null });
+
+  // Sobrescreve footer com só fechar
+  document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
+  window._refreshVagasList = renderLista;
+  await renderLista();
+}
+
+function abrirVagaModal(empId, vaga = {}) {
+  const isEdit = !!vaga.id;
+  openModal(isEdit ? '✏️ Editar Vaga' : '+ Nova Vaga', `
+    <div class="form-grid">
+      <div class="form-group"><label>Número da Vaga *</label>
+        <input id="vg-numero" value="${vaga.numero||''}" placeholder="01">
+      </div>
+      <div class="form-group"><label>Bloco / Torre</label>
+        <input id="vg-bloco" value="${vaga.bloco||''}" placeholder="A">
+      </div>
+      <div class="form-group"><label>Tipo</label>
+        <select id="vg-tipo">
+          <option value="coberta" ${(vaga.tipo||'coberta')==='coberta'?'selected':''}>Coberta</option>
+          <option value="descoberta" ${vaga.tipo==='descoberta'?'selected':''}>Descoberta</option>
+          <option value="duplex" ${vaga.tipo==='duplex'?'selected':''}>Duplex</option>
+          <option value="moto" ${vaga.tipo==='moto'?'selected':''}>Moto</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Preço (R$)</label>
+        <input id="vg-preco" type="number" step="0.01" value="${vaga.preco||''}" placeholder="45000">
+      </div>
+      ${isEdit ? `
+      <div class="form-group"><label>Status</label>
+        <select id="vg-status" ${vaga.status==='vendida'?'disabled':''}>
+          <option value="disponivel" ${vaga.status==='disponivel'?'selected':''}>Disponível</option>
+          <option value="reservada" ${vaga.status==='reservada'?'selected':''}>Reservada</option>
+          <option value="vendida" ${vaga.status==='vendida'?'selected':''}>Vendida</option>
+        </select>
+        ${vaga.status==='vendida'?'<div style="font-size:11px;color:var(--text2);margin-top:4px">Status gerenciado pela venda vinculada</div>':''}
+      </div>` : '<div></div>'}
+      <div class="form-group span2"><label>Observações</label>
+        <input id="vg-obs" value="${vaga.observacoes||''}" placeholder="Ex: próxima ao elevador">
+      </div>
+    </div>
+  `, async () => {
+    const numero = document.getElementById('vg-numero')?.value?.trim();
+    if (!numero) return toast('Número da vaga é obrigatório', 'error');
+    const body = {
+      numero,
+      bloco:  document.getElementById('vg-bloco')?.value?.trim() || null,
+      tipo:   document.getElementById('vg-tipo')?.value || 'coberta',
+      preco:  parseFloat(document.getElementById('vg-preco')?.value) || null,
+      status: document.getElementById('vg-status')?.value || 'disponivel',
+      observacoes: document.getElementById('vg-obs')?.value?.trim() || null,
+    };
+    const r = isEdit
+      ? await put(`/api/vagas/${vaga.id}`, body)
+      : await post(`/api/empreendimentos/${empId}/vagas`, body);
+    if (!r.ok) return toast(r.error || 'Erro ao salvar', 'error');
+    toast(isEdit ? 'Vaga atualizada ✓' : 'Vaga cadastrada ✓');
+    closeModal();
+    verVagas(empId);
+  }, { saveLabel: isEdit ? '💾 Salvar' : '+ Cadastrar' });
+}
+
+async function deletarVaga(vagaId, empId) {
+  if (!confirm('Excluir esta vaga? Esta ação não pode ser desfeita.')) return;
+  const r = await del(`/api/vagas/${vagaId}`);
+  if (!r.ok) return toast(r.error || 'Erro ao excluir', 'error');
+  toast('Vaga excluída ✓');
+  verVagas(empId);
 }
 
 // ─── INIT USUARIO UI ──────────────────────────────────────────────────────────
