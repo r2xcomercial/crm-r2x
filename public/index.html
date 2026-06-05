@@ -4701,6 +4701,10 @@ async function verEspelho(empId) {
       <select id="espelho-filtro" onchange="filtrarEspelho()" style="font-size:12px;padding:6px 10px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px">${filtros}</select>
       <button class="btn btn-secondary" onclick="verEspelho(${empId})" style="font-size:12px;padding:6px 12px">🔄</button>
       <button class="btn btn-secondary" onclick="verUnidades(${empId})" style="font-size:12px;padding:6px 12px">📋 Lista</button>
+      <label class="btn btn-secondary" style="font-size:12px;padding:6px 12px;cursor:pointer" title="Envie o PDF ou imagem da planta urbanística para importar lotes automaticamente">
+        📐 Importar da Planta
+        <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" style="display:none" onchange="analisarPlanta(this,${empId},'${(emp.nome||'').replace(/'/g,"\\'")}')">
+      </label>
     </div>
 
     <!-- Barra VSO -->
@@ -4847,6 +4851,153 @@ async function mudarStatusEspelho(unidadeId, status, empId) {
   if (!r.ok) return toast(r.error, 'error');
   const msgs = { disponivel:'✅ Unidade liberada!', reservado:'🟡 Unidade reservada!', vendido:'🔴 Marcada como vendida!' };
   toast(msgs[status]);
+  closeModal();
+  verEspelho(empId);
+}
+
+// ─── IMPORTAÇÃO DE PLANTA URBANÍSTICA ────────────────────────────────────────
+
+async function analisarPlanta(input, empId, empNome) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = ''; // reset para permitir novo envio do mesmo arquivo
+
+  const ehImg = /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name);
+  const msg = ehImg
+    ? '🔍 Lendo imagem da planta com visão IA... pode levar alguns segundos.'
+    : '⏳ Analisando PDF da planta urbanística com IA...';
+
+  // Mostra loading no espelho
+  openModal('📐 Analisando Planta Urbanística', `
+    <div style="text-align:center;padding:40px 20px">
+      <div style="font-size:32px;margin-bottom:16px">📐</div>
+      <div style="font-size:14px;color:var(--text2);margin-bottom:8px">${msg}</div>
+      <div style="font-size:12px;color:var(--text2)">${file.name}</div>
+      <div style="margin-top:20px;height:4px;border-radius:2px;background:var(--navy3);overflow:hidden">
+        <div style="height:100%;width:60%;background:var(--accent);border-radius:2px;animation:pulse 1.5s infinite"></div>
+      </div>
+    </div>
+  `, null, { hideFooter: true });
+
+  try {
+    const fd = new FormData();
+    fd.append('planta', file);
+    const resp = await fetch(`/api/empreendimentos/${empId}/analisar-planta`, {
+      method: 'POST',
+      headers: { 'x-crm-token': TOKEN },
+      body: fd,
+    });
+    const r = await resp.json();
+
+    if (!r.ok) {
+      document.getElementById('modal-body').innerHTML = `
+        <div style="text-align:center;padding:32px 20px">
+          <div style="font-size:32px;margin-bottom:12px">⚠️</div>
+          <div style="font-size:14px;color:var(--danger);font-weight:600;margin-bottom:8px">${r.error}</div>
+          <div style="font-size:12px;color:var(--text2)">Dica: se o PDF for digitalizado, exporte uma página como JPG/PNG e envie a imagem.</div>
+          <button onclick="closeModal()" class="btn btn-secondary" style="margin-top:20px">Fechar</button>
+        </div>`;
+      document.getElementById('modal-foot').innerHTML = '';
+      return;
+    }
+
+    const { unidades, total, fonte } = r.data;
+    const fonteLabel = fonte === 'texto' ? '📄 Texto extraído do PDF' : '🔍 Leitura visual (IA Vision)';
+
+    // Monta tabela de prévia
+    let linhas = unidades.map((u, i) => `
+      <tr>
+        <td style="text-align:center;padding:4px 8px">
+          <input type="checkbox" class="planta-check" data-idx="${i}" checked style="width:15px;height:15px;cursor:pointer">
+        </td>
+        <td style="padding:4px 8px;font-size:12px">${u.quadra || '—'}</td>
+        <td style="padding:4px 8px;font-size:12px;font-weight:500">${u.lote}</td>
+        <td style="padding:4px 8px">
+          <input type="number" class="planta-area" data-idx="${i}" value="${u.area_m2||''}" step="0.01" min="0"
+            placeholder="—" style="width:80px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 6px;font-size:12px">
+        </td>
+        <td style="padding:4px 8px">
+          <input type="number" class="planta-preco" data-idx="${i}" value="${u.preco||''}" step="1" min="0"
+            placeholder="—" style="width:100px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 6px;font-size:12px">
+        </td>
+      </tr>`).join('');
+
+    document.getElementById('modal-body').innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:14px;font-weight:700">${total} lotes identificados — ${empNome}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">${fonteLabel} · Revise, edite áreas/preços e confirme a importação</div>
+        </div>
+        <label style="font-size:12px;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="planta-sel-all" checked onchange="document.querySelectorAll('.planta-check').forEach(c=>c.checked=this.checked)">
+          Selecionar todos
+        </label>
+      </div>
+      <div style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+        <table style="width:100%;border-collapse:collapse">
+          <thead style="position:sticky;top:0;background:var(--navy3)">
+            <tr>
+              <th style="padding:8px;font-size:11px;color:var(--text2);width:32px">✓</th>
+              <th style="padding:8px;font-size:11px;color:var(--text2);text-align:left">Quadra</th>
+              <th style="padding:8px;font-size:11px;color:var(--text2);text-align:left">Lote</th>
+              <th style="padding:8px;font-size:11px;color:var(--text2);text-align:left">Área m²</th>
+              <th style="padding:8px;font-size:11px;color:var(--text2);text-align:left">Preço (R$)</th>
+            </tr>
+          </thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>
+      <div style="margin-top:10px;font-size:11px;color:var(--text2)">
+        ⚠️ Lotes já existentes (mesma quadra+número) serão ignorados automaticamente.
+      </div>
+    `;
+
+    document.getElementById('modal-foot').innerHTML = `
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btn-confirmar-planta" onclick="confirmarImportacaoPlanta(${empId})">
+        ✅ Importar lotes selecionados
+      </button>
+    `;
+
+    // Guarda dados originais para o confirm
+    window._plantaUnidades = unidades;
+
+  } catch(e) {
+    document.getElementById('modal-body').innerHTML = `
+      <div style="text-align:center;padding:32px">
+        <div style="color:var(--danger);font-size:14px;font-weight:600">Erro de conexão</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:8px">${e.message}</div>
+        <button onclick="closeModal()" class="btn btn-secondary" style="margin-top:16px">Fechar</button>
+      </div>`;
+    document.getElementById('modal-foot').innerHTML = '';
+  }
+}
+
+async function confirmarImportacaoPlanta(empId) {
+  const btn = document.getElementById('btn-confirmar-planta');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Importando...'; }
+
+  // Coleta unidades selecionadas com áreas/preços editados
+  const checks = [...document.querySelectorAll('.planta-check:checked')];
+  const unidades = checks.map(cb => {
+    const i = parseInt(cb.dataset.idx);
+    const u = (window._plantaUnidades || [])[i] || {};
+    const areaEl = document.querySelector(`.planta-area[data-idx="${i}"]`);
+    const precoEl = document.querySelector(`.planta-preco[data-idx="${i}"]`);
+    return {
+      quadra:  u.quadra || null,
+      lote:    u.lote,
+      area_m2: parseFloat(areaEl?.value) || null,
+      preco:   parseFloat(precoEl?.value) || null,
+    };
+  });
+
+  if (!unidades.length) { toast('Selecione ao menos um lote', 'error'); if (btn) { btn.disabled=false; btn.textContent='✅ Importar lotes selecionados'; } return; }
+
+  const r = await post(`/api/empreendimentos/${empId}/unidades/importar-lote`, { unidades });
+  if (!r.ok) { toast(r.error || 'Erro ao importar', 'error'); if (btn) { btn.disabled=false; btn.textContent='✅ Importar lotes selecionados'; } return; }
+
+  toast(`✅ ${r.data.importadas} lotes importados! Total no espelho: ${r.data.total}`);
   closeModal();
   verEspelho(empId);
 }

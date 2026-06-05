@@ -2516,6 +2516,144 @@ IMPORTANTE sobre entrada_parcelas:
   }
 });
 
+// ─── LEITURA DE PLANTA URBANÍSTICA COM IA ────────────────────────────────────
+
+const uploadPlanta = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 30 * 1024 * 1024 }, // 30 MB
+  fileFilter: (req, file, cb) => {
+    const aceito = ['application/pdf'].concat(IMAGENS_ACEITAS).includes(file.mimetype) ||
+      file.originalname.toLowerCase().endsWith('.pdf') ||
+      ['.jpg','.jpeg','.png','.webp','.heic','.heif'].some(e => file.originalname.toLowerCase().endsWith(e));
+    cb(null, aceito);
+  }
+});
+
+app.post('/api/empreendimentos/:id/analisar-planta', uploadPlanta.single('planta'), async (req, res) => {
+  if (!req.file) return err(res, 'Arquivo não enviado');
+  if (!openai)   return err(res, 'Chave OpenAI não configurada no servidor');
+
+  try {
+    const mime = req.file.mimetype;
+    const nome = req.file.originalname.toLowerCase();
+    const ehImagem = IMAGENS_ACEITAS.includes(mime) ||
+      ['.jpg','.jpeg','.png','.webp','.heic','.heif'].some(e => nome.endsWith(e));
+
+    const prompt = `Você é um especialista em análise de plantas urbanísticas e loteamentos brasileiros.
+
+Analise este documento e extraia TODOS os lotes/unidades encontrados.
+
+Retorne APENAS um objeto JSON válido com esta estrutura:
+{
+  "empreendimento": "nome do loteamento/empreendimento se visível, senão null",
+  "tipo": "loteamento" ou "predio" — identifique pelo conteúdo,
+  "unidades": [
+    { "quadra": "número ou letra da quadra (string), null se não houver", "lote": "número ou identificação do lote/apto/unidade (string)", "area_m2": número da área em m² (sem formatação, ex: 300.00), null se não encontrada },
+    ...
+  ]
+}
+
+REGRAS IMPORTANTES:
+- Extraia TODOS os lotes, não apenas alguns exemplos
+- Se houver uma tabela de áreas/lotes, priorize ela
+- Quadra pode ser número (1, 2, 3) ou letra (A, B, C)
+- Lote é o identificador da unidade (número, letra ou combinação)
+- area_m2 deve ser número decimal (ex: 300.00, não "300,00 m²")
+- Se o documento tiver múltiplas páginas/seções, combine todos os lotes
+- Para plantas de prédio: quadra = andar, lote = número do apartamento
+- Ignore lotes de uso comum, praças, vias (foque em lotes vendáveis)`;
+
+    let completion;
+    let fonte = 'visao';
+
+    if (ehImagem) {
+      const mimeReal = mime.startsWith('image/') ? mime : 'image/jpeg';
+      const b64 = req.file.buffer.toString('base64');
+      completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        max_tokens: 4000,
+        temperature: 0,
+        messages: [{ role: 'user', content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:${mimeReal};base64,${b64}`, detail: 'high' } }
+        ]}],
+      });
+    } else {
+      // PDF: tenta extração de texto primeiro
+      let texto = '';
+      try { const parsed = await pdfParse(req.file.buffer); texto = parsed.text; } catch(_) {}
+
+      if (texto && texto.replace(/\s/g,'').length > 100) {
+        // Tem texto — usa modelo de texto (mais barato e rápido)
+        fonte = 'texto';
+        completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          max_tokens: 4000,
+          temperature: 0,
+          messages: [{ role: 'user', content: `${prompt}\n\nCONTEÚDO DO DOCUMENTO:\n${texto.slice(0, 20000)}` }],
+        });
+      } else {
+        // PDF sem texto (digitalizado/vetorial) — envia como imagem base64
+        // Tentativa com primeira página via base64 do PDF inteiro
+        fonte = 'visao_pdf';
+        const b64 = req.file.buffer.toString('base64');
+        completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          max_tokens: 4000,
+          temperature: 0,
+          messages: [{ role: 'user', content: [
+            { type: 'text', text: prompt + '\n\nOBS: Este é um PDF sem texto. Leia visualmente o documento.' },
+            { type: 'image_url', image_url: { url: `data:application/pdf;base64,${b64}`, detail: 'high' } }
+          ]}],
+        });
+      }
+    }
+
+    const resposta = completion.choices[0].message.content.trim();
+    const jsonMatch = resposta.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return err(res, 'IA não retornou dados estruturados. Tente com uma imagem (JPG/PNG) da planta.');
+
+    const dados = JSON.parse(jsonMatch[0]);
+    const unidades = (dados.unidades || []).filter(u => u.lote);
+
+    if (!unidades.length) return err(res, 'Nenhum lote identificado no arquivo. Tente enviar como imagem JPG de melhor qualidade.');
+
+    ok(res, { unidades, empreendimento: dados.empreendimento, tipo: dados.tipo, fonte, total: unidades.length });
+  } catch(e) {
+    console.error('[analisar-planta]', e.message);
+    err(res, 'Erro ao analisar planta: ' + e.message);
+  }
+});
+
+// Importação em lote de unidades (sem limpar existentes vendidas/reservadas)
+app.post('/api/empreendimentos/:id/unidades/importar-lote', (req, res) => {
+  const empId = parseInt(req.params.id);
+  const { unidades } = req.body;
+  if (!Array.isArray(unidades) || !unidades.length) return err(res, 'Lista de unidades vazia');
+
+  const insert = db.prepare(`INSERT INTO unidades (empreendimento_id,quadra,lote,area_m2,preco,status) VALUES (?,?,?,?,?,'disponivel')`);
+  let importadas = 0;
+
+  const run = db.transaction(() => {
+    for (const u of unidades) {
+      if (!u.lote) continue;
+      // Verifica se já existe lote+quadra (evita duplicatas)
+      const existe = db.prepare(
+        'SELECT id FROM unidades WHERE empreendimento_id=? AND lote=? AND (quadra=? OR (quadra IS NULL AND ? IS NULL))'
+      ).get(empId, String(u.lote), u.quadra||null, u.quadra||null);
+      if (existe) continue;
+      insert.run(empId, u.quadra||null, String(u.lote), u.area_m2||null, u.preco||null);
+      importadas++;
+    }
+  });
+  run();
+
+  const stats = db.prepare('SELECT COUNT(*) as total, COALESCE(SUM(preco),0) as vgv FROM unidades WHERE empreendimento_id=?').get(empId);
+  db.prepare('UPDATE empreendimentos SET num_unidades=?, vgv_estimado=? WHERE id=?').run(stats.total, stats.vgv, empId);
+
+  ok(res, { importadas, total: stats.total });
+});
+
 // ─── WEBHOOK — CAPTURA DE LEADS DE PORTAIS ────────────────────────────────────
 
 const WEBHOOK_KEY = process.env.WEBHOOK_KEY || 'webhook-r2x-2026';
