@@ -2581,10 +2581,20 @@ REGRAS IMPORTANTES:
     } else {
       // PDF: tenta extração de texto primeiro
       let texto = '';
-      try { const parsed = await pdfParse(req.file.buffer); texto = parsed.text; } catch(_) {}
+      let erroExtracao = null;
+      try {
+        const parsed = await pdfParse(req.file.buffer);
+        texto = parsed.text || '';
+      } catch(e) {
+        erroExtracao = e.message;
+        console.error('[analisar-planta] pdf-parse erro:', e.message);
+      }
 
-      if (texto && texto.replace(/\s/g,'').length > 100) {
-        // Tem texto — usa modelo de texto (mais barato e rápido)
+      const charsUteis = (texto || '').replace(/\s/g, '').length;
+      console.log(`[analisar-planta] PDF chars úteis: ${charsUteis}`);
+
+      if (charsUteis >= 20) {
+        // Tem texto suficiente — usa GPT-4o com o texto extraído
         fonte = 'texto';
         completion = await openai.chat.completions.create({
           model: 'gpt-4o',
@@ -2593,19 +2603,29 @@ REGRAS IMPORTANTES:
           messages: [{ role: 'user', content: `${prompt}\n\nCONTEÚDO DO DOCUMENTO:\n${texto.slice(0, 20000)}` }],
         });
       } else {
-        // PDF sem texto (digitalizado/vetorial) — envia como imagem base64
-        // Tentativa com primeira página via base64 do PDF inteiro
-        fonte = 'visao_pdf';
-        const b64 = req.file.buffer.toString('base64');
-        completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
-          max_tokens: 4000,
-          temperature: 0,
-          messages: [{ role: 'user', content: [
-            { type: 'text', text: prompt + '\n\nOBS: Este é um PDF sem texto. Leia visualmente o documento.' },
-            { type: 'image_url', image_url: { url: `data:application/pdf;base64,${b64}`, detail: 'high' } }
-          ]}],
-        });
+        // PDF sem texto legível (digitalizado ou vetorial puro) —
+        // usa a Files API da OpenAI que aceita PDF nativamente
+        try {
+          const { toFile } = require('openai');
+          const arquivoPdf = await toFile(req.file.buffer, 'planta.pdf', { type: 'application/pdf' });
+          const fileUpload = await openai.files.create({ file: arquivoPdf, purpose: 'user_data' });
+          fonte = 'visao_pdf';
+          completion = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            max_tokens: 4000,
+            temperature: 0,
+            messages: [{ role: 'user', content: [
+              { type: 'text', text: prompt },
+              { type: 'file', file: { file_id: fileUpload.id } }
+            ]}],
+          });
+          // Remove o arquivo após uso para não acumular na conta
+          openai.files.del(fileUpload.id).catch(() => {});
+        } catch(fileErr) {
+          console.error('[analisar-planta] Files API erro:', fileErr.message);
+          const motivo = erroExtracao ? ` (erro pdf-parse: ${erroExtracao})` : ` (${charsUteis} chars extraídos)`;
+          return err(res, `PDF sem texto legível${motivo}. Exporte uma página da planta como JPG ou PNG e envie a imagem — o sistema usa IA Vision para ler visualmente.`);
+        }
       }
     }
 
