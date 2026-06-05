@@ -1316,11 +1316,11 @@ function openVendaModal(venda = {}) {
     <div style="background:rgba(0,196,180,.07);border:1px solid rgba(0,196,180,.25);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
       <div>
         <div style="font-size:13px;font-weight:600;color:var(--accent)">📄 Preencher a partir do contrato</div>
-        <div style="font-size:11px;color:var(--text2);margin-top:2px">Envie o PDF ou DOCX — a IA extrai os dados automaticamente</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">PDF, DOCX ou imagem (JPG, PNG, HEIC) — a IA extrai os dados automaticamente</div>
       </div>
       <label style="cursor:pointer;background:var(--accent);color:var(--navy);border:none;border-radius:7px;padding:7px 16px;font-weight:700;font-size:13px;white-space:nowrap">
         📂 Selecionar contrato
-        <input type="file" accept=".pdf,.docx" style="display:none" onchange="importarContrato(this)">
+        <input type="file" accept=".pdf,.docx,.jpg,.jpeg,.png,.webp,.heic,.heif" style="display:none" onchange="importarContrato(this)">
       </label>
     </div>
     <div id="contrato-status" style="display:none;font-size:12px;margin-bottom:10px;padding:8px 12px;border-radius:7px;background:var(--navy3);color:var(--text2)"></div>` : ''}
@@ -1503,7 +1503,8 @@ async function importarContrato(input) {
   status.style.display = 'block';
   status.style.background = 'var(--navy3)';
   status.style.color = 'var(--text2)';
-  status.textContent = '⏳ Lendo contrato com IA... aguarde.';
+  const ehImg = /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(file.name);
+  status.textContent = ehImg ? '🔍 Lendo imagem do contrato com IA (visão)... aguarde.' : '⏳ Lendo contrato com IA... aguarde.';
 
   try {
     const fd = new FormData();
