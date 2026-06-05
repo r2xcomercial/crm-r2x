@@ -2598,9 +2598,9 @@ REGRAS IMPORTANTES:
         fonte = 'texto';
         completion = await openai.chat.completions.create({
           model: 'gpt-4o',
-          max_tokens: 4000,
+          max_tokens: 16000,   // plantas grandes podem ter centenas de lotes
           temperature: 0,
-          messages: [{ role: 'user', content: `${prompt}\n\nCONTEÚDO DO DOCUMENTO:\n${texto.slice(0, 20000)}` }],
+          messages: [{ role: 'user', content: `${prompt}\n\nCONTEÚDO DO DOCUMENTO:\n${texto.slice(0, 40000)}` }],
         });
       } else {
         // PDF sem texto legível (digitalizado ou vetorial puro) —
@@ -2612,7 +2612,7 @@ REGRAS IMPORTANTES:
           fonte = 'visao_pdf';
           completion = await openai.chat.completions.create({
             model: 'gpt-4o',
-            max_tokens: 4000,
+            max_tokens: 16000,
             temperature: 0,
             messages: [{ role: 'user', content: [
               { type: 'text', text: prompt },
@@ -2630,10 +2630,33 @@ REGRAS IMPORTANTES:
     }
 
     const resposta = completion.choices[0].message.content.trim();
+
+    // Extrai o JSON da resposta (pode vir com markdown ```json ... ```)
     const jsonMatch = resposta.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return err(res, 'IA não retornou dados estruturados. Tente com uma imagem (JPG/PNG) da planta.');
 
-    const dados = JSON.parse(jsonMatch[0]);
+    // Tenta parsear; se truncado, tenta recuperar os itens completos que já vieram
+    let dados;
+    try {
+      dados = JSON.parse(jsonMatch[0]);
+    } catch(parseErr) {
+      // JSON truncado (max_tokens atingido) — recupera os objetos completos do array
+      console.warn('[analisar-planta] JSON truncado, tentando recuperar parcialmente...');
+      const parcial = jsonMatch[0];
+      // Extrai todos os objetos completos do array "unidades" já recebidos
+      const itemsMatch = parcial.match(/\{\s*"quadra"\s*:[\s\S]*?\}/g) ||
+                         parcial.match(/\{\s*"lote"\s*:[\s\S]*?\}/g);
+      if (!itemsMatch || !itemsMatch.length) {
+        return err(res, `Resposta da IA foi cortada e não foi possível recuperar os lotes. A planta tem muitos lotes — tente enviar em partes (ex: só as páginas com a tabela de áreas).`);
+      }
+      const unidadesRecuperadas = [];
+      for (const item of itemsMatch) {
+        try { unidadesRecuperadas.push(JSON.parse(item)); } catch(_) {}
+      }
+      dados = { unidades: unidadesRecuperadas, empreendimento: null, tipo: 'loteamento' };
+      console.log(`[analisar-planta] Recuperados ${unidadesRecuperadas.length} lotes do JSON truncado`);
+    }
+
     const unidades = (dados.unidades || []).filter(u => u.lote);
 
     if (!unidades.length) return err(res, 'Nenhum lote identificado no arquivo. Tente enviar como imagem JPG de melhor qualidade.');
