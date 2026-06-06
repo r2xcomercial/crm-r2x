@@ -545,8 +545,39 @@ db.exec(`
     tipo TEXT,
     categoria TEXT,
     importada INTEGER DEFAULT 0,
+    -- Dados de parcelamento
+    parcela_atual INTEGER,
+    parcela_total INTEGER,
+    parcela_valor REAL,
+    -- Metadados extras
+    descricao_raw TEXT,
+    merchant TEXT,
     criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS pluggy_analise_cache (
+    mes TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    analise_json TEXT NOT NULL,
+    atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (mes, account_id)
+  );
 `);
+
+// Migrations Pluggy (colunas adicionadas depois)
+const pluggyMigrations = [
+  'ALTER TABLE pluggy_transacoes ADD COLUMN parcela_atual INTEGER',
+  'ALTER TABLE pluggy_transacoes ADD COLUMN parcela_total INTEGER',
+  'ALTER TABLE pluggy_transacoes ADD COLUMN parcela_valor REAL',
+  'ALTER TABLE pluggy_transacoes ADD COLUMN descricao_raw TEXT',
+  'ALTER TABLE pluggy_transacoes ADD COLUMN merchant TEXT',
+  'ALTER TABLE pluggy_contas ADD COLUMN limite_credito REAL DEFAULT 0',
+  'ALTER TABLE pluggy_contas ADD COLUMN fatura_atual REAL DEFAULT 0',
+  'ALTER TABLE pluggy_contas ADD COLUMN vencimento_fatura TEXT',
+  'ALTER TABLE pluggy_contas ADD COLUMN fechamento_fatura TEXT',
+];
+for (const sql of pluggyMigrations) {
+  try { db.exec(sql); } catch(_) {}
+}
 
 module.exports = db;

@@ -8375,6 +8375,7 @@ async function renderGestaoPessoal(tab) {
     { id: 'tarefas',   icon: '✅', label: 'Tarefas'     },
     { id: 'habitos',   icon: '🔥', label: 'Hábitos'     },
     { id: 'contas',    icon: '🏦', label: 'Contas'      },
+    { id: 'fluxo',     icon: '💳', label: 'Cartão & Fluxo' },
   ];
 
   const tabsHtml = `<div class="gp-tabs">
@@ -8388,8 +8389,11 @@ async function renderGestaoPessoal(tab) {
   else if (_gpTab === 'tarefas') body = await _gpTarefas();
   else if (_gpTab === 'habitos') body = await _gpHabitos();
   else if (_gpTab === 'contas')  body = await _gpContas();
+  else if (_gpTab === 'fluxo')   body = await _gpFluxo();
 
   c.innerHTML = `<div style="max-width:1100px">${tabsHtml}${body}</div>`;
+  // Para a aba de fluxo, carrega dados assíncronos após DOM estar pronto
+  if (_gpTab === 'fluxo') setTimeout(gpCarregarFluxoDados, 50);
 }
 
 // ── Visão Geral ──────────────────────────────────────────────────
@@ -9005,6 +9009,317 @@ async function pluggyImportarSelecionadas() {
     _pluggySelectedTxs.clear();
     pluggyVerExtrato(_pluggyContaSelecionada, '');
   } else toast('Erro: ' + (r.error||''), 'error');
+}
+
+// ── Cartão & Fluxo de Caixa ──────────────────────────────────────
+let _gpFluxoCartao = null; // accountId selecionado
+let _gpFluxoMes    = null;
+let _chartDonut    = null;
+let _chartTendencia = null;
+let _chartFluxo    = null;
+
+async function _gpFluxo() {
+  const hoje = new Date();
+  _gpFluxoMes = _gpFluxoMes || `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+
+  // Busca cartões de crédito conectados
+  const rContas = await get('/api/pluggy/contas');
+  const cartoes = (rContas.data||[]).filter(c => c.tipo === 'CREDIT');
+
+  if (!cartoes.length) {
+    return `<div class="gp-card" style="text-align:center;padding:40px">
+      <div style="font-size:48px;margin-bottom:16px">💳</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:8px">Nenhum cartão de crédito conectado</div>
+      <div style="color:var(--text2);margin-bottom:20px">Conecte seu cartão na aba 🏦 Contas para começar a análise</div>
+      <button onclick="renderGestaoPessoal('contas')" style="padding:10px 20px;border-radius:8px;background:var(--accent);color:var(--navy);border:none;font-weight:700;cursor:pointer">→ Ir para Contas</button>
+    </div>`;
+  }
+
+  if (!_gpFluxoCartao) _gpFluxoCartao = cartoes[0].account_id;
+
+  const selecionado = cartoes.find(c => c.account_id === _gpFluxoCartao) || cartoes[0];
+  const cartoesSelect = cartoes.map(c =>
+    `<option value="${c.account_id}"${c.account_id===_gpFluxoCartao?' selected':''}>${c.nome_banco} — ${c.nome}</option>`
+  ).join('');
+
+  return `
+    <!-- Seletor de cartão e mês -->
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:20px">
+      <select id="gf-cartao" onchange="_gpFluxoCartao=this.value;_gpFluxoAnalise=null;renderGestaoPessoal('fluxo')"
+        style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px;font-weight:600">
+        ${cartoesSelect}
+      </select>
+      <input type="month" id="gf-mes" value="${_gpFluxoMes}"
+        onchange="_gpFluxoMes=this.value;_gpFluxoAnalise=null;renderGestaoPessoal('fluxo')"
+        style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px">
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button onclick="gpAnalisarFatura()" id="btn-analisar"
+          style="padding:8px 16px;border-radius:8px;background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.4);color:#a78bfa;font-size:13px;font-weight:700;cursor:pointer">
+          🤖 Analisar com IA
+        </button>
+        <button onclick="pluggySyncItem('${selecionado.item_id||''}')"
+          style="padding:8px 14px;border-radius:8px;background:rgba(0,196,180,.12);border:1px solid rgba(0,196,180,.3);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer">
+          ⬇️ Sincronizar
+        </button>
+      </div>
+    </div>
+
+    <!-- KPIs do cartão -->
+    <div id="gf-kpis" style="margin-bottom:20px">Carregando...</div>
+
+    <!-- Gráficos: donut + tendência -->
+    <div class="gp-chart-row" style="margin-bottom:20px">
+      <div class="gp-card">
+        <div class="gp-section-title">🗂️ Gastos por categoria — ${_gpFluxoMes}</div>
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+          <div style="width:180px;height:180px;flex-shrink:0"><canvas id="chart-donut"></canvas></div>
+          <div id="gf-legenda" style="flex:1;font-size:12px;line-height:2">Carregando...</div>
+        </div>
+      </div>
+      <div class="gp-card">
+        <div class="gp-section-title">📈 Tendência mensal (6 meses)</div>
+        <div style="height:180px"><canvas id="chart-tendencia"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Análise IA -->
+    <div id="gf-analise" style="margin-bottom:20px"></div>
+
+    <!-- Parcelas em aberto -->
+    <div class="gp-card" style="margin-bottom:20px">
+      <div class="gp-section-title">💳 Parcelas em aberto
+        <span id="gf-parcelas-total" style="font-size:12px;color:var(--text2);font-weight:400;margin-left:8px"></span>
+      </div>
+      <div id="gf-parcelas">Carregando...</div>
+    </div>
+
+    <!-- Fluxo de caixa futuro -->
+    <div class="gp-card">
+      <div class="gp-section-title">🔮 Fluxo de Caixa Futuro — próximos 6 meses
+        <span style="font-size:11px;color:var(--text2);font-weight:400;margin-left:8px">receitas recorrentes + parcelas + estimativa cartão</span>
+      </div>
+      <div style="height:260px;margin-bottom:16px"><canvas id="chart-fluxo"></canvas></div>
+      <div id="gf-tabela-fluxo">Carregando...</div>
+    </div>`;
+}
+
+// Carrega os dados dos gráficos após o HTML ser inserido
+async function gpCarregarFluxoDados() {
+  if (_gpTab !== 'fluxo') return;
+  if (!_gpFluxoCartao || !_gpFluxoMes) return;
+
+  // Categorias + tendência
+  const rCat = await get(`/api/pluggy/categorias?accountId=${_gpFluxoCartao}&mes=${_gpFluxoMes}`);
+  if (rCat.ok) {
+    const { categorias, tendencia } = rCat.data;
+    const totalMes = categorias.reduce((s,c)=>s+c.total,0);
+
+    // KPIs
+    const conta = document.getElementById('gf-kpis');
+    if (conta) conta.innerHTML = `
+      <div class="gp-kpi-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="gp-kpi" style="border-left:3px solid var(--danger)">
+          <div class="kpi-lbl">Total da Fatura</div>
+          <div class="kpi-val" style="color:var(--danger)">${fmt(totalMes)}</div>
+          <div class="kpi-sub">${categorias.reduce((s,c)=>s+c.qtd,0)} transações</div>
+        </div>
+        <div class="gp-kpi" style="border-left:3px solid #f59e0b">
+          <div class="kpi-lbl">Maior categoria</div>
+          <div class="kpi-val" style="font-size:16px">${categorias[0]?.categoria||'—'}</div>
+          <div class="kpi-sub">${categorias[0]?fmt(categorias[0].total):''}</div>
+        </div>
+        <div class="gp-kpi" style="border-left:3px solid #8b5cf6">
+          <div class="kpi-lbl">Categorias distintas</div>
+          <div class="kpi-val">${categorias.length}</div>
+          <div class="kpi-sub">tipos de gasto</div>
+        </div>
+      </div>`;
+
+    // Donut
+    const colors = ['#14b8a6','#f59e0b','#6366f1','#ec4899','#10b981','#0ea5e9','#8b5cf6','#f87171','#fbbf24','#6b7280'];
+    const donutEl = document.getElementById('chart-donut');
+    if (donutEl) {
+      if (_chartDonut) _chartDonut.destroy();
+      _chartDonut = new Chart(donutEl, {
+        type: 'doughnut',
+        data: {
+          labels: categorias.map(c=>c.categoria),
+          datasets: [{ data: categorias.map(c=>c.total), backgroundColor: colors.slice(0,categorias.length), borderWidth: 2, borderColor: 'var(--navy2)' }]
+        },
+        options: { plugins: { legend: { display: false } }, cutout: '65%' }
+      });
+    }
+
+    // Legenda do donut
+    const leg = document.getElementById('gf-legenda');
+    if (leg) leg.innerHTML = categorias.map((c,i) => `
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+        <span style="width:10px;height:10px;border-radius:2px;background:${colors[i%colors.length]};flex-shrink:0"></span>
+        <span style="flex:1;color:var(--text)">${c.categoria}</span>
+        <span style="color:var(--text2)">${Math.round(c.total/totalMes*100)}%</span>
+        <span style="font-weight:700;min-width:70px;text-align:right">${fmt(c.total)}</span>
+      </div>`).join('');
+
+    // Tendência
+    const tendEl = document.getElementById('chart-tendencia');
+    if (tendEl) {
+      if (_chartTendencia) _chartTendencia.destroy();
+      _chartTendencia = new Chart(tendEl, {
+        type: 'bar',
+        data: {
+          labels: tendencia.map(t=>t.mes),
+          datasets: [{
+            label: 'Gasto total',
+            data: tendencia.map(t=>t.total),
+            backgroundColor: tendencia.map(t=>t.mes===_gpFluxoMes?'rgba(239,68,68,.7)':'rgba(99,102,241,.5)'),
+            borderRadius: 5
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { ticks: { callback: v => 'R$'+v.toLocaleString('pt-BR'), color: '#888', font:{size:10} }, grid:{color:'rgba(255,255,255,.05)'} },
+            x: { ticks: { color: '#888', font:{size:10} }, grid:{display:false} }
+          }
+        }
+      });
+    }
+  }
+
+  // Parcelas
+  const rParc = await get(`/api/pluggy/parcelas?accountId=${_gpFluxoCartao}`);
+  if (rParc.ok) {
+    const parcelas = rParc.data;
+    const totalRestante = parcelas.reduce((s,p)=>s+p.valor_restante,0);
+    const totalEl = document.getElementById('gf-parcelas-total');
+    if (totalEl) totalEl.textContent = `${parcelas.length} séries • Total restante: ${fmt(totalRestante)}`;
+    const wrap = document.getElementById('gf-parcelas');
+    if (wrap) wrap.innerHTML = parcelas.length ? `
+      <div style="overflow-x:auto">
+        <table style="width:100%;font-size:12px">
+          <thead><tr>
+            <th>Estabelecimento</th><th>Parcelas</th><th>Valor/parcela</th>
+            <th>Restante</th><th>Próximas faturas</th>
+          </tr></thead>
+          <tbody>
+            ${parcelas.map(p=>`<tr>
+              <td style="font-weight:600">${p.descricao}</td>
+              <td style="text-align:center">${p.parcela_atual}/${p.parcela_total} <span style="color:var(--text2)">(${p.restantes} restantes)</span></td>
+              <td style="color:var(--warning);font-weight:700">${fmt(p.parcela_valor)}</td>
+              <td style="color:var(--danger);font-weight:700">${fmt(p.valor_restante)}</td>
+              <td style="font-size:11px;color:var(--text2)">${p.proximas_faturas.slice(0,3).join(', ')}${p.proximas_faturas.length>3?' ...':''}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : '<div style="color:var(--text2);font-size:13px;padding:16px">Nenhuma parcela em aberto detectada</div>';
+  }
+
+  // Fluxo futuro
+  const rFluxo = await get('/api/pluggy/fluxo-futuro');
+  if (rFluxo.ok) {
+    const { fluxo } = rFluxo.data;
+    const fluxoEl = document.getElementById('chart-fluxo');
+    if (fluxoEl) {
+      if (_chartFluxo) _chartFluxo.destroy();
+      _chartFluxo = new Chart(fluxoEl, {
+        type: 'bar',
+        data: {
+          labels: fluxo.map(f=>f.mes),
+          datasets: [
+            { label: 'Receitas', data: fluxo.map(f=>f.receita), backgroundColor: 'rgba(20,184,166,.6)', borderRadius: 4, stack: 'a' },
+            { label: 'Despesa Fixa', data: fluxo.map(f=>-f.despesa_fixa), backgroundColor: 'rgba(239,68,68,.5)', borderRadius: 0, stack: 'b' },
+            { label: 'Parcelas', data: fluxo.map(f=>-f.parcelamento), backgroundColor: 'rgba(245,158,11,.6)', borderRadius: 0, stack: 'b' },
+            { label: 'Cartão (est.)', data: fluxo.map(f=>-f.cartao_variavel), backgroundColor: 'rgba(99,102,241,.5)', borderRadius: 4, stack: 'b' },
+            {
+              label: 'Saldo acumulado', data: fluxo.map(f=>f.saldo_acumulado),
+              type: 'line', borderColor: fluxo.every(f=>f.saldo_acumulado>=0)?'#4ade80':'#f87171',
+              backgroundColor: 'transparent', borderWidth: 2, pointRadius: 4,
+              pointBackgroundColor: fluxo.map(f=>f.saldo_mes>=0?'#4ade80':'#f87171'), tension: 0.3
+            }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top', labels: { color: '#aaa', font: { size: 11 }, boxWidth: 12 } },
+            tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt(Math.abs(ctx.raw))}` } }
+          },
+          scales: {
+            y: { ticks: { callback: v => 'R$'+Math.abs(v).toLocaleString('pt-BR'), color: '#888', font:{size:10} }, grid:{color:'rgba(255,255,255,.05)'} },
+            x: { ticks: { color: '#888', font:{size:10} }, grid:{display:false} }
+          }
+        }
+      });
+    }
+
+    // Tabela resumo
+    const tabEl = document.getElementById('gf-tabela-fluxo');
+    if (tabEl) tabEl.innerHTML = `
+      <div style="overflow-x:auto;margin-top:12px">
+        <table style="width:100%;font-size:12px">
+          <thead><tr>
+            <th>Mês</th><th>Receitas</th><th>Desp. Fixas</th><th>Parcelas</th><th>Cartão (est.)</th><th>Saldo Mês</th><th>Saldo Acumulado</th>
+          </tr></thead>
+          <tbody>
+            ${fluxo.map(f=>`<tr>
+              <td style="font-weight:700">${f.mes}</td>
+              <td style="color:var(--success)">${fmt(f.receita)}</td>
+              <td style="color:var(--danger)">-${fmt(f.despesa_fixa)}</td>
+              <td style="color:#fbbf24">-${fmt(f.parcelamento)}</td>
+              <td style="color:#818cf8">-${fmt(f.cartao_variavel)}</td>
+              <td style="font-weight:700;color:${f.saldo_mes>=0?'var(--success)':'var(--danger)'}">${f.saldo_mes>=0?'+':''}${fmt(f.saldo_mes)}</td>
+              <td style="font-weight:700;color:${f.saldo_acumulado>=0?'var(--success)':'var(--danger)'}">${f.saldo_acumulado>=0?'+':''}${fmt(f.saldo_acumulado)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+}
+
+async function gpAnalisarFatura() {
+  const btn = document.getElementById('btn-analisar');
+  if (btn) { btn.textContent = '🤖 Analisando...'; btn.disabled = true; }
+
+  const r = await api('/api/pluggy/analisar-fatura', 'POST', { accountId: _gpFluxoCartao, mes: _gpFluxoMes });
+
+  if (btn) { btn.textContent = '🤖 Analisar com IA'; btn.disabled = false; }
+  if (!r.ok) { toast('Erro na análise: ' + (r.error||''), 'error'); return; }
+
+  const d = r.data;
+  const scoreCor = d.score_financeiro >= 70 ? '#4ade80' : d.score_financeiro >= 40 ? '#fbbf24' : '#f87171';
+  const wrap = document.getElementById('gf-analise');
+  if (!wrap) return;
+
+  wrap.innerHTML = `
+    <div class="gp-card" style="border-left:3px solid #8b5cf6">
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap">
+        <div class="gp-section-title" style="margin:0">🤖 Análise da IA${r.cache?' <span style="font-size:10px;color:var(--text2);font-weight:400">(cache)</span>':''}</div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+          <div style="font-size:11px;color:var(--text2)">Score financeiro</div>
+          <div style="font-size:24px;font-weight:900;color:${scoreCor}">${d.score_financeiro}</div>
+          <div style="font-size:11px;color:var(--text2)">/100</div>
+        </div>
+      </div>
+
+      <div style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6;padding:12px;background:var(--navy3);border-radius:8px">${d.resumo}</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${d.score_comentario}</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#4ade80;margin-bottom:8px">💡 Insights</div>
+          ${(d.insights||[]).map(i=>`<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--text)">${i}</div>`).join('')}
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#f87171;margin-bottom:8px">⚠️ Alertas</div>
+          ${(d.alertas||[]).length ? (d.alertas||[]).map(a=>`<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--text)">${a}</div>`).join('') : '<div style="font-size:12px;color:var(--text2)">Sem alertas 🎉</div>'}
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#fbbf24;margin-bottom:8px">🎯 Recomendações</div>
+          ${(d.recomendacoes||[]).map(r=>`<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);color:var(--text)">${r}</div>`).join('')}
+        </div>
+      </div>
+    </div>`;
 }
 
 // ── Modais — Receita ─────────────────────────────────────────────

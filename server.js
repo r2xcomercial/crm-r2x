@@ -2879,39 +2879,102 @@ app.post('/api/pluggy/sync', async (req, res) => {
   } catch(e) { err(res, e.message); }
 });
 
+// Extrai dados de parcelamento da descrição quando não vem na API
+function _extrairParcela(desc) {
+  if (!desc) return null;
+  // Formatos: "3/12", "03 DE 12", "PARC 3/12", "PARCELA 3 DE 12"
+  const m = desc.match(/\b0?(\d{1,2})\s*(?:\/|DE)\s*0?(\d{1,2})\b/i);
+  if (m) {
+    const atual = parseInt(m[1]);
+    const total = parseInt(m[2]);
+    if (atual >= 1 && total >= 2 && atual <= total && total <= 72) {
+      return { atual, total };
+    }
+  }
+  return null;
+}
+
 async function _pluggySyncItem(itemId) {
-  // Busca contas
+  const hoje = new Date().toISOString().slice(0,10);
+  const de90 = new Date(Date.now() - 90*24*3600*1000).toISOString().slice(0,10);
+
   const accountsResp = await pluggyFetch(`/accounts?itemId=${itemId}`);
   const accounts = accountsResp.results || accountsResp.accounts || [];
+  let totalTxs = 0;
+
   for (const acc of accounts) {
+    const isCartao = acc.type === 'CREDIT';
+    const creditData = acc.creditData || {};
+
     db.prepare(`INSERT OR REPLACE INTO pluggy_contas
-      (item_id, account_id, nome, tipo, subtipo, numero, saldo, saldo_bloqueado, moeda, atualizado_em)
-      VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)`)
-      .run(itemId, acc.id, acc.name, acc.type, acc.subtype, acc.number||null,
-        acc.balance||0, acc.currencyCode==='BRL'?(acc.balances?.blocked||0):0,
-        acc.currencyCode||'BRL');
-    // Busca últimas transações (30 dias)
-    const hoje = new Date().toISOString().slice(0,10);
-    const de30 = new Date(Date.now() - 30*24*3600*1000).toISOString().slice(0,10);
+      (item_id, account_id, nome, tipo, subtipo, numero, saldo, saldo_bloqueado, moeda,
+       limite_credito, fatura_atual, vencimento_fatura, fechamento_fatura, atualizado_em)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)`)
+      .run(itemId, acc.id, acc.name, acc.type, acc.subtype || null, acc.number || null,
+        acc.balance || 0,
+        (acc.balances?.blocked) || 0,
+        acc.currencyCode || 'BRL',
+        creditData.creditLimit || acc.creditLimit || 0,
+        creditData.balanceCloseDate ? (acc.balance || 0) : 0,
+        creditData.balanceCloseDate || null,
+        creditData.balanceDueDate || null);
+
     try {
-      const txResp = await pluggyFetch(`/transactions?accountId=${acc.id}&from=${de30}&to=${hoje}&pageSize=100`);
+      // Cartão: busca 90 dias para capturar parcelas antigas em andamento
+      const from = isCartao ? de90 : new Date(Date.now()-30*24*3600*1000).toISOString().slice(0,10);
+      const txResp = await pluggyFetch(`/transactions?accountId=${acc.id}&from=${from}&to=${hoje}&pageSize=500`);
       const txs = txResp.results || txResp.transactions || [];
-      const insert = db.prepare(`INSERT OR IGNORE INTO pluggy_transacoes
-        (transaction_id, account_id, descricao, valor, data, tipo, categoria)
-        VALUES (?,?,?,?,?,?,?)`);
-      const insertMany = db.transaction(list => { for (const t of list) insert.run(t); });
-      insertMany(txs.map(t => [
-        t.id, acc.id,
-        t.description || t.descriptionRaw || '',
-        Math.abs(t.amount || 0),
-        (t.date||'').slice(0,10),
-        t.type || (t.amount < 0 ? 'DEBIT' : 'CREDIT'),
-        t.category || null
-      ]));
-    } catch(_) { /* ignora se conta não tem transações */ }
+      totalTxs += txs.length;
+
+      const insert = db.prepare(`
+        INSERT OR IGNORE INTO pluggy_transacoes
+          (transaction_id, account_id, descricao, descricao_raw, valor, data, tipo, categoria,
+           parcela_atual, parcela_total, parcela_valor, merchant)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
+
+      const updateParcela = db.prepare(`
+        UPDATE pluggy_transacoes SET parcela_atual=?, parcela_total=?, parcela_valor=?
+        WHERE transaction_id=? AND parcela_atual IS NULL`);
+
+      const txBatch = db.transaction(list => {
+        for (const t of list) {
+          const desc = t.description || t.descriptionRaw || '';
+          const rawDesc = t.descriptionRaw || null;
+          const valor = Math.abs(t.amount || 0);
+          const tipo = t.type || (t.amount < 0 ? 'DEBIT' : 'CREDIT');
+          const data = (t.date || t.transactionDate || '').slice(0, 10);
+          const cat = t.category || null;
+          const merchant = t.merchant?.name || t.merchantName || null;
+
+          // Metadados de parcelamento da API (mais preciso que regex)
+          const ccMeta = t.creditCardMetadata || {};
+          let parcAtual = ccMeta.installmentNumber || null;
+          let parcTotal = ccMeta.totalInstallments || null;
+          let parcValor = ccMeta.installmentValue || (parcTotal ? valor : null);
+
+          // Fallback: extrai da descrição
+          if (!parcAtual || !parcTotal) {
+            const ext = _extrairParcela(desc);
+            if (ext) { parcAtual = ext.atual; parcTotal = ext.total; parcValor = valor; }
+          }
+
+          insert.run(t.id, acc.id, desc, rawDesc, valor, data, tipo, cat,
+            parcAtual, parcTotal, parcValor, merchant);
+
+          // Atualiza parcelas se já existia sem esse dado
+          if (parcAtual && parcTotal) {
+            updateParcela.run(parcAtual, parcTotal, parcValor, t.id);
+          }
+        }
+      });
+      txBatch(txs);
+    } catch(e) {
+      console.error(`[pluggy sync tx] account ${acc.id}:`, e.message);
+    }
   }
+
   db.prepare(`UPDATE pluggy_items SET status='UPDATED', ultimo_sync=CURRENT_TIMESTAMP WHERE item_id=?`).run(itemId);
-  return { contas: accounts.length };
+  return { contas: accounts.length, transacoes: totalTxs };
 }
 
 // Lista contas com saldo
@@ -2989,6 +3052,240 @@ function _mapPluggyCategoria(cat) {
   if (c.includes('imposto') || c.includes('tributo') || c.includes('taxa')) return 'imposto';
   return 'outros';
 }
+
+// ── Análise IA da fatura do cartão ───────────────────────────────────────────
+app.post('/api/pluggy/analisar-fatura', async (req, res) => {
+  try {
+    if (!openai) return err(res, 'OpenAI não configurado');
+    const { accountId, mes } = req.body;
+    if (!accountId || !mes) return err(res, 'accountId e mes obrigatórios');
+
+    // Verifica cache (validade: 6h)
+    const cached = db.prepare(`SELECT analise_json, atualizado_em FROM pluggy_analise_cache WHERE mes=? AND account_id=?`).get(mes, accountId);
+    if (cached) {
+      const ageMs = Date.now() - new Date(cached.atualizado_em).getTime();
+      if (ageMs < 6 * 3600 * 1000) {
+        return res.json({ ok: true, data: JSON.parse(cached.analise_json), cache: true });
+      }
+    }
+
+    const txs = db.prepare(`
+      SELECT descricao, valor, data, tipo, categoria, merchant, parcela_atual, parcela_total
+      FROM pluggy_transacoes
+      WHERE account_id=? AND strftime('%Y-%m',data)=? AND tipo='DEBIT'
+      ORDER BY valor DESC LIMIT 200`).all(accountId, mes);
+
+    if (!txs.length) return err(res, 'Nenhuma transação neste mês para analisar');
+
+    const conta = db.prepare(`SELECT nome, nome_banco FROM pluggy_contas c JOIN pluggy_items i ON c.item_id=i.item_id WHERE account_id=?`).get(accountId);
+
+    const prompt = `Você é um consultor financeiro pessoal. Analise as despesas do cartão de crédito "${conta?.nome || 'Cartão'}" (${conta?.nome_banco || ''}) referentes ao mês ${mes}.
+
+TRANSAÇÕES (débitos):
+${txs.map(t => `- ${t.data} | ${t.descricao}${t.merchant&&t.merchant!==t.descricao?` (${t.merchant})`:''}${t.parcela_atual?` [${t.parcela_atual}/${t.parcela_total}]`:''} | R$ ${t.valor.toFixed(2)} | Cat: ${t.categoria||'?'}`).join('\n')}
+
+Responda em JSON válido com exatamente esta estrutura:
+{
+  "total_mes": <número>,
+  "categorias": [{"nome":"<categoria>","total":<número>,"percentual":<número>,"transacoes":<count>,"cor":"<hex>"}],
+  "insights": ["<frase curta de insight>"],
+  "alertas": ["<frase de alerta se houver gastos excessivos>"],
+  "recomendacoes": ["<recomendação prática>"],
+  "resumo": "<parágrafo resumindo o perfil de gastos do mês>",
+  "score_financeiro": <0-100>,
+  "score_comentario": "<explicação do score>"
+}
+
+Use categorias em português: Alimentação, Transporte, Moradia, Saúde, Educação, Lazer & Entretenimento, Compras, Assinaturas, Viagem, Parcelas, Outros.
+Cores sugeridas: use tons vibrantes distintos. Seja direto e útil. Identifique padrões, gastos recorrentes, parcelas.`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o', max_tokens: 2000, temperature: 0.3,
+      response_format: { type: 'json_object' },
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    const analise = JSON.parse(completion.choices[0].message.content);
+    db.prepare(`INSERT OR REPLACE INTO pluggy_analise_cache (mes, account_id, analise_json, atualizado_em) VALUES (?,?,?,CURRENT_TIMESTAMP)`)
+      .run(mes, accountId, JSON.stringify(analise));
+    res.json({ ok: true, data: analise });
+  } catch(e) {
+    console.error('[analisar-fatura]', e.message);
+    err(res, e.message);
+  }
+});
+
+// ── Parcelas em aberto e projeção futura ─────────────────────────────────────
+app.get('/api/pluggy/parcelas', (req, res) => {
+  try {
+    const { accountId } = req.query;
+    // Busca transações parceladas mais recentes de cada grupo (mesma descrição base)
+    // Agrupa por "prefixo da descrição sem o número da parcela"
+    const cond = accountId ? `AND account_id=?` : '';
+    const args = accountId ? [accountId] : [];
+
+    const txs = db.prepare(`
+      SELECT transaction_id, account_id, descricao, merchant, valor, data,
+             parcela_atual, parcela_total, parcela_valor
+      FROM pluggy_transacoes
+      WHERE parcela_total IS NOT NULL AND parcela_atual IS NOT NULL
+      ${cond}
+      ORDER BY data DESC`).all(...args);
+
+    // Para cada série de parcelas, identifica o estado mais atual
+    const series = {};
+    for (const t of txs) {
+      // Chave: remove número de parcela da descrição para agrupar
+      const base = (t.descricao || '').replace(/\b\d{1,2}\/\d{2}\b/g, '').replace(/\s+/g, ' ').trim();
+      const key = `${t.account_id}::${base}::${t.parcela_total}`;
+      if (!series[key] || t.parcela_atual > series[key].parcela_atual) {
+        series[key] = t;
+      }
+    }
+
+    const hoje = new Date();
+    const parcelas = Object.values(series).map(t => {
+      const restantes = t.parcela_total - t.parcela_atual;
+      const valorRestante = restantes * (t.parcela_valor || t.valor);
+      // Estima próximas datas (mensalmente a partir da data da última parcela registrada)
+      const proximasDatas = [];
+      for (let i = 1; i <= Math.min(restantes, 12); i++) {
+        const d = new Date(t.data);
+        d.setMonth(d.getMonth() + i);
+        proximasDatas.push(d.toISOString().slice(0, 7)); // YYYY-MM
+      }
+      return {
+        descricao: t.merchant || t.descricao,
+        parcela_atual: t.parcela_atual,
+        parcela_total: t.parcela_total,
+        parcela_valor: t.parcela_valor || t.valor,
+        restantes,
+        valor_restante: valorRestante,
+        ultima_data: t.data,
+        proximas_faturas: proximasDatas,
+        account_id: t.account_id
+      };
+    }).filter(p => p.restantes > 0).sort((a, b) => b.valor_restante - a.valor_restante);
+
+    res.json({ ok: true, data: parcelas });
+  } catch(e) { err(res, e.message); }
+});
+
+// ── Fluxo de caixa futuro (6 meses) ─────────────────────────────────────────
+app.get('/api/pluggy/fluxo-futuro', (req, res) => {
+  try {
+    const hoje = new Date();
+
+    // Monta 6 meses futuros (mês atual + 5)
+    const meses = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    });
+
+    // Receitas recorrentes (pessoal_receitas)
+    const receitasRec = db.prepare(`SELECT SUM(valor) as total FROM pessoal_receitas WHERE recorrente=1`).get()?.total || 0;
+
+    // Despesas recorrentes (pessoal_despesas)
+    const despesasRec = db.prepare(`SELECT SUM(valor) as total FROM pessoal_despesas WHERE recorrente=1`).get()?.total || 0;
+
+    // Média mensal de gastos no cartão de crédito (últimos 3 meses, excluindo parcelas)
+    const mediaCartao = (() => {
+      const result = db.prepare(`
+        SELECT AVG(total) as media FROM (
+          SELECT strftime('%Y-%m',data) as mes, SUM(valor) as total
+          FROM pluggy_transacoes
+          WHERE tipo='DEBIT' AND parcela_atual IS NULL
+            AND strftime('%Y-%m',data) < ?
+          GROUP BY mes ORDER BY mes DESC LIMIT 3
+        )`).get(meses[0]);
+      return result?.media || 0;
+    })();
+
+    // Parcelas projetadas por mês
+    const parcelasQuery = db.prepare(`
+      SELECT t.account_id, t.descricao, t.parcela_atual, t.parcela_total, t.parcela_valor, t.valor, t.data
+      FROM pluggy_transacoes t
+      WHERE t.parcela_total IS NOT NULL AND t.parcela_atual IS NOT NULL
+      ORDER BY t.data DESC`).all();
+
+    // Agrega parcelas mais recentes por série
+    const series = {};
+    for (const t of parcelasQuery) {
+      const base = (t.descricao || '').replace(/\b\d{1,2}\/\d{2}\b/g, '').trim();
+      const key = `${t.account_id}::${base}::${t.parcela_total}`;
+      if (!series[key] || t.parcela_atual > series[key].parcela_atual) series[key] = t;
+    }
+
+    // Projeta parcelas para cada mês futuro
+    const parcelasPorMes = {};
+    for (const mes of meses) parcelasPorMes[mes] = 0;
+    for (const t of Object.values(series)) {
+      const restantes = t.parcela_total - t.parcela_atual;
+      const valorParc = t.parcela_valor || t.valor;
+      for (let i = 1; i <= Math.min(restantes, 6); i++) {
+        const d = new Date(t.data);
+        d.setMonth(d.getMonth() + i);
+        const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        if (parcelasPorMes[m] !== undefined) parcelasPorMes[m] += valorParc;
+      }
+    }
+
+    // Receitas previstas (financeiro_entradas com data_prevista nos próximos 6 meses)
+    const entradasPrevistas = db.prepare(`
+      SELECT strftime('%Y-%m',data_prevista) as mes, SUM(valor) as total
+      FROM financeiro_entradas
+      WHERE status='pendente' AND data_prevista BETWEEN ? AND ?
+      GROUP BY mes`).all(meses[0] + '-01', meses[5] + '-31');
+    const entradasMap = {};
+    entradasPrevistas.forEach(e => { entradasMap[e.mes] = (entradasMap[e.mes] || 0) + e.total; });
+
+    // Monta fluxo mês a mês
+    let saldoAcumulado = 0;
+    const fluxo = meses.map((mes, idx) => {
+      const receita = receitasRec + (entradasMap[mes] || 0);
+      const despesaFixa = despesasRec;
+      const parcelamento = parcelasPorMes[mes] || 0;
+      const cartaoVariavel = idx === 0 ? mediaCartao * 0.8 : mediaCartao; // mês atual já parcialmente executado
+      const totalSaida = despesaFixa + parcelamento + cartaoVariavel;
+      const saldo = receita - totalSaida;
+      saldoAcumulado += saldo;
+      return {
+        mes,
+        receita: Math.round(receita * 100) / 100,
+        despesa_fixa: Math.round(despesaFixa * 100) / 100,
+        parcelamento: Math.round(parcelamento * 100) / 100,
+        cartao_variavel: Math.round(cartaoVariavel * 100) / 100,
+        total_saida: Math.round(totalSaida * 100) / 100,
+        saldo_mes: Math.round(saldo * 100) / 100,
+        saldo_acumulado: Math.round(saldoAcumulado * 100) / 100
+      };
+    });
+
+    res.json({ ok: true, data: { fluxo, mediaCartao: Math.round(mediaCartao * 100) / 100, receitasRec, despesasRec } });
+  } catch(e) {
+    console.error('[fluxo-futuro]', e.message);
+    err(res, e.message);
+  }
+});
+
+// Resumo por categoria do cartão (para gráficos)
+app.get('/api/pluggy/categorias', (req, res) => {
+  try {
+    const { accountId, mes } = req.query;
+    if (!accountId || !mes) return err(res, 'accountId e mes obrigatórios');
+    const cats = db.prepare(`
+      SELECT COALESCE(categoria,'Outros') as categoria, SUM(valor) as total, COUNT(*) as qtd
+      FROM pluggy_transacoes
+      WHERE account_id=? AND strftime('%Y-%m',data)=? AND tipo='DEBIT'
+      GROUP BY categoria ORDER BY total DESC`).all(accountId, mes);
+    const tendencia = db.prepare(`
+      SELECT strftime('%Y-%m',data) as mes, SUM(valor) as total
+      FROM pluggy_transacoes
+      WHERE account_id=? AND tipo='DEBIT'
+      GROUP BY mes ORDER BY mes DESC LIMIT 6`).all(accountId);
+    res.json({ ok: true, data: { categorias: cats, tendencia: tendencia.reverse() } });
+  } catch(e) { err(res, e.message); }
+});
 
 // ─── GESTÃO PESSOAL ───────────────────────────────────────────────────────────
 
