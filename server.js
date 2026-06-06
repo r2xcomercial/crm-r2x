@@ -144,7 +144,6 @@ app.delete("/api/clientes/:id", (req, res) => {
 
 // ─── EMPREENDIMENTOS ──────────────────────────────────────────────────────────
 
-// Lucratividade por empreendimento (receitas - despesas)
 app.get("/api/empreendimentos/lucratividade", (req, res) => {
   const rows = db.prepare(`
     SELECT e.id, e.nome, e.cidade, e.estado, e.status,
@@ -198,11 +197,8 @@ app.post("/api/empreendimentos/:id/unidades/upload", upload.single("arquivo"), (
   try {
     const wb = XLSX.read(req.file.buffer, { type: "buffer" });
     const ws = wb.Sheets[wb.SheetNames[0]];
-
-    // Lê como array de arrays e detecta linha de cabeçalho automaticamente
     const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
     const norm = s => String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-
     let headerRow = -1;
     for (let i = 0; i < Math.min(aoa.length, 10); i++) {
       const row = (aoa[i] || []).map(norm);
@@ -212,40 +208,26 @@ app.post("/api/empreendimentos/:id/unidades/upload", upload.single("arquivo"), (
       if (hasUnidade && (hasArea || hasPreco)) { headerRow = i; break; }
     }
     if (headerRow === -1) return err(res, "Cabeçalho não encontrado. Use o modelo padrão (lotes: QUADRA/LOTE/AREA_M2/PRECO — prédios: ANDAR/APARTAMENTO/TIPOLOGIA/AREA_M2/PRECO).");
-
     const headers = aoa[headerRow].map(norm);
     const idx = (...names) => {
-      for (const n of names) {
-        const i = headers.indexOf(norm(n));
-        if (i !== -1) return i;
-      }
-      // busca parcial
-      for (const n of names) {
-        const i = headers.findIndex(h => h && h.includes(norm(n)));
-        if (i !== -1) return i;
-      }
+      for (const n of names) { const i = headers.indexOf(norm(n)); if (i !== -1) return i; }
+      for (const n of names) { const i = headers.findIndex(h => h && h.includes(norm(n))); if (i !== -1) return i; }
       return -1;
     };
-
     const iLote = idx('LOTE', 'LT', 'APARTAMENTO', 'APTO', 'UNIDADE');
     const iQuadra = idx('QUADRA', 'QD', 'ANDAR');
     const iArea = idx('AREA_M2', 'AREA', 'ÁREA', 'AREA PRIVATIVA');
     const iPreco = idx('PRECO', 'PREÇO DO LOTE', 'PRECO DO LOTE', 'VALOR', 'PREÇO');
     const iTipologia = idx('TIPOLOGIA', 'TIPO');
-
     const empId = parseInt(req.params.id);
     const insert = db.prepare(`INSERT INTO unidades (empreendimento_id,quadra,lote,area_m2,preco,status) VALUES (?,?,?,?,?,?)`);
-
-    // Limpa unidades disponíveis existentes antes de reimportar
     db.prepare("DELETE FROM unidades WHERE empreendimento_id=? AND status='disponivel'").run(empId);
-
     let importadas = 0;
     const insertMany = db.transaction(() => {
       for (let i = headerRow + 1; i < aoa.length; i++) {
         const row = aoa[i] || [];
         let lote = iLote >= 0 ? String(row[iLote]||'').trim() : '';
         if (!lote || lote === 'null') continue;
-        // Acrescenta tipologia ao lote (ex: "401 - 2 dorms")
         if (iTipologia >= 0 && row[iTipologia]) lote = `${lote} - ${String(row[iTipologia]).trim()}`;
         const quadra = iQuadra >= 0 ? String(row[iQuadra]||'').trim() : null;
         const area = iArea >= 0 ? parseFloat(row[iArea]) || null : null;
@@ -256,34 +238,24 @@ app.post("/api/empreendimentos/:id/unidades/upload", upload.single("arquivo"), (
       }
     });
     insertMany();
-    const rows = { length: importadas };
-
     const stats = db.prepare("SELECT COUNT(*) as total, COALESCE(SUM(preco),0) as vgv FROM unidades WHERE empreendimento_id=?").get(empId);
-
-    // Atualiza VGV e nº de unidades do empreendimento automaticamente
     db.prepare("UPDATE empreendimentos SET vgv_estimado=?, num_unidades=? WHERE id=?").run(stats.vgv, stats.total, empId);
-
-    ok(res, { importadas: rows.length, total: stats.total, vgv_total: stats.vgv });
+    ok(res, { importadas, total: stats.total, vgv_total: stats.vgv });
   } catch (e) {
     err(res, "Erro ao processar arquivo: " + e.message);
   }
 });
 
-// Gera contrato DOCX preenchido com dados do empreendimento e incorporador
 app.get("/api/empreendimentos/:id/contrato", (req, res) => {
   try {
     const empId = parseInt(req.params.id);
     const emp = db.prepare("SELECT * FROM empreendimentos WHERE id=?").get(empId);
     if (!emp) return err(res, "Empreendimento não encontrado");
     const cliente = emp.cliente_id ? db.prepare("SELECT * FROM clientes WHERE id=?").get(emp.cliente_id) : {};
-
-    // Converte valor para texto por extenso (simplificado para percentuais usuais)
     const extensoPct = { 1: 'um', 1.5: 'um e meio', 2: 'dois', 2.5: 'dois e meio', 3: 'três', 4: 'quatro', 5: 'cinco' };
     const pctValue = emp.percentual_r2x || 0;
     const pctExtenso = extensoPct[pctValue] || pctValue.toString().replace('.',',');
-
     const fmtMoney = v => v ? `${Number(v).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '';
-
     const dados = {
       RAZAO_SOCIAL: cliente.razao_social || '____________________',
       CNPJ: cliente.cnpj || '____________________',
@@ -300,13 +272,11 @@ app.get("/api/empreendimentos/:id/contrato", (req, res) => {
       CIDADE_CLIENTE: cliente.cidade || '____________________',
       CIDADE_ASSINATURA: 'Braço do Norte',
     };
-
     const content = fs.readFileSync(path.join(__dirname, "templates", "contrato-template.docx"), "binary");
     const zip = new PizZip(content);
     const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
     doc.render(dados);
     const buf = doc.getZip().generate({ type: "nodebuffer" });
-
     const filename = `Contrato_R2X_${(emp.nome||'empreendimento').replace(/[^a-zA-Z0-9]/g,'_')}.docx`;
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -356,7 +326,6 @@ app.delete("/api/corretores/:id", (req, res) => {
   ok(res, {});
 });
 
-// Endpoint público — cadastro via link (sem autenticação)
 app.get("/cadastro-corretor", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "cadastro-corretor.html"));
 });
@@ -405,7 +374,6 @@ app.delete("/api/leads/:id", (req, res) => {
   ok(res, {});
 });
 
-// Webhook para receber leads do chatbot WhatsApp
 app.post("/api/leads/whatsapp", (req, res) => {
   const { telefone, nome, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse } = req.body;
   if (!telefone) return err(res, "Telefone obrigatório");
@@ -436,18 +404,13 @@ app.get("/api/vendas", (req, res) => {
   ok(res, rows);
 });
 
-// Helper: gera/atualiza entrada financeira de comissão de uma venda
 function sincronizarComissaoVenda(vendaId) {
   const v = db.prepare("SELECT * FROM vendas WHERE id=?").get(vendaId);
   if (!v) return null;
-
-  // Remove entrada antiga vinculada
   db.prepare("DELETE FROM financeiro_entradas WHERE venda_id=? AND tipo='comissao_venda'").run(vendaId);
-
   if (v.status === 'distrato' || !v.empreendimento_id) return null;
   const emp = db.prepare("SELECT percentual_r2x, nome FROM empreendimentos WHERE id=?").get(v.empreendimento_id);
   if (!emp?.percentual_r2x) return null;
-
   const comissao = parseFloat(((v.valor * emp.percentual_r2x) / 100).toFixed(2));
   const imovelDesc = v.imovel ? ` — ${v.imovel}` : '';
   db.prepare(`INSERT INTO financeiro_entradas (empreendimento_id,venda_id,descricao,tipo,valor,data_prevista,status) VALUES (?,?,?,?,?,?,?)`).run(
@@ -455,8 +418,6 @@ function sincronizarComissaoVenda(vendaId) {
     `Comissão R2X ${emp.percentual_r2x}% — ${emp.nome}${imovelDesc}`,
     'comissao_venda', comissao, v.data_venda, 'pendente'
   );
-
-  // Atualiza valores na venda também
   db.prepare("UPDATE vendas SET percentual_r2x=?, comissao_r2x=? WHERE id=?").run(emp.percentual_r2x, comissao, vendaId);
   return comissao;
 }
@@ -464,53 +425,37 @@ function sincronizarComissaoVenda(vendaId) {
 app.post("/api/vendas", (req, res) => {
   const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, observacoes } = req.body;
   if (!valor || !data_venda) return err(res, "Valor e data obrigatórios");
-
   const r = db.prepare(`INSERT INTO vendas (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,valor,data_venda,observacoes,status) VALUES (?,?,?,?,?,?,?,?,?,'ativo')`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, valor, data_venda, observacoes);
-
   if (lead_id) db.prepare("UPDATE leads SET status='vendido' WHERE id=?").run(lead_id);
   if (unidade_id) db.prepare("UPDATE unidades SET status='vendido' WHERE id=?").run(unidade_id);
-
   const comissao = sincronizarComissaoVenda(r.lastInsertRowid);
   const aviso = (empreendimento_id && !comissao) ? 'Atenção: empreendimento sem % R2X cadastrado. Comissão não foi gerada.' : null;
-
   ok(res, { id: r.lastInsertRowid, comissao_r2x: comissao, aviso });
 });
 
 app.put("/api/vendas/:id", (req, res) => {
   const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, valor, data_venda, status, observacoes } = req.body;
   const vendaAntiga = db.prepare("SELECT unidade_id, status FROM vendas WHERE id=?").get(req.params.id);
-
   db.prepare(`UPDATE vendas SET lead_id=?,empreendimento_id=?,corretor_id=?,cliente_id=?,imovel=?,unidade_id=?,valor=?,data_venda=?,status=?,observacoes=? WHERE id=?`).run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, valor, data_venda, status, observacoes, req.params.id);
-
-  // Se mudou unidade, libera a anterior e marca a nova
   if (vendaAntiga?.unidade_id && vendaAntiga.unidade_id != unidade_id) {
     db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(vendaAntiga.unidade_id);
   }
   if (unidade_id) db.prepare("UPDATE unidades SET status=? WHERE id=?").run(status === 'distrato' ? 'disponivel' : 'vendido', unidade_id);
-
-  // Recalcula comissão (cria, atualiza ou remove dependendo do estado)
   const comissao = sincronizarComissaoVenda(req.params.id);
   ok(res, { comissao_r2x: comissao });
 });
 
 app.delete("/api/vendas/:id", (req, res) => {
   const v = db.prepare("SELECT unidade_id FROM vendas WHERE id=?").get(req.params.id);
-  // Remove entradas financeiras vinculadas
   db.prepare("DELETE FROM financeiro_entradas WHERE venda_id=?").run(req.params.id);
-  // Libera unidade
   if (v?.unidade_id) db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(v.unidade_id);
   db.prepare("DELETE FROM vendas WHERE id=?").run(req.params.id);
   ok(res, {});
 });
 
-// Ranking corretores
 app.get("/api/vendas/ranking", (req, res) => {
   const { empreendimento_id, periodo } = req.query;
-  let sql = `
-    SELECT c.nome, c.imobiliaria, COUNT(v.id) as vendas, COALESCE(SUM(v.valor),0) as vgv
-    FROM vendas v JOIN corretores c ON c.id=v.corretor_id
-    WHERE v.status='ativo'
-  `;
+  let sql = `SELECT c.nome, c.imobiliaria, COUNT(v.id) as vendas, COALESCE(SUM(v.valor),0) as vgv FROM vendas v JOIN corretores c ON c.id=v.corretor_id WHERE v.status='ativo'`;
   const params = [];
   if (empreendimento_id) { sql += " AND v.empreendimento_id=?"; params.push(empreendimento_id); }
   if (periodo === 'mes') { sql += " AND strftime('%Y-%m',v.data_venda)=strftime('%Y-%m','now')"; }
@@ -521,12 +466,7 @@ app.get("/api/vendas/ranking", (req, res) => {
 // ─── FINANCEIRO ENTRADAS ──────────────────────────────────────────────────────
 
 app.get("/api/financeiro/entradas", (req, res) => {
-  const rows = db.prepare(`
-    SELECT f.*, e.nome as empreendimento_nome
-    FROM financeiro_entradas f
-    LEFT JOIN empreendimentos e ON e.id = f.empreendimento_id
-    ORDER BY f.data_prevista DESC
-  `).all();
+  const rows = db.prepare(`SELECT f.*, e.nome as empreendimento_nome FROM financeiro_entradas f LEFT JOIN empreendimentos e ON e.id = f.empreendimento_id ORDER BY f.data_prevista DESC`).all();
   ok(res, rows);
 });
 
@@ -551,12 +491,7 @@ app.delete("/api/financeiro/entradas/:id", (req, res) => {
 // ─── FINANCEIRO SAÍDAS ────────────────────────────────────────────────────────
 
 app.get("/api/financeiro/saidas", (req, res) => {
-  const rows = db.prepare(`
-    SELECT f.*, e.nome as empreendimento_nome
-    FROM financeiro_saidas f
-    LEFT JOIN empreendimentos e ON e.id = f.empreendimento_id
-    ORDER BY f.data_pagamento DESC
-  `).all();
+  const rows = db.prepare(`SELECT f.*, e.nome as empreendimento_nome FROM financeiro_saidas f LEFT JOIN empreendimentos e ON e.id = f.empreendimento_id ORDER BY f.data_pagamento DESC`).all();
   ok(res, rows);
 });
 
@@ -599,12 +534,7 @@ app.delete("/api/financeiro/distribuicoes/:id", (req, res) => {
 // ─── CALENDÁRIO ───────────────────────────────────────────────────────────────
 
 app.get("/api/calendario", (req, res) => {
-  const rows = db.prepare(`
-    SELECT l.*, e.nome as empreendimento_nome
-    FROM lancamentos_calendario l
-    LEFT JOIN empreendimentos e ON e.id = l.empreendimento_id
-    ORDER BY l.data
-  `).all();
+  const rows = db.prepare(`SELECT l.*, e.nome as empreendimento_nome FROM lancamentos_calendario l LEFT JOIN empreendimentos e ON e.id = l.empreendimento_id ORDER BY l.data`).all();
   ok(res, rows);
 });
 
@@ -635,6 +565,283 @@ app.get("/api/financeiro/resumo", (req, res) => {
   const total_distribuicoes = db.prepare("SELECT COALESCE(SUM(valor),0) as total FROM distribuicoes").get().total;
   ok(res, { empreendimentos: resumo, total_distribuicoes });
 });
+
+
+// ─── GESTÃO PESSOAL ──────────────────────────────────────────────────────────
+
+// Dashboard PF
+app.get("/api/pf/dashboard", (req, res) => {
+  const mes = new Date().toISOString().slice(0, 7);
+  const entradas_mes = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM pf_entradas WHERE strftime('%Y-%m', data)=? AND recebido=1`).get(mes).total;
+  const entradas_pendentes = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM pf_entradas WHERE strftime('%Y-%m', data)=? AND recebido=0`).get(mes).total;
+  const cartoes_mes = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM pf_lancamentos_cartao WHERE mes_fatura=?`).get(mes).total;
+  const fixas_pagas = db.prepare(`SELECT COALESCE(SUM(cf.valor),0) as total FROM pf_contas_fixas cf LEFT JOIN pf_pagamentos_fixos pf ON pf.conta_fixa_id=cf.id AND pf.mes_ano=? WHERE cf.ativa=1 AND pf.pago=1`).get(mes).total;
+  const fixas_pendentes = db.prepare(`SELECT COALESCE(SUM(cf.valor),0) as total FROM pf_contas_fixas cf LEFT JOIN pf_pagamentos_fixos pf ON pf.conta_fixa_id=cf.id AND pf.mes_ano=? WHERE cf.ativa=1 AND (pf.pago IS NULL OR pf.pago=0)`).get(mes).total;
+  const contas = db.prepare(`SELECT c.*, COALESCE((SELECT SUM(valor) FROM pf_transacoes WHERE conta_id=c.id AND tipo='entrada'),0) as total_entradas, COALESCE((SELECT SUM(valor) FROM pf_transacoes WHERE conta_id=c.id AND tipo='saida'),0) as total_saidas FROM pf_contas c`).all();
+  const saldo_total = contas.reduce((s,c) => s + c.saldo_inicial + c.total_entradas - c.total_saidas, 0);
+  const ultimas_entradas = db.prepare(`SELECT e.*, f.nome as fonte_nome FROM pf_entradas e LEFT JOIN pf_fontes_renda f ON f.id=e.fonte_id ORDER BY e.data DESC LIMIT 5`).all();
+  const ultimos_cartao = db.prepare(`SELECT l.*, c.nome as cartao_nome FROM pf_lancamentos_cartao l LEFT JOIN pf_cartoes c ON c.id=l.cartao_id ORDER BY l.data DESC LIMIT 5`).all();
+  ok(res, { kpis: { entradas_mes, entradas_pendentes, cartoes_mes, fixas_pagas, fixas_pendentes, saldo_total }, contas, ultimas_entradas, ultimos_cartao, mes });
+});
+
+// ── Contas Bancárias ─────────────────────────────────────────────────────────
+app.get("/api/pf/contas", (req, res) => {
+  const contas = db.prepare(`SELECT c.*, COALESCE((SELECT SUM(valor) FROM pf_transacoes WHERE conta_id=c.id AND tipo='entrada'),0) as total_entradas, COALESCE((SELECT SUM(valor) FROM pf_transacoes WHERE conta_id=c.id AND tipo='saida'),0) as total_saidas, (SELECT COUNT(*) FROM pf_transacoes WHERE conta_id=c.id) as num_transacoes FROM pf_contas c GROUP BY c.id ORDER BY c.titular, c.nome`).all();
+  ok(res, contas.map(c => ({ ...c, saldo: c.saldo_inicial + c.total_entradas - c.total_saidas })));
+});
+
+app.post("/api/pf/contas", (req, res) => {
+  const { nome, banco, titular, tipo, saldo_inicial } = req.body;
+  if (!nome) return err(res, "Nome obrigatório");
+  const r = db.prepare(`INSERT INTO pf_contas (nome,banco,titular,tipo,saldo_inicial) VALUES (?,?,?,?,?)`).run(nome, banco, titular||'Ramon', tipo||'corrente', parseFloat(saldo_inicial)||0);
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.put("/api/pf/contas/:id", (req, res) => {
+  const { nome, banco, titular, tipo, saldo_inicial } = req.body;
+  db.prepare(`UPDATE pf_contas SET nome=?,banco=?,titular=?,tipo=?,saldo_inicial=? WHERE id=?`).run(nome, banco, titular, tipo, parseFloat(saldo_inicial)||0, req.params.id);
+  ok(res, {});
+});
+
+app.delete("/api/pf/contas/:id", (req, res) => {
+  db.prepare("DELETE FROM pf_contas WHERE id=?").run(req.params.id);
+  ok(res, {});
+});
+
+app.get("/api/pf/contas/:id/transacoes", (req, res) => {
+  const { mes } = req.query;
+  let sql = "SELECT * FROM pf_transacoes WHERE conta_id=?";
+  const params = [req.params.id];
+  if (mes) { sql += " AND strftime('%Y-%m',data)=?"; params.push(mes); }
+  sql += " ORDER BY data DESC";
+  ok(res, db.prepare(sql).all(...params));
+});
+
+app.post("/api/pf/contas/:id/transacoes", (req, res) => {
+  const { data, descricao, valor, tipo, categoria, observacoes } = req.body;
+  if (!data || !descricao || !valor) return err(res, "Data, descrição e valor obrigatórios");
+  const r = db.prepare(`INSERT INTO pf_transacoes (conta_id,data,descricao,valor,tipo,categoria,observacoes) VALUES (?,?,?,?,?,?,?)`).run(req.params.id, data, descricao, parseFloat(valor), tipo||'saida', categoria, observacoes);
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.delete("/api/pf/transacoes/:id", (req, res) => {
+  db.prepare("DELETE FROM pf_transacoes WHERE id=?").run(req.params.id);
+  ok(res, {});
+});
+
+app.post("/api/pf/contas/:id/upload", upload.single("arquivo"), (req, res) => {
+  try {
+    const wb = XLSX.read(req.file.buffer, { type: "buffer" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+    const norm = s => String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    let headerRow = -1;
+    for (let i = 0; i < Math.min(aoa.length, 10); i++) {
+      const row = (aoa[i]||[]).map(norm);
+      if (row.some(c=>c.includes('data')||c.includes('date')) && row.some(c=>c.includes('valor')||c.includes('value')||c.includes('quantia'))) { headerRow = i; break; }
+    }
+    if (headerRow === -1) return err(res, "Formato não reconhecido. Colunas esperadas: DATA, DESCRICAO, VALOR, TIPO");
+    const headers = aoa[headerRow].map(norm);
+    const idx = (...names) => { for (const n of names) { const i = headers.indexOf(norm(n)); if (i!==-1) return i; } for (const n of names) { const i = headers.findIndex(h=>h&&h.includes(norm(n))); if (i!==-1) return i; } return -1; };
+    const iData=idx('data','date','dt'), iDesc=idx('descricao','historico','description','memo'), iValor=idx('valor','value','quantia','montante'), iTipo=idx('tipo','type','dc','debcred');
+    const insert = db.prepare(`INSERT INTO pf_transacoes (conta_id,data,descricao,valor,tipo,origem) VALUES (?,?,?,?,?,?)`);
+    let importadas = 0;
+    db.transaction(() => {
+      for (let i = headerRow+1; i < aoa.length; i++) {
+        const row = aoa[i]||[];
+        let dataVal = iData>=0?row[iData]:null, desc = iDesc>=0?String(row[iDesc]||'').trim():'', valorRaw = iValor>=0?row[iValor]:null;
+        if (!dataVal || !desc) continue;
+        let dataStr = null;
+        if (typeof dataVal==='number') { const d=new Date(Math.round((dataVal-25569)*86400*1000)); dataStr=d.toISOString().split('T')[0]; }
+        else { const s=String(dataVal).trim(); if (s.includes('/')) { const p=s.split('/'); dataStr=p.length===3&&p[2].length===4?`${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`:s; } else dataStr=s.split('T')[0]; }
+        if (!dataStr) continue;
+        let valor = typeof valorRaw==='number'?valorRaw:parseFloat(String(valorRaw||'').replace(/[R$\s]/g,'').replace(/\./g,'').replace(',','.'));
+        if (isNaN(valor)) continue;
+        let tipo = 'saida';
+        if (iTipo>=0&&row[iTipo]) { const t=String(row[iTipo]).toLowerCase(); if (t.includes('c')||t.includes('entrada')||t.includes('cred')) tipo='entrada'; } else if (valor>0) tipo='entrada';
+        insert.run(req.params.id, dataStr, desc, Math.abs(valor), tipo, 'extrato');
+        importadas++;
+      }
+    })();
+    ok(res, { importadas });
+  } catch(e) { err(res, "Erro ao processar: "+e.message); }
+});
+
+// ── Cartões de Crédito ───────────────────────────────────────────────────────
+app.get("/api/pf/cartoes", (req, res) => {
+  const mes = new Date().toISOString().slice(0,7);
+  ok(res, db.prepare(`SELECT c.*, COALESCE((SELECT SUM(valor) FROM pf_lancamentos_cartao WHERE cartao_id=c.id AND mes_fatura=?),0) as total_mes FROM pf_cartoes c ORDER BY c.titular, c.nome`).all(mes));
+});
+
+app.post("/api/pf/cartoes", (req, res) => {
+  const { nome, bandeira, limite, dia_fechamento, dia_vencimento, titular } = req.body;
+  if (!nome) return err(res, "Nome obrigatório");
+  const r = db.prepare(`INSERT INTO pf_cartoes (nome,bandeira,limite,dia_fechamento,dia_vencimento,titular) VALUES (?,?,?,?,?,?)`).run(nome, bandeira, parseFloat(limite)||null, parseInt(dia_fechamento)||null, parseInt(dia_vencimento)||null, titular||'Ramon');
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.put("/api/pf/cartoes/:id", (req, res) => {
+  const { nome, bandeira, limite, dia_fechamento, dia_vencimento, titular } = req.body;
+  db.prepare(`UPDATE pf_cartoes SET nome=?,bandeira=?,limite=?,dia_fechamento=?,dia_vencimento=?,titular=? WHERE id=?`).run(nome, bandeira, parseFloat(limite)||null, parseInt(dia_fechamento)||null, parseInt(dia_vencimento)||null, titular||'Ramon', req.params.id);
+  ok(res, {});
+});
+
+app.delete("/api/pf/cartoes/:id", (req, res) => {
+  db.prepare("DELETE FROM pf_cartoes WHERE id=?").run(req.params.id);
+  ok(res, {});
+});
+
+app.get("/api/pf/cartoes/:id/lancamentos", (req, res) => {
+  const { mes } = req.query;
+  let sql = "SELECT * FROM pf_lancamentos_cartao WHERE cartao_id=?";
+  const params = [req.params.id];
+  if (mes) { sql += " AND mes_fatura=?"; params.push(mes); }
+  sql += " ORDER BY data DESC";
+  ok(res, db.prepare(sql).all(...params));
+});
+
+app.post("/api/pf/cartoes/:id/lancamentos", (req, res) => {
+  const { data, descricao, valor, categoria, parcela_num, parcela_total, mes_fatura } = req.body;
+  if (!data||!descricao||!valor) return err(res, "Data, descrição e valor obrigatórios");
+  const r = db.prepare(`INSERT INTO pf_lancamentos_cartao (cartao_id,data,descricao,valor,categoria,parcela_num,parcela_total,mes_fatura) VALUES (?,?,?,?,?,?,?,?)`).run(req.params.id, data, descricao, parseFloat(valor), categoria, parcela_num||null, parcela_total||null, mes_fatura||data.slice(0,7));
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.delete("/api/pf/lancamentos-cartao/:id", (req, res) => {
+  db.prepare("DELETE FROM pf_lancamentos_cartao WHERE id=?").run(req.params.id);
+  ok(res, {});
+});
+
+app.post("/api/pf/cartoes/:id/upload", upload.single("arquivo"), (req, res) => {
+  try {
+    const { mes_fatura } = req.body;
+    const wb = XLSX.read(req.file.buffer, { type: "buffer" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+    const norm = s => String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    let headerRow = -1;
+    for (let i = 0; i < Math.min(aoa.length,10); i++) {
+      const row = (aoa[i]||[]).map(norm);
+      if (row.some(c=>c.includes('data')) && row.some(c=>c.includes('valor')||c.includes('quantia'))) { headerRow=i; break; }
+    }
+    if (headerRow===-1) return err(res, "Formato não reconhecido");
+    const headers = aoa[headerRow].map(norm);
+    const idx = (...names) => { for (const n of names) { const i=headers.indexOf(norm(n)); if (i!==-1) return i; } for (const n of names) { const i=headers.findIndex(h=>h&&h.includes(norm(n))); if (i!==-1) return i; } return -1; };
+    const iData=idx('data','date'), iDesc=idx('descricao','historico','estabelecimento'), iValor=idx('valor','quantia'), iCat=idx('categoria','category');
+    const insert = db.prepare(`INSERT INTO pf_lancamentos_cartao (cartao_id,data,descricao,valor,categoria,mes_fatura,origem) VALUES (?,?,?,?,?,?,?)`);
+    const mesFat = mes_fatura || new Date().toISOString().slice(0,7);
+    let importadas = 0;
+    db.transaction(() => {
+      for (let i = headerRow+1; i < aoa.length; i++) {
+        const row = aoa[i]||[];
+        let dataVal=iData>=0?row[iData]:null, desc=iDesc>=0?String(row[iDesc]||'').trim():'', valorRaw=iValor>=0?row[iValor]:null;
+        if (!dataVal||!desc) continue;
+        let dataStr=null;
+        if (typeof dataVal==='number') { const d=new Date(Math.round((dataVal-25569)*86400*1000)); dataStr=d.toISOString().split('T')[0]; }
+        else { const s=String(dataVal).trim(); if (s.includes('/')) { const p=s.split('/'); dataStr=p.length===3&&p[2].length===4?`${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`:s; } else dataStr=s.split('T')[0]; }
+        if (!dataStr) continue;
+        let valor=typeof valorRaw==='number'?Math.abs(valorRaw):Math.abs(parseFloat(String(valorRaw||'').replace(/[R$\s]/g,'').replace(/\./g,'').replace(',','.')));
+        if (isNaN(valor)||valor===0) continue;
+        insert.run(req.params.id, dataStr, desc, valor, iCat>=0?String(row[iCat]||'').trim()||null:null, mesFat, 'extrato');
+        importadas++;
+      }
+    })();
+    ok(res, { importadas });
+  } catch(e) { err(res, "Erro ao processar: "+e.message); }
+});
+
+// ── Contas Fixas ─────────────────────────────────────────────────────────────
+app.get("/api/pf/contas-fixas", (req, res) => {
+  const mes = req.query.mes || new Date().toISOString().slice(0,7);
+  ok(res, db.prepare(`SELECT cf.*, pf.pago, pf.data_pagamento, pf.valor as valor_pago, pf.observacoes as obs_pagamento FROM pf_contas_fixas cf LEFT JOIN pf_pagamentos_fixos pf ON pf.conta_fixa_id=cf.id AND pf.mes_ano=? WHERE cf.ativa=1 ORDER BY cf.dia_vencimento, cf.nome`).all(mes));
+});
+
+app.post("/api/pf/contas-fixas", (req, res) => {
+  const { nome, valor, dia_vencimento, categoria } = req.body;
+  if (!nome||!valor) return err(res, "Nome e valor obrigatórios");
+  const r = db.prepare(`INSERT INTO pf_contas_fixas (nome,valor,dia_vencimento,categoria) VALUES (?,?,?,?)`).run(nome, parseFloat(valor), parseInt(dia_vencimento)||null, categoria||'casa');
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.put("/api/pf/contas-fixas/:id", (req, res) => {
+  const { nome, valor, dia_vencimento, categoria, ativa } = req.body;
+  db.prepare(`UPDATE pf_contas_fixas SET nome=?,valor=?,dia_vencimento=?,categoria=?,ativa=? WHERE id=?`).run(nome, parseFloat(valor), parseInt(dia_vencimento)||null, categoria||'casa', ativa!==undefined?ativa:1, req.params.id);
+  ok(res, {});
+});
+
+app.delete("/api/pf/contas-fixas/:id", (req, res) => {
+  db.prepare("DELETE FROM pf_contas_fixas WHERE id=?").run(req.params.id);
+  ok(res, {});
+});
+
+app.post("/api/pf/contas-fixas/:id/pagar", (req, res) => {
+  const { mes_ano, data_pagamento, valor, observacoes } = req.body;
+  const mes = mes_ano || new Date().toISOString().slice(0,7);
+  const conta = db.prepare("SELECT * FROM pf_contas_fixas WHERE id=?").get(req.params.id);
+  if (!conta) return err(res, "Conta não encontrada");
+  const dataPag = data_pagamento || new Date().toISOString().split('T')[0];
+  const valorPag = parseFloat(valor)||conta.valor;
+  db.prepare(`INSERT INTO pf_pagamentos_fixos (conta_fixa_id,mes_ano,pago,data_pagamento,valor,observacoes) VALUES (?,?,1,?,?,?) ON CONFLICT(conta_fixa_id,mes_ano) DO UPDATE SET pago=1,data_pagamento=?,valor=?,observacoes=?`).run(req.params.id, mes, dataPag, valorPag, observacoes, dataPag, valorPag, observacoes);
+  ok(res, {});
+});
+
+app.post("/api/pf/contas-fixas/:id/despagar", (req, res) => {
+  const mes = req.body.mes_ano || new Date().toISOString().slice(0,7);
+  db.prepare("UPDATE pf_pagamentos_fixos SET pago=0,data_pagamento=NULL WHERE conta_fixa_id=? AND mes_ano=?").run(req.params.id, mes);
+  ok(res, {});
+});
+
+// ── Fontes de Renda ──────────────────────────────────────────────────────────
+app.get("/api/pf/fontes-renda", (req, res) => {
+  ok(res, db.prepare(`SELECT f.*, COALESCE((SELECT SUM(valor) FROM pf_entradas WHERE fonte_id=f.id AND recebido=1),0) as total_recebido FROM pf_fontes_renda f WHERE f.ativa=1 ORDER BY f.tipo, f.nome`).all());
+});
+
+app.post("/api/pf/fontes-renda", (req, res) => {
+  const { nome, tipo, descricao, titular } = req.body;
+  if (!nome) return err(res, "Nome obrigatório");
+  const r = db.prepare(`INSERT INTO pf_fontes_renda (nome,tipo,descricao,titular) VALUES (?,?,?,?)`).run(nome, tipo||'empresa', descricao, titular||'Ramon');
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.put("/api/pf/fontes-renda/:id", (req, res) => {
+  const { nome, tipo, descricao, titular, ativa } = req.body;
+  db.prepare(`UPDATE pf_fontes_renda SET nome=?,tipo=?,descricao=?,titular=?,ativa=? WHERE id=?`).run(nome, tipo, descricao, titular, ativa!==undefined?ativa:1, req.params.id);
+  ok(res, {});
+});
+
+app.delete("/api/pf/fontes-renda/:id", (req, res) => {
+  db.prepare("DELETE FROM pf_fontes_renda WHERE id=?").run(req.params.id);
+  ok(res, {});
+});
+
+// ── Entradas Pessoais ────────────────────────────────────────────────────────
+app.get("/api/pf/entradas", (req, res) => {
+  const { mes } = req.query;
+  let sql = `SELECT e.*, f.nome as fonte_nome, f.tipo as fonte_tipo FROM pf_entradas e LEFT JOIN pf_fontes_renda f ON f.id=e.fonte_id WHERE 1=1`;
+  const params = [];
+  if (mes) { sql += " AND strftime('%Y-%m',e.data)=?"; params.push(mes); }
+  sql += " ORDER BY e.data DESC";
+  ok(res, db.prepare(sql).all(...params));
+});
+
+app.post("/api/pf/entradas", (req, res) => {
+  const { fonte_id, data, valor, descricao, recebido, titular } = req.body;
+  if (!data||!valor) return err(res, "Data e valor obrigatórios");
+  const r = db.prepare(`INSERT INTO pf_entradas (fonte_id,data,valor,descricao,recebido,titular) VALUES (?,?,?,?,?,?)`).run(fonte_id||null, data, parseFloat(valor), descricao, recebido!==undefined?(recebido?1:0):1, titular||'Ramon');
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.put("/api/pf/entradas/:id", (req, res) => {
+  const { fonte_id, data, valor, descricao, recebido, titular } = req.body;
+  db.prepare(`UPDATE pf_entradas SET fonte_id=?,data=?,valor=?,descricao=?,recebido=?,titular=? WHERE id=?`).run(fonte_id||null, data, parseFloat(valor), descricao, recebido?1:0, titular||'Ramon', req.params.id);
+  ok(res, {});
+});
+
+app.delete("/api/pf/entradas/:id", (req, res) => {
+  db.prepare("DELETE FROM pf_entradas WHERE id=?").run(req.params.id);
+  ok(res, {});
+});
+
 
 // ─── START ────────────────────────────────────────────────────────────────────
 
