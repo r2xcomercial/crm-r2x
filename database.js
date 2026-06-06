@@ -509,4 +509,44 @@ db.exec(`
   );
 `);
 
+// ─── PLUGGY OPEN FINANCE ──────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS pluggy_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id TEXT NOT NULL UNIQUE,
+    nome_banco TEXT,
+    connector_id INTEGER,
+    status TEXT DEFAULT 'UPDATING',
+    ultimo_sync DATETIME,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pluggy_contas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id TEXT NOT NULL,
+    account_id TEXT NOT NULL UNIQUE,
+    nome TEXT,
+    tipo TEXT,
+    subtipo TEXT,
+    numero TEXT,
+    saldo REAL DEFAULT 0,
+    saldo_bloqueado REAL DEFAULT 0,
+    moeda TEXT DEFAULT 'BRL',
+    atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pluggy_transacoes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    transaction_id TEXT NOT NULL UNIQUE,
+    account_id TEXT NOT NULL,
+    descricao TEXT,
+    valor REAL NOT NULL,
+    data TEXT NOT NULL,
+    tipo TEXT,
+    categoria TEXT,
+    importada INTEGER DEFAULT 0,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 module.exports = db;

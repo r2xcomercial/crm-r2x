@@ -2761,6 +2761,235 @@ app.post('/api/admin/restaurar', uploadBackup.single('backup'), (req, res) => {
   }
 });
 
+// ─── PLUGGY OPEN FINANCE ──────────────────────────────────────────────────────
+
+const PLUGGY_BASE = 'https://api.pluggy.ai';
+let _pluggyApiKey = null;
+let _pluggyApiKeyExpiry = 0;
+
+async function getPluggyApiKey() {
+  if (_pluggyApiKey && Date.now() < _pluggyApiKeyExpiry) return _pluggyApiKey;
+  const clientId     = process.env.PLUGGY_CLIENT_ID;
+  const clientSecret = process.env.PLUGGY_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error('PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET não configurados');
+  const res  = await fetch(`${PLUGGY_BASE}/auth`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clientId, clientSecret })
+  });
+  if (!res.ok) throw new Error(`Pluggy auth falhou: ${res.status}`);
+  const data = await res.json();
+  _pluggyApiKey = data.apiKey;
+  _pluggyApiKeyExpiry = Date.now() + 100 * 60 * 1000; // 100 min (token expira em 2h)
+  return _pluggyApiKey;
+}
+
+async function pluggyFetch(path, options = {}) {
+  const apiKey = await getPluggyApiKey();
+  const res = await fetch(`${PLUGGY_BASE}${path}`, {
+    ...options,
+    headers: { 'X-API-KEY': apiKey, 'Content-Type': 'application/json', ...(options.headers||{}) }
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Pluggy ${path}: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+// Gera token de conexão para o widget
+app.get('/api/pluggy/connect-token', async (req, res) => {
+  try {
+    const { itemId } = req.query; // opcional, para reconectar
+    const body = itemId ? { itemId } : {};
+    const data = await pluggyFetch('/connect_token', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
+    res.json({ ok: true, data: { accessToken: data.accessToken } });
+  } catch(e) {
+    console.error('[pluggy connect-token]', e.message);
+    err(res, e.message);
+  }
+});
+
+// Lista items (conexões bancárias) salvos
+app.get('/api/pluggy/items', (req, res) => {
+  try {
+    const items = db.prepare('SELECT * FROM pluggy_items ORDER BY criado_em DESC').all();
+    // Para cada item, busca contas associadas
+    const result = items.map(item => {
+      const contas = db.prepare('SELECT * FROM pluggy_contas WHERE item_id=?').all(item.item_id);
+      return { ...item, contas };
+    });
+    res.json({ ok: true, data: result });
+  } catch(e) { err(res, e.message); }
+});
+
+// Salva item após conexão bem-sucedida no widget
+app.post('/api/pluggy/items', async (req, res) => {
+  try {
+    const { itemId } = req.body;
+    if (!itemId) return err(res, 'itemId obrigatório');
+    // Busca detalhes do item na Pluggy
+    const item = await pluggyFetch(`/items/${itemId}`);
+    const nomeBanco = item.connector?.name || item.connector?.institutionUrl || `Banco #${itemId.slice(0,8)}`;
+    db.prepare(`INSERT OR REPLACE INTO pluggy_items (item_id, nome_banco, connector_id, status, ultimo_sync)
+      VALUES (?,?,?,?,CURRENT_TIMESTAMP)`)
+      .run(itemId, nomeBanco, item.connector?.id || null, item.status || 'UPDATED');
+    // Sincroniza contas imediatamente
+    await _pluggySyncItem(itemId);
+    res.json({ ok: true, data: { itemId, nomeBanco } });
+  } catch(e) {
+    console.error('[pluggy items POST]', e.message);
+    err(res, e.message);
+  }
+});
+
+// Remove uma conexão bancária
+app.delete('/api/pluggy/items/:itemId', async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    // Tenta deletar na Pluggy (best-effort)
+    try { await pluggyFetch(`/items/${itemId}`, { method: 'DELETE' }); } catch(_) {}
+    db.prepare('DELETE FROM pluggy_transacoes WHERE account_id IN (SELECT account_id FROM pluggy_contas WHERE item_id=?)').run(itemId);
+    db.prepare('DELETE FROM pluggy_contas WHERE item_id=?').run(itemId);
+    db.prepare('DELETE FROM pluggy_items WHERE item_id=?').run(itemId);
+    res.json({ ok: true });
+  } catch(e) { err(res, e.message); }
+});
+
+// Sincroniza saldos e transações de todos os items (ou de um específico)
+app.post('/api/pluggy/sync', async (req, res) => {
+  try {
+    const { itemId } = req.body;
+    const items = itemId
+      ? [{ item_id: itemId }]
+      : db.prepare('SELECT item_id FROM pluggy_items').all();
+    const resultados = [];
+    for (const item of items) {
+      try {
+        const r = await _pluggySyncItem(item.item_id);
+        resultados.push({ itemId: item.item_id, ok: true, ...r });
+      } catch(e) {
+        resultados.push({ itemId: item.item_id, ok: false, error: e.message });
+      }
+    }
+    res.json({ ok: true, data: resultados });
+  } catch(e) { err(res, e.message); }
+});
+
+async function _pluggySyncItem(itemId) {
+  // Busca contas
+  const accountsResp = await pluggyFetch(`/accounts?itemId=${itemId}`);
+  const accounts = accountsResp.results || accountsResp.accounts || [];
+  for (const acc of accounts) {
+    db.prepare(`INSERT OR REPLACE INTO pluggy_contas
+      (item_id, account_id, nome, tipo, subtipo, numero, saldo, saldo_bloqueado, moeda, atualizado_em)
+      VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)`)
+      .run(itemId, acc.id, acc.name, acc.type, acc.subtype, acc.number||null,
+        acc.balance||0, acc.currencyCode==='BRL'?(acc.balances?.blocked||0):0,
+        acc.currencyCode||'BRL');
+    // Busca últimas transações (30 dias)
+    const hoje = new Date().toISOString().slice(0,10);
+    const de30 = new Date(Date.now() - 30*24*3600*1000).toISOString().slice(0,10);
+    try {
+      const txResp = await pluggyFetch(`/transactions?accountId=${acc.id}&from=${de30}&to=${hoje}&pageSize=100`);
+      const txs = txResp.results || txResp.transactions || [];
+      const insert = db.prepare(`INSERT OR IGNORE INTO pluggy_transacoes
+        (transaction_id, account_id, descricao, valor, data, tipo, categoria)
+        VALUES (?,?,?,?,?,?,?)`);
+      const insertMany = db.transaction(list => { for (const t of list) insert.run(t); });
+      insertMany(txs.map(t => [
+        t.id, acc.id,
+        t.description || t.descriptionRaw || '',
+        Math.abs(t.amount || 0),
+        (t.date||'').slice(0,10),
+        t.type || (t.amount < 0 ? 'DEBIT' : 'CREDIT'),
+        t.category || null
+      ]));
+    } catch(_) { /* ignora se conta não tem transações */ }
+  }
+  db.prepare(`UPDATE pluggy_items SET status='UPDATED', ultimo_sync=CURRENT_TIMESTAMP WHERE item_id=?`).run(itemId);
+  return { contas: accounts.length };
+}
+
+// Lista contas com saldo
+app.get('/api/pluggy/contas', (req, res) => {
+  try {
+    const contas = db.prepare(`
+      SELECT c.*, i.nome_banco, i.status as item_status
+      FROM pluggy_contas c JOIN pluggy_items i ON c.item_id=i.item_id
+      ORDER BY i.nome_banco, c.nome`).all();
+    res.json({ ok: true, data: contas });
+  } catch(e) { err(res, e.message); }
+});
+
+// Transações de uma conta
+app.get('/api/pluggy/transacoes', (req, res) => {
+  try {
+    const { accountId, mes } = req.query;
+    let rows;
+    if (accountId && mes) {
+      rows = db.prepare(`SELECT * FROM pluggy_transacoes WHERE account_id=? AND strftime('%Y-%m',data)=? ORDER BY data DESC`).all(accountId, mes);
+    } else if (accountId) {
+      rows = db.prepare(`SELECT * FROM pluggy_transacoes WHERE account_id=? ORDER BY data DESC LIMIT 150`).all(accountId);
+    } else if (mes) {
+      rows = db.prepare(`SELECT t.*, c.nome as conta_nome, i.nome_banco FROM pluggy_transacoes t
+        JOIN pluggy_contas c ON t.account_id=c.account_id
+        JOIN pluggy_items i ON c.item_id=i.item_id
+        WHERE strftime('%Y-%m',t.data)=? ORDER BY t.data DESC`).all(mes);
+    } else {
+      rows = db.prepare(`SELECT t.*, c.nome as conta_nome, i.nome_banco FROM pluggy_transacoes t
+        JOIN pluggy_contas c ON t.account_id=c.account_id
+        JOIN pluggy_items i ON c.item_id=i.item_id
+        ORDER BY t.data DESC LIMIT 200`).all();
+    }
+    res.json({ ok: true, data: rows });
+  } catch(e) { err(res, e.message); }
+});
+
+// Importa transações selecionadas para Gestão Pessoal
+app.post('/api/pluggy/importar', (req, res) => {
+  try {
+    const { transacoes } = req.body; // [{ transaction_id, tipo, categoria, descricao, valor, data }]
+    if (!Array.isArray(transacoes) || !transacoes.length) return err(res, 'Nenhuma transação enviada');
+    let importadas = 0, erros = 0;
+    const insertRec = db.prepare(`INSERT OR IGNORE INTO pessoal_receitas (descricao,categoria,valor,data,observacoes) VALUES (?,?,?,?,?)`);
+    const insertDesp = db.prepare(`INSERT OR IGNORE INTO pessoal_despesas (descricao,categoria,valor,data,observacoes) VALUES (?,?,?,?,?)`);
+    const markImportada = db.prepare(`UPDATE pluggy_transacoes SET importada=1 WHERE transaction_id=?`);
+    const importAll = db.transaction(list => {
+      for (const t of list) {
+        try {
+          if (t.tipo === 'CREDIT') {
+            insertRec.run(t.descricao, t.categoria||'outros', t.valor, t.data, 'Importado do Pluggy');
+          } else {
+            insertDesp.run(t.descricao, _mapPluggyCategoria(t.categoria), t.valor, t.data, 'Importado do Pluggy');
+          }
+          markImportada.run(t.transaction_id);
+          importadas++;
+        } catch(_) { erros++; }
+      }
+    });
+    importAll(transacoes);
+    res.json({ ok: true, data: { importadas, erros } });
+  } catch(e) { err(res, e.message); }
+});
+
+function _mapPluggyCategoria(cat) {
+  if (!cat) return 'outros';
+  const c = cat.toLowerCase();
+  if (c.includes('alimenta') || c.includes('restaur') || c.includes('mercado')) return 'alimentacao';
+  if (c.includes('transporte') || c.includes('uber') || c.includes('combustiv') || c.includes('posto')) return 'transporte';
+  if (c.includes('moradia') || c.includes('aluguel') || c.includes('condominio') || c.includes('agua') || c.includes('luz') || c.includes('energia')) return 'moradia';
+  if (c.includes('saude') || c.includes('farmac') || c.includes('medico') || c.includes('hospital')) return 'saude';
+  if (c.includes('educa') || c.includes('escola') || c.includes('curso') || c.includes('livro')) return 'educacao';
+  if (c.includes('lazer') || c.includes('entret') || c.includes('cinema') || c.includes('viagem') || c.includes('hotel')) return 'lazer';
+  if (c.includes('invest') || c.includes('poupan') || c.includes('cdb') || c.includes('fundo')) return 'investimentos';
+  if (c.includes('imposto') || c.includes('tributo') || c.includes('taxa')) return 'imposto';
+  return 'outros';
+}
+
 // ─── GESTÃO PESSOAL ───────────────────────────────────────────────────────────
 
 // Dashboard pessoal

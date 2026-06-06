@@ -14,6 +14,7 @@
 <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
 <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.pluggy.ai/pluggy-connect/v2.1.0/pluggy-connect.js" defer></script>
 <style>
   :root {
     --navy: #0D1B2E;
@@ -351,6 +352,30 @@
   .evol-bar-group { display: flex; flex-direction: column; align-items: center; flex: 1; gap: 4px; }
   .evol-bars { display: flex; align-items: flex-end; gap: 2px; height: 80px; }
   .evol-b { width: 14px; border-radius: 3px 3px 0 0; min-height: 2px; }
+
+  /* Pluggy / Contas bancárias */
+  .conta-card { background: var(--card2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px;
+    display: flex; flex-direction: column; gap: 6px; transition: border-color .15s; }
+  .conta-card:hover { border-color: var(--accent); }
+  .conta-card .cc-banco { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; }
+  .conta-card .cc-nome { font-size: 14px; font-weight: 700; }
+  .conta-card .cc-saldo { font-size: 22px; font-weight: 900; color: var(--accent); }
+  .conta-card .cc-meta { font-size: 11px; color: var(--text2); }
+  .pluggy-tx-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    border-bottom: 1px solid var(--border); transition: background .1s; }
+  .pluggy-tx-row:hover { background: var(--navy3); }
+  .pluggy-tx-row .tx-check { width: 16px; height: 16px; border-radius: 3px; border: 1.5px solid var(--border); cursor: pointer; flex-shrink: 0; }
+  .pluggy-tx-row .tx-check.sel { background: var(--accent); border-color: var(--accent); }
+  .pluggy-tx-row .tx-desc { flex: 1; font-size: 12px; font-weight: 500; }
+  .pluggy-tx-row .tx-cat { font-size: 10px; color: var(--text2); }
+  .pluggy-tx-row .tx-val { font-size: 13px; font-weight: 700; }
+  .pluggy-tx-row .tx-data { font-size: 11px; color: var(--text2); white-space: nowrap; }
+  .tx-imp { opacity: .4; }
+  .pluggy-status { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 2px 8px;
+    border-radius: 10px; font-weight: 600; }
+  .pluggy-status.ok { background: rgba(74,222,128,.15); color: #4ade80; }
+  .pluggy-status.err { background: rgba(239,68,68,.15); color: #f87171; }
+  .pluggy-status.upd { background: rgba(251,191,36,.15); color: #fbbf24; }
 </style>
 </head>
 <body>
@@ -8349,6 +8374,7 @@ async function renderGestaoPessoal(tab) {
     { id: 'metas',     icon: '🎯', label: 'Metas'       },
     { id: 'tarefas',   icon: '✅', label: 'Tarefas'     },
     { id: 'habitos',   icon: '🔥', label: 'Hábitos'     },
+    { id: 'contas',    icon: '🏦', label: 'Contas'      },
   ];
 
   const tabsHtml = `<div class="gp-tabs">
@@ -8361,6 +8387,7 @@ async function renderGestaoPessoal(tab) {
   else if (_gpTab === 'metas') body = await _gpMetas();
   else if (_gpTab === 'tarefas') body = await _gpTarefas();
   else if (_gpTab === 'habitos') body = await _gpHabitos();
+  else if (_gpTab === 'contas')  body = await _gpContas();
 
   c.innerHTML = `<div style="max-width:1100px">${tabsHtml}${body}</div>`;
 }
@@ -8789,6 +8816,195 @@ async function _gpHabitos() {
         </div>
       </div>
     </div>`;
+}
+
+// ── Contas Bancárias (Pluggy) ────────────────────────────────────
+let _pluggySelectedTxs = new Set();
+let _pluggyContaSelecionada = null;
+
+async function _gpContas() {
+  const rItems = await get('/api/pluggy/items');
+  const rContas = await get('/api/pluggy/contas');
+  const items  = rItems.data || [];
+  const contas = rContas.data || [];
+
+  const saldoTotal = contas.reduce((s,c) => s + (c.saldo||0), 0);
+
+  const statusHtml = (s) => {
+    if (s === 'UPDATED') return '<span class="pluggy-status ok">✅ Sincronizado</span>';
+    if (s === 'UPDATING') return '<span class="pluggy-status upd">🔄 Atualizando</span>';
+    return `<span class="pluggy-status err">⚠️ ${s}</span>`;
+  };
+
+  const contasHtml = contas.length ? `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px">
+      ${contas.map(c => `
+        <div class="conta-card" onclick="pluggyVerExtrato('${c.account_id}','${(c.nome||'').replace(/'/g,"\\'")}')">
+          <div class="cc-banco">${c.nome_banco||'Banco'} • ${c.subtipo||c.tipo||''}</div>
+          <div class="cc-nome">${c.nome||'Conta'}</div>
+          <div class="cc-saldo v-priv">${fmt(c.saldo)}</div>
+          <div class="cc-meta">${c.numero?'Nº '+c.numero:''} • ${statusHtml(c.item_status)}</div>
+        </div>`).join('')}
+    </div>` : '<div style="color:var(--text2);font-size:13px;padding:20px 0">Nenhuma conta conectada ainda.</div>';
+
+  const itemsHtml = items.length ? items.map(it => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+      <span style="font-size:18px">🏦</span>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700">${it.nome_banco||'Banco'}</div>
+        <div style="font-size:11px;color:var(--text2)">${statusHtml(it.status)} • Sync: ${it.ultimo_sync?it.ultimo_sync.slice(0,16):'—'}</div>
+      </div>
+      <button onclick="pluggyReconectar('${it.item_id}')" title="Reconectar" style="font-size:12px;padding:4px 8px;border-radius:6px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);cursor:pointer">🔄</button>
+      <button onclick="pluggySyncItem('${it.item_id}')" title="Sincronizar agora" style="font-size:12px;padding:4px 8px;border-radius:6px;background:rgba(0,196,180,.12);border:1px solid rgba(0,196,180,.3);color:var(--accent);cursor:pointer">⬇️ Sync</button>
+      <button onclick="pluggyRemoverItem('${it.item_id}','${(it.nome_banco||'').replace(/'/g,"\\'")}') " style="font-size:12px;padding:4px 8px;border-radius:6px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#f87171;cursor:pointer">🗑️</button>
+    </div>`).join('') : '';
+
+  return `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+      <div class="gp-kpi" style="border-left:3px solid var(--accent);padding:12px 18px;flex:1;min-width:180px">
+        <div class="kpi-lbl">Saldo Total</div>
+        <div class="kpi-val v-priv" style="color:var(--accent)">${fmt(saldoTotal)}</div>
+        <div class="kpi-sub">${contas.length} contas em ${items.length} banco${items.length!==1?'s':''}</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-left:auto">
+        <button onclick="pluggySyncAll()" style="padding:8px 14px;border-radius:8px;background:rgba(0,196,180,.12);border:1px solid rgba(0,196,180,.3);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer">⬇️ Sincronizar Tudo</button>
+        <button onclick="pluggyConectar()" style="padding:8px 14px;border-radius:8px;background:var(--accent);color:var(--navy);border:none;font-size:13px;font-weight:700;cursor:pointer">+ Conectar Banco</button>
+      </div>
+    </div>
+
+    ${items.length ? `<div class="gp-section-title" style="margin-bottom:10px">🏦 Bancos conectados</div>${itemsHtml}` : ''}
+
+    <div class="gp-section-title" style="margin:18px 0 10px">💳 Contas e Saldos</div>
+    ${contasHtml}
+
+    <div id="pluggy-extrato-wrap"></div>`;
+}
+
+async function pluggyConectar(itemId) {
+  toast('Abrindo conexão bancária...','info');
+  const r = await get(itemId ? `/api/pluggy/connect-token?itemId=${itemId}` : '/api/pluggy/connect-token');
+  if (!r.ok) { toast('Erro ao gerar token: ' + (r.error||'verifique as credenciais Pluggy'), 'error'); return; }
+  if (typeof PluggyConnect === 'undefined') {
+    toast('Widget Pluggy não carregado. Verifique sua conexão com a internet.', 'error'); return;
+  }
+  const pc = new PluggyConnect({
+    connectToken: r.data.accessToken,
+    onSuccess: async (data) => {
+      toast('Banco conectado! Sincronizando...');
+      const id = data.item?.id || data.itemId || data.id;
+      if (!id) { toast('Não foi possível obter itemId', 'error'); return; }
+      const rs = await api('/api/pluggy/items', 'POST', { itemId: id });
+      if (rs.ok) { toast('✅ Conta bancária sincronizada!'); renderGestaoPessoal('contas'); }
+      else toast('Erro ao salvar conexão: ' + (rs.error||''), 'error');
+    },
+    onError: (err) => toast('Erro na conexão: ' + (err?.message || JSON.stringify(err)), 'error'),
+    onClose: () => {}
+  });
+  pc.init();
+}
+
+async function pluggyReconectar(itemId) {
+  await pluggyConectar(itemId);
+}
+
+async function pluggySyncItem(itemId) {
+  toast('Sincronizando...');
+  const r = await api('/api/pluggy/sync', 'POST', { itemId });
+  if (r.ok) { toast('✅ Sincronizado!'); renderGestaoPessoal('contas'); }
+  else toast('Erro: ' + (r.error||''), 'error');
+}
+
+async function pluggySyncAll() {
+  toast('Sincronizando todas as contas...');
+  const r = await api('/api/pluggy/sync', 'POST', {});
+  if (r.ok) { toast('✅ Tudo sincronizado!'); renderGestaoPessoal('contas'); }
+  else toast('Erro: ' + (r.error||''), 'error');
+}
+
+async function pluggyRemoverItem(itemId, nomeBanco) {
+  if (!confirm(`Remover a conexão com ${nomeBanco}? Isso vai apagar as transações importadas.`)) return;
+  const r = await api(`/api/pluggy/items/${itemId}`, 'DELETE');
+  if (r.ok) { toast('Conexão removida'); renderGestaoPessoal('contas'); }
+  else toast('Erro: ' + (r.error||''), 'error');
+}
+
+async function pluggyVerExtrato(accountId, nomeConta) {
+  _pluggyContaSelecionada = accountId;
+  _pluggySelectedTxs = new Set();
+  const hoje = new Date();
+  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+  const r = await get(`/api/pluggy/transacoes?accountId=${accountId}&mes=${mesAtual}`);
+  const txs = r.data || [];
+  const wrap = document.getElementById('pluggy-extrato-wrap');
+  if (!wrap) return;
+
+  const totCredito = txs.filter(t=>t.tipo==='CREDIT').reduce((s,t)=>s+t.valor,0);
+  const totDebito  = txs.filter(t=>t.tipo==='DEBIT').reduce((s,t)=>s+t.valor,0);
+
+  const rowsHtml = txs.length ? txs.map(t => `
+    <div class="pluggy-tx-row${t.importada?' tx-imp':''}" id="pluggy-tx-${t.transaction_id}">
+      <div class="tx-check${_pluggySelectedTxs.has(t.transaction_id)?' sel':''}" onclick="pluggyToggleTx('${t.transaction_id}',${t.importada})"></div>
+      <div style="flex:1;min-width:0">
+        <div class="tx-desc">${t.descricao||'—'}</div>
+        <div class="tx-cat">${t.categoria||''}</div>
+      </div>
+      <div class="tx-val" style="color:${t.tipo==='CREDIT'?'var(--success)':'var(--danger)'}">${t.tipo==='CREDIT'?'+':'-'}${fmt(t.valor)}</div>
+      <div class="tx-data">${t.data}</div>
+      ${t.importada?'<span style="font-size:10px;color:var(--text2)">✔ importada</span>':''}
+    </div>`).join('') : '<div style="color:var(--text2);font-size:13px;padding:20px;text-align:center">Nenhuma transação neste mês</div>';
+
+  wrap.innerHTML = `
+    <div class="gp-card" style="margin-top:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <div class="gp-section-title" style="margin:0">📋 Extrato — ${nomeConta}</div>
+        <input type="month" id="pluggy-mes" value="${mesAtual}" onchange="pluggyVerExtrato('${accountId}','${nomeConta.replace(/'/g,"\\'")}'); document.getElementById('pluggy-mes').value=this.value"
+          style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:12px">
+        <span style="font-size:12px;color:var(--success)">↑ ${fmt(totCredito)}</span>
+        <span style="font-size:12px;color:var(--danger)">↓ ${fmt(totDebito)}</span>
+        <span style="font-size:12px;font-weight:700;color:${totCredito-totDebito>=0?'var(--success)':'var(--danger)'}">${fmt(totCredito-totDebito)}</span>
+        <button onclick="pluggyImportarSelecionadas()" style="margin-left:auto;padding:6px 12px;border-radius:6px;background:var(--accent);color:var(--navy);border:none;font-size:12px;font-weight:700;cursor:pointer">⬆️ Importar selecionadas</button>
+        <button onclick="pluggySelecionarTodas(${JSON.stringify(txs.map(t=>({transaction_id:t.transaction_id,tipo:t.tipo,categoria:t.categoria,descricao:t.descricao,valor:t.valor,data:t.data,importada:t.importada})))})" style="padding:6px 10px;border-radius:6px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);font-size:12px;cursor:pointer">Selecionar todas</button>
+      </div>
+      <div style="max-height:420px;overflow-y:auto">${rowsHtml}</div>
+    </div>`;
+
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Armazena txs para usar no toggle
+  window._pluggyTxsCache = txs;
+}
+
+function pluggyToggleTx(txId, jaImportada) {
+  if (jaImportada) { toast('Esta transação já foi importada', 'info'); return; }
+  const el = document.getElementById(`pluggy-tx-${txId}`)?.querySelector('.tx-check');
+  if (!el) return;
+  if (_pluggySelectedTxs.has(txId)) {
+    _pluggySelectedTxs.delete(txId);
+    el.classList.remove('sel');
+  } else {
+    _pluggySelectedTxs.add(txId);
+    el.classList.add('sel');
+  }
+}
+
+function pluggySelecionarTodas(txs) {
+  const naoImportadas = txs.filter(t=>!t.importada);
+  naoImportadas.forEach(t => {
+    _pluggySelectedTxs.add(t.transaction_id);
+    document.getElementById(`pluggy-tx-${t.transaction_id}`)?.querySelector('.tx-check')?.classList.add('sel');
+  });
+  toast(`${naoImportadas.length} transações selecionadas`);
+}
+
+async function pluggyImportarSelecionadas() {
+  if (!_pluggySelectedTxs.size) { toast('Selecione pelo menos uma transação', 'error'); return; }
+  const cache = window._pluggyTxsCache || [];
+  const selecionadas = cache.filter(t => _pluggySelectedTxs.has(t.transaction_id));
+  const r = await api('/api/pluggy/importar', 'POST', { transacoes: selecionadas });
+  if (r.ok) {
+    toast(`✅ ${r.data.importadas} transações importadas para Gestão Pessoal!`);
+    _pluggySelectedTxs.clear();
+    pluggyVerExtrato(_pluggyContaSelecionada, '');
+  } else toast('Erro: ' + (r.error||''), 'error');
 }
 
 // ── Modais — Receita ─────────────────────────────────────────────
