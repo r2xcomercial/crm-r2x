@@ -842,6 +842,238 @@ app.delete("/api/pf/entradas/:id", (req, res) => {
   ok(res, {});
 });
 
+// ─── PLUGGY / OPEN FINANCE ───────────────────────────────────────────────────
+
+const PLUGGY_CLIENT_ID = process.env.PLUGGY_CLIENT_ID || "";
+const PLUGGY_CLIENT_SECRET = process.env.PLUGGY_CLIENT_SECRET || "";
+const PLUGGY_BASE = "https://api.pluggy.ai";
+
+async function pluggyAuth() {
+  if (!PLUGGY_CLIENT_ID || !PLUGGY_CLIENT_SECRET) throw new Error("Credenciais Pluggy não configuradas");
+  const r = await fetch(`${PLUGGY_BASE}/auth`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientId: PLUGGY_CLIENT_ID, clientSecret: PLUGGY_CLIENT_SECRET }),
+  });
+  if (!r.ok) throw new Error(`Pluggy auth error: ${r.status}`);
+  const d = await r.json();
+  return d.apiKey;
+}
+
+// Connect token para o widget Pluggy Connect
+app.post("/api/pf/pluggy/connect-token", async (req, res) => {
+  try {
+    const apiKey = await pluggyAuth();
+    const { itemId } = req.body; // para reconexão de item existente
+    const body = {};
+    if (itemId) body.itemId = itemId;
+    const r = await fetch(`${PLUGGY_BASE}/connect_token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-KEY": apiKey },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    ok(res, { accessToken: d.accessToken });
+  } catch (e) {
+    err(res, e.message);
+  }
+});
+
+// Lista items salvos no banco
+app.get("/api/pf/pluggy/items", (req, res) => {
+  const items = db.prepare("SELECT * FROM pf_pluggy_items ORDER BY criado_em DESC").all();
+  ok(res, items);
+});
+
+// Salva novo item após conexão via widget
+app.post("/api/pf/pluggy/items", async (req, res) => {
+  try {
+    const { itemId, titular } = req.body;
+    if (!itemId) return err(res, "itemId obrigatório");
+    const apiKey = await pluggyAuth();
+    const r = await fetch(`${PLUGGY_BASE}/items/${itemId}`, {
+      headers: { "X-API-KEY": apiKey },
+    });
+    if (!r.ok) return err(res, "Item não encontrado no Pluggy");
+    const item = await r.json();
+    db.prepare(`
+      INSERT INTO pf_pluggy_items (item_id, titular, connector_name, connector_type, status)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(item_id) DO UPDATE SET
+        connector_name=excluded.connector_name,
+        status=excluded.status,
+        atualizado_em=CURRENT_TIMESTAMP
+    `).run(
+      itemId,
+      titular || "Ramon",
+      item.connector?.name || "",
+      item.connector?.type || "",
+      item.status || "UPDATED"
+    );
+    ok(res, { itemId, connector: item.connector?.name });
+  } catch (e) {
+    err(res, e.message);
+  }
+});
+
+// Remove item (desconectar banco)
+app.delete("/api/pf/pluggy/items/:itemId", async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const apiKey = await pluggyAuth();
+    // Deleta no Pluggy
+    await fetch(`${PLUGGY_BASE}/items/${itemId}`, {
+      method: "DELETE",
+      headers: { "X-API-KEY": apiKey },
+    });
+    db.prepare("DELETE FROM pf_pluggy_items WHERE item_id=?").run(itemId);
+    db.prepare("UPDATE pf_contas SET pluggy_item_id=NULL, pluggy_account_id=NULL WHERE pluggy_item_id=?").run(itemId);
+    ok(res, {});
+  } catch (e) {
+    err(res, e.message);
+  }
+});
+
+// Sincroniza dados (contas + transações + investimentos) de todos os items
+app.post("/api/pf/pluggy/sync", async (req, res) => {
+  try {
+    const apiKey = await pluggyAuth();
+    const items = db.prepare("SELECT * FROM pf_pluggy_items").all();
+    let totalTransacoes = 0, totalInvestimentos = 0;
+
+    for (const item of items) {
+      // 1. Atualiza status do item
+      const itemR = await fetch(`${PLUGGY_BASE}/items/${item.item_id}`, {
+        headers: { "X-API-KEY": apiKey },
+      });
+      if (!itemR.ok) continue;
+      const itemData = await itemR.json();
+      db.prepare("UPDATE pf_pluggy_items SET status=?, atualizado_em=CURRENT_TIMESTAMP WHERE item_id=?")
+        .run(itemData.status, item.item_id);
+
+      // 2. Sincroniza contas bancárias
+      const accR = await fetch(`${PLUGGY_BASE}/accounts?itemId=${item.item_id}`, {
+        headers: { "X-API-KEY": apiKey },
+      });
+      if (accR.ok) {
+        const { results: accounts } = await accR.json();
+        for (const acc of (accounts || [])) {
+          // Verifica se já tem uma pf_conta vinculada
+          const existing = db.prepare("SELECT id FROM pf_contas WHERE pluggy_account_id=?").get(acc.id);
+          if (!existing) {
+            // Cria conta automaticamente
+            db.prepare(`
+              INSERT INTO pf_contas (nome, banco, tipo, titular, saldo_inicial, pluggy_item_id, pluggy_account_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              acc.name || acc.type,
+              itemData.connector?.name || "",
+              acc.type === "CREDIT" ? "cartao" : acc.subtype === "SAVINGS_ACCOUNT" ? "poupanca" : "corrente",
+              item.titular,
+              acc.balance || 0,
+              item.item_id,
+              acc.id
+            );
+          } else {
+            // Atualiza saldo
+            db.prepare("UPDATE pf_contas SET saldo_inicial=? WHERE pluggy_account_id=?")
+              .run(acc.balance || 0, acc.id);
+          }
+
+          // 3. Sincroniza transações dos últimos 90 dias
+          const desde = new Date();
+          desde.setDate(desde.getDate() - 90);
+          const fromDate = desde.toISOString().split("T")[0];
+          const toDate = new Date().toISOString().split("T")[0];
+
+          let page = 1;
+          while (true) {
+            const txR = await fetch(
+              `${PLUGGY_BASE}/transactions?accountId=${acc.id}&from=${fromDate}&to=${toDate}&pageSize=500&page=${page}`,
+              { headers: { "X-API-KEY": apiKey } }
+            );
+            if (!txR.ok) break;
+            const txData = await txR.json();
+            const txs = txData.results || [];
+            if (txs.length === 0) break;
+
+            const contaId = existing?.id || db.prepare("SELECT id FROM pf_contas WHERE pluggy_account_id=?").get(acc.id)?.id;
+            for (const tx of txs) {
+              db.prepare(`
+                INSERT OR IGNORE INTO pf_transacoes
+                  (conta_id, data, descricao, valor, tipo, categoria, origem, pluggy_id)
+                VALUES (?, ?, ?, ?, ?, ?, 'pluggy', ?)
+              `).run(
+                contaId,
+                tx.date?.split("T")[0] || toDate,
+                tx.description || tx.descriptionRaw || "",
+                Math.abs(tx.amount || 0),
+                (tx.amount || 0) < 0 ? "saida" : "entrada",
+                tx.category || "",
+                tx.id
+              );
+              totalTransacoes++;
+            }
+            if (!txData.nextPage) break;
+            page++;
+          }
+        }
+      }
+
+      // 4. Sincroniza investimentos
+      const invR = await fetch(`${PLUGGY_BASE}/investments?itemId=${item.item_id}`, {
+        headers: { "X-API-KEY": apiKey },
+      });
+      if (invR.ok) {
+        const { results: investments } = await invR.json();
+        for (const inv of (investments || [])) {
+          db.prepare(`
+            INSERT INTO pf_investimentos
+              (pluggy_id, item_id, titular, nome, tipo, subtipo, codigo,
+               valor_atual, valor_aplicado, rentabilidade_total, rentabilidade_anual,
+               data_vencimento, data_atualizacao)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(pluggy_id) DO UPDATE SET
+              valor_atual=excluded.valor_atual,
+              valor_aplicado=excluded.valor_aplicado,
+              rentabilidade_total=excluded.rentabilidade_total,
+              rentabilidade_anual=excluded.rentabilidade_anual,
+              data_atualizacao=excluded.data_atualizacao
+          `).run(
+            inv.id,
+            item.item_id,
+            item.titular,
+            inv.name || "",
+            inv.type || "",
+            inv.subtype || "",
+            inv.code || "",
+            inv.value || 0,
+            inv.amount || 0,
+            inv.totalGrossAmount ? ((inv.value - inv.amount) / inv.amount) * 100 : null,
+            inv.annualRate || null,
+            inv.date?.split("T")[0] || null,
+            new Date().toISOString().split("T")[0]
+          );
+          totalInvestimentos++;
+        }
+      }
+    }
+
+    ok(res, { sincronizados: items.length, transacoes: totalTransacoes, investimentos: totalInvestimentos });
+  } catch (e) {
+    err(res, e.message);
+  }
+});
+
+// Lista investimentos
+app.get("/api/pf/investimentos", (req, res) => {
+  const { titular } = req.query;
+  let q = "SELECT * FROM pf_investimentos";
+  const params = [];
+  if (titular) { q += " WHERE titular=?"; params.push(titular); }
+  q += " ORDER BY valor_atual DESC";
+  ok(res, db.prepare(q).all(...params));
+});
 
 // ─── START ────────────────────────────────────────────────────────────────────
 

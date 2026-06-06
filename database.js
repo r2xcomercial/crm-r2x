@@ -258,4 +258,46 @@ db.exec(`
   );
 `);
 
+// ─── PLUGGY / OPEN FINANCE ───────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS pf_pluggy_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id TEXT NOT NULL UNIQUE,
+    titular TEXT NOT NULL DEFAULT 'Ramon',
+    connector_name TEXT,
+    connector_type TEXT,
+    status TEXT DEFAULT 'UPDATED',
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pf_investimentos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pluggy_id TEXT UNIQUE,
+    item_id TEXT,
+    titular TEXT DEFAULT 'Ramon',
+    nome TEXT NOT NULL,
+    tipo TEXT,
+    subtipo TEXT,
+    codigo TEXT,
+    valor_atual REAL DEFAULT 0,
+    valor_aplicado REAL DEFAULT 0,
+    rentabilidade_total REAL,
+    rentabilidade_anual REAL,
+    data_vencimento TEXT,
+    data_atualizacao TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
+// Migração: adiciona pluggy_account_id em pf_contas se não existir
+const migrationsPF = [
+  "ALTER TABLE pf_contas ADD COLUMN pluggy_item_id TEXT",
+  "ALTER TABLE pf_contas ADD COLUMN pluggy_account_id TEXT",
+  "ALTER TABLE pf_transacoes ADD COLUMN pluggy_id TEXT",
+];
+for (const sql of migrationsPF) {
+  try { db.exec(sql); } catch (_) {}
+}
+
 module.exports = db;

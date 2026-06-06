@@ -11,6 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="R2X CRM">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.pluggy.ai/pluggy-connect/v2/pluggy-connect.js" defer></script>
 <style>
   :root {
     --navy: #0D1B2E;
@@ -246,6 +247,8 @@
     <div class="nav-item" onclick="navigate('pf-cartoes')"><span class="icon">💳</span> Cartão de Crédito</div>
     <div class="nav-item" onclick="navigate('pf-contas-fixas')"><span class="icon">🏡</span> Contas da Casa</div>
     <div class="nav-item" onclick="navigate('pf-entradas')"><span class="icon">📈</span> Entradas</div>
+    <div class="nav-item" onclick="navigate('pf-investimentos')"><span class="icon">📊</span> Investimentos</div>
+    <div class="nav-item" onclick="navigate('pf-pluggy')"><span class="icon">🔗</span> Conectar Bancos</div>
   </nav>
 </div>
 
@@ -311,7 +314,8 @@ const pageTitles = {
   financeiro: 'Financeiro', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
   'pf-dashboard': '🏠 Painel Pessoal', 'pf-contas': '🏦 Contas Bancárias',
   'pf-cartoes': '💳 Cartão de Crédito', 'pf-contas-fixas': '🏡 Contas da Casa',
-  'pf-entradas': '📈 Entradas Pessoais'
+  'pf-entradas': '📈 Entradas Pessoais', 'pf-investimentos': '📊 Investimentos',
+  'pf-pluggy': '🔗 Conectar Bancos (Pluggy)'
 };
 const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario','pf-contas','pf-cartoes','pf-contas-fixas','pf-entradas'];
 
@@ -334,6 +338,8 @@ async function renderPage(page) {
       case 'pf-cartoes': await renderPFCartoes(); break;
       case 'pf-contas-fixas': await renderPFContasFixas(); break;
       case 'pf-entradas': await renderPFEntradas(); break;
+      case 'pf-investimentos': await renderPFInvestimentos(); break;
+      case 'pf-pluggy': await renderPFPluggy(); break;
     }
   } catch(e) {
     c.innerHTML = `<div style="color:var(--danger);padding:24px">Erro ao carregar: ${e.message}</div>`;
@@ -2484,6 +2490,250 @@ async function deletePFEntrada(id) {
   const r = await del(`/api/pf/entradas/${id}`);
   if (r.ok) { toast('Entrada excluída!'); renderPFEntradas(); }
   else toast(r.error, 'error');
+}
+
+// ─── PF INVESTIMENTOS ────────────────────────────────────────────────────────
+
+let pfInvTitular = 'Todos';
+
+async function renderPFInvestimentos() {
+  const q = pfInvTitular !== 'Todos' ? `?titular=${pfInvTitular}` : '';
+  const invs = (await get(`/api/pf/investimentos${q}`)).data || [];
+
+  const totalAtual = invs.reduce((s, i) => s + (i.valor_atual || 0), 0);
+  const totalAplicado = invs.reduce((s, i) => s + (i.valor_aplicado || 0), 0);
+  const totalGanho = totalAtual - totalAplicado;
+
+  const byTipo = {};
+  for (const i of invs) {
+    const t = tipoInvLabel(i.tipo);
+    byTipo[t] = (byTipo[t] || 0) + (i.valor_atual || 0);
+  }
+
+  const byTitular = {};
+  for (const i of invs) {
+    byTitular[i.titular] = (byTitular[i.titular] || 0) + (i.valor_atual || 0);
+  }
+
+  const titularSel = (t) => `<button onclick="pfInvTitular='${t}';renderPFInvestimentos()" class="btn-sm ${pfInvTitular===t?'active':''}">
+    ${t === 'Todos' ? 'Todos' : pfTitularBadge(t)}
+  </button>`;
+
+  const typeColor = { 'Renda Fixa': '#00C4B4', 'Ações': '#F59E0B', 'FIIs': '#8B5CF6', 'ETF': '#3B82F6', 'Fundo': '#EC4899', 'Outros': '#64748B' };
+
+  let html = `
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${['Todos','Ramon','Silvia'].map(titularSel).join('')}
+      </div>
+      <button onclick="syncPluggy()" class="btn-primary" style="font-size:12px;padding:6px 14px">🔄 Sincronizar Pluggy</button>
+    </div>
+    <div class="kpi-grid">
+      ${kpi('💰','Patrimônio Atual', fmtBRL(totalAtual), '', 'accent')}
+      ${kpi('📥','Total Investido', fmtBRL(totalAplicado), '', 'text2')}
+      ${kpi(totalGanho>=0?'📈':'📉','Rendimento', fmtBRL(Math.abs(totalGanho)), totalAplicado>0?(((totalGanho/totalAplicado)*100).toFixed(2)+'%'):'', totalGanho>=0?'success':'danger')}
+    </div>`;
+
+  if (invs.length === 0) {
+    html += `<div style="text-align:center;padding:60px 20px;color:var(--text2)">
+      <div style="font-size:48px;margin-bottom:12px">📊</div>
+      <p style="font-size:16px;margin-bottom:8px">Nenhum investimento encontrado</p>
+      <p style="font-size:13px">Conecte suas contas em <strong>🔗 Conectar Bancos</strong> e sincronize</p>
+    </div>`;
+  } else {
+    // Breakdown por tipo
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:20px">`;
+    for (const [tipo, val] of Object.entries(byTipo).sort((a,b) => b[1]-a[1])) {
+      const pct = totalAtual > 0 ? ((val/totalAtual)*100).toFixed(1) : 0;
+      const cor = typeColor[tipo] || '#64748B';
+      html += `<div style="background:var(--card);border-radius:10px;padding:12px;border-left:3px solid ${cor}">
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">${tipo}</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text)">${fmtBRL(val)}</div>
+        <div style="font-size:11px;color:${cor}">${pct}%</div>
+      </div>`;
+    }
+    html += `</div>`;
+
+    // Tabela de investimentos
+    html += `<div class="table-wrap"><table class="table">
+      <thead><tr>
+        <th>Investimento</th><th>Tipo</th><th>Titular</th>
+        <th style="text-align:right">Investido</th>
+        <th style="text-align:right">Valor Atual</th>
+        <th style="text-align:right">Ganho</th>
+        <th style="text-align:right">CDI/Ano</th>
+        <th>Vencimento</th>
+      </tr></thead><tbody>`;
+    for (const i of invs) {
+      const ganho = (i.valor_atual || 0) - (i.valor_aplicado || 0);
+      const pctGanho = i.valor_aplicado > 0 ? ((ganho/i.valor_aplicado)*100).toFixed(2) : null;
+      const cor = typeColor[tipoInvLabel(i.tipo)] || '#64748B';
+      html += `<tr>
+        <td><strong>${i.nome}</strong>${i.codigo ? `<br><span style="font-size:11px;color:var(--text2)">${i.codigo}</span>` : ''}</td>
+        <td><span style="background:${cor}22;color:${cor};padding:2px 8px;border-radius:20px;font-size:11px">${tipoInvLabel(i.tipo)}</span></td>
+        <td>${pfTitularBadge(i.titular)}</td>
+        <td style="text-align:right">${fmtBRL(i.valor_aplicado||0)}</td>
+        <td style="text-align:right;font-weight:600">${fmtBRL(i.valor_atual||0)}</td>
+        <td style="text-align:right;color:${ganho>=0?'var(--success)':'var(--danger)'};font-weight:600">
+          ${ganho>=0?'+':''}${fmtBRL(ganho)}${pctGanho?`<br><span style="font-size:11px">(${ganho>=0?'+':''}${pctGanho}%)</span>`:''}
+        </td>
+        <td style="text-align:right;color:var(--text2)">${i.rentabilidade_anual ? i.rentabilidade_anual.toFixed(2)+'%' : '—'}</td>
+        <td style="color:var(--text2);font-size:12px">${i.data_vencimento || '—'}</td>
+      </tr>`;
+    }
+    html += `</tbody></table></div>`;
+  }
+
+  document.getElementById('content').innerHTML = `<div class="page-header"><h1 class="page-title">📊 Investimentos</h1></div>${html}`;
+}
+
+function tipoInvLabel(tipo) {
+  const m = { FIXED_INCOME: 'Renda Fixa', EQUITY: 'Ações', REAL_ESTATE_FUND: 'FIIs', ETF: 'ETF', FUND: 'Fundo', SECURITY: 'Ações' };
+  return m[tipo] || (tipo || 'Outros');
+}
+
+async function syncPluggy() {
+  const btn = event.target;
+  btn.textContent = '⏳ Sincronizando...';
+  btn.disabled = true;
+  const r = await post('/api/pf/pluggy/sync', {});
+  btn.textContent = '🔄 Sincronizar Pluggy';
+  btn.disabled = false;
+  if (r.ok) {
+    toast(`Sincronizado! ${r.data.transacoes} transações, ${r.data.investimentos} investimentos`);
+    renderPFInvestimentos();
+  } else {
+    toast(r.error || 'Erro ao sincronizar', 'error');
+  }
+}
+
+// ─── PF PLUGGY (Conectar Bancos) ──────────────────────────────────────────────
+
+async function renderPFPluggy() {
+  const items = (await get('/api/pf/pluggy/items')).data || [];
+
+  const statusColor = { UPDATED: 'var(--success)', UPDATING: 'var(--warning)', OUTDATED: 'var(--danger)', ERROR: 'var(--danger)', LOGIN_ERROR: 'var(--danger)' };
+  const statusLabel = { UPDATED: '✅ Atualizado', UPDATING: '⏳ Atualizando', OUTDATED: '⚠️ Desatualizado', ERROR: '❌ Erro', LOGIN_ERROR: '🔒 Senha expirada' };
+
+  let html = `
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:20px">
+      <p style="color:var(--text2);font-size:13px">Conecte suas contas bancárias e de investimentos via Open Finance para sincronizar saldos, extratos e investimentos automaticamente.</p>
+      <button onclick="openPluggyConnect()" class="btn-primary">+ Conectar Novo Banco</button>
+    </div>`;
+
+  if (items.length === 0) {
+    html += `<div style="text-align:center;padding:60px 20px;color:var(--text2)">
+      <div style="font-size:64px;margin-bottom:16px">🏦</div>
+      <p style="font-size:16px;font-weight:600;margin-bottom:8px">Nenhuma conta conectada</p>
+      <p style="font-size:13px;margin-bottom:20px">Clique em "Conectar Novo Banco" para adicionar sua conta bancária, investimentos ou cartão de crédito via Open Finance</p>
+      <button onclick="openPluggyConnect()" class="btn-primary" style="font-size:14px;padding:10px 24px">🔗 Conectar Banco</button>
+    </div>`;
+  } else {
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">`;
+    for (const item of items) {
+      const cor = statusColor[item.status] || 'var(--text2)';
+      html += `<div style="background:var(--card);border-radius:12px;padding:18px;border:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-size:15px;font-weight:600;margin-bottom:4px">🏦 ${item.connector_name || 'Banco'}</div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:8px">Titular: ${pfTitularBadge(item.titular)}</div>
+            <div style="font-size:12px;color:${cor}">${statusLabel[item.status] || item.status}</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button onclick="reconectarPluggy('${item.item_id}')" title="Reconectar" style="background:var(--navy3);border:none;color:var(--text2);padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px">🔄</button>
+            <button onclick="desconectarPluggy('${item.item_id}')" title="Desconectar" style="background:var(--danger);border:none;color:white;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px">✕</button>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:11px;color:var(--text2)">
+          ID: ${item.item_id.slice(0,8)}… • Conectado em ${item.criado_em?.split('T')[0]}
+        </div>
+      </div>`;
+    }
+    html += `</div>
+    <div style="margin-top:20px;text-align:center">
+      <button onclick="syncPluggyAndRefresh()" class="btn-primary" style="padding:10px 28px">🔄 Sincronizar Tudo Agora</button>
+    </div>`;
+  }
+
+  // Formulário para salvar titular do item a conectar
+  html += `<div id="pluggy-titular-select" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9998;align-items:center;justify-content:center">
+    <div style="background:var(--card2);border-radius:14px;padding:28px;width:320px;border:1px solid var(--border)">
+      <h3 style="margin-bottom:16px;font-size:16px">De quem é esta conta?</h3>
+      <div style="display:flex;gap:10px;margin-bottom:20px">
+        <button id="btn-titular-ramon" onclick="pfTitularEscolhido='Ramon';document.getElementById('btn-titular-ramon').style.background='var(--accent)';document.getElementById('btn-titular-silvia').style.background='var(--navy3)'" style="flex:1;padding:12px;border:none;border-radius:8px;cursor:pointer;background:var(--accent);color:var(--navy);font-weight:600">👤 Ramon</button>
+        <button id="btn-titular-silvia" onclick="pfTitularEscolhido='Silvia';document.getElementById('btn-titular-silvia').style.background='var(--warning)';document.getElementById('btn-titular-ramon').style.background='var(--navy3)'" style="flex:1;padding:12px;border:none;border-radius:8px;cursor:pointer;background:var(--navy3);color:var(--text);font-weight:600">👤 Silvia</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="document.getElementById('pluggy-titular-select').style.display='none'" style="flex:1;padding:10px;background:var(--navy3);border:none;color:var(--text);border-radius:8px;cursor:pointer">Cancelar</button>
+        <button onclick="iniciarPluggyConnect()" style="flex:1;padding:10px;background:var(--accent);border:none;color:var(--navy);border-radius:8px;font-weight:600;cursor:pointer">Continuar</button>
+      </div>
+    </div>
+  </div>`;
+
+  document.getElementById('content').innerHTML = `<div class="page-header"><h1 class="page-title">🔗 Conectar Bancos</h1></div>${html}`;
+}
+
+let pfTitularEscolhido = 'Ramon';
+
+function openPluggyConnect() {
+  pfTitularEscolhido = 'Ramon';
+  document.getElementById('pluggy-titular-select').style.display = 'flex';
+  document.getElementById('btn-titular-ramon').style.background = 'var(--accent)';
+  document.getElementById('btn-titular-silvia').style.background = 'var(--navy3)';
+}
+
+async function iniciarPluggyConnect(itemId = null) {
+  document.getElementById('pluggy-titular-select').style.display = 'none';
+  try {
+    const body = itemId ? { itemId } : {};
+    const r = await post('/api/pf/pluggy/connect-token', body);
+    if (!r.ok) return toast(r.error || 'Erro ao obter token Pluggy', 'error');
+    const { accessToken } = r.data;
+    if (typeof PluggyConnect === 'undefined') return toast('Widget Pluggy não carregado. Verifique a conexão.', 'error');
+    const widget = new PluggyConnect({
+      connectToken: accessToken,
+      onSuccess: async (itemData) => {
+        const saveR = await post('/api/pf/pluggy/items', { itemId: itemData.item.id, titular: pfTitularEscolhido });
+        if (saveR.ok) {
+          toast(`${itemData.item.connector?.name || 'Banco'} conectado com sucesso!`);
+          renderPFPluggy();
+        } else {
+          toast(saveR.error || 'Erro ao salvar conexão', 'error');
+        }
+      },
+      onError: (e) => { toast('Erro na conexão: ' + (e?.message || 'Desconhecido'), 'error'); },
+    });
+    widget.init();
+  } catch (e) {
+    toast('Erro ao iniciar Pluggy: ' + e.message, 'error');
+  }
+}
+
+async function reconectarPluggy(itemId) {
+  pfTitularEscolhido = 'Ramon';
+  iniciarPluggyConnect(itemId);
+}
+
+async function desconectarPluggy(itemId) {
+  if (!confirm('Desconectar este banco? As transações já sincronizadas serão mantidas.')) return;
+  const r = await del(`/api/pf/pluggy/items/${itemId}`);
+  if (r.ok) { toast('Banco desconectado'); renderPFPluggy(); }
+  else toast(r.error || 'Erro', 'error');
+}
+
+async function syncPluggyAndRefresh() {
+  const btn = event.target;
+  btn.textContent = '⏳ Sincronizando...';
+  btn.disabled = true;
+  const r = await post('/api/pf/pluggy/sync', {});
+  btn.textContent = '🔄 Sincronizar Tudo Agora';
+  btn.disabled = false;
+  if (r.ok) {
+    toast(`Sincronizado! ${r.data.transacoes} transações, ${r.data.investimentos} investimentos`);
+    renderPFPluggy();
+  } else {
+    toast(r.error || 'Erro ao sincronizar', 'error');
+  }
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
