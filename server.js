@@ -2942,7 +2942,8 @@ function _extrairParcela(desc) {
 
 async function _pluggySyncItem(itemId) {
   const hoje = new Date().toISOString().slice(0,10);
-  const de90 = new Date(Date.now() - 90*24*3600*1000).toISOString().slice(0,10);
+  const de90  = new Date(Date.now() - 90*24*3600*1000).toISOString().slice(0,10);
+  const de365 = new Date(Date.now() - 365*24*3600*1000).toISOString().slice(0,10);
 
   const accountsResp = await pluggyFetch(`/accounts?itemId=${itemId}`);
   const accounts = accountsResp.results || accountsResp.accounts || [];
@@ -2967,7 +2968,8 @@ async function _pluggySyncItem(itemId) {
 
     try {
       // Cartão: busca 90 dias para capturar parcelas antigas em andamento
-      const from = isCartao ? de90 : new Date(Date.now()-30*24*3600*1000).toISOString().slice(0,10);
+      // Usa 1 ano para cartão (captura parcelas longas) e 90 dias para conta bancária
+      const from = isCartao ? de365 : de90;
       const txResp = await pluggyFetch(`/transactions?accountId=${acc.id}&from=${from}&to=${hoje}&pageSize=500`);
       const txs = txResp.results || txResp.transactions || [];
       totalTxs += txs.length;
