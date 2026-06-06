@@ -293,6 +293,64 @@
     .kpi-card { padding: 14px; }
     .modal { max-width: 100%; margin: 0 10px; }
   }
+
+  /* ── GESTÃO PESSOAL ── */
+  .gp-tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+  .gp-tab { padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border); color: var(--text2); background: var(--card); transition: all .15s; }
+  .gp-tab.active { background: var(--accent); color: var(--navy); border-color: var(--accent); }
+  .gp-tab:hover:not(.active) { background: var(--navy3); color: var(--text); }
+  .gp-kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 24px; }
+  @media(max-width:900px) { .gp-kpi-grid { grid-template-columns: repeat(2,1fr); } }
+  .gp-kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 16px; }
+  .gp-kpi .kpi-val { font-size: 22px; font-weight: 900; margin: 6px 0 2px; }
+  .gp-kpi .kpi-lbl { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; }
+  .gp-kpi .kpi-sub { font-size: 11px; color: var(--text2); }
+  .gp-section-title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .gp-chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  @media(max-width:768px) { .gp-chart-row { grid-template-columns: 1fr; } }
+  .gp-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+
+  /* Hábitos */
+  .habito-chip { display: flex; align-items: center; gap: 10px; background: var(--card2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px; cursor: pointer; transition: all .15s; user-select: none; }
+  .habito-chip:hover { border-color: var(--accent); }
+  .habito-chip.feito { background: rgba(0,196,180,.12); border-color: rgba(0,196,180,.5); }
+  .habito-chip .hb-icon { font-size: 22px; }
+  .habito-chip .hb-nome { font-size: 13px; font-weight: 600; flex: 1; }
+  .habito-chip .hb-dias { display: flex; gap: 3px; }
+  .habito-chip .hd { width: 20px; height: 20px; border-radius: 4px; background: var(--navy3); font-size: 9px;
+    display: flex; align-items: center; justify-content: center; color: var(--text2); }
+  .habito-chip .hd.ok { background: rgba(0,196,180,.3); color: var(--accent); }
+
+  /* Tarefas */
+  .tarefa-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px;
+    background: var(--card2); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; transition: opacity .2s; }
+  .tarefa-item.concluida { opacity: .45; }
+  .tarefa-item .ti-check { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border);
+    cursor: pointer; flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+  .tarefa-item .ti-check.done { background: var(--accent); border-color: var(--accent); color: var(--navy); font-size: 11px; }
+  .tarefa-item .ti-body { flex: 1; min-width: 0; }
+  .tarefa-item .ti-titulo { font-size: 13px; font-weight: 600; }
+  .tarefa-item .ti-meta { font-size: 11px; color: var(--text2); margin-top: 2px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .tarefa-item .ti-acoes { display: flex; gap: 4px; }
+  .prio-alta { color: #f87171; }
+  .prio-media { color: #fbbf24; }
+  .prio-baixa { color: #4ade80; }
+
+  /* Metas */
+  .meta-card { background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+  .meta-card .mc-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .meta-card .mc-titulo { font-size: 14px; font-weight: 700; flex: 1; }
+  .meta-card .mc-cat { font-size: 10px; padding: 2px 8px; border-radius: 10px; background: rgba(0,196,180,.15); color: var(--accent); font-weight: 600; }
+  .meta-card .mc-bar-wrap { height: 8px; background: var(--navy3); border-radius: 4px; overflow: hidden; margin: 6px 0; }
+  .meta-card .mc-bar { height: 100%; border-radius: 4px; transition: width .4s ease; }
+  .meta-card .mc-vals { font-size: 12px; color: var(--text2); display: flex; justify-content: space-between; }
+
+  /* Barra evolutiva */
+  .evol-bar-group { display: flex; flex-direction: column; align-items: center; flex: 1; gap: 4px; }
+  .evol-bars { display: flex; align-items: flex-end; gap: 2px; height: 80px; }
+  .evol-b { width: 14px; border-radius: 3px 3px 0 0; min-height: 2px; }
 </style>
 </head>
 <body>
@@ -330,6 +388,7 @@
 
     <div class="nav-section">Financeiro</div>
     <div class="nav-item" onclick="navigate('financeiro')"><span class="icon">💰</span> Financeiro</div>
+    <div class="nav-item" onclick="navigate('gestao-pessoal')"><span class="icon">🧘</span> Gestão Pessoal</div>
     <div class="nav-item" onclick="navigate('calculadora')" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px"><span class="icon">🧮</span> Calculadora</div>
     <div id="nav-usuarios" class="nav-item" onclick="navigate('usuarios')" style="display:none"><span class="icon">👤</span> Usuários</div>
     <div class="nav-item" onclick="baixarBackup()" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px;color:var(--text2)"><span class="icon">💾</span> Backup do Banco</div>
@@ -432,7 +491,7 @@ const pageTitles = {
   financeiro: 'Financeiro', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
   painel: 'Painel de Lançamento', usuarios: 'Usuários do Sistema', calculadora: 'Calculadora de Financiamento',
   'corretor-painel': 'Meu Painel', 'incorporador-painel': 'Portal do Incorporador',
-  eventos: 'Eventos de Lançamento'
+  eventos: 'Eventos de Lançamento', 'gestao-pessoal': 'Gestão Pessoal'
 };
 const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario','usuarios','eventos'];
 
@@ -464,6 +523,7 @@ async function renderPage(page) {
       case 'corretor-painel': await renderCorretorPainel(); break;
       case 'incorporador-painel': await renderIncorporadorPainel(); break;
       case 'eventos': await renderEventos(); break;
+      case 'gestao-pessoal': await renderGestaoPessoal(); break;
     }
   } catch(e) {
     c.innerHTML = `<div style="color:var(--danger);padding:24px">Erro ao carregar: ${e.message}</div>`;
@@ -8272,6 +8332,720 @@ window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); _pwaPr
 function instalarApp() {
   if (_pwaPrompt) { _pwaPrompt.prompt(); _pwaPrompt.userChoice.then(() => { _pwaPrompt = null; document.getElementById('pwa-banner')?.remove(); }); }
 }
+
+// ══════════════════════════════════════════════════════════════════
+//  GESTÃO PESSOAL
+// ══════════════════════════════════════════════════════════════════
+let _gpTab = 'overview';
+
+async function renderGestaoPessoal(tab) {
+  if (tab) _gpTab = tab;
+  const c = document.getElementById('content');
+  c.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text2)">Carregando...</div>`;
+
+  const tabs = [
+    { id: 'overview',  icon: '📊', label: 'Visão Geral' },
+    { id: 'financas',  icon: '💵', label: 'Finanças'    },
+    { id: 'metas',     icon: '🎯', label: 'Metas'       },
+    { id: 'tarefas',   icon: '✅', label: 'Tarefas'     },
+    { id: 'habitos',   icon: '🔥', label: 'Hábitos'     },
+  ];
+
+  const tabsHtml = `<div class="gp-tabs">
+    ${tabs.map(t => `<div class="gp-tab${_gpTab===t.id?' active':''}" onclick="renderGestaoPessoal('${t.id}')">${t.icon} ${t.label}</div>`).join('')}
+  </div>`;
+
+  let body = '';
+  if (_gpTab === 'overview') body = await _gpOverview();
+  else if (_gpTab === 'financas') body = await _gpFinancas();
+  else if (_gpTab === 'metas') body = await _gpMetas();
+  else if (_gpTab === 'tarefas') body = await _gpTarefas();
+  else if (_gpTab === 'habitos') body = await _gpHabitos();
+
+  c.innerHTML = `<div style="max-width:1100px">${tabsHtml}${body}</div>`;
+}
+
+// ── Visão Geral ──────────────────────────────────────────────────
+async function _gpOverview() {
+  const r = await get('/api/pessoal/dashboard');
+  if (!r.ok) return '<div style="color:var(--danger)">Erro ao carregar dashboard</div>';
+  const d = r.data;
+  const saldoMesCor = d.saldoMes >= 0 ? 'var(--success)' : 'var(--danger)';
+
+  // Categorias de despesa
+  const catColors = { moradia:'#6366f1',alimentacao:'#f59e0b',transporte:'#0ea5e9',saude:'#10b981',
+    educacao:'#8b5cf6',lazer:'#ec4899',investimentos:'#14b8a6',outros:'#6b7280' };
+
+  const despCatHtml = d.despesasCat.length ? d.despesasCat.sort((a,b)=>b.total-a.total).map(c => {
+    const pct = d.despesaMes ? Math.round(c.total/d.despesaMes*100) : 0;
+    const cor = catColors[c.categoria] || '#6b7280';
+    return `<div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+        <span style="color:var(--text);text-transform:capitalize">${c.categoria}</span>
+        <span style="color:var(--text2)">${fmt(c.total)} (${pct}%)</span>
+      </div>
+      <div style="height:6px;background:var(--navy3);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${cor};border-radius:3px"></div>
+      </div>
+    </div>`;
+  }).join('') : '<div style="color:var(--text2);font-size:13px">Nenhuma despesa este mês</div>';
+
+  // Gráfico de evolução
+  const maxVal = Math.max(...d.evolucao.map(e=>Math.max(e.receita,e.despesa)), 1);
+  const evolHtml = d.evolucao.map(e => {
+    const hR = Math.round(e.receita/maxVal*80);
+    const hD = Math.round(e.despesa/maxVal*80);
+    const mesLabel = e.mes.slice(5);
+    return `<div class="evol-bar-group">
+      <div class="evol-bars">
+        <div class="evol-b" style="height:${hR}px;background:rgba(0,196,180,.7)" title="Receita: ${fmt(e.receita)}"></div>
+        <div class="evol-b" style="height:${hD}px;background:rgba(239,68,68,.6)" title="Despesa: ${fmt(e.despesa)}"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text2)">${mesLabel}</div>
+    </div>`;
+  }).join('');
+
+  // Tarefas urgentes
+  const rt = await get('/api/pessoal/tarefas?concluida=0');
+  const tarefasUrgentes = (rt.data||[]).filter(t=>t.prioridade==='alta').slice(0,5);
+  const tarefasHtml = tarefasUrgentes.length ? tarefasUrgentes.map(t=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span class="prio-alta" title="Alta prioridade">🔴</span>
+      <span style="flex:1;font-size:13px">${t.titulo}</span>
+      ${t.prazo ? `<span style="font-size:11px;color:var(--text2)">${t.prazo}</span>` : ''}
+    </div>`).join('') : '<div style="color:var(--text2);font-size:13px">Nenhuma tarefa urgente 🎉</div>';
+
+  return `
+    <div class="gp-kpi-grid">
+      <div class="gp-kpi" style="border-left:3px solid var(--success)">
+        <div class="kpi-lbl">Receita do Mês</div>
+        <div class="kpi-val" style="color:var(--success)">${fmt(d.receitaMes)}</div>
+        <div class="kpi-sub">Acumulado ano: ${fmt(d.receitaAno)}</div>
+      </div>
+      <div class="gp-kpi" style="border-left:3px solid var(--danger)">
+        <div class="kpi-lbl">Despesa do Mês</div>
+        <div class="kpi-val" style="color:var(--danger)">${fmt(d.despesaMes)}</div>
+        <div class="kpi-sub">Acumulado ano: ${fmt(d.despesaAno)}</div>
+      </div>
+      <div class="gp-kpi" style="border-left:3px solid ${saldoMesCor}">
+        <div class="kpi-lbl">Saldo do Mês</div>
+        <div class="kpi-val" style="color:${saldoMesCor}">${fmt(d.saldoMes)}</div>
+        <div class="kpi-sub">Ano: ${fmt(d.saldoAno)}</div>
+      </div>
+      <div class="gp-kpi" style="border-left:3px solid var(--accent)">
+        <div class="kpi-lbl">Tarefas Pendentes</div>
+        <div class="kpi-val">${d.tarefasPend}</div>
+        <div class="kpi-sub">${d.tarefasAtrasadas} atrasadas · ${d.tarefasHoje} pra hoje</div>
+      </div>
+    </div>
+
+    <div class="gp-chart-row">
+      <div class="gp-card">
+        <div class="gp-section-title">📈 Evolução dos últimos 6 meses</div>
+        <div style="display:flex;gap:6px;align-items:flex-end;padding:8px 0">
+          ${evolHtml}
+        </div>
+        <div style="display:flex;gap:16px;margin-top:8px">
+          <span style="font-size:11px;color:var(--text2)"><span style="display:inline-block;width:10px;height:10px;background:rgba(0,196,180,.7);border-radius:2px;margin-right:4px"></span>Receita</span>
+          <span style="font-size:11px;color:var(--text2)"><span style="display:inline-block;width:10px;height:10px;background:rgba(239,68,68,.6);border-radius:2px;margin-right:4px"></span>Despesa</span>
+        </div>
+      </div>
+      <div class="gp-card">
+        <div class="gp-section-title">🗂️ Despesas por categoria (mês atual)</div>
+        ${despCatHtml}
+      </div>
+    </div>
+
+    <div class="gp-chart-row">
+      <div class="gp-card">
+        <div class="gp-section-title">🎯 Metas — ${d.metasAtivas} em andamento · ${d.metasConc} concluídas
+          <button onclick="renderGestaoPessoal('metas')" style="margin-left:auto;font-size:11px;padding:3px 10px;border-radius:6px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);cursor:pointer">Ver todas</button>
+        </div>
+        ${await _gpMetasResumo()}
+      </div>
+      <div class="gp-card">
+        <div class="gp-section-title">🔴 Tarefas prioritárias
+          <button onclick="renderGestaoPessoal('tarefas')" style="margin-left:auto;font-size:11px;padding:3px 10px;border-radius:6px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);cursor:pointer">Ver todas</button>
+        </div>
+        ${tarefasHtml}
+      </div>
+    </div>`;
+}
+
+async function _gpMetasResumo() {
+  const r = await get('/api/pessoal/metas');
+  const metas = (r.data||[]).filter(m=>m.status==='em_andamento').slice(0,4);
+  if (!metas.length) return '<div style="color:var(--text2);font-size:13px">Nenhuma meta cadastrada ainda</div>';
+  return metas.map(m => {
+    const pct = m.valor_meta > 0 ? Math.min(100, Math.round(m.valor_atual/m.valor_meta*100)) : 0;
+    const cor = pct >= 100 ? '#4ade80' : pct >= 60 ? '#fbbf24' : 'var(--accent)';
+    return `<div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="font-weight:600">${m.titulo}</span>
+        <span style="color:${cor};font-weight:700">${pct}%</span>
+      </div>
+      <div style="height:6px;background:var(--navy3);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${cor};border-radius:3px;transition:width .4s"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Finanças Pessoais ────────────────────────────────────────────
+async function _gpFinancas() {
+  const hoje = new Date();
+  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+  const [rRec, rDesp] = await Promise.all([
+    get(`/api/pessoal/receitas?mes=${mesAtual}`),
+    get(`/api/pessoal/despesas?mes=${mesAtual}`)
+  ]);
+  const receitas = rRec.data || [];
+  const despesas = rDesp.data || [];
+  const totRec = receitas.reduce((a,b)=>a+b.valor,0);
+  const totDesp = despesas.reduce((a,b)=>a+b.valor,0);
+
+  const catRecOptions = ['salario','comissao','aluguel','dividendos','freelance','outros'];
+  const catDespOptions = ['moradia','alimentacao','transporte','saude','educacao','lazer','investimentos','imposto','outros'];
+
+  const rowsRec = receitas.map(r=>`
+    <tr>
+      <td>${r.data}</td>
+      <td>${r.descricao}</td>
+      <td style="text-transform:capitalize">${r.categoria}</td>
+      <td style="color:var(--success);font-weight:700">${fmt(r.valor)}</td>
+      <td>${r.recorrente?'🔄 Recorrente':'—'}</td>
+      <td>
+        <button onclick="gpEditReceita(${r.id})" style="font-size:11px;padding:2px 7px;border-radius:4px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);cursor:pointer">✏️</button>
+        <button onclick="gpDelReceita(${r.id})" style="font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#f87171;cursor:pointer">🗑️</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="6" style="color:var(--text2);text-align:center;padding:20px">Nenhuma receita neste mês</td></tr>';
+
+  const rowsDesp = despesas.map(d=>`
+    <tr>
+      <td>${d.data}</td>
+      <td>${d.descricao}</td>
+      <td style="text-transform:capitalize">${d.categoria}</td>
+      <td style="color:var(--danger);font-weight:700">-${fmt(d.valor)}</td>
+      <td>${d.recorrente?'🔄 Recorrente':'—'}</td>
+      <td>
+        <button onclick="gpEditDespesa(${d.id})" style="font-size:11px;padding:2px 7px;border-radius:4px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);cursor:pointer">✏️</button>
+        <button onclick="gpDelDespesa(${d.id})" style="font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#f87171;cursor:pointer">🗑️</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="6" style="color:var(--text2);text-align:center;padding:20px">Nenhuma despesa neste mês</td></tr>';
+
+  return `
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:18px;flex-wrap:wrap">
+      <div style="font-size:13px;color:var(--text2)">Mês de referência:</div>
+      <input type="month" id="gp-mes" value="${mesAtual}" onchange="renderGestaoPessoal('financas')" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px">
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button onclick="gpAbrirReceitaModal()" style="padding:8px 14px;border-radius:8px;background:rgba(0,196,180,.15);border:1px solid rgba(0,196,180,.4);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer">+ Receita</button>
+        <button onclick="gpAbrirDespesaModal()" style="padding:8px 14px;border-radius:8px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#f87171;font-size:13px;font-weight:600;cursor:pointer">+ Despesa</button>
+      </div>
+    </div>
+
+    <div class="gp-kpi-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="gp-kpi" style="border-left:3px solid var(--success)">
+        <div class="kpi-lbl">Total Receitas</div>
+        <div class="kpi-val" style="color:var(--success)">${fmt(totRec)}</div>
+        <div class="kpi-sub">${receitas.length} lançamentos</div>
+      </div>
+      <div class="gp-kpi" style="border-left:3px solid var(--danger)">
+        <div class="kpi-lbl">Total Despesas</div>
+        <div class="kpi-val" style="color:var(--danger)">${fmt(totDesp)}</div>
+        <div class="kpi-sub">${despesas.length} lançamentos</div>
+      </div>
+      <div class="gp-kpi" style="border-left:3px solid ${totRec-totDesp>=0?'var(--success)':'var(--danger)'}">
+        <div class="kpi-lbl">Saldo do Mês</div>
+        <div class="kpi-val" style="color:${totRec-totDesp>=0?'var(--success)':'var(--danger)'}">${fmt(totRec-totDesp)}</div>
+        <div class="kpi-sub">${totRec>0?Math.round((1-totDesp/totRec)*100):0}% de taxa de poupança</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="gp-card">
+        <div class="gp-section-title">💚 Receitas</div>
+        <div class="table-card" style="overflow-x:auto">
+          <table style="width:100%;font-size:12px">
+            <thead><tr>
+              <th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Tipo</th><th></th>
+            </tr></thead>
+            <tbody>${rowsRec}</tbody>
+            <tfoot><tr>
+              <td colspan="3" style="font-weight:700;padding:8px 12px">Total</td>
+              <td style="color:var(--success);font-weight:700">${fmt(totRec)}</td>
+              <td colspan="2"></td>
+            </tr></tfoot>
+          </table>
+        </div>
+      </div>
+      <div class="gp-card">
+        <div class="gp-section-title">❤️ Despesas</div>
+        <div class="table-card" style="overflow-x:auto">
+          <table style="width:100%;font-size:12px">
+            <thead><tr>
+              <th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Tipo</th><th></th>
+            </tr></thead>
+            <tbody>${rowsDesp}</tbody>
+            <tfoot><tr>
+              <td colspan="3" style="font-weight:700;padding:8px 12px">Total</td>
+              <td style="color:var(--danger);font-weight:700">-${fmt(totDesp)}</td>
+              <td colspan="2"></td>
+            </tr></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── Metas ───────────────────────────────────────────────────────
+async function _gpMetas() {
+  const r = await get('/api/pessoal/metas');
+  const metas = r.data || [];
+  const catIcons = { financeira:'💰', profissional:'💼', saude:'💪', pessoal:'🌟', educacao:'📚', viagem:'✈️', familia:'👨‍👩‍👧', outros:'🎯' };
+  const catColors = { financeira:'#14b8a6', profissional:'#6366f1', saude:'#10b981', pessoal:'#f59e0b', educacao:'#8b5cf6', viagem:'#0ea5e9', familia:'#ec4899', outros:'#6b7280' };
+
+  const metasHtml = metas.length ? metas.map(m => {
+    const pct = m.valor_meta > 0 ? Math.min(100, Math.round(m.valor_atual/m.valor_meta*100)) : 0;
+    const cor = pct >= 100 ? '#4ade80' : pct >= 60 ? '#fbbf24' : (catColors[m.categoria]||'var(--accent)');
+    const statusBadge = m.status === 'concluida'
+      ? '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(74,222,128,.15);color:#4ade80;font-weight:600">✅ Concluída</span>'
+      : m.status === 'pausada'
+      ? '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(251,191,36,.15);color:#fbbf24;font-weight:600">⏸ Pausada</span>'
+      : '<span style="font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(0,196,180,.15);color:var(--accent);font-weight:600">🔄 Em andamento</span>';
+    return `
+      <div class="meta-card">
+        <div class="mc-header">
+          <span style="font-size:20px">${catIcons[m.categoria]||'🎯'}</span>
+          <div class="mc-titulo">${m.titulo}</div>
+          ${statusBadge}
+          <div style="display:flex;gap:4px;margin-left:4px">
+            <button onclick="gpEditMeta(${m.id})" style="font-size:11px;padding:2px 7px;border-radius:4px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);cursor:pointer">✏️</button>
+            <button onclick="gpDelMeta(${m.id})" style="font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#f87171;cursor:pointer">🗑️</button>
+          </div>
+        </div>
+        ${m.descricao?`<div style="font-size:12px;color:var(--text2);margin-bottom:8px">${m.descricao}</div>`:''}
+        ${m.valor_meta>0?`
+          <div class="mc-bar-wrap"><div class="mc-bar" style="width:${pct}%;background:${cor}"></div></div>
+          <div class="mc-vals">
+            <span>Atual: ${fmt(m.valor_atual)}</span>
+            <span style="font-weight:700;color:${cor}">${pct}%</span>
+            <span>Meta: ${fmt(m.valor_meta)}</span>
+          </div>
+        `:''}
+        ${m.prazo?`<div style="font-size:11px;color:var(--text2);margin-top:6px">⏰ Prazo: ${m.prazo}</div>`:''}
+      </div>`;
+  }).join('') : '<div style="color:var(--text2);text-align:center;padding:32px">Nenhuma meta cadastrada ainda. Clique em + Nova Meta para começar!</div>';
+
+  return `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+      <button onclick="gpAbrirMetaModal()" style="padding:8px 16px;border-radius:8px;background:var(--accent);color:var(--navy);border:none;font-size:13px;font-weight:700;cursor:pointer">+ Nova Meta</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <div class="gp-section-title">🔄 Em andamento</div>
+        ${metas.filter(m=>m.status==='em_andamento').map(m=>_metaCardHtml(m, catIcons, catColors)).join('') || '<div style="color:var(--text2);font-size:13px;padding:16px">Nenhuma meta ativa</div>'}
+      </div>
+      <div>
+        <div class="gp-section-title">✅ Concluídas / ⏸ Pausadas</div>
+        ${metas.filter(m=>m.status!=='em_andamento').map(m=>_metaCardHtml(m, catIcons, catColors)).join('') || '<div style="color:var(--text2);font-size:13px;padding:16px">Nenhuma meta aqui</div>'}
+      </div>
+    </div>`;
+}
+
+function _metaCardHtml(m, catIcons, catColors) {
+  const pct = m.valor_meta > 0 ? Math.min(100, Math.round(m.valor_atual/m.valor_meta*100)) : 0;
+  const cor = pct >= 100 ? '#4ade80' : pct >= 60 ? '#fbbf24' : (catColors[m.categoria]||'var(--accent)');
+  return `
+    <div class="meta-card">
+      <div class="mc-header">
+        <span style="font-size:18px">${catIcons[m.categoria]||'🎯'}</span>
+        <div class="mc-titulo">${m.titulo}</div>
+        <div style="display:flex;gap:4px">
+          <button onclick="gpEditMeta(${m.id})" style="font-size:11px;padding:2px 7px;border-radius:4px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);cursor:pointer">✏️</button>
+          <button onclick="gpDelMeta(${m.id})" style="font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#f87171;cursor:pointer">🗑️</button>
+        </div>
+      </div>
+      ${m.valor_meta>0?`
+        <div class="mc-bar-wrap"><div class="mc-bar" style="width:${pct}%;background:${cor}"></div></div>
+        <div class="mc-vals"><span>${fmt(m.valor_atual)}</span><span style="font-weight:700;color:${cor}">${pct}%</span><span>${fmt(m.valor_meta)}</span></div>
+      `:''}
+      ${m.prazo?`<div style="font-size:11px;color:var(--text2);margin-top:4px">⏰ ${m.prazo}</div>`:''}
+    </div>`;
+}
+
+// ── Tarefas ─────────────────────────────────────────────────────
+async function _gpTarefas() {
+  const r = await get('/api/pessoal/tarefas');
+  const todas = r.data || [];
+  const pendentes = todas.filter(t=>!t.concluida);
+  const concluidas = todas.filter(t=>t.concluida);
+  const hoje = new Date().toISOString().slice(0,10);
+
+  const prioIcon = { alta: '🔴', media: '🟡', baixa: '🟢' };
+  const prioClass = { alta: 'prio-alta', media: 'prio-media', baixa: 'prio-baixa' };
+
+  const tarefaHtml = (t) => {
+    const atrasada = t.prazo && t.prazo < hoje && !t.concluida;
+    const hojeFlag = t.prazo === hoje && !t.concluida;
+    return `
+      <div class="tarefa-item${t.concluida?' concluida':''}" id="tarefa-${t.id}">
+        <div class="ti-check${t.concluida?' done':''}" onclick="gpToggleTarefa(${t.id},${t.concluida?0:1})">${t.concluida?'✓':''}</div>
+        <div class="ti-body">
+          <div class="ti-titulo" style="${t.concluida?'text-decoration:line-through;':''}">${t.titulo}</div>
+          <div class="ti-meta">
+            <span class="${prioClass[t.prioridade]||''}">${prioIcon[t.prioridade]||''} ${t.prioridade}</span>
+            ${t.categoria?`<span>📁 ${t.categoria}</span>`:''}
+            ${t.prazo?`<span style="color:${atrasada?'var(--danger)':hojeFlag?'var(--warning)':'var(--text2)'}">📅 ${atrasada?'⚠️ ':''}${t.prazo}</span>`:''}
+            ${t.descricao?`<span title="${t.descricao}">💬</span>`:''}
+          </div>
+        </div>
+        <div class="ti-acoes">
+          <button onclick="gpEditTarefa(${t.id})" style="font-size:11px;padding:2px 7px;border-radius:4px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);cursor:pointer">✏️</button>
+          <button onclick="gpDelTarefa(${t.id})" style="font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#f87171;cursor:pointer">🗑️</button>
+        </div>
+      </div>`;
+  };
+
+  return `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+      <button onclick="gpAbrirTarefaModal()" style="padding:8px 16px;border-radius:8px;background:var(--accent);color:var(--navy);border:none;font-size:13px;font-weight:700;cursor:pointer">+ Nova Tarefa</button>
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
+      <div>
+        <div class="gp-section-title">📋 Pendentes (${pendentes.length})</div>
+        ${pendentes.length ? pendentes.map(tarefaHtml).join('') : '<div style="color:var(--text2);font-size:13px;padding:20px;text-align:center">🎉 Nenhuma tarefa pendente!</div>'}
+        ${concluidas.length ? `
+          <div class="gp-section-title" style="margin-top:24px">✅ Concluídas (${concluidas.length})
+            <button onclick="this.closest('.gp-section-title').nextElementSibling.style.display=this.closest('.gp-section-title').nextElementSibling.style.display==='none'?'block':'none'" style="font-size:11px;padding:2px 8px;border-radius:5px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);cursor:pointer;margin-left:auto">mostrar/ocultar</button>
+          </div>
+          <div style="display:none">${concluidas.map(tarefaHtml).join('')}</div>
+        ` : ''}
+      </div>
+      <div class="gp-card" style="align-self:start">
+        <div class="gp-section-title">📊 Resumo</div>
+        <div style="font-size:13px;line-height:2">
+          <div>🔴 Alta prioridade: <strong>${pendentes.filter(t=>t.prioridade==='alta').length}</strong></div>
+          <div>🟡 Média prioridade: <strong>${pendentes.filter(t=>t.prioridade==='media').length}</strong></div>
+          <div>🟢 Baixa prioridade: <strong>${pendentes.filter(t=>t.prioridade==='baixa').length}</strong></div>
+          <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px">⚠️ Atrasadas: <strong style="color:var(--danger)">${pendentes.filter(t=>t.prazo&&t.prazo<hoje).length}</strong></div>
+          <div>📅 Para hoje: <strong style="color:var(--warning)">${pendentes.filter(t=>t.prazo===hoje).length}</strong></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── Hábitos ─────────────────────────────────────────────────────
+async function _gpHabitos() {
+  const r = await get('/api/pessoal/habitos');
+  const habitos = r.data || [];
+  const hoje = new Date();
+  const diasSemana = Array.from({length:7}, (_,i) => {
+    const d = new Date(hoje); d.setDate(hoje.getDate()-6+i);
+    return d.toISOString().slice(0,10);
+  });
+  const diasLabel = ['D','S','T','Q','Q','S','S'];
+  const startDow = (new Date(diasSemana[0])).getDay();
+
+  const habitosHtml = habitos.map(h => {
+    const diasOk = new Set(h.dias_semana||[]);
+    return `
+      <div class="habito-chip${h.feito_hoje?' feito':''}" onclick="gpToggleHabito(${h.id})">
+        <div class="hb-icon">${h.icone||'✅'}</div>
+        <div class="hb-nome">${h.nome}</div>
+        <div class="hb-dias">
+          ${diasSemana.map((d,i) => `<div class="hd${diasOk.has(d)?' ok':''}" title="${d}">${diasLabel[(startDow+i)%7]}</div>`).join('')}
+        </div>
+        <div style="display:flex;gap:3px;margin-left:6px">
+          <button onclick="event.stopPropagation();gpEditHabito(${h.id})" style="font-size:10px;padding:1px 5px;border-radius:4px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);cursor:pointer">✏️</button>
+          <button onclick="event.stopPropagation();gpDelHabito(${h.id})" style="font-size:10px;padding:1px 5px;border-radius:4px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#f87171;cursor:pointer">🗑️</button>
+        </div>
+      </div>`;
+  }).join('') || '<div style="color:var(--text2);text-align:center;padding:32px">Nenhum hábito cadastrado. Adicione um para começar!</div>';
+
+  const totalHoje = habitos.filter(h=>h.feito_hoje).length;
+  const pctHoje = habitos.length ? Math.round(totalHoje/habitos.length*100) : 0;
+
+  return `
+    <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+      <button onclick="gpAbrirHabitoModal()" style="padding:8px 16px;border-radius:8px;background:var(--accent);color:var(--navy);border:none;font-size:13px;font-weight:700;cursor:pointer">+ Novo Hábito</button>
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px">
+      <div>
+        <div class="gp-section-title">🔥 Hábitos de hoje — ${totalHoje}/${habitos.length} concluídos</div>
+        <div style="height:8px;background:var(--navy3);border-radius:4px;margin-bottom:16px;overflow:hidden">
+          <div style="height:100%;width:${pctHoje}%;background:${pctHoje===100?'#4ade80':'var(--accent)'};transition:width .4s;border-radius:4px"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">${habitosHtml}</div>
+      </div>
+      <div class="gp-card" style="align-self:start">
+        <div class="gp-section-title">📅 Esta semana</div>
+        <div style="font-size:13px;line-height:2">
+          <div>Total hábitos: <strong>${habitos.length}</strong></div>
+          <div>Feitos hoje: <strong style="color:${pctHoje===100?'var(--success)':'var(--accent)'}">${totalHoje}</strong></div>
+          <div>Taxa hoje: <strong>${pctHoje}%</strong></div>
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:12px">
+          💡 Clique no hábito para marcar como feito hoje
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── Modais — Receita ─────────────────────────────────────────────
+function gpAbrirReceitaModal(dados={}) {
+  const hoje = new Date().toISOString().slice(0,10);
+  const cats = ['salario','comissao','aluguel','dividendos','freelance','outros'];
+  openModal(`${dados.id?'Editar':'Nova'} Receita`,`
+    <div class="form-grid">
+      <div class="form-group"><label>Descrição *</label><input id="gp-r-desc" value="${dados.descricao||''}"></div>
+      <div class="form-group"><label>Categoria</label>
+        <select id="gp-r-cat">${cats.map(c=>`<option value="${c}"${dados.categoria===c?' selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Valor (R$) *</label><input id="gp-r-valor" type="number" step="0.01" value="${dados.valor||''}"></div>
+      <div class="form-group"><label>Data *</label><input id="gp-r-data" type="date" value="${dados.data||hoje}"></div>
+      <div class="form-group span2"><label>Observações</label><textarea id="gp-r-obs" rows="2">${dados.observacoes||''}</textarea></div>
+      <div class="form-group"><label><input type="checkbox" id="gp-r-rec" ${dados.recorrente?'checked':''}> Lançamento recorrente</label></div>
+    </div>`,
+    `gpSalvarReceita(${dados.id||'null'})`);
+}
+
+async function gpSalvarReceita(id) {
+  const body = {
+    descricao: document.getElementById('gp-r-desc').value.trim(),
+    categoria: document.getElementById('gp-r-cat').value,
+    valor: parseFloat(document.getElementById('gp-r-valor').value),
+    data: document.getElementById('gp-r-data').value,
+    recorrente: document.getElementById('gp-r-rec').checked,
+    observacoes: document.getElementById('gp-r-obs').value.trim()
+  };
+  if (!body.descricao || !body.valor || !body.data) return toast('Preencha os campos obrigatórios','error');
+  const r = id
+    ? await api(`/api/pessoal/receitas/${id}`,'PUT',body)
+    : await api('/api/pessoal/receitas','POST',body);
+  if (r.ok) { toast(id?'Receita atualizada!':'Receita salva!'); closeModal(); renderGestaoPessoal('financas'); }
+  else toast(r.error||'Erro','error');
+}
+
+async function gpEditReceita(id) {
+  const r = await get(`/api/pessoal/receitas`);
+  const dados = (r.data||[]).find(x=>x.id===id);
+  if (dados) gpAbrirReceitaModal(dados);
+}
+
+async function gpDelReceita(id) {
+  if (!confirm('Excluir esta receita?')) return;
+  const r = await api(`/api/pessoal/receitas/${id}`,'DELETE');
+  if (r.ok) { toast('Excluído!'); renderGestaoPessoal('financas'); }
+}
+
+// ── Modais — Despesa ─────────────────────────────────────────────
+function gpAbrirDespesaModal(dados={}) {
+  const hoje = new Date().toISOString().slice(0,10);
+  const cats = ['moradia','alimentacao','transporte','saude','educacao','lazer','investimentos','imposto','outros'];
+  openModal(`${dados.id?'Editar':'Nova'} Despesa`,`
+    <div class="form-grid">
+      <div class="form-group"><label>Descrição *</label><input id="gp-d-desc" value="${dados.descricao||''}"></div>
+      <div class="form-group"><label>Categoria</label>
+        <select id="gp-d-cat">${cats.map(c=>`<option value="${c}"${dados.categoria===c?' selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Valor (R$) *</label><input id="gp-d-valor" type="number" step="0.01" value="${dados.valor||''}"></div>
+      <div class="form-group"><label>Data *</label><input id="gp-d-data" type="date" value="${dados.data||hoje}"></div>
+      <div class="form-group span2"><label>Observações</label><textarea id="gp-d-obs" rows="2">${dados.observacoes||''}</textarea></div>
+      <div class="form-group"><label><input type="checkbox" id="gp-d-rec" ${dados.recorrente?'checked':''}> Lançamento recorrente</label></div>
+    </div>`,
+    `gpSalvarDespesa(${dados.id||'null'})`);
+}
+
+async function gpSalvarDespesa(id) {
+  const body = {
+    descricao: document.getElementById('gp-d-desc').value.trim(),
+    categoria: document.getElementById('gp-d-cat').value,
+    valor: parseFloat(document.getElementById('gp-d-valor').value),
+    data: document.getElementById('gp-d-data').value,
+    recorrente: document.getElementById('gp-d-rec').checked,
+    observacoes: document.getElementById('gp-d-obs').value.trim()
+  };
+  if (!body.descricao || !body.valor || !body.data) return toast('Preencha os campos obrigatórios','error');
+  const r = id
+    ? await api(`/api/pessoal/despesas/${id}`,'PUT',body)
+    : await api('/api/pessoal/despesas','POST',body);
+  if (r.ok) { toast(id?'Despesa atualizada!':'Despesa salva!'); closeModal(); renderGestaoPessoal('financas'); }
+  else toast(r.error||'Erro','error');
+}
+
+async function gpEditDespesa(id) {
+  const r = await get('/api/pessoal/despesas');
+  const dados = (r.data||[]).find(x=>x.id===id);
+  if (dados) gpAbrirDespesaModal(dados);
+}
+
+async function gpDelDespesa(id) {
+  if (!confirm('Excluir esta despesa?')) return;
+  const r = await api(`/api/pessoal/despesas/${id}`,'DELETE');
+  if (r.ok) { toast('Excluído!'); renderGestaoPessoal('financas'); }
+}
+
+// ── Modais — Meta ─────────────────────────────────────────────────
+function gpAbrirMetaModal(dados={}) {
+  const cats = ['financeira','profissional','saude','pessoal','educacao','viagem','familia','outros'];
+  const statuses = [['em_andamento','🔄 Em andamento'],['concluida','✅ Concluída'],['pausada','⏸ Pausada']];
+  openModal(`${dados.id?'Editar':'Nova'} Meta`,`
+    <div class="form-grid">
+      <div class="form-group span2"><label>Título *</label><input id="gp-m-titulo" value="${dados.titulo||''}"></div>
+      <div class="form-group"><label>Categoria</label>
+        <select id="gp-m-cat">${cats.map(c=>`<option value="${c}"${dados.categoria===c?' selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Status</label>
+        <select id="gp-m-status">${statuses.map(([v,l])=>`<option value="${v}"${dados.status===v?' selected':''}>${l}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Valor da Meta (R$)</label><input id="gp-m-vmeta" type="number" step="0.01" value="${dados.valor_meta||''}"></div>
+      <div class="form-group"><label>Valor Atual (R$)</label><input id="gp-m-vatual" type="number" step="0.01" value="${dados.valor_atual||''}"></div>
+      <div class="form-group"><label>Prazo</label><input id="gp-m-prazo" type="date" value="${dados.prazo||''}"></div>
+      <div class="form-group span2"><label>Descrição</label><textarea id="gp-m-desc" rows="2">${dados.descricao||''}</textarea></div>
+    </div>`,
+    `gpSalvarMeta(${dados.id||'null'})`);
+}
+
+async function gpSalvarMeta(id) {
+  const body = {
+    titulo: document.getElementById('gp-m-titulo').value.trim(),
+    categoria: document.getElementById('gp-m-cat').value,
+    status: document.getElementById('gp-m-status').value,
+    valor_meta: parseFloat(document.getElementById('gp-m-vmeta').value)||0,
+    valor_atual: parseFloat(document.getElementById('gp-m-vatual').value)||0,
+    prazo: document.getElementById('gp-m-prazo').value||null,
+    descricao: document.getElementById('gp-m-desc').value.trim()
+  };
+  if (!body.titulo) return toast('Informe o título da meta','error');
+  const r = id
+    ? await api(`/api/pessoal/metas/${id}`,'PUT',body)
+    : await api('/api/pessoal/metas','POST',body);
+  if (r.ok) { toast(id?'Meta atualizada!':'Meta criada!'); closeModal(); renderGestaoPessoal('metas'); }
+  else toast(r.error||'Erro','error');
+}
+
+async function gpEditMeta(id) {
+  const r = await get('/api/pessoal/metas');
+  const dados = (r.data||[]).find(x=>x.id===id);
+  if (dados) gpAbrirMetaModal(dados);
+}
+
+async function gpDelMeta(id) {
+  if (!confirm('Excluir esta meta?')) return;
+  const r = await api(`/api/pessoal/metas/${id}`,'DELETE');
+  if (r.ok) { toast('Meta excluída!'); renderGestaoPessoal('metas'); }
+}
+
+// ── Modais — Tarefa ───────────────────────────────────────────────
+function gpAbrirTarefaModal(dados={}) {
+  const prioOptions = [['alta','🔴 Alta'],['media','🟡 Média'],['baixa','🟢 Baixa']];
+  const catOptions = ['pessoal','financeiro','profissional','familia','saude','lazer','outros'];
+  openModal(`${dados.id?'Editar':'Nova'} Tarefa`,`
+    <div class="form-grid">
+      <div class="form-group span2"><label>Título *</label><input id="gp-t-titulo" value="${dados.titulo||''}"></div>
+      <div class="form-group"><label>Prioridade</label>
+        <select id="gp-t-prio">${prioOptions.map(([v,l])=>`<option value="${v}"${dados.prioridade===v?' selected':''}>${l}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Categoria</label>
+        <select id="gp-t-cat">${catOptions.map(c=>`<option value="${c}"${dados.categoria===c?' selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Prazo</label><input id="gp-t-prazo" type="date" value="${dados.prazo||''}"></div>
+      <div class="form-group span2"><label>Descrição / Observações</label><textarea id="gp-t-desc" rows="2">${dados.descricao||''}</textarea></div>
+    </div>`,
+    `gpSalvarTarefa(${dados.id||'null'})`);
+}
+
+async function gpSalvarTarefa(id) {
+  const body = {
+    titulo: document.getElementById('gp-t-titulo').value.trim(),
+    prioridade: document.getElementById('gp-t-prio').value,
+    categoria: document.getElementById('gp-t-cat').value,
+    prazo: document.getElementById('gp-t-prazo').value||null,
+    descricao: document.getElementById('gp-t-desc').value.trim(),
+    concluida: 0
+  };
+  if (!body.titulo) return toast('Informe o título da tarefa','error');
+  const r = id
+    ? await api(`/api/pessoal/tarefas/${id}`,'PUT',body)
+    : await api('/api/pessoal/tarefas','POST',body);
+  if (r.ok) { toast(id?'Tarefa atualizada!':'Tarefa criada!'); closeModal(); renderGestaoPessoal('tarefas'); }
+  else toast(r.error||'Erro','error');
+}
+
+async function gpEditTarefa(id) {
+  const r = await get('/api/pessoal/tarefas');
+  const dados = (r.data||[]).find(x=>x.id===id);
+  if (dados) gpAbrirTarefaModal(dados);
+}
+
+async function gpToggleTarefa(id, concluida) {
+  const r = await get('/api/pessoal/tarefas');
+  const t = (r.data||[]).find(x=>x.id===id);
+  if (!t) return;
+  await api(`/api/pessoal/tarefas/${id}`,'PUT',{...t, concluida});
+  renderGestaoPessoal('tarefas');
+}
+
+async function gpDelTarefa(id) {
+  if (!confirm('Excluir esta tarefa?')) return;
+  await api(`/api/pessoal/tarefas/${id}`,'DELETE');
+  toast('Tarefa excluída!'); renderGestaoPessoal('tarefas');
+}
+
+// ── Modais — Hábito ───────────────────────────────────────────────
+function gpAbrirHabitoModal(dados={}) {
+  const icones = ['✅','💪','🏃','🧘','📚','💧','🥗','🛌','🚭','📝','🎯','💊','🧹','📱','💰'];
+  openModal(`${dados.id?'Editar':'Novo'} Hábito`,`
+    <div class="form-grid">
+      <div class="form-group span2"><label>Nome do Hábito *</label><input id="gp-h-nome" value="${dados.nome||''}"></div>
+      <div class="form-group"><label>Ícone</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+          ${icones.map(ic=>`<span onclick="document.getElementById('gp-h-icone').value='${ic}';document.querySelectorAll('.ic-opt').forEach(e=>e.style.background='var(--navy3)');this.style.background='rgba(0,196,180,.2)'" class="ic-opt" style="cursor:pointer;font-size:20px;padding:4px 6px;border-radius:6px;background:${dados.icone===ic?'rgba(0,196,180,.2)':'var(--navy3)'}">${ic}</span>`).join('')}
+        </div>
+        <input id="gp-h-icone" value="${dados.icone||'✅'}" style="margin-top:6px;width:80px">
+      </div>
+      <div class="form-group"><label>Frequência</label>
+        <select id="gp-h-freq">
+          <option value="diario" ${dados.frequencia==='diario'?'selected':''}>Diário</option>
+          <option value="semanal" ${dados.frequencia==='semanal'?'selected':''}>Semanal</option>
+        </select>
+      </div>
+    </div>`,
+    `gpSalvarHabito(${dados.id||'null'})`);
+}
+
+async function gpSalvarHabito(id) {
+  const body = {
+    nome: document.getElementById('gp-h-nome').value.trim(),
+    icone: document.getElementById('gp-h-icone').value.trim()||'✅',
+    frequencia: document.getElementById('gp-h-freq').value,
+    ativo: 1
+  };
+  if (!body.nome) return toast('Informe o nome do hábito','error');
+  const r = id
+    ? await api(`/api/pessoal/habitos/${id}`,'PUT',body)
+    : await api('/api/pessoal/habitos','POST',body);
+  if (r.ok) { toast(id?'Hábito atualizado!':'Hábito criado!'); closeModal(); renderGestaoPessoal('habitos'); }
+  else toast(r.error||'Erro','error');
+}
+
+async function gpEditHabito(id) {
+  const r = await get('/api/pessoal/habitos');
+  const dados = (r.data||[]).find(x=>x.id===id);
+  if (dados) gpAbrirHabitoModal(dados);
+}
+
+async function gpDelHabito(id) {
+  if (!confirm('Excluir este hábito?')) return;
+  await api(`/api/pessoal/habitos/${id}`,'DELETE');
+  toast('Hábito excluído!'); renderGestaoPessoal('habitos');
+}
+
+async function gpToggleHabito(id) {
+  const r = await api(`/api/pessoal/habitos/${id}/toggle`,'POST');
+  if (r.ok) { toast(r.data?.feito ? '🔥 Hábito marcado!' : 'Desmarcado'); renderGestaoPessoal('habitos'); }
+}
+// ── fim Gestão Pessoal ───────────────────────────────────────────
 </script>
 
 <!-- PWA INSTALL BANNER -->

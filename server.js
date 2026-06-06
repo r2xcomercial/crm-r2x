@@ -2761,6 +2761,272 @@ app.post('/api/admin/restaurar', uploadBackup.single('backup'), (req, res) => {
   }
 });
 
+// ─── GESTÃO PESSOAL ───────────────────────────────────────────────────────────
+
+// Dashboard pessoal
+app.get('/api/pessoal/dashboard', (req, res) => {
+  try {
+    const hoje = new Date();
+    const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+
+    const receitaMes = db.prepare(`
+      SELECT COALESCE(SUM(valor),0) as total FROM pessoal_receitas
+      WHERE strftime('%Y-%m', data) = ?`).get(mesAtual)?.total || 0;
+    const despesaMes = db.prepare(`
+      SELECT COALESCE(SUM(valor),0) as total FROM pessoal_despesas
+      WHERE strftime('%Y-%m', data) = ?`).get(mesAtual)?.total || 0;
+    const receitaAno = db.prepare(`
+      SELECT COALESCE(SUM(valor),0) as total FROM pessoal_receitas
+      WHERE strftime('%Y', data) = ?`).get(String(hoje.getFullYear()))?.total || 0;
+    const despesaAno = db.prepare(`
+      SELECT COALESCE(SUM(valor),0) as total FROM pessoal_despesas
+      WHERE strftime('%Y', data) = ?`).get(String(hoje.getFullYear()))?.total || 0;
+
+    const metasAtivas = db.prepare(`SELECT COUNT(*) as n FROM pessoal_metas WHERE status='em_andamento'`).get()?.n || 0;
+    const metasConc  = db.prepare(`SELECT COUNT(*) as n FROM pessoal_metas WHERE status='concluida'`).get()?.n || 0;
+    const tarefasPend = db.prepare(`SELECT COUNT(*) as n FROM pessoal_tarefas WHERE concluida=0`).get()?.n || 0;
+    const tarefasHoje = db.prepare(`SELECT COUNT(*) as n FROM pessoal_tarefas WHERE concluida=0 AND prazo=?`).get(hoje.toISOString().slice(0,10))?.n || 0;
+    const tarefasAtrasadas = db.prepare(`SELECT COUNT(*) as n FROM pessoal_tarefas WHERE concluida=0 AND prazo < ?`).get(hoje.toISOString().slice(0,10))?.n || 0;
+
+    // Receitas por categoria no mês
+    const receitasCat = db.prepare(`
+      SELECT categoria, SUM(valor) as total FROM pessoal_receitas
+      WHERE strftime('%Y-%m', data) = ? GROUP BY categoria`).all(mesAtual);
+    const despesasCat = db.prepare(`
+      SELECT categoria, SUM(valor) as total FROM pessoal_despesas
+      WHERE strftime('%Y-%m', data) = ? GROUP BY categoria`).all(mesAtual);
+
+    // Evolução mensal dos últimos 6 meses
+    const evolucao = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+      const m = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      const r = db.prepare(`SELECT COALESCE(SUM(valor),0) as t FROM pessoal_receitas WHERE strftime('%Y-%m',data)=?`).get(m)?.t || 0;
+      const s = db.prepare(`SELECT COALESCE(SUM(valor),0) as t FROM pessoal_despesas WHERE strftime('%Y-%m',data)=?`).get(m)?.t || 0;
+      evolucao.push({ mes: m, receita: r, despesa: s, saldo: r - s });
+    }
+
+    res.json({ ok: true, data: {
+      receitaMes, despesaMes, saldoMes: receitaMes - despesaMes,
+      receitaAno, despesaAno, saldoAno: receitaAno - despesaAno,
+      metasAtivas, metasConc, tarefasPend, tarefasHoje, tarefasAtrasadas,
+      receitasCat, despesasCat, evolucao
+    }});
+  } catch(e) { err(res, e.message); }
+});
+
+// Receitas pessoais
+app.get('/api/pessoal/receitas', (req, res) => {
+  try {
+    const { mes } = req.query;
+    let rows;
+    if (mes) {
+      rows = db.prepare(`SELECT * FROM pessoal_receitas WHERE strftime('%Y-%m',data)=? ORDER BY data DESC`).all(mes);
+    } else {
+      rows = db.prepare(`SELECT * FROM pessoal_receitas ORDER BY data DESC LIMIT 200`).all();
+    }
+    res.json({ ok: true, data: rows });
+  } catch(e) { err(res, e.message); }
+});
+
+app.post('/api/pessoal/receitas', (req, res) => {
+  try {
+    const { descricao, categoria, valor, data, recorrente, observacoes } = req.body;
+    const r = db.prepare(`INSERT INTO pessoal_receitas (descricao,categoria,valor,data,recorrente,observacoes)
+      VALUES (?,?,?,?,?,?)`).run(descricao, categoria||'outros', valor, data, recorrente?1:0, observacoes||null);
+    res.json({ ok: true, data: { id: r.lastInsertRowid } });
+  } catch(e) { err(res, e.message); }
+});
+
+app.put('/api/pessoal/receitas/:id', (req, res) => {
+  try {
+    const { descricao, categoria, valor, data, recorrente, observacoes } = req.body;
+    db.prepare(`UPDATE pessoal_receitas SET descricao=?,categoria=?,valor=?,data=?,recorrente=?,observacoes=? WHERE id=?`)
+      .run(descricao, categoria||'outros', valor, data, recorrente?1:0, observacoes||null, req.params.id);
+    res.json({ ok: true });
+  } catch(e) { err(res, e.message); }
+});
+
+app.delete('/api/pessoal/receitas/:id', (req, res) => {
+  try {
+    db.prepare(`DELETE FROM pessoal_receitas WHERE id=?`).run(req.params.id);
+    res.json({ ok: true });
+  } catch(e) { err(res, e.message); }
+});
+
+// Despesas pessoais
+app.get('/api/pessoal/despesas', (req, res) => {
+  try {
+    const { mes } = req.query;
+    let rows;
+    if (mes) {
+      rows = db.prepare(`SELECT * FROM pessoal_despesas WHERE strftime('%Y-%m',data)=? ORDER BY data DESC`).all(mes);
+    } else {
+      rows = db.prepare(`SELECT * FROM pessoal_despesas ORDER BY data DESC LIMIT 200`).all();
+    }
+    res.json({ ok: true, data: rows });
+  } catch(e) { err(res, e.message); }
+});
+
+app.post('/api/pessoal/despesas', (req, res) => {
+  try {
+    const { descricao, categoria, valor, data, recorrente, observacoes } = req.body;
+    const r = db.prepare(`INSERT INTO pessoal_despesas (descricao,categoria,valor,data,recorrente,observacoes)
+      VALUES (?,?,?,?,?,?)`).run(descricao, categoria||'outros', valor, data, recorrente?1:0, observacoes||null);
+    res.json({ ok: true, data: { id: r.lastInsertRowid } });
+  } catch(e) { err(res, e.message); }
+});
+
+app.put('/api/pessoal/despesas/:id', (req, res) => {
+  try {
+    const { descricao, categoria, valor, data, recorrente, observacoes } = req.body;
+    db.prepare(`UPDATE pessoal_despesas SET descricao=?,categoria=?,valor=?,data=?,recorrente=?,observacoes=? WHERE id=?`)
+      .run(descricao, categoria||'outros', valor, data, recorrente?1:0, observacoes||null, req.params.id);
+    res.json({ ok: true });
+  } catch(e) { err(res, e.message); }
+});
+
+app.delete('/api/pessoal/despesas/:id', (req, res) => {
+  try {
+    db.prepare(`DELETE FROM pessoal_despesas WHERE id=?`).run(req.params.id);
+    res.json({ ok: true });
+  } catch(e) { err(res, e.message); }
+});
+
+// Metas pessoais
+app.get('/api/pessoal/metas', (req, res) => {
+  try {
+    const rows = db.prepare(`SELECT * FROM pessoal_metas ORDER BY status ASC, prazo ASC`).all();
+    res.json({ ok: true, data: rows });
+  } catch(e) { err(res, e.message); }
+});
+
+app.post('/api/pessoal/metas', (req, res) => {
+  try {
+    const { titulo, categoria, valor_meta, valor_atual, prazo, status, descricao } = req.body;
+    const r = db.prepare(`INSERT INTO pessoal_metas (titulo,categoria,valor_meta,valor_atual,prazo,status,descricao)
+      VALUES (?,?,?,?,?,?,?)`).run(titulo, categoria||'financeira', valor_meta||0, valor_atual||0, prazo||null, status||'em_andamento', descricao||null);
+    res.json({ ok: true, data: { id: r.lastInsertRowid } });
+  } catch(e) { err(res, e.message); }
+});
+
+app.put('/api/pessoal/metas/:id', (req, res) => {
+  try {
+    const { titulo, categoria, valor_meta, valor_atual, prazo, status, descricao } = req.body;
+    db.prepare(`UPDATE pessoal_metas SET titulo=?,categoria=?,valor_meta=?,valor_atual=?,prazo=?,status=?,descricao=? WHERE id=?`)
+      .run(titulo, categoria||'financeira', valor_meta||0, valor_atual||0, prazo||null, status||'em_andamento', descricao||null, req.params.id);
+    res.json({ ok: true });
+  } catch(e) { err(res, e.message); }
+});
+
+app.delete('/api/pessoal/metas/:id', (req, res) => {
+  try {
+    db.prepare(`DELETE FROM pessoal_metas WHERE id=?`).run(req.params.id);
+    res.json({ ok: true });
+  } catch(e) { err(res, e.message); }
+});
+
+// Tarefas pessoais
+app.get('/api/pessoal/tarefas', (req, res) => {
+  try {
+    const { concluida } = req.query;
+    let rows;
+    if (concluida !== undefined) {
+      rows = db.prepare(`SELECT * FROM pessoal_tarefas WHERE concluida=? ORDER BY
+        CASE prioridade WHEN 'alta' THEN 0 WHEN 'media' THEN 1 ELSE 2 END, prazo ASC`).all(concluida==='1'?1:0);
+    } else {
+      rows = db.prepare(`SELECT * FROM pessoal_tarefas ORDER BY concluida ASC,
+        CASE prioridade WHEN 'alta' THEN 0 WHEN 'media' THEN 1 ELSE 2 END, prazo ASC`).all();
+    }
+    res.json({ ok: true, data: rows });
+  } catch(e) { err(res, e.message); }
+});
+
+app.post('/api/pessoal/tarefas', (req, res) => {
+  try {
+    const { titulo, categoria, prioridade, prazo, descricao } = req.body;
+    const r = db.prepare(`INSERT INTO pessoal_tarefas (titulo,categoria,prioridade,prazo,descricao)
+      VALUES (?,?,?,?,?)`).run(titulo, categoria||'pessoal', prioridade||'media', prazo||null, descricao||null);
+    res.json({ ok: true, data: { id: r.lastInsertRowid } });
+  } catch(e) { err(res, e.message); }
+});
+
+app.put('/api/pessoal/tarefas/:id', (req, res) => {
+  try {
+    const { titulo, categoria, prioridade, prazo, concluida, descricao } = req.body;
+    db.prepare(`UPDATE pessoal_tarefas SET titulo=?,categoria=?,prioridade=?,prazo=?,concluida=?,descricao=? WHERE id=?`)
+      .run(titulo, categoria||'pessoal', prioridade||'media', prazo||null, concluida?1:0, descricao||null, req.params.id);
+    res.json({ ok: true });
+  } catch(e) { err(res, e.message); }
+});
+
+app.delete('/api/pessoal/tarefas/:id', (req, res) => {
+  try {
+    db.prepare(`DELETE FROM pessoal_tarefas WHERE id=?`).run(req.params.id);
+    res.json({ ok: true });
+  } catch(e) { err(res, e.message); }
+});
+
+// Hábitos pessoais
+app.get('/api/pessoal/habitos', (req, res) => {
+  try {
+    const hoje = new Date().toISOString().slice(0,10);
+    const habitos = db.prepare(`SELECT * FROM pessoal_habitos WHERE ativo=1 ORDER BY nome`).all();
+    const logs7 = db.prepare(`SELECT habito_id, data FROM pessoal_habitos_log
+      WHERE data >= date('now','-6 days') ORDER BY data DESC`).all();
+    const logMap = {};
+    logs7.forEach(l => {
+      if (!logMap[l.habito_id]) logMap[l.habito_id] = new Set();
+      logMap[l.habito_id].add(l.data);
+    });
+    const result = habitos.map(h => ({
+      ...h,
+      feito_hoje: !!(logMap[h.id]?.has(hoje)),
+      dias_semana: [...(logMap[h.id] || [])]
+    }));
+    res.json({ ok: true, data: result });
+  } catch(e) { err(res, e.message); }
+});
+
+app.post('/api/pessoal/habitos', (req, res) => {
+  try {
+    const { nome, icone, frequencia } = req.body;
+    const r = db.prepare(`INSERT INTO pessoal_habitos (nome,icone,frequencia) VALUES (?,?,?)`)
+      .run(nome, icone||'✅', frequencia||'diario');
+    res.json({ ok: true, data: { id: r.lastInsertRowid } });
+  } catch(e) { err(res, e.message); }
+});
+
+app.put('/api/pessoal/habitos/:id', (req, res) => {
+  try {
+    const { nome, icone, frequencia, ativo } = req.body;
+    db.prepare(`UPDATE pessoal_habitos SET nome=?,icone=?,frequencia=?,ativo=? WHERE id=?`)
+      .run(nome, icone||'✅', frequencia||'diario', ativo!==undefined?ativo:1, req.params.id);
+    res.json({ ok: true });
+  } catch(e) { err(res, e.message); }
+});
+
+app.delete('/api/pessoal/habitos/:id', (req, res) => {
+  try {
+    db.prepare(`DELETE FROM pessoal_habitos WHERE id=?`).run(req.params.id);
+    res.json({ ok: true });
+  } catch(e) { err(res, e.message); }
+});
+
+app.post('/api/pessoal/habitos/:id/toggle', (req, res) => {
+  try {
+    const hoje = new Date().toISOString().slice(0,10);
+    const existing = db.prepare(`SELECT id FROM pessoal_habitos_log WHERE habito_id=? AND data=?`).get(req.params.id, hoje);
+    if (existing) {
+      db.prepare(`DELETE FROM pessoal_habitos_log WHERE habito_id=? AND data=?`).run(req.params.id, hoje);
+      res.json({ ok: true, data: { feito: false } });
+    } else {
+      db.prepare(`INSERT OR IGNORE INTO pessoal_habitos_log (habito_id,data) VALUES (?,?)`).run(req.params.id, hoje);
+      res.json({ ok: true, data: { feito: true } });
+    }
+  } catch(e) { err(res, e.message); }
+});
+
 // ─── GLOBAL ERROR HANDLER ─────────────────────────────────────────────────────
 
 // Captura erros do multer (ex: arquivo muito grande) e outros erros de middleware

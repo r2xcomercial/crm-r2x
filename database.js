@@ -443,4 +443,70 @@ db.exec(`
   INSERT OR IGNORE INTO imposto_config (id) VALUES (1);
 `);
 
+// ─── GESTÃO PESSOAL ───────────────────────────────────────────────────────────
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS pessoal_receitas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    descricao TEXT NOT NULL,
+    categoria TEXT DEFAULT 'outros',
+    valor REAL NOT NULL,
+    data TEXT NOT NULL,
+    recorrente INTEGER DEFAULT 0,
+    observacoes TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pessoal_despesas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    descricao TEXT NOT NULL,
+    categoria TEXT DEFAULT 'outros',
+    valor REAL NOT NULL,
+    data TEXT NOT NULL,
+    recorrente INTEGER DEFAULT 0,
+    observacoes TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pessoal_metas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    titulo TEXT NOT NULL,
+    categoria TEXT DEFAULT 'financeira',
+    valor_meta REAL DEFAULT 0,
+    valor_atual REAL DEFAULT 0,
+    prazo TEXT,
+    status TEXT DEFAULT 'em_andamento',
+    descricao TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pessoal_tarefas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    titulo TEXT NOT NULL,
+    categoria TEXT DEFAULT 'pessoal',
+    prioridade TEXT DEFAULT 'media',
+    prazo TEXT,
+    concluida INTEGER DEFAULT 0,
+    descricao TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pessoal_habitos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    icone TEXT DEFAULT '✅',
+    frequencia TEXT DEFAULT 'diario',
+    ativo INTEGER DEFAULT 1,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pessoal_habitos_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    habito_id INTEGER NOT NULL REFERENCES pessoal_habitos(id) ON DELETE CASCADE,
+    data TEXT NOT NULL,
+    concluido INTEGER DEFAULT 1,
+    UNIQUE(habito_id, data)
+  );
+`);
+
 module.exports = db;
