@@ -239,6 +239,13 @@
 
     <div class="nav-section">Financeiro</div>
     <div class="nav-item" onclick="navigate('financeiro')"><span class="icon">💰</span> Financeiro</div>
+
+    <div class="nav-section">Pessoal</div>
+    <div class="nav-item" onclick="navigate('pf-dashboard')"><span class="icon">🏠</span> Painel Pessoal</div>
+    <div class="nav-item" onclick="navigate('pf-contas')"><span class="icon">🏦</span> Contas Bancárias</div>
+    <div class="nav-item" onclick="navigate('pf-cartoes')"><span class="icon">💳</span> Cartão de Crédito</div>
+    <div class="nav-item" onclick="navigate('pf-contas-fixas')"><span class="icon">🏡</span> Contas da Casa</div>
+    <div class="nav-item" onclick="navigate('pf-entradas')"><span class="icon">📈</span> Entradas</div>
   </nav>
 </div>
 
@@ -301,9 +308,12 @@ function navigate(page) {
 const pageTitles = {
   dashboard: 'Dashboard', leads: 'Leads', vendas: 'Vendas',
   clientes: 'Incorporadores', empreendimentos: 'Empreendimentos', corretores: 'Corretores',
-  financeiro: 'Financeiro', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores'
+  financeiro: 'Financeiro', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
+  'pf-dashboard': '🏠 Painel Pessoal', 'pf-contas': '🏦 Contas Bancárias',
+  'pf-cartoes': '💳 Cartão de Crédito', 'pf-contas-fixas': '🏡 Contas da Casa',
+  'pf-entradas': '📈 Entradas Pessoais'
 };
-const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario'];
+const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario','pf-contas','pf-cartoes','pf-contas-fixas','pf-entradas'];
 
 async function renderPage(page) {
   const c = document.getElementById('content');
@@ -319,6 +329,11 @@ async function renderPage(page) {
       case 'financeiro': await renderFinanceiro(); break;
       case 'calendario': await renderCalendario(); break;
       case 'ranking': await renderRanking(); break;
+      case 'pf-dashboard': await renderPFDashboard(); break;
+      case 'pf-contas': await renderPFContas(); break;
+      case 'pf-cartoes': await renderPFCartoes(); break;
+      case 'pf-contas-fixas': await renderPFContasFixas(); break;
+      case 'pf-entradas': await renderPFEntradas(); break;
     }
   } catch(e) {
     c.innerHTML = `<div style="color:var(--danger);padding:24px">Erro ao carregar: ${e.message}</div>`;
@@ -486,8 +501,8 @@ async function renderDashboard() {
   });
 }
 
-function kpi(icon, label, value, sub) {
-  return `<div class="kpi-card"><div class="kpi-icon">${icon}</div><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ''}</div>`;
+function kpi(icon, label, value, sub, color) {
+  return `<div class="kpi-card"><div class="kpi-icon">${icon}</div><div class="kpi-label">${label}</div><div class="kpi-value" style="${color?'color:'+color:''}">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ''}</div>`;
 }
 
 // ─── LEADS ───────────────────────────────────────────────────────────────────
@@ -1595,6 +1610,8 @@ function handleSearch(q) {
     case 'clientes': renderClientes(f); break;
     case 'empreendimentos': renderEmpreendimentos(f); break;
     case 'corretores': renderCorretores(f); break;
+    case 'pf-contas': renderPFContas(f); break;
+    case 'pf-entradas': renderPFEntradas(f); break;
   }
 }
 
@@ -1607,6 +1624,10 @@ function handleAdd() {
     case 'corretores': openCorretorModal(); break;
     case 'financeiro': finTab==='entradas' ? openEntradaModal() : finTab==='saidas' ? openSaidaModal() : finTab==='distribuicoes' ? openDistModal() : openCalModal(); break;
     case 'calendario': openCalModal(); break;
+    case 'pf-contas': openPFContaModal(); break;
+    case 'pf-cartoes': pfCartaoTab==='lancamentos' ? openPFLancamentoModal() : openPFCartaoModal(); break;
+    case 'pf-contas-fixas': openPFContaFixaModal(); break;
+    case 'pf-entradas': pfEntradasTab==='fontes' ? openPFFonteModal() : openPFEntradaModal(); break;
   }
 }
 
@@ -1641,6 +1662,828 @@ function toast(msg, type = 'success') {
   el.innerHTML = `${type==='success'?'✅':'❌'} ${msg}`;
   document.getElementById('toast').appendChild(el);
   setTimeout(() => el.remove(), 3500);
+}
+
+
+// ─── GESTÃO PESSOAL ──────────────────────────────────────────────────────────
+
+let pfMesAtual = new Date().toISOString().slice(0, 7); // YYYY-MM
+let pfCartaoTab = 'lancamentos';
+let pfEntradasTab = 'entradas';
+let pfContaSelecionada = null;
+let pfCartaoSelecionado = null;
+
+function pfFmtMes(m) {
+  if (!m) return '';
+  const [y, mo] = m.split('-');
+  const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  return `${meses[parseInt(mo)-1]}/${y}`;
+}
+function pfMesAnterior(m) {
+  const d = new Date(m + '-01'); d.setMonth(d.getMonth() - 1);
+  return d.toISOString().slice(0, 7);
+}
+function pfMesProximo(m) {
+  const d = new Date(m + '-01'); d.setMonth(d.getMonth() + 1);
+  return d.toISOString().slice(0, 7);
+}
+function pfTitularBadge(t) {
+  return t === 'Silvia'
+    ? '<span class="badge badge-yellow">Silvia</span>'
+    : '<span class="badge badge-blue">Ramon</span>';
+}
+
+// ── PAINEL PESSOAL ───────────────────────────────────────────────────────────
+
+async function renderPFDashboard() {
+  const r = await get('/api/pf/dashboard');
+  if (!r.ok) return;
+  const { kpis, contas, ultimas_entradas, ultimos_cartao, mes } = r.data;
+  const saldoColor = kpis.saldo_total >= 0 ? 'var(--success)' : 'var(--danger)';
+  const entLiq = kpis.entradas_mes - kpis.cartoes_mes - kpis.fixas_pagas;
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <div style="font-size:15px;font-weight:600;color:var(--text2)">Mês: ${pfFmtMes(mes)}</div>
+    </div>
+    <div class="kpi-grid" style="margin-bottom:24px">
+      ${kpi('📈', 'Entradas Recebidas', fmt(kpis.entradas_mes), 'no mês')}
+      ${kpi('⏳', 'A Receber', fmt(kpis.entradas_pendentes), 'pendente')}
+      ${kpi('💳', 'Cartões (fatura)', fmt(kpis.cartoes_mes), 'mês atual')}
+      ${kpi('🏡', 'Contas Fixas Pagas', fmt(kpis.fixas_pagas), `pendente: ${fmt(kpis.fixas_pendentes)}`)}
+      ${kpi('💰', 'Saldo Bancário', fmt(kpis.saldo_total), 'todas as contas', saldoColor)}
+      ${kpi('📊', 'Sobra Estimada', fmt(entLiq), 'entradas − cartões − fixas')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">🏦 Contas Bancárias</div></div>
+        <table><thead><tr><th>Conta</th><th>Titular</th><th>Saldo</th></tr></thead>
+        <tbody>
+          ${contas.length ? contas.map(c => {
+            const saldo = c.saldo_inicial + c.total_entradas - c.total_saidas;
+            return `<tr>
+              <td><strong>${c.nome}</strong><br><span style="font-size:11px;color:var(--text2)">${c.banco||''}</span></td>
+              <td>${pfTitularBadge(c.titular)}</td>
+              <td style="color:${saldo>=0?'var(--success)':'var(--danger)'};font-weight:700">${fmt(saldo)}</td>
+            </tr>`;
+          }).join('') : '<tr class="empty-row"><td colspan="3">Nenhuma conta cadastrada</td></tr>'}
+        </tbody></table>
+      </div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">📈 Últimas Entradas</div></div>
+        <table><thead><tr><th>Data</th><th>Origem</th><th>Valor</th></tr></thead>
+        <tbody>
+          ${ultimas_entradas.length ? ultimas_entradas.map(e => `<tr>
+            <td>${fmtDate(e.data)}</td>
+            <td>${e.fonte_nome||e.descricao||'—'}</td>
+            <td style="color:var(--success);font-weight:600">${fmt(e.valor)}</td>
+          </tr>`).join('') : '<tr class="empty-row"><td colspan="3">Nenhuma entrada</td></tr>'}
+        </tbody></table>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><div class="table-title">💳 Últimos Lançamentos de Cartão</div></div>
+      <table><thead><tr><th>Data</th><th>Cartão</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead>
+      <tbody>
+        ${ultimos_cartao.length ? ultimos_cartao.map(l => `<tr>
+          <td>${fmtDate(l.data)}</td>
+          <td>${l.cartao_nome||'—'}</td>
+          <td>${l.descricao}</td>
+          <td><span class="badge badge-gray">${l.categoria||'—'}</span></td>
+          <td style="color:var(--danger);font-weight:600">${fmt(l.valor)}</td>
+        </tr>`).join('') : '<tr class="empty-row"><td colspan="5">Nenhum lançamento</td></tr>'}
+      </tbody></table>
+    </div>
+  `;
+}
+
+
+
+// ── CONTAS BANCÁRIAS ─────────────────────────────────────────────────────────
+
+let pfContasData = [];
+
+async function renderPFContas(filter = '') {
+  const r = await get('/api/pf/contas');
+  if (!r.ok) return;
+  pfContasData = r.data;
+  const rows = filter ? pfContasData.filter(c =>
+    c.nome.toLowerCase().includes(filter.toLowerCase()) ||
+    (c.banco||'').toLowerCase().includes(filter.toLowerCase()) ||
+    (c.titular||'').toLowerCase().includes(filter.toLowerCase())
+  ) : pfContasData;
+
+  document.getElementById('content').innerHTML = `
+    <div class="table-card" style="margin-bottom:20px">
+      <div class="table-header">
+        <div class="table-title">🏦 Contas Bancárias (${rows.length})</div>
+        <button class="btn btn-primary" onclick="openPFContaModal()">+ Nova Conta</button>
+      </div>
+      <table>
+        <thead><tr><th>Nome</th><th>Banco</th><th>Titular</th><th>Tipo</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th></th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(c => `
+            <tr style="cursor:pointer" onclick="openPFTransacoes(${c.id}, '${c.nome}')">
+              <td><strong>${c.nome}</strong></td>
+              <td>${c.banco||'—'}</td>
+              <td>${pfTitularBadge(c.titular)}</td>
+              <td><span class="badge badge-gray">${c.tipo||'corrente'}</span></td>
+              <td style="color:var(--success)">${fmt(c.total_entradas)}</td>
+              <td style="color:var(--danger)">${fmt(c.total_saidas)}</td>
+              <td style="color:${c.saldo>=0?'var(--success)':'var(--danger)'};font-weight:700">${fmt(c.saldo)}</td>
+              <td onclick="event.stopPropagation()" style="display:flex;gap:4px">
+                <button class="btn-icon btn-edit" onclick="editPFConta(${c.id})">✏️</button>
+                <button class="btn-icon btn-delete" onclick="deletePFConta(${c.id})">🗑️</button>
+              </td>
+            </tr>`).join('') : '<tr class="empty-row"><td colspan="8">Nenhuma conta cadastrada</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+    <div id="pf-transacoes-area"></div>
+  `;
+}
+
+async function openPFTransacoes(contaId, contaNome) {
+  pfContaSelecionada = contaId;
+  const r = await get(`/api/pf/contas/${contaId}/transacoes?mes=${pfMesAtual}`);
+  if (!r.ok) return;
+  const rows = r.data;
+  const total_e = rows.filter(t => t.tipo==='entrada').reduce((s,t)=>s+t.valor,0);
+  const total_s = rows.filter(t => t.tipo==='saida').reduce((s,t)=>s+t.valor,0);
+
+  const catOptions = ['Alimentação','Saúde','Transporte','Lazer','Educação','Vestuário','Casa','Outros'].map(c=>`<option>${c}</option>`).join('');
+
+  document.getElementById('pf-transacoes-area').innerHTML = `
+    <div class="table-card">
+      <div class="table-header" style="flex-wrap:wrap;gap:8px">
+        <div class="table-title">📋 ${contaNome} — ${pfFmtMes(pfMesAtual)}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-secondary" onclick="pfNavMes(-1)">◀</button>
+          <span style="font-weight:600;min-width:80px;text-align:center">${pfFmtMes(pfMesAtual)}</span>
+          <button class="btn btn-secondary" onclick="pfNavMes(1)">▶</button>
+          <label class="btn btn-secondary" style="cursor:pointer">
+            📤 Upload Extrato <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="uploadExtratoBancario(${contaId}, this)">
+          </label>
+          <button class="btn btn-primary" onclick="openPFTransacaoModal(${contaId})">+ Lançamento</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;padding:12px 20px;border-bottom:1px solid var(--border)">
+        <span style="color:var(--success)">📥 Entradas: <strong>${fmt(total_e)}</strong></span>
+        <span style="color:var(--danger)">📤 Saídas: <strong>${fmt(total_s)}</strong></span>
+        <span style="color:${total_e-total_s>=0?'var(--success)':'var(--danger)'}">💰 Saldo: <strong>${fmt(total_e-total_s)}</strong></span>
+      </div>
+      <table>
+        <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Tipo</th><th>Valor</th><th></th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(t => `
+            <tr>
+              <td>${fmtDate(t.data)}</td>
+              <td>${t.descricao}</td>
+              <td><span class="badge badge-gray">${t.categoria||'—'}</span></td>
+              <td><span class="badge ${t.tipo==='entrada'?'badge-green':'badge-red'}">${t.tipo}</span></td>
+              <td style="color:${t.tipo==='entrada'?'var(--success)':'var(--danger)'};font-weight:600">${fmt(t.valor)}</td>
+              <td><button class="btn-icon btn-delete" onclick="deletePFTransacao(${t.id})">🗑️</button></td>
+            </tr>`).join('') : '<tr class="empty-row"><td colspan="6">Nenhum lançamento no mês</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function pfNavMes(dir) {
+  pfMesAtual = dir === -1 ? pfMesAnterior(pfMesAtual) : pfMesProximo(pfMesAtual);
+  if (pfContaSelecionada) {
+    const conta = pfContasData.find(c => c.id === pfContaSelecionada);
+    if (conta) openPFTransacoes(pfContaSelecionada, conta.nome);
+  }
+}
+
+async function uploadExtratoBancario(contaId, input) {
+  const file = input.files[0]; if (!file) return;
+  const fd = new FormData(); fd.append('arquivo', file);
+  const r = await fetch(`/api/pf/contas/${contaId}/upload`, {
+    method: 'POST', headers: {'x-crm-token': TOKEN}, body: fd
+  });
+  const data = await r.json();
+  if (data.ok) {
+    toast(`${data.data.importadas} transações importadas!`);
+    const conta = pfContasData.find(c => c.id === contaId);
+    if (conta) openPFTransacoes(contaId, conta.nome);
+  } else toast(data.error, 'error');
+}
+
+function openPFContaModal(id) {
+  const c = id ? pfContasData.find(x => x.id === id) : null;
+  openModal(c ? 'Editar Conta' : 'Nova Conta Bancária', `
+    <div class="form-row">
+      <div class="form-group"><label>Nome *</label><input id="pfc-nome" class="form-input" value="${c?.nome||''}"></div>
+      <div class="form-group"><label>Banco</label><input id="pfc-banco" class="form-input" value="${c?.banco||''}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Titular</label>
+        <select id="pfc-titular" class="form-input">
+          <option ${(!c||c.titular==='Ramon')?'selected':''}>Ramon</option>
+          <option ${c?.titular==='Silvia'?'selected':''}>Silvia</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Tipo</label>
+        <select id="pfc-tipo" class="form-input">
+          <option value="corrente" ${(!c||c.tipo==='corrente')?'selected':''}>Conta Corrente</option>
+          <option value="poupanca" ${c?.tipo==='poupanca'?'selected':''}>Poupança</option>
+          <option value="investimento" ${c?.tipo==='investimento'?'selected':''}>Investimento</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>Saldo Inicial (R$)</label><input id="pfc-saldo" class="form-input" type="number" step="0.01" value="${c?.saldo_inicial||0}"></div>
+  `, async () => {
+    const body = { nome: v('pfc-nome'), banco: v('pfc-banco'), titular: v('pfc-titular'), tipo: v('pfc-tipo'), saldo_inicial: v('pfc-saldo') };
+    if (!body.nome) return toast('Nome obrigatório', 'error');
+    const r = c ? await put(`/api/pf/contas/${c.id}`, body) : await post('/api/pf/contas', body);
+    if (r.ok) { closeModal(); toast('Conta salva!'); renderPFContas(); }
+    else toast(r.error, 'error');
+  });
+}
+
+function editPFConta(id) { openPFContaModal(id); }
+
+async function deletePFConta(id) {
+  if (!confirm('Excluir conta e todas as transações?')) return;
+  const r = await del(`/api/pf/contas/${id}`);
+  if (r.ok) { toast('Conta excluída!'); renderPFContas(); }
+  else toast(r.error, 'error');
+}
+
+function openPFTransacaoModal(contaId) {
+  openModal('Novo Lançamento', `
+    <div class="form-row">
+      <div class="form-group"><label>Data *</label><input id="pft-data" class="form-input" type="date" value="${today()}"></div>
+      <div class="form-group"><label>Tipo</label>
+        <select id="pft-tipo" class="form-input">
+          <option value="saida">Saída</option>
+          <option value="entrada">Entrada</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>Descrição *</label><input id="pft-desc" class="form-input"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Valor (R$) *</label><input id="pft-valor" class="form-input" type="number" step="0.01"></div>
+      <div class="form-group"><label>Categoria</label>
+        <select id="pft-cat" class="form-input">
+          <option value="">— Selecione —</option>
+          ${['Alimentação','Saúde','Transporte','Lazer','Educação','Vestuário','Casa','Investimento','Salário','Outros'].map(c=>`<option>${c}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>Observações</label><textarea id="pft-obs" class="form-input" rows="2"></textarea></div>
+  `, async () => {
+    const body = { data: v('pft-data'), descricao: v('pft-desc'), valor: v('pft-valor'), tipo: v('pft-tipo'), categoria: v('pft-cat'), observacoes: v('pft-obs') };
+    if (!body.data || !body.descricao || !body.valor) return toast('Preencha os campos obrigatórios', 'error');
+    const r = await post(`/api/pf/contas/${contaId}/transacoes`, body);
+    if (r.ok) {
+      closeModal(); toast('Lançamento salvo!');
+      const conta = pfContasData.find(c => c.id === contaId);
+      if (conta) openPFTransacoes(contaId, conta.nome);
+    } else toast(r.error, 'error');
+  });
+}
+
+async function deletePFTransacao(id) {
+  if (!confirm('Excluir lançamento?')) return;
+  const r = await del(`/api/pf/transacoes/${id}`);
+  if (r.ok) {
+    toast('Lançamento excluído!');
+    if (pfContaSelecionada) {
+      const conta = pfContasData.find(c => c.id === pfContaSelecionada);
+      if (conta) openPFTransacoes(pfContaSelecionada, conta.nome);
+    }
+  } else toast(r.error, 'error');
+}
+
+// ── CARTÃO DE CRÉDITO ────────────────────────────────────────────────────────
+
+let pfCartoesData = [], pfLancamentosData = [];
+
+async function renderPFCartoes() {
+  const r = await get('/api/pf/cartoes');
+  if (!r.ok) return;
+  pfCartoesData = r.data;
+
+  document.getElementById('content').innerHTML = `
+    <div class="fin-tabs">
+      <button class="fin-tab ${pfCartaoTab==='lancamentos'?'active':''}" onclick="setPFCartaoTab('lancamentos')">💳 Lançamentos</button>
+      <button class="fin-tab ${pfCartaoTab==='cartoes'?'active':''}" onclick="setPFCartaoTab('cartoes')">⚙️ Gerenciar Cartões</button>
+    </div>
+    <div id="pf-cartao-content"></div>
+  `;
+  renderPFCartaoTab();
+}
+
+function setPFCartaoTab(tab) {
+  pfCartaoTab = tab;
+  document.querySelectorAll('.fin-tab').forEach(t => {
+    t.classList.toggle('active', (tab==='lancamentos' && t.textContent.includes('Lançamentos')) || (tab==='cartoes' && t.textContent.includes('Gerenciar')));
+  });
+  renderPFCartaoTab();
+}
+
+async function renderPFCartaoTab() {
+  const el = document.getElementById('pf-cartao-content');
+  if (!el) return;
+
+  if (pfCartaoTab === 'cartoes') {
+    el.innerHTML = `
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">💳 Cartões (${pfCartoesData.length})</div>
+          <button class="btn btn-primary" onclick="openPFCartaoModal()">+ Novo Cartão</button>
+        </div>
+        <table>
+          <thead><tr><th>Nome</th><th>Bandeira</th><th>Titular</th><th>Limite</th><th>Fechamento</th><th>Vencimento</th><th>Fatura Atual</th><th></th></tr></thead>
+          <tbody>
+            ${pfCartoesData.length ? pfCartoesData.map(c => `
+              <tr>
+                <td><strong>${c.nome}</strong></td>
+                <td>${c.bandeira||'—'}</td>
+                <td>${pfTitularBadge(c.titular)}</td>
+                <td>${c.limite ? fmt(c.limite) : '—'}</td>
+                <td>${c.dia_fechamento ? `Dia ${c.dia_fechamento}` : '—'}</td>
+                <td>${c.dia_vencimento ? `Dia ${c.dia_vencimento}` : '—'}</td>
+                <td style="color:var(--danger);font-weight:600">${fmt(c.total_mes)}</td>
+                <td style="display:flex;gap:4px">
+                  <button class="btn-icon btn-edit" onclick="editPFCartao(${c.id})">✏️</button>
+                  <button class="btn-icon btn-delete" onclick="deletePFCartao(${c.id})">🗑️</button>
+                </td>
+              </tr>`).join('') : '<tr class="empty-row"><td colspan="8">Nenhum cartão cadastrado</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } else {
+    // Tab lançamentos
+    const mesFatura = pfMesAtual;
+    // Buscar todos lançamentos do mês para todos os cartões
+    let allLanc = [];
+    for (const c of pfCartoesData) {
+      const r2 = await get(`/api/pf/cartoes/${c.id}/lancamentos?mes=${mesFatura}`);
+      if (r2.ok) allLanc = allLanc.concat(r2.data.map(l => ({ ...l, cartao_nome: c.nome, cartao_titular: c.titular })));
+    }
+    pfLancamentosData = allLanc;
+    const totalMes = allLanc.reduce((s,l) => s+l.valor, 0);
+
+    // Agrupar por categoria
+    const porCat = {};
+    allLanc.forEach(l => { const k = l.categoria||'Outros'; porCat[k] = (porCat[k]||0) + l.valor; });
+
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <button class="btn btn-secondary" onclick="pfNavMesCartao(-1)">◀</button>
+        <span style="font-weight:700;font-size:15px">${pfFmtMes(mesFatura)}</span>
+        <button class="btn btn-secondary" onclick="pfNavMesCartao(1)">▶</button>
+        <span style="color:var(--danger);font-weight:700;font-size:16px;margin-left:12px">Total: ${fmt(totalMes)}</span>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          ${pfCartoesData.length ? `<select id="pf-upload-cartao" class="form-input" style="width:auto">
+            ${pfCartoesData.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('')}
+          </select>
+          <label class="btn btn-secondary" style="cursor:pointer">
+            📤 Upload Fatura <input type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="uploadFaturaCartao(this)">
+          </label>` : ''}
+          <button class="btn btn-primary" onclick="openPFLancamentoModal()">+ Lançamento</button>
+        </div>
+      </div>
+      ${Object.keys(porCat).length > 1 ? `
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+        ${Object.entries(porCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
+          <div class="kpi-card" style="flex:0 0 auto;padding:10px 16px;min-width:120px">
+            <div class="kpi-label">${k}</div>
+            <div style="font-weight:700;color:var(--danger)">${fmt(v)}</div>
+          </div>`).join('')}
+      </div>` : ''}
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">💳 Lançamentos — ${pfFmtMes(mesFatura)} (${allLanc.length})</div></div>
+        <table>
+          <thead><tr><th>Data</th><th>Cartão</th><th>Titular</th><th>Descrição</th><th>Categoria</th><th>Parcela</th><th>Valor</th><th></th></tr></thead>
+          <tbody>
+            ${allLanc.length ? allLanc.sort((a,b)=>b.data.localeCompare(a.data)).map(l => `
+              <tr>
+                <td>${fmtDate(l.data)}</td>
+                <td>${l.cartao_nome}</td>
+                <td>${pfTitularBadge(l.cartao_titular)}</td>
+                <td>${l.descricao}</td>
+                <td><span class="badge badge-gray">${l.categoria||'—'}</span></td>
+                <td>${l.parcela_num ? `${l.parcela_num}/${l.parcela_total}` : '—'}</td>
+                <td style="color:var(--danger);font-weight:600">${fmt(l.valor)}</td>
+                <td><button class="btn-icon btn-delete" onclick="deletePFLancamento(${l.id})">🗑️</button></td>
+              </tr>`).join('') : '<tr class="empty-row"><td colspan="8">Nenhum lançamento no mês</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+}
+
+async function pfNavMesCartao(dir) {
+  pfMesAtual = dir === -1 ? pfMesAnterior(pfMesAtual) : pfMesProximo(pfMesAtual);
+  renderPFCartaoTab();
+}
+
+async function uploadFaturaCartao(input) {
+  const file = input.files[0]; if (!file) return;
+  const cartaoId = v('pf-upload-cartao'); if (!cartaoId) return toast('Selecione um cartão', 'error');
+  const fd = new FormData(); fd.append('arquivo', file); fd.append('mes_fatura', pfMesAtual);
+  const r = await fetch(`/api/pf/cartoes/${cartaoId}/upload`, {
+    method: 'POST', headers: {'x-crm-token': TOKEN}, body: fd
+  });
+  const data = await r.json();
+  if (data.ok) { toast(`${data.data.importadas} lançamentos importados!`); renderPFCartaoTab(); }
+  else toast(data.error, 'error');
+}
+
+function openPFCartaoModal(id) {
+  const c = id ? pfCartoesData.find(x => x.id === id) : null;
+  openModal(c ? 'Editar Cartão' : 'Novo Cartão', `
+    <div class="form-row">
+      <div class="form-group"><label>Nome *</label><input id="pfcc-nome" class="form-input" value="${c?.nome||''}"></div>
+      <div class="form-group"><label>Bandeira</label>
+        <select id="pfcc-bandeira" class="form-input">
+          <option value="">— Selecione —</option>
+          ${['Visa','Mastercard','Elo','Amex','Hipercard'].map(b=>`<option ${c?.bandeira===b?'selected':''}>${b}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Titular</label>
+        <select id="pfcc-titular" class="form-input">
+          <option ${(!c||c.titular==='Ramon')?'selected':''}>Ramon</option>
+          <option ${c?.titular==='Silvia'?'selected':''}>Silvia</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Limite (R$)</label><input id="pfcc-limite" class="form-input" type="number" step="0.01" value="${c?.limite||''}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Dia Fechamento</label><input id="pfcc-fech" class="form-input" type="number" min="1" max="31" value="${c?.dia_fechamento||''}"></div>
+      <div class="form-group"><label>Dia Vencimento</label><input id="pfcc-venc" class="form-input" type="number" min="1" max="31" value="${c?.dia_vencimento||''}"></div>
+    </div>
+  `, async () => {
+    const body = { nome: v('pfcc-nome'), bandeira: v('pfcc-bandeira'), titular: v('pfcc-titular'), limite: v('pfcc-limite'), dia_fechamento: v('pfcc-fech'), dia_vencimento: v('pfcc-venc') };
+    if (!body.nome) return toast('Nome obrigatório', 'error');
+    const r = c ? await put(`/api/pf/cartoes/${c.id}`, body) : await post('/api/pf/cartoes', body);
+    if (r.ok) { closeModal(); toast('Cartão salvo!'); renderPFCartoes(); }
+    else toast(r.error, 'error');
+  });
+}
+
+function editPFCartao(id) { openPFCartaoModal(id); }
+
+async function deletePFCartao(id) {
+  if (!confirm('Excluir cartão e todos os lançamentos?')) return;
+  const r = await del(`/api/pf/cartoes/${id}`);
+  if (r.ok) { toast('Cartão excluído!'); renderPFCartoes(); }
+  else toast(r.error, 'error');
+}
+
+function openPFLancamentoModal() {
+  if (!pfCartoesData.length) return toast('Cadastre um cartão primeiro', 'error');
+  openModal('Novo Lançamento de Cartão', `
+    <div class="form-row">
+      <div class="form-group"><label>Cartão *</label>
+        <select id="pfl-cartao" class="form-input">
+          ${pfCartoesData.map(c=>`<option value="${c.id}">${c.nome} (${c.titular})</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Data *</label><input id="pfl-data" class="form-input" type="date" value="${today()}"></div>
+    </div>
+    <div class="form-group"><label>Descrição *</label><input id="pfl-desc" class="form-input"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Valor (R$) *</label><input id="pfl-valor" class="form-input" type="number" step="0.01"></div>
+      <div class="form-group"><label>Categoria</label>
+        <select id="pfl-cat" class="form-input">
+          <option value="">— Selecione —</option>
+          ${['Alimentação','Saúde','Transporte','Lazer','Educação','Vestuário','Casa','Assinatura','Outros'].map(c=>`<option>${c}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Parcela Nº</label><input id="pfl-pnum" class="form-input" type="number" min="1"></div>
+      <div class="form-group"><label>Total Parcelas</label><input id="pfl-ptot" class="form-input" type="number" min="1"></div>
+    </div>
+    <div class="form-group"><label>Mês Fatura</label><input id="pfl-mesfat" class="form-input" type="month" value="${pfMesAtual}"></div>
+  `, async () => {
+    const body = { data: v('pfl-data'), descricao: v('pfl-desc'), valor: v('pfl-valor'), categoria: v('pfl-cat'), parcela_num: v('pfl-pnum')||null, parcela_total: v('pfl-ptot')||null, mes_fatura: v('pfl-mesfat') };
+    if (!body.data || !body.descricao || !body.valor) return toast('Preencha os campos obrigatórios', 'error');
+    const cartaoId = v('pfl-cartao');
+    const r = await post(`/api/pf/cartoes/${cartaoId}/lancamentos`, body);
+    if (r.ok) { closeModal(); toast('Lançamento salvo!'); renderPFCartaoTab(); }
+    else toast(r.error, 'error');
+  });
+}
+
+async function deletePFLancamento(id) {
+  if (!confirm('Excluir lançamento?')) return;
+  const r = await del(`/api/pf/lancamentos-cartao/${id}`);
+  if (r.ok) { toast('Lançamento excluído!'); renderPFCartaoTab(); }
+  else toast(r.error, 'error');
+}
+
+// ── CONTAS DA CASA ───────────────────────────────────────────────────────────
+
+let pfContasFixasData = [];
+
+async function renderPFContasFixas() {
+  const mes = pfMesAtual;
+  const r = await get(`/api/pf/contas-fixas?mes=${mes}`);
+  if (!r.ok) return;
+  pfContasFixasData = r.data;
+  const pagas = pfContasFixasData.filter(c => c.pago);
+  const pendentes = pfContasFixasData.filter(c => !c.pago);
+  const totalPago = pagas.reduce((s,c) => s+c.valor, 0);
+  const totalPend = pendentes.reduce((s,c) => s+c.valor, 0);
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="pfNavMesFixas(-1)">◀</button>
+      <span style="font-weight:700;font-size:16px">${pfFmtMes(mes)}</span>
+      <button class="btn btn-secondary" onclick="pfNavMesFixas(1)">▶</button>
+      <div style="margin-left:auto;display:flex;gap:12px;align-items:center">
+        <span style="color:var(--success)">✅ Pago: <strong>${fmt(totalPago)}</strong></span>
+        <span style="color:var(--warning)">⏳ Pendente: <strong>${fmt(totalPend)}</strong></span>
+        <button class="btn btn-primary" onclick="openPFContaFixaModal()">+ Nova Conta</button>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><div class="table-title">🏡 Contas da Casa — ${pfFmtMes(mes)}</div></div>
+      <table>
+        <thead><tr><th>Nome</th><th>Categoria</th><th>Vencimento</th><th>Valor</th><th>Status</th><th>Pago em</th><th></th></tr></thead>
+        <tbody>
+          ${pfContasFixasData.length ? pfContasFixasData.map(c => `
+            <tr>
+              <td><strong>${c.nome}</strong></td>
+              <td><span class="badge badge-gray">${c.categoria||'casa'}</span></td>
+              <td>${c.dia_vencimento ? `Dia ${c.dia_vencimento}` : '—'}</td>
+              <td style="font-weight:600">${fmt(c.valor)}</td>
+              <td>
+                ${c.pago
+                  ? '<span class="badge badge-green">✅ Pago</span>'
+                  : '<span class="badge badge-yellow">⏳ Pendente</span>'}
+              </td>
+              <td>${c.data_pagamento ? fmtDate(c.data_pagamento) : '—'}</td>
+              <td style="display:flex;gap:4px">
+                ${!c.pago
+                  ? `<button class="btn-icon" title="Marcar como pago" onclick="pagarContaFixa(${c.id})">✅</button>`
+                  : `<button class="btn-icon" title="Desmarcar" onclick="despagarContaFixa(${c.id})">↩️</button>`}
+                <button class="btn-icon btn-edit" onclick="editPFContaFixa(${c.id})">✏️</button>
+                <button class="btn-icon btn-delete" onclick="deletePFContaFixa(${c.id})">🗑️</button>
+              </td>
+            </tr>`).join('') : '<tr class="empty-row"><td colspan="7">Nenhuma conta cadastrada</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function pfNavMesFixas(dir) {
+  pfMesAtual = dir === -1 ? pfMesAnterior(pfMesAtual) : pfMesProximo(pfMesAtual);
+  renderPFContasFixas();
+}
+
+async function pagarContaFixa(id) {
+  const r = await post(`/api/pf/contas-fixas/${id}/pagar`, { mes_ano: pfMesAtual, data_pagamento: today() });
+  if (r.ok) { toast('Conta marcada como paga!'); renderPFContasFixas(); }
+  else toast(r.error, 'error');
+}
+
+async function despagarContaFixa(id) {
+  const r = await post(`/api/pf/contas-fixas/${id}/despagar`, { mes_ano: pfMesAtual });
+  if (r.ok) { toast('Pagamento desmarcado!'); renderPFContasFixas(); }
+  else toast(r.error, 'error');
+}
+
+function openPFContaFixaModal(id) {
+  const c = id ? pfContasFixasData.find(x => x.id === id) : null;
+  openModal(c ? 'Editar Conta Fixa' : 'Nova Conta Fixa', `
+    <div class="form-group"><label>Nome *</label><input id="pfcf-nome" class="form-input" value="${c?.nome||''}"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Valor (R$) *</label><input id="pfcf-valor" class="form-input" type="number" step="0.01" value="${c?.valor||''}"></div>
+      <div class="form-group"><label>Dia Vencimento</label><input id="pfcf-dia" class="form-input" type="number" min="1" max="31" value="${c?.dia_vencimento||''}"></div>
+    </div>
+    <div class="form-group"><label>Categoria</label>
+      <select id="pfcf-cat" class="form-input">
+        ${['casa','energia','água','internet','telefone','condomínio','seguro','escola','saúde','outros'].map(cat=>`<option value="${cat}" ${c?.categoria===cat?'selected':''}>${cat.charAt(0).toUpperCase()+cat.slice(1)}</option>`).join('')}
+      </select>
+    </div>
+  `, async () => {
+    const body = { nome: v('pfcf-nome'), valor: v('pfcf-valor'), dia_vencimento: v('pfcf-dia'), categoria: v('pfcf-cat') };
+    if (!body.nome || !body.valor) return toast('Nome e valor obrigatórios', 'error');
+    const r = c ? await put(`/api/pf/contas-fixas/${c.id}`, body) : await post('/api/pf/contas-fixas', body);
+    if (r.ok) { closeModal(); toast('Conta salva!'); renderPFContasFixas(); }
+    else toast(r.error, 'error');
+  });
+}
+
+function editPFContaFixa(id) { openPFContaFixaModal(id); }
+
+async function deletePFContaFixa(id) {
+  if (!confirm('Excluir esta conta fixa?')) return;
+  const r = await del(`/api/pf/contas-fixas/${id}`);
+  if (r.ok) { toast('Conta excluída!'); renderPFContasFixas(); }
+  else toast(r.error, 'error');
+}
+
+// ── ENTRADAS ─────────────────────────────────────────────────────────────────
+
+let pfFontesData = [], pfEntradasData = [];
+
+async function renderPFEntradas(filter = '') {
+  const [fr, er] = await Promise.all([get('/api/pf/fontes-renda'), get(`/api/pf/entradas?mes=${pfMesAtual}`)]);
+  if (!fr.ok || !er.ok) return;
+  pfFontesData = fr.data;
+  pfEntradasData = er.data;
+
+  document.getElementById('content').innerHTML = `
+    <div class="fin-tabs">
+      <button class="fin-tab ${pfEntradasTab==='entradas'?'active':''}" onclick="setPFEntradasTab('entradas')">📈 Entradas do Mês</button>
+      <button class="fin-tab ${pfEntradasTab==='fontes'?'active':''}" onclick="setPFEntradasTab('fontes')">🏢 Fontes de Renda</button>
+    </div>
+    <div id="pf-entradas-content"></div>
+  `;
+  renderPFEntradasTab(filter);
+}
+
+function setPFEntradasTab(tab) {
+  pfEntradasTab = tab;
+  document.querySelectorAll('.fin-tab').forEach(t => {
+    t.classList.toggle('active', (tab==='entradas' && t.textContent.includes('Entradas')) || (tab==='fontes' && t.textContent.includes('Fontes')));
+  });
+  renderPFEntradasTab();
+}
+
+function renderPFEntradasTab(filter = '') {
+  const el = document.getElementById('pf-entradas-content');
+  if (!el) return;
+
+  if (pfEntradasTab === 'fontes') {
+    el.innerHTML = `
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">🏢 Fontes de Renda (${pfFontesData.length})</div>
+          <button class="btn btn-primary" onclick="openPFFonteModal()">+ Nova Fonte</button>
+        </div>
+        <table>
+          <thead><tr><th>Nome</th><th>Tipo</th><th>Titular</th><th>Descrição</th><th>Total Recebido</th><th></th></tr></thead>
+          <tbody>
+            ${pfFontesData.length ? pfFontesData.map(f => `
+              <tr>
+                <td><strong>${f.nome}</strong></td>
+                <td><span class="badge ${f.tipo==='aluguel'?'badge-yellow':'badge-accent'}">${f.tipo}</span></td>
+                <td>${pfTitularBadge(f.titular)}</td>
+                <td style="color:var(--text2)">${f.descricao||'—'}</td>
+                <td style="color:var(--success);font-weight:600">${fmt(f.total_recebido)}</td>
+                <td style="display:flex;gap:4px">
+                  <button class="btn-icon btn-edit" onclick="editPFFonte(${f.id})">✏️</button>
+                  <button class="btn-icon btn-delete" onclick="deletePFFonte(${f.id})">🗑️</button>
+                </td>
+              </tr>`).join('') : '<tr class="empty-row"><td colspan="6">Nenhuma fonte cadastrada</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } else {
+    const rows = filter ? pfEntradasData.filter(e =>
+      (e.fonte_nome||'').toLowerCase().includes(filter.toLowerCase()) ||
+      (e.descricao||'').toLowerCase().includes(filter.toLowerCase())
+    ) : pfEntradasData;
+    const totalRec = rows.filter(e => e.recebido).reduce((s,e)=>s+e.valor,0);
+    const totalPend = rows.filter(e => !e.recebido).reduce((s,e)=>s+e.valor,0);
+
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <button class="btn btn-secondary" onclick="pfNavMesEntradas(-1)">◀</button>
+        <span style="font-weight:700;font-size:15px">${pfFmtMes(pfMesAtual)}</span>
+        <button class="btn btn-secondary" onclick="pfNavMesEntradas(1)">▶</button>
+        <span style="color:var(--success);margin-left:12px">✅ Recebido: <strong>${fmt(totalRec)}</strong></span>
+        <span style="color:var(--warning)">⏳ Pendente: <strong>${fmt(totalPend)}</strong></span>
+        <button class="btn btn-primary" style="margin-left:auto" onclick="openPFEntradaModal()">+ Nova Entrada</button>
+      </div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">📈 Entradas — ${pfFmtMes(pfMesAtual)} (${rows.length})</div></div>
+        <table>
+          <thead><tr><th>Data</th><th>Fonte</th><th>Tipo</th><th>Titular</th><th>Descrição</th><th>Status</th><th>Valor</th><th></th></tr></thead>
+          <tbody>
+            ${rows.length ? rows.map(e => `
+              <tr>
+                <td>${fmtDate(e.data)}</td>
+                <td><strong>${e.fonte_nome||'—'}</strong></td>
+                <td>${e.fonte_tipo ? `<span class="badge ${e.fonte_tipo==='aluguel'?'badge-yellow':'badge-accent'}">${e.fonte_tipo}</span>` : '—'}</td>
+                <td>${pfTitularBadge(e.titular)}</td>
+                <td style="color:var(--text2)">${e.descricao||'—'}</td>
+                <td><span class="badge ${e.recebido?'badge-green':'badge-yellow'}">${e.recebido?'Recebido':'Pendente'}</span></td>
+                <td style="color:var(--success);font-weight:700">${fmt(e.valor)}</td>
+                <td style="display:flex;gap:4px">
+                  <button class="btn-icon btn-edit" onclick="editPFEntrada(${e.id})">✏️</button>
+                  <button class="btn-icon btn-delete" onclick="deletePFEntrada(${e.id})">🗑️</button>
+                </td>
+              </tr>`).join('') : '<tr class="empty-row"><td colspan="8">Nenhuma entrada no mês</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+}
+
+async function pfNavMesEntradas(dir) {
+  pfMesAtual = dir === -1 ? pfMesAnterior(pfMesAtual) : pfMesProximo(pfMesAtual);
+  renderPFEntradas();
+}
+
+function openPFFonteModal(id) {
+  const f = id ? pfFontesData.find(x => x.id === id) : null;
+  openModal(f ? 'Editar Fonte' : 'Nova Fonte de Renda', `
+    <div class="form-group"><label>Nome *</label><input id="pff-nome" class="form-input" value="${f?.nome||''}"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Tipo</label>
+        <select id="pff-tipo" class="form-input">
+          <option value="empresa" ${(!f||f.tipo==='empresa')?'selected':''}>Empresa</option>
+          <option value="aluguel" ${f?.tipo==='aluguel'?'selected':''}>Aluguel</option>
+          <option value="freelance" ${f?.tipo==='freelance'?'selected':''}>Freelance</option>
+          <option value="investimento" ${f?.tipo==='investimento'?'selected':''}>Investimento</option>
+          <option value="outros" ${f?.tipo==='outros'?'selected':''}>Outros</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Titular</label>
+        <select id="pff-titular" class="form-input">
+          <option ${(!f||f.titular==='Ramon')?'selected':''}>Ramon</option>
+          <option ${f?.titular==='Silvia'?'selected':''}>Silvia</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>Descrição</label><textarea id="pff-desc" class="form-input" rows="2">${f?.descricao||''}</textarea></div>
+  `, async () => {
+    const body = { nome: v('pff-nome'), tipo: v('pff-tipo'), titular: v('pff-titular'), descricao: v('pff-desc') };
+    if (!body.nome) return toast('Nome obrigatório', 'error');
+    const r = f ? await put(`/api/pf/fontes-renda/${f.id}`, body) : await post('/api/pf/fontes-renda', body);
+    if (r.ok) { closeModal(); toast('Fonte salva!'); renderPFEntradas(); }
+    else toast(r.error, 'error');
+  });
+}
+
+function editPFFonte(id) { openPFFonteModal(id); }
+
+async function deletePFFonte(id) {
+  if (!confirm('Excluir esta fonte?')) return;
+  const r = await del(`/api/pf/fontes-renda/${id}`);
+  if (r.ok) { toast('Fonte excluída!'); renderPFEntradas(); }
+  else toast(r.error, 'error');
+}
+
+function openPFEntradaModal(id) {
+  const e = id ? pfEntradasData.find(x => x.id === id) : null;
+  openModal(e ? 'Editar Entrada' : 'Nova Entrada', `
+    <div class="form-row">
+      <div class="form-group"><label>Data *</label><input id="pfe-data" class="form-input" type="date" value="${e?.data?.split('T')[0]||today()}"></div>
+      <div class="form-group"><label>Valor (R$) *</label><input id="pfe-valor" class="form-input" type="number" step="0.01" value="${e?.valor||''}"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Fonte de Renda</label>
+        <select id="pfe-fonte" class="form-input">
+          <option value="">— Sem vínculo —</option>
+          ${pfFontesData.map(f=>`<option value="${f.id}" ${e?.fonte_id===f.id?'selected':''}>${f.nome} (${f.titular})</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Titular</label>
+        <select id="pfe-titular" class="form-input">
+          <option ${(!e||e.titular==='Ramon')?'selected':''}>Ramon</option>
+          <option ${e?.titular==='Silvia'?'selected':''}>Silvia</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>Descrição</label><input id="pfe-desc" class="form-input" value="${e?.descricao||''}"></div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="pfe-recebido" ${(!e||e.recebido)?'checked':''}> Já recebido
+      </label>
+    </div>
+  `, async () => {
+    const body = {
+      fonte_id: v('pfe-fonte')||null,
+      data: v('pfe-data'),
+      valor: v('pfe-valor'),
+      descricao: v('pfe-desc'),
+      titular: v('pfe-titular'),
+      recebido: document.getElementById('pfe-recebido').checked ? 1 : 0
+    };
+    if (!body.data || !body.valor) return toast('Data e valor obrigatórios', 'error');
+    const r = e ? await put(`/api/pf/entradas/${e.id}`, body) : await post('/api/pf/entradas', body);
+    if (r.ok) { closeModal(); toast('Entrada salva!'); renderPFEntradas(); }
+    else toast(r.error, 'error');
+  });
+}
+
+function editPFEntrada(id) { openPFEntradaModal(id); }
+
+async function deletePFEntrada(id) {
+  if (!confirm('Excluir esta entrada?')) return;
+  const r = await del(`/api/pf/entradas/${id}`);
+  if (r.ok) { toast('Entrada excluída!'); renderPFEntradas(); }
+  else toast(r.error, 'error');
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
