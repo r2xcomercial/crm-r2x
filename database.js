@@ -165,4 +165,97 @@ for (const sql of migrations) {
   try { db.exec(sql); } catch (_) { /* coluna já existe */ }
 }
 
+// ─── GESTÃO PESSOAL ──────────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS pf_contas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    banco TEXT,
+    titular TEXT DEFAULT 'Ramon',
+    tipo TEXT DEFAULT 'corrente',
+    saldo_inicial REAL DEFAULT 0,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pf_transacoes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conta_id INTEGER REFERENCES pf_contas(id) ON DELETE CASCADE,
+    data TEXT NOT NULL,
+    descricao TEXT NOT NULL,
+    valor REAL NOT NULL,
+    tipo TEXT DEFAULT 'saida',
+    categoria TEXT,
+    origem TEXT DEFAULT 'manual',
+    observacoes TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pf_cartoes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    bandeira TEXT,
+    limite REAL,
+    dia_fechamento INTEGER,
+    dia_vencimento INTEGER,
+    titular TEXT DEFAULT 'Ramon',
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pf_lancamentos_cartao (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cartao_id INTEGER REFERENCES pf_cartoes(id) ON DELETE CASCADE,
+    data TEXT NOT NULL,
+    descricao TEXT NOT NULL,
+    valor REAL NOT NULL,
+    categoria TEXT,
+    parcela_num INTEGER,
+    parcela_total INTEGER,
+    mes_fatura TEXT,
+    origem TEXT DEFAULT 'manual',
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pf_contas_fixas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    valor REAL NOT NULL,
+    dia_vencimento INTEGER,
+    categoria TEXT DEFAULT 'casa',
+    ativa INTEGER DEFAULT 1,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pf_pagamentos_fixos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conta_fixa_id INTEGER REFERENCES pf_contas_fixas(id) ON DELETE CASCADE,
+    mes_ano TEXT NOT NULL,
+    pago INTEGER DEFAULT 0,
+    data_pagamento TEXT,
+    valor REAL,
+    observacoes TEXT,
+    UNIQUE(conta_fixa_id, mes_ano)
+  );
+
+  CREATE TABLE IF NOT EXISTS pf_fontes_renda (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    tipo TEXT DEFAULT 'empresa',
+    descricao TEXT,
+    titular TEXT DEFAULT 'Ramon',
+    ativa INTEGER DEFAULT 1,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pf_entradas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fonte_id INTEGER REFERENCES pf_fontes_renda(id),
+    data TEXT NOT NULL,
+    valor REAL NOT NULL,
+    descricao TEXT,
+    recebido INTEGER DEFAULT 1,
+    titular TEXT DEFAULT 'Ramon',
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 module.exports = db;
