@@ -26,7 +26,7 @@ function gerarSalt() { return crypto.randomBytes(16).toString('hex'); }
 function hashSenha(senha, salt) { return crypto.pbkdf2Sync(senha, salt, 10000, 64, 'sha512').toString('hex'); }
 function gerarToken() { return crypto.randomBytes(32).toString('hex'); }
 
-const APIs_PUBLICAS = ["/api/corretores/publico", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/"];
+const APIs_PUBLICAS = ["/api/corretores/publico", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/", "/api/pluggy/webhook"];
 
 function autenticar(req, res, next) {
   if (!req.path.startsWith("/api/")) return next();
@@ -3331,6 +3331,36 @@ app.get('/api/pluggy/categorias', (req, res) => {
       GROUP BY mes ORDER BY mes DESC LIMIT 6`).all(accountId);
     res.json({ ok: true, data: { categorias: cats, tendencia: tendencia.reverse() } });
   } catch(e) { err(res, e.message); }
+});
+
+// Webhook Pluggy — notificações automáticas de sincronização
+app.post('/api/pluggy/webhook', async (req, res) => {
+  try {
+    const { event, itemId } = req.body || {};
+    console.log('[Pluggy Webhook]', event, itemId, JSON.stringify(req.body).slice(0, 200));
+
+    // Eventos que indicam que o item terminou de sincronizar
+    const syncEvents = ['item/updated', 'transactions/created', 'transactions/updated'];
+    if (syncEvents.includes(event) && itemId) {
+      // Verificar se temos esse item na base
+      const item = db.prepare('SELECT * FROM pluggy_items WHERE item_id=?').get(itemId);
+      if (item) {
+        // Atualizar status para UPDATED e disparar sync em background
+        db.prepare('UPDATE pluggy_items SET status=? WHERE item_id=?').run('UPDATED', itemId);
+        // Sync assíncrono (não bloqueia resposta ao Pluggy)
+        _pluggySyncItem(itemId).then(() => {
+          console.log('[Pluggy Webhook] Sync concluído para item', itemId);
+        }).catch(e => {
+          console.error('[Pluggy Webhook] Erro no sync:', e.message);
+        });
+      }
+    }
+    // Pluggy espera 200 rápido
+    res.json({ ok: true });
+  } catch(e) {
+    console.error('[Pluggy Webhook]', e.message);
+    res.json({ ok: true }); // sempre 200 pro Pluggy
+  }
 });
 
 // ─── GESTÃO PESSOAL ───────────────────────────────────────────────────────────
