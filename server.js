@@ -2797,19 +2797,56 @@ async function pluggyFetch(path, options = {}) {
   return res.json();
 }
 
+// Diagnóstico: testa se credenciais estão ok
+app.get('/api/pluggy/test', async (req, res) => {
+  try {
+    const clientId     = process.env.PLUGGY_CLIENT_ID;
+    const clientSecret = process.env.PLUGGY_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return res.json({ ok: false, error: 'Variáveis PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET não configuradas no Railway' });
+    }
+    // Força nova autenticação
+    _pluggyApiKey = null; _pluggyApiKeyExpiry = 0;
+    const apiKey = await getPluggyApiKey();
+    res.json({ ok: true, data: { msg: 'Credenciais OK', apiKey: apiKey.slice(0,8) + '...' } });
+  } catch(e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
 // Gera token de conexão para o widget
 app.get('/api/pluggy/connect-token', async (req, res) => {
   try {
-    const { itemId } = req.query; // opcional, para reconectar
+    const { itemId } = req.query;
     const body = itemId ? { itemId } : {};
     const data = await pluggyFetch('/connect_token', {
       method: 'POST',
       body: JSON.stringify(body)
     });
-    res.json({ ok: true, data: { accessToken: data.accessToken } });
+    // Pluggy pode retornar accessToken ou connectToken dependendo da versão
+    const token = data.accessToken || data.connectToken || data.token;
+    if (!token) throw new Error('Pluggy não retornou token: ' + JSON.stringify(data));
+    res.json({ ok: true, data: { accessToken: token } });
   } catch(e) {
     console.error('[pluggy connect-token]', e.message);
     err(res, e.message);
+  }
+});
+
+// Status de um item específico (para polling após conexão)
+app.get('/api/pluggy/items/:itemId/status', async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    // Busca status na Pluggy (fonte da verdade)
+    const item = await pluggyFetch(`/items/${itemId}`);
+    const status = item.status || 'UNKNOWN';
+    // Atualiza status local
+    db.prepare(`UPDATE pluggy_items SET status=? WHERE item_id=?`).run(status, itemId);
+    res.json({ ok: true, data: { status, itemId, executionStatus: item.executionStatus } });
+  } catch(e) {
+    // Se falhar na Pluggy, retorna status local
+    const local = db.prepare(`SELECT status FROM pluggy_items WHERE item_id=?`).get(itemId);
+    res.json({ ok: true, data: { status: local?.status || 'UNKNOWN', source: 'cache' } });
   }
 });
 
@@ -2831,15 +2868,24 @@ app.post('/api/pluggy/items', async (req, res) => {
   try {
     const { itemId } = req.body;
     if (!itemId) return err(res, 'itemId obrigatório');
-    // Busca detalhes do item na Pluggy
+
+    // Busca detalhes do item
     const item = await pluggyFetch(`/items/${itemId}`);
     const nomeBanco = item.connector?.name || item.connector?.institutionUrl || `Banco #${itemId.slice(0,8)}`;
+    const status = item.status || 'UPDATING';
+
+    // Salva imediatamente (sem esperar sync)
     db.prepare(`INSERT OR REPLACE INTO pluggy_items (item_id, nome_banco, connector_id, status, ultimo_sync)
       VALUES (?,?,?,?,CURRENT_TIMESTAMP)`)
-      .run(itemId, nomeBanco, item.connector?.id || null, item.status || 'UPDATED');
-    // Sincroniza contas imediatamente
-    await _pluggySyncItem(itemId);
-    res.json({ ok: true, data: { itemId, nomeBanco } });
+      .run(itemId, nomeBanco, item.connector?.id || null, status);
+
+    // Se já está UPDATED, sincroniza em background (não bloqueia resposta)
+    if (status === 'UPDATED') {
+      _pluggySyncItem(itemId).catch(e => console.error('[pluggy bg sync]', e.message));
+    }
+    // Se UPDATING, o frontend vai fazer polling via /items/:id/status e chamar /sync quando pronto
+
+    res.json({ ok: true, data: { itemId, nomeBanco, status } });
   } catch(e) {
     console.error('[pluggy items POST]', e.message);
     err(res, e.message);

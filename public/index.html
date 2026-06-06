@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
 <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.pluggy.ai/pluggy-connect/v2.1.0/pluggy-connect.js" defer></script>
+<!-- Pluggy Connect carregado sob demanda em pluggyCarregarWidget() -->
 <style>
   :root {
     --navy: #0D1B2E;
@@ -8871,6 +8871,7 @@ async function _gpContas() {
         <div class="kpi-sub">${contas.length} contas em ${items.length} banco${items.length!==1?'s':''}</div>
       </div>
       <div style="display:flex;gap:8px;margin-left:auto">
+        <button onclick="pluggyTestarConexao()" style="padding:8px 12px;border-radius:8px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);font-size:12px;cursor:pointer" title="Testa se as credenciais Pluggy estão configuradas">🔌 Testar</button>
         <button onclick="pluggySyncAll()" style="padding:8px 14px;border-radius:8px;background:rgba(0,196,180,.12);border:1px solid rgba(0,196,180,.3);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer">⬇️ Sincronizar Tudo</button>
         <button onclick="pluggyConectar()" style="padding:8px 14px;border-radius:8px;background:var(--accent);color:var(--navy);border:none;font-size:13px;font-weight:700;cursor:pointer">+ Conectar Banco</button>
       </div>
@@ -8884,27 +8885,93 @@ async function _gpContas() {
     <div id="pluggy-extrato-wrap"></div>`;
 }
 
-async function pluggyConectar(itemId) {
-  toast('Abrindo conexão bancária...','info');
-  const r = await get(itemId ? `/api/pluggy/connect-token?itemId=${itemId}` : '/api/pluggy/connect-token');
-  if (!r.ok) { toast('Erro ao gerar token: ' + (r.error||'verifique as credenciais Pluggy'), 'error'); return; }
-  if (typeof PluggyConnect === 'undefined') {
-    toast('Widget Pluggy não carregado. Verifique sua conexão com a internet.', 'error'); return;
+// Carrega o SDK do Pluggy Connect sob demanda
+function pluggyCarregarWidget() {
+  return new Promise((resolve, reject) => {
+    if (typeof PluggyConnect !== 'undefined') { resolve(); return; }
+    const script = document.createElement('script');
+    // Tenta v2.1.0, fallback para versão sem pin se CDN mudar
+    script.src = 'https://cdn.pluggy.ai/pluggy-connect/v2.1.0/pluggy-connect.js';
+    script.onload = () => resolve();
+    script.onerror = () => {
+      // Tenta URL alternativa
+      const s2 = document.createElement('script');
+      s2.src = 'https://cdn.pluggy.ai/pluggy-connect/pluggy-connect.js';
+      s2.onload = () => resolve();
+      s2.onerror = () => reject(new Error('Não foi possível carregar o widget do Pluggy'));
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(script);
+  });
+}
+
+async function pluggyConectar(itemIdParaReconectar) {
+  try {
+    toast('Carregando widget Pluggy...');
+    await pluggyCarregarWidget();
+  } catch(e) {
+    toast('Falha ao carregar o widget: ' + e.message, 'error'); return;
   }
+
+  const url = itemIdParaReconectar
+    ? `/api/pluggy/connect-token?itemId=${itemIdParaReconectar}`
+    : '/api/pluggy/connect-token';
+  const r = await get(url);
+  if (!r?.ok) {
+    toast('Erro ao gerar token Pluggy: ' + (r?.error || 'verifique PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET no Railway'), 'error');
+    return;
+  }
+
   const pc = new PluggyConnect({
     connectToken: r.data.accessToken,
     onSuccess: async (data) => {
-      toast('Banco conectado! Sincronizando...');
-      const id = data.item?.id || data.itemId || data.id;
-      if (!id) { toast('Não foi possível obter itemId', 'error'); return; }
-      const rs = await api('/api/pluggy/items', 'POST', { itemId: id });
-      if (rs.ok) { toast('✅ Conta bancária sincronizada!'); renderGestaoPessoal('contas'); }
-      else toast('Erro ao salvar conexão: ' + (rs.error||''), 'error');
+      // Pluggy pode retornar { item: { id } } ou { itemId } dependendo da versão
+      const itemId = data?.item?.id || data?.itemId || data?.id;
+      if (!itemId) {
+        console.error('[pluggy onSuccess] estrutura inesperada:', data);
+        toast('Erro: não foi possível obter o ID do banco', 'error');
+        return;
+      }
+      toast('🏦 Banco conectado! Salvando...');
+      const rs = await api('POST', '/api/pluggy/items', { itemId });
+      if (rs?.ok) {
+        toast('✅ Banco salvo! Processando dados (pode levar 1-2 min)...');
+        // Poll do status — Pluggy demora para processar contas
+        pluggyAguardarSincronizacao(itemId);
+      } else {
+        toast('Erro ao salvar banco: ' + (rs?.error || ''), 'error');
+      }
     },
-    onError: (err) => toast('Erro na conexão: ' + (err?.message || JSON.stringify(err)), 'error'),
-    onClose: () => {}
+    onError: (e) => {
+      console.error('[pluggy onError]', e);
+      toast('Erro na conexão: ' + (e?.message || e?.type || JSON.stringify(e)), 'error');
+    },
+    onClose: () => { console.log('[pluggy] widget fechado'); }
   });
   pc.init();
+}
+
+// Aguarda o item sair do status UPDATING (até 3 min, checa a cada 10s)
+async function pluggyAguardarSincronizacao(itemId, tentativas = 0) {
+  if (tentativas > 18) { // 3 min
+    toast('⏱️ Processamento demorou. Atualize manualmente depois.', 'info');
+    renderGestaoPessoal('contas'); return;
+  }
+  const r = await get(`/api/pluggy/items/${itemId}/status`);
+  const status = r?.data?.status;
+  if (status === 'UPDATED' || status === 'LOGIN_ERROR') {
+    if (status === 'UPDATED') {
+      // Sincroniza contas agora que Pluggy terminou
+      await api('POST', '/api/pluggy/sync', { itemId });
+      toast('✅ Contas sincronizadas com sucesso!');
+    } else {
+      toast('⚠️ Erro de login no banco. Reconecte.', 'error');
+    }
+    renderGestaoPessoal('contas');
+  } else {
+    // Ainda processando
+    setTimeout(() => pluggyAguardarSincronizacao(itemId, tentativas + 1), 10000);
+  }
 }
 
 async function pluggyReconectar(itemId) {
@@ -8913,21 +8980,47 @@ async function pluggyReconectar(itemId) {
 
 async function pluggySyncItem(itemId) {
   toast('Sincronizando...');
-  const r = await api('/api/pluggy/sync', 'POST', { itemId });
+  const r = await api('POST', '/api/pluggy/sync', { itemId });
   if (r.ok) { toast('✅ Sincronizado!'); renderGestaoPessoal('contas'); }
   else toast('Erro: ' + (r.error||''), 'error');
 }
 
+async function pluggyTestarConexao() {
+  toast('Testando credenciais Pluggy...');
+  const r = await get('/api/pluggy/test');
+  if (r?.ok) {
+    toast('✅ Pluggy OK! Credenciais válidas.');
+  } else {
+    toast('❌ ' + (r?.error || 'Erro desconhecido'), 'error');
+    // Mostra instrução detalhada
+    openModal('Configurar Pluggy no Railway', `
+      <div style="font-size:13px;line-height:1.8">
+        <p>As credenciais do Pluggy não estão configuradas no Railway. Siga os passos:</p>
+        <ol style="padding-left:20px">
+          <li>Acesse <strong>app.pluggy.ai</strong> → Settings → API Keys</li>
+          <li>Copie o <strong>Client ID</strong> e o <strong>Client Secret</strong></li>
+          <li>No Railway, abra seu projeto → <strong>Variables</strong></li>
+          <li>Adicione as duas variáveis:</li>
+        </ol>
+        <div style="background:var(--navy3);border-radius:8px;padding:12px;margin:12px 0;font-family:monospace;font-size:12px">
+          PLUGGY_CLIENT_ID = seu-client-id-aqui<br>
+          PLUGGY_CLIENT_SECRET = seu-client-secret-aqui
+        </div>
+        <p style="color:var(--text2)">Depois que salvar, o Railway vai reiniciar automaticamente e o Pluggy vai funcionar.</p>
+      </div>`, null);
+  }
+}
+
 async function pluggySyncAll() {
   toast('Sincronizando todas as contas...');
-  const r = await api('/api/pluggy/sync', 'POST', {});
+  const r = await api('POST', '/api/pluggy/sync', {});
   if (r.ok) { toast('✅ Tudo sincronizado!'); renderGestaoPessoal('contas'); }
   else toast('Erro: ' + (r.error||''), 'error');
 }
 
 async function pluggyRemoverItem(itemId, nomeBanco) {
   if (!confirm(`Remover a conexão com ${nomeBanco}? Isso vai apagar as transações importadas.`)) return;
-  const r = await api(`/api/pluggy/items/${itemId}`, 'DELETE');
+  const r = await api('DELETE', `/api/pluggy/items/${itemId}`);
   if (r.ok) { toast('Conexão removida'); renderGestaoPessoal('contas'); }
   else toast('Erro: ' + (r.error||''), 'error');
 }
@@ -9003,7 +9096,7 @@ async function pluggyImportarSelecionadas() {
   if (!_pluggySelectedTxs.size) { toast('Selecione pelo menos uma transação', 'error'); return; }
   const cache = window._pluggyTxsCache || [];
   const selecionadas = cache.filter(t => _pluggySelectedTxs.has(t.transaction_id));
-  const r = await api('/api/pluggy/importar', 'POST', { transacoes: selecionadas });
+  const r = await api('POST', '/api/pluggy/importar', { transacoes: selecionadas });
   if (r.ok) {
     toast(`✅ ${r.data.importadas} transações importadas para Gestão Pessoal!`);
     _pluggySelectedTxs.clear();
@@ -9281,7 +9374,7 @@ async function gpAnalisarFatura() {
   const btn = document.getElementById('btn-analisar');
   if (btn) { btn.textContent = '🤖 Analisando...'; btn.disabled = true; }
 
-  const r = await api('/api/pluggy/analisar-fatura', 'POST', { accountId: _gpFluxoCartao, mes: _gpFluxoMes });
+  const r = await api('POST', '/api/pluggy/analisar-fatura', { accountId: _gpFluxoCartao, mes: _gpFluxoMes });
 
   if (btn) { btn.textContent = '🤖 Analisar com IA'; btn.disabled = false; }
   if (!r.ok) { toast('Erro na análise: ' + (r.error||''), 'error'); return; }
@@ -9351,8 +9444,8 @@ async function gpSalvarReceita(id) {
   };
   if (!body.descricao || !body.valor || !body.data) return toast('Preencha os campos obrigatórios','error');
   const r = id
-    ? await api(`/api/pessoal/receitas/${id}`,'PUT',body)
-    : await api('/api/pessoal/receitas','POST',body);
+    ? await api('PUT', `/api/pessoal/receitas/${id}`,body)
+    : await api('POST', '/api/pessoal/receitas',body);
   if (r.ok) { toast(id?'Receita atualizada!':'Receita salva!'); closeModal(); renderGestaoPessoal('financas'); }
   else toast(r.error||'Erro','error');
 }
@@ -9365,7 +9458,7 @@ async function gpEditReceita(id) {
 
 async function gpDelReceita(id) {
   if (!confirm('Excluir esta receita?')) return;
-  const r = await api(`/api/pessoal/receitas/${id}`,'DELETE');
+  const r = await api('DELETE', `/api/pessoal/receitas/${id}`);
   if (r.ok) { toast('Excluído!'); renderGestaoPessoal('financas'); }
 }
 
@@ -9398,8 +9491,8 @@ async function gpSalvarDespesa(id) {
   };
   if (!body.descricao || !body.valor || !body.data) return toast('Preencha os campos obrigatórios','error');
   const r = id
-    ? await api(`/api/pessoal/despesas/${id}`,'PUT',body)
-    : await api('/api/pessoal/despesas','POST',body);
+    ? await api('PUT', `/api/pessoal/despesas/${id}`,body)
+    : await api('POST', '/api/pessoal/despesas',body);
   if (r.ok) { toast(id?'Despesa atualizada!':'Despesa salva!'); closeModal(); renderGestaoPessoal('financas'); }
   else toast(r.error||'Erro','error');
 }
@@ -9412,7 +9505,7 @@ async function gpEditDespesa(id) {
 
 async function gpDelDespesa(id) {
   if (!confirm('Excluir esta despesa?')) return;
-  const r = await api(`/api/pessoal/despesas/${id}`,'DELETE');
+  const r = await api('DELETE', `/api/pessoal/despesas/${id}`);
   if (r.ok) { toast('Excluído!'); renderGestaoPessoal('financas'); }
 }
 
@@ -9449,8 +9542,8 @@ async function gpSalvarMeta(id) {
   };
   if (!body.titulo) return toast('Informe o título da meta','error');
   const r = id
-    ? await api(`/api/pessoal/metas/${id}`,'PUT',body)
-    : await api('/api/pessoal/metas','POST',body);
+    ? await api('PUT', `/api/pessoal/metas/${id}`,body)
+    : await api('POST', '/api/pessoal/metas',body);
   if (r.ok) { toast(id?'Meta atualizada!':'Meta criada!'); closeModal(); renderGestaoPessoal('metas'); }
   else toast(r.error||'Erro','error');
 }
@@ -9463,7 +9556,7 @@ async function gpEditMeta(id) {
 
 async function gpDelMeta(id) {
   if (!confirm('Excluir esta meta?')) return;
-  const r = await api(`/api/pessoal/metas/${id}`,'DELETE');
+  const r = await api('DELETE', `/api/pessoal/metas/${id}`);
   if (r.ok) { toast('Meta excluída!'); renderGestaoPessoal('metas'); }
 }
 
@@ -9497,8 +9590,8 @@ async function gpSalvarTarefa(id) {
   };
   if (!body.titulo) return toast('Informe o título da tarefa','error');
   const r = id
-    ? await api(`/api/pessoal/tarefas/${id}`,'PUT',body)
-    : await api('/api/pessoal/tarefas','POST',body);
+    ? await api('PUT', `/api/pessoal/tarefas/${id}`,body)
+    : await api('POST', '/api/pessoal/tarefas',body);
   if (r.ok) { toast(id?'Tarefa atualizada!':'Tarefa criada!'); closeModal(); renderGestaoPessoal('tarefas'); }
   else toast(r.error||'Erro','error');
 }
@@ -9513,13 +9606,13 @@ async function gpToggleTarefa(id, concluida) {
   const r = await get('/api/pessoal/tarefas');
   const t = (r.data||[]).find(x=>x.id===id);
   if (!t) return;
-  await api(`/api/pessoal/tarefas/${id}`,'PUT',{...t, concluida});
+  await api('PUT', `/api/pessoal/tarefas/${id}`,{...t, concluida});
   renderGestaoPessoal('tarefas');
 }
 
 async function gpDelTarefa(id) {
   if (!confirm('Excluir esta tarefa?')) return;
-  await api(`/api/pessoal/tarefas/${id}`,'DELETE');
+  await api('DELETE', `/api/pessoal/tarefas/${id}`);
   toast('Tarefa excluída!'); renderGestaoPessoal('tarefas');
 }
 
@@ -9554,8 +9647,8 @@ async function gpSalvarHabito(id) {
   };
   if (!body.nome) return toast('Informe o nome do hábito','error');
   const r = id
-    ? await api(`/api/pessoal/habitos/${id}`,'PUT',body)
-    : await api('/api/pessoal/habitos','POST',body);
+    ? await api('PUT', `/api/pessoal/habitos/${id}`,body)
+    : await api('POST', '/api/pessoal/habitos',body);
   if (r.ok) { toast(id?'Hábito atualizado!':'Hábito criado!'); closeModal(); renderGestaoPessoal('habitos'); }
   else toast(r.error||'Erro','error');
 }
@@ -9568,12 +9661,12 @@ async function gpEditHabito(id) {
 
 async function gpDelHabito(id) {
   if (!confirm('Excluir este hábito?')) return;
-  await api(`/api/pessoal/habitos/${id}`,'DELETE');
+  await api('DELETE', `/api/pessoal/habitos/${id}`);
   toast('Hábito excluído!'); renderGestaoPessoal('habitos');
 }
 
 async function gpToggleHabito(id) {
-  const r = await api(`/api/pessoal/habitos/${id}/toggle`,'POST');
+  const r = await api('POST', `/api/pessoal/habitos/${id}/toggle`);
   if (r.ok) { toast(r.data?.feito ? '🔥 Hábito marcado!' : 'Desmarcado'); renderGestaoPessoal('habitos'); }
 }
 // ── fim Gestão Pessoal ───────────────────────────────────────────
