@@ -3112,6 +3112,169 @@ function _mapPluggyCategoria(cat) {
   return 'outros';
 }
 
+// ── Importação de CSV bancário ────────────────────────────────────────────────
+const CSV_VIRTUAL_ITEM_ID    = 'csv-import';
+const CSV_VIRTUAL_ACCOUNT_ID = 'csv-cartao';
+
+function _garantirContaCSV() {
+  db.prepare(`INSERT OR IGNORE INTO pluggy_items(item_id, nome_banco, connector_id, status)
+    VALUES(?,?,?,?)`).run(CSV_VIRTUAL_ITEM_ID, 'Importação CSV', 0, 'UPDATED');
+  db.prepare(`INSERT OR IGNORE INTO pluggy_contas
+    (item_id, account_id, nome, tipo, subtipo, saldo, moeda, atualizado_em)
+    VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP)`)
+    .run(CSV_VIRTUAL_ITEM_ID, CSV_VIRTUAL_ACCOUNT_ID, 'Cartão (CSV)', 'CREDIT', 'CREDIT_CARD', 0, 'BRL');
+}
+
+function _parseCsvLinhas(texto) {
+  // Detecta separador: ponto-e-vírgula ou vírgula
+  const sep = texto.split('\n')[0].includes(';') ? ';' : ',';
+  return texto.trim().split('\n').map(l => {
+    // Trata campos entre aspas com separadores dentro
+    const cols = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < l.length; i++) {
+      const c = l[i];
+      if (c === '"') { inQ = !inQ; continue; }
+      if (c === sep && !inQ) { cols.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    cols.push(cur.trim());
+    return cols;
+  });
+}
+
+function _parseDateBR(s) {
+  // DD/MM/YYYY → YYYY-MM-DD
+  if (!s) return null;
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  // YYYY-MM-DD já está certo
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  return null;
+}
+
+function _detectarFormato(header) {
+  const h = header.toLowerCase();
+  if (h.includes('date') && h.includes('title') && h.includes('amount'))    return 'nubank-credito';
+  if (h.includes('data') && h.includes('valor') && h.includes('descri'))    return 'nubank-debito';
+  if (h.includes('historico') || h.includes('histórico'))                    return 'itau';
+  return 'generico';
+}
+
+app.post('/api/pluggy/importar-csv', upload.single('arquivo'), async (req, res) => {
+  try {
+    const csvText = req.file
+      ? req.file.buffer.toString('utf8').replace(/\r/g,'')
+      : (req.body.csvContent||'').replace(/\r/g,'');
+    if (!csvText || csvText.trim().length < 10) return err(res, 'CSV vazio ou não enviado');
+
+    const linhas = _parseCsvLinhas(csvText);
+    if (linhas.length < 2) return err(res, 'CSV sem dados (mínimo cabeçalho + 1 linha)');
+
+    const header = linhas[0].map(h => h.toLowerCase().trim());
+    const formato = req.body.formato || _detectarFormato(linhas[0].join(','));
+
+    _garantirContaCSV();
+
+    const accountId = req.body.accountId || CSV_VIRTUAL_ACCOUNT_ID;
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO pluggy_transacoes
+        (transaction_id, account_id, descricao, descricao_raw, valor, data, tipo, categoria, merchant)
+      VALUES (?,?,?,?,?,?,?,?,?)`);
+
+    let importadas = 0, ignoradas = 0;
+    const txs = [];
+
+    for (let i = 1; i < linhas.length; i++) {
+      const cols = linhas[i];
+      if (!cols || cols.every(c => !c)) continue;
+      try {
+        let data, desc, valor, tipo, cat, merchant;
+
+        if (formato === 'nubank-credito') {
+          // date,category,title,amount
+          const iDate   = header.indexOf('date');
+          const iCat    = header.indexOf('category');
+          const iTitle  = header.indexOf('title');
+          const iAmt    = header.indexOf('amount');
+          if (iDate<0||iAmt<0) { ignoradas++; continue; }
+          data  = cols[iDate]?.slice(0,10);
+          cat   = cols[iCat] || 'Outros';
+          desc  = cols[iTitle] || cat;
+          valor = parseFloat((cols[iAmt]||'0').replace(',','.'));
+          if (isNaN(valor)||valor===0) { ignoradas++; continue; }
+          tipo  = valor < 0 ? 'CREDIT' : 'DEBIT'; // crédito no extrato = pagamento
+          valor = Math.abs(valor);
+          merchant = desc;
+
+        } else if (formato === 'nubank-debito') {
+          // Data,Valor,Identificador,Descrição
+          const iData  = header.findIndex(h=>h.includes('data'));
+          const iValor = header.findIndex(h=>h.includes('valor'));
+          const iDesc  = header.findIndex(h=>h.includes('descri'));
+          if (iData<0||iValor<0) { ignoradas++; continue; }
+          data  = _parseDateBR(cols[iData]);
+          desc  = cols[iDesc] || 'Lançamento';
+          valor = parseFloat((cols[iValor]||'0').replace(',','.'));
+          if (isNaN(valor)||valor===0) { ignoradas++; continue; }
+          tipo  = valor < 0 ? 'DEBIT' : 'CREDIT';
+          valor = Math.abs(valor);
+          cat   = _mapPluggyCategoria(desc);
+          merchant = desc;
+
+        } else if (formato === 'itau') {
+          // Data;Histórico;Docto.;Crédito;Débito;Saldo
+          const iData  = header.findIndex(h=>h.includes('data'));
+          const iHist  = header.findIndex(h=>h.includes('hist'));
+          const iCred  = header.findIndex(h=>h.includes('cr'));
+          const iDeb   = header.findIndex(h=>h.includes('d'));
+          if (iData<0) { ignoradas++; continue; }
+          data  = _parseDateBR(cols[iData]);
+          desc  = cols[iHist] || 'Lançamento';
+          const cred = parseFloat((cols[iCred]||'0').replace('.','').replace(',','.')) || 0;
+          const deb  = parseFloat((cols[iDeb] ||'0').replace('.','').replace(',','.')) || 0;
+          if (cred===0&&deb===0) { ignoradas++; continue; }
+          tipo  = deb > 0 ? 'DEBIT' : 'CREDIT';
+          valor = deb > 0 ? deb : cred;
+          cat   = _mapPluggyCategoria(desc);
+          merchant = desc;
+
+        } else {
+          // Genérico: tenta achar colunas por nome
+          const iData  = header.findIndex(h=>h.includes('data')||h.includes('date'));
+          const iValor = header.findIndex(h=>h.includes('valor')||h.includes('amount')||h.includes('vl'));
+          const iDesc  = header.findIndex(h=>h.includes('descri')||h.includes('hist')||h.includes('title')||h.includes('memo'));
+          if (iData<0||iValor<0) { ignoradas++; continue; }
+          data  = _parseDateBR(cols[iData]) || cols[iData]?.slice(0,10);
+          desc  = cols[iDesc] || 'Lançamento';
+          valor = parseFloat((cols[iValor]||'0').replace(/\./g,'').replace(',','.'));
+          if (isNaN(valor)||valor===0) { ignoradas++; continue; }
+          tipo  = valor < 0 ? 'DEBIT' : 'CREDIT';
+          valor = Math.abs(valor);
+          cat   = _mapPluggyCategoria(desc);
+          merchant = desc;
+        }
+
+        if (!data||!valor) { ignoradas++; continue; }
+        // ID estável: hash da linha
+        const txId = `csv-${accountId}-${data}-${desc.slice(0,20)}-${valor}`.replace(/\s/g,'-');
+        txs.push([txId, accountId, desc, desc, valor, data, tipo, _mapPluggyCategoria(cat||desc), merchant]);
+      } catch(_) { ignoradas++; }
+    }
+
+    const batch = db.transaction(list => {
+      for (const t of list) {
+        const r = insert.run(...t);
+        if (r.changes > 0) importadas++;
+        else ignoradas++;
+      }
+    });
+    batch(txs);
+
+    res.json({ ok: true, data: { importadas, ignoradas, formato, total: linhas.length - 1 } });
+  } catch(e) { err(res, e.message); }
+});
+
 // ── Análise IA da fatura do cartão ───────────────────────────────────────────
 app.post('/api/pluggy/analisar-fatura', async (req, res) => {
   try {

@@ -8872,6 +8872,7 @@ async function _gpContas() {
       </div>
       <div style="display:flex;gap:8px;margin-left:auto">
         <button onclick="pluggyTestarConexao()" style="padding:8px 12px;border-radius:8px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);font-size:12px;cursor:pointer" title="Testa se as credenciais Pluggy estão configuradas">🔌 Testar</button>
+        <button onclick="abrirImportarCSV()" style="padding:8px 14px;border-radius:8px;background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.4);color:#a78bfa;font-size:13px;font-weight:600;cursor:pointer">📄 Importar CSV</button>
         <button onclick="pluggySyncAll()" style="padding:8px 14px;border-radius:8px;background:rgba(0,196,180,.12);border:1px solid rgba(0,196,180,.3);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer">⬇️ Sincronizar Tudo</button>
         <button onclick="pluggyConectar()" style="padding:8px 14px;border-radius:8px;background:var(--accent);color:var(--navy);border:none;font-size:13px;font-weight:700;cursor:pointer">+ Conectar Banco</button>
       </div>
@@ -9016,6 +9017,89 @@ async function pluggySyncAll() {
   const r = await api('POST', '/api/pluggy/sync', {});
   if (r.ok) { toast('✅ Tudo sincronizado!'); renderGestaoPessoal('contas'); }
   else toast('Erro: ' + (r.error||''), 'error');
+}
+
+function abrirImportarCSV() {
+  const html = `
+    <div style="padding:4px 0">
+      <p style="color:var(--text2);font-size:13px;margin-bottom:16px">
+        Exporte o extrato do seu banco em CSV e importe aqui.<br>
+        <strong>Nubank:</strong> App → Minha conta → Fatura → Exportar fatura<br>
+        <strong>Outros bancos:</strong> Use o internet banking → Extrato → Exportar CSV
+      </p>
+
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:6px">Formato do arquivo</label>
+        <select id="csv-formato" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-size:13px">
+          <option value="auto">🤖 Detectar automaticamente</option>
+          <option value="nubank-credito">💜 Nubank — Cartão de Crédito</option>
+          <option value="nubank-debito">💜 Nubank — Conta Corrente</option>
+          <option value="itau">🟠 Itaú</option>
+          <option value="generico">📄 Genérico (qualquer banco)</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:6px">Arquivo CSV</label>
+        <input type="file" id="csv-arquivo" accept=".csv,.txt"
+          style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-size:13px;box-sizing:border-box"
+          onchange="csvPreview(this)">
+      </div>
+
+      <div id="csv-preview" style="font-size:11px;color:var(--text2);background:var(--navy3);border-radius:8px;padding:10px;margin-bottom:14px;display:none;max-height:120px;overflow:auto;font-family:monospace"></div>
+
+      <button onclick="executarImportarCSV()"
+        style="width:100%;padding:10px;border-radius:8px;background:rgba(139,92,246,.8);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer">
+        📥 Importar Transações
+      </button>
+      <div id="csv-resultado" style="margin-top:12px;font-size:13px;text-align:center"></div>
+    </div>`;
+  openModal('📄 Importar Extrato CSV', html);
+}
+
+function csvPreview(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.split('\n').slice(0, 4).join('\n');
+    const preview = document.getElementById('csv-preview');
+    preview.style.display = 'block';
+    preview.textContent = lines;
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+async function executarImportarCSV() {
+  const fileInput = document.getElementById('csv-arquivo');
+  const formato   = document.getElementById('csv-formato').value;
+  const res       = document.getElementById('csv-resultado');
+  const file      = fileInput?.files[0];
+
+  if (!file) { res.innerHTML = '<span style="color:#f87171">⚠️ Selecione um arquivo CSV</span>'; return; }
+  res.innerHTML = '⏳ Importando...';
+
+  const formData = new FormData();
+  formData.append('arquivo', file);
+  formData.append('formato', formato);
+
+  try {
+    const r = await fetch('/api/pluggy/importar-csv', {
+      method: 'POST',
+      headers: { 'x-crm-token': localStorage.getItem('token') },
+      body: formData
+    });
+    const data = await r.json();
+    if (data.ok) {
+      res.innerHTML = `<span style="color:#4ade80">✅ ${data.data.importadas} transações importadas!</span>
+        <span style="color:var(--text2);font-size:11px;display:block">${data.data.ignoradas} ignoradas • formato: ${data.data.formato}</span>`;
+      setTimeout(() => { closeModal(); renderGestaoPessoal('contas'); }, 2000);
+    } else {
+      res.innerHTML = `<span style="color:#f87171">❌ ${data.error}</span>`;
+    }
+  } catch(e) {
+    res.innerHTML = `<span style="color:#f87171">❌ ${e.message}</span>`;
+  }
 }
 
 async function pluggyRemoverItem(itemId, nomeBanco) {
