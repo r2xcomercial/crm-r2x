@@ -2814,6 +2814,17 @@ app.get('/api/pluggy/test', async (req, res) => {
   }
 });
 
+// Debug: verifica transações raw do Pluggy (remover depois)
+app.get('/api/pluggy/debug-tx', async (req, res) => {
+  try {
+    const { accountId } = req.query;
+    if (!accountId) return err(res, 'accountId obrigatório');
+    // Sem filtro de data — traz tudo
+    const raw = await pluggyFetch(`/transactions?accountId=${accountId}&pageSize=20`);
+    res.json({ ok: true, data: raw });
+  } catch(e) { err(res, e.message); }
+});
+
 // Gera token de conexão para o widget
 app.get('/api/pluggy/connect-token', async (req, res) => {
   try {
