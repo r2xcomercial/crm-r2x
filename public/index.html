@@ -593,8 +593,8 @@ async function renderDashboard() {
 
   document.getElementById('badge-leads').textContent = kpis.leads_novos;
 
-  const statusLabel = { novo: 'Novo', qualificado: 'Qualificado', visitou: 'Visitou', proposta: 'Proposta', vendido: 'Vendido', perdido: 'Perdido' };
-  const statusColors = { novo:'#00C4B4', qualificado:'#0099CC', visitou:'#F59E0B', proposta:'#A855F7', vendido:'#22C55E', perdido:'#EF4444' };
+  const statusLabel = { novo:'Lead novo', com_corretor:'Com corretor', vendido:'Vendido', sem_venda:'Sem venda', qualificado:'Com corretor', visitou:'Com corretor', proposta:'Com corretor', perdido:'Sem venda' };
+  const statusColors = { novo:'#00C4B4', com_corretor:'#60A5FA', qualificado:'#60A5FA', visitou:'#60A5FA', proposta:'#60A5FA', vendido:'#22C55E', sem_venda:'#EF4444', perdido:'#EF4444' };
 
   // Agrupa vendas por mês (últimos 6 meses)
   const vendas = vendasR.data || [];
@@ -808,7 +808,7 @@ async function renderLeads(filter = '') {
   const leads = filter ? leadsData.filter(l => (l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter) || (l.cidade||'').toLowerCase().includes(filter)) : leadsData;
   document.getElementById('badge-leads').textContent = leadsData.filter(l => l.status==='novo').length;
 
-  const statusColors = { novo:'badge-accent', qualificado:'badge-blue', visitou:'badge-yellow', proposta:'badge-yellow', vendido:'badge-green', perdido:'badge-red' };
+  const statusColors = { novo:'badge-accent', com_corretor:'badge-blue', qualificado:'badge-blue', visitou:'badge-blue', proposta:'badge-blue', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
 
   document.getElementById('content').innerHTML = `
     <div class="table-card">
@@ -852,7 +852,7 @@ function filterLeadStatus(status) {
 }
 
 function renderLeadsFiltered(leads) {
-  const statusColors = { novo:'badge-accent', qualificado:'badge-blue', visitou:'badge-yellow', proposta:'badge-yellow', vendido:'badge-green', perdido:'badge-red' };
+  const statusColors = { novo:'badge-accent', com_corretor:'badge-blue', qualificado:'badge-blue', visitou:'badge-blue', proposta:'badge-blue', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
   document.querySelector('#content tbody').innerHTML = leads.length
     ? leads.map(l => renderLeadRow(l, statusColors)).join('')
     : '<tr class="empty-row"><td colspan="11">Nenhum lead</td></tr>';
@@ -933,7 +933,7 @@ function openLeadModal(lead = {}) {
       </div>
       <div class="form-group"><label>Status</label>
         <select id="f-status">
-          ${['novo','qualificado','visitou','proposta','vendido','perdido'].map(s => `<option value="${s}" ${lead.status===s?'selected':''}>${s}</option>`).join('')}
+          ${[['novo','Lead novo'],['com_corretor','Lead com corretor'],['vendido','Lead vendido'],['sem_venda','Lead sem venda']].map(([v,l]) => `<option value="${v}" ${lead.status===v||(v==='com_corretor'&&['qualificado','visitou','proposta'].includes(lead.status))||(v==='sem_venda'&&lead.status==='perdido')?'selected':''}>${l}</option>`).join('')}
         </select>
       </div>
 
@@ -1004,7 +1004,11 @@ function openLeadModal(lead = {}) {
     ` : ''}
   `, async () => {
     const tipoLead = v('f-tipo-lead') || null;
-    const body = { nome: v('f-nome'), telefone: v('f-tel'), email: v('f-email'), cidade: v('f-cidade'), objetivo: v('f-obj'), faixa_investimento: v('f-faixa'), prazo: v('f-prazo'), status: v('f-status'), corretor_id: v('f-corretor')||null, empreendimento_id: v('f-emp')||null, aniversario: v('f-aniv')||null, observacoes: v('f-obs'), tipo: tipoLead, creci: tipoLead==='corretor' ? (v('f-creci')||null) : null, imobiliaria: tipoLead==='corretor' ? (v('f-imob')||null) : null };
+    const corretorId = v('f-corretor')||null;
+    const statusSelecionado = v('f-status');
+    // Auto-move: se corretor foi atribuído e status ainda é 'novo', vai para com_corretor
+    const statusFinal = (corretorId && statusSelecionado === 'novo') ? 'com_corretor' : statusSelecionado;
+    const body = { nome: v('f-nome'), telefone: v('f-tel'), email: v('f-email'), cidade: v('f-cidade'), objetivo: v('f-obj'), faixa_investimento: v('f-faixa'), prazo: v('f-prazo'), status: statusFinal, corretor_id: corretorId, empreendimento_id: v('f-emp')||null, aniversario: v('f-aniv')||null, observacoes: v('f-obs'), tipo: tipoLead, creci: tipoLead==='corretor' ? (v('f-creci')||null) : null, imobiliaria: tipoLead==='corretor' ? (v('f-imob')||null) : null };
     const r = lead.id ? await put(`/api/leads/${lead.id}`, body) : await post('/api/leads', body);
     if (!r.ok) return toast(r.error, 'error');
     toast(lead.id ? 'Lead atualizado!' : 'Lead criado!');
@@ -1064,14 +1068,22 @@ async function importarLeads(input) {
 // ─── KANBAN DE LEADS ─────────────────────────────────────────────────────────
 
 const KANBAN_COLS = [
-  { status: 'novo',        label: 'Novo',        color: '#00C4B4', badge: 'badge-accent' },
-  { status: 'qualificado', label: 'Qualificado',  color: '#0099CC', badge: 'badge-blue' },
-  { status: 'visitou',     label: 'Visitou',      color: '#F59E0B', badge: 'badge-yellow' },
-  { status: 'proposta',    label: 'Proposta',     color: '#A855F7', badge: 'badge-yellow' },
-  { status: 'vendido',     label: 'Vendido',      color: '#22C55E', badge: 'badge-green' },
-  { status: 'perdido',     label: 'Perdido',      color: '#EF4444', badge: 'badge-red' },
+  { status: 'novo',         label: 'Lead novo',          color: '#00C4B4', badge: 'badge-accent',  // inclui também leads sem status mapeado
+    extra: [] },
+  { status: 'com_corretor', label: 'Lead com corretor',  color: '#60A5FA', badge: 'badge-blue',
+    extra: ['qualificado','visitou','proposta'] },  // legado
+  { status: 'vendido',      label: 'Lead vendido',       color: '#22C55E', badge: 'badge-green',
+    extra: [] },
+  { status: 'sem_venda',    label: 'Lead sem venda',     color: '#EF4444', badge: 'badge-red',
+    extra: ['perdido'] },  // legado
 ];
-const KANBAN_NEXT = { novo: ['qualificado','visitou','proposta','perdido'], qualificado: ['visitou','proposta','vendido','perdido'], visitou: ['proposta','vendido','perdido'], proposta: ['vendido','perdido'] };
+// Movimentos manuais permitidos por coluna
+const KANBAN_NEXT = {
+  novo:         ['com_corretor', 'sem_venda'],
+  com_corretor: ['sem_venda'],          // vendido é automático via venda
+  vendido:      [],                     // só via exclusão de venda
+  sem_venda:    ['novo', 'com_corretor'],
+};
 
 async function renderKanban(filter = '') {
   const [lr, cr, er] = await Promise.all([get('/api/leads'), get('/api/corretores'), get('/api/empreendimentos')]);
@@ -1081,11 +1093,12 @@ async function renderKanban(filter = '') {
   const leads = filter ? leadsData.filter(l => (l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter)) : leadsData;
 
   const colsHtml = KANBAN_COLS.map(col => {
-    const colLeads = leads.filter(l => l.status === col.status);
+    const allStatuses = [col.status, ...(col.extra||[])];
+    const colLeads = leads.filter(l => allStatuses.includes(l.status));
     const nexts = KANBAN_NEXT[col.status] || [];
     const cards = colLeads.map(l => {
       const dias = l.atualizado_em ? Math.floor((Date.now() - new Date(l.atualizado_em.replace(' ','T'))) / 86400000) : 999;
-      const esquecido = dias >= 3 && !['vendido','perdido'].includes(l.status);
+      const esquecido = dias >= 3 && !['vendido','sem_venda'].includes(l.status);
       const tel = (l.telefone||'').replace(/\D/g,'');
       const moveButtons = nexts.map(ns => {
         const nc = KANBAN_COLS.find(c => c.status === ns);

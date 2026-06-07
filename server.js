@@ -629,7 +629,13 @@ app.post("/api/leads", (req, res) => {
 
 app.put("/api/leads/:id", (req, res) => {
   const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, observacoes, aniversario, tipo, creci, imobiliaria } = req.body;
-  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, observacoes, aniversario||null, tipo||null, creci||null, imobiliaria||null, req.params.id);
+  const lead = db.prepare('SELECT status FROM leads WHERE id=?').get(req.params.id);
+  // Auto-move para com_corretor quando corretor é atribuído (exceto vendido/sem_venda)
+  let novoStatus = status;
+  if (corretor_id && lead && !['vendido','sem_venda'].includes(lead.status) && lead.status !== 'com_corretor') {
+    novoStatus = 'com_corretor';
+  }
+  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, novoStatus, observacoes, aniversario||null, tipo||null, creci||null, imobiliaria||null, req.params.id);
   ok(res, {});
 });
 
@@ -647,7 +653,7 @@ app.post("/api/leads/:id/converter-corretor", (req, res) => {
     VALUES (?,?,?,?,?,?,1)
   `).run(lead.nome||'', lead.telefone||null, lead.email||null, lead.cidade||null, lead.creci||null, lead.imobiliaria||null);
   // Marca lead como qualificado e registra que virou parceiro
-  db.prepare("UPDATE leads SET tipo='corretor', status='qualificado', atualizado_em=CURRENT_TIMESTAMP WHERE id=?").run(lead.id);
+  db.prepare("UPDATE leads SET tipo='corretor', status='com_corretor', atualizado_em=CURRENT_TIMESTAMP WHERE id=?").run(lead.id);
   ok(res, { corretor_id: r.lastInsertRowid });
 });
 
