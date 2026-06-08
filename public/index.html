@@ -1088,7 +1088,7 @@ const KANBAN_NEXT = {
 async function renderKanban(filter = '') {
   const [lr, cr, er] = await Promise.all([get('/api/leads'), get('/api/corretores'), get('/api/empreendimentos')]);
   leadsData = lr.data; corretoresData = cr.data; empData = er.data;
-  document.getElementById('badge-leads').textContent = leadsData.filter(l => l.status === 'novo').length;
+  document.getElementById('badge-leads').textContent = leadsData.filter(l => l.status === 'novo').length || '';
 
   const leads = filter ? leadsData.filter(l => (l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter)) : leadsData;
 

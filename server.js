@@ -157,7 +157,7 @@ app.delete('/api/usuarios/:id', soAdmin, (req, res) => {
 
 app.get("/api/dashboard", (req, res) => {
   const leads_total = db.prepare("SELECT COUNT(*) as n FROM leads").get().n;
-  const leads_novos = db.prepare("SELECT COUNT(*) as n FROM leads WHERE status='novo'").get().n;
+  const leads_novos = db.prepare("SELECT COUNT(*) as n FROM leads WHERE status='novo' OR (status NOT IN ('com_corretor','vendido','sem_venda','qualificado','visitou','proposta','perdido'))").get().n;
   const vendas_mes = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM vendas WHERE strftime('%Y-%m', data_venda) = strftime('%Y-%m','now')`).get().total;
   const vendas_total = db.prepare("SELECT COUNT(*) as n FROM vendas WHERE status='ativo'").get().n;
   const entradas_pendentes = db.prepare("SELECT COALESCE(SUM(valor),0) as total FROM financeiro_entradas WHERE status='pendente'").get().total;
@@ -201,8 +201,28 @@ app.get("/api/dashboard", (req, res) => {
     WHERE l.data >= date('now') ORDER BY l.data LIMIT 5
   `).all();
 
+  // Consolida status legados nos novos grupos do Kanban
   const funil = db.prepare(`
-    SELECT status, COUNT(*) as n FROM leads GROUP BY status
+    SELECT
+      CASE status
+        WHEN 'qualificado' THEN 'com_corretor'
+        WHEN 'visitou'     THEN 'com_corretor'
+        WHEN 'proposta'    THEN 'com_corretor'
+        WHEN 'perdido'     THEN 'sem_venda'
+        ELSE status
+      END as status,
+      COUNT(*) as n
+    FROM leads
+    GROUP BY 1
+    ORDER BY CASE
+      WHEN status='novo'         THEN 1
+      WHEN status='com_corretor'
+        OR status IN ('qualificado','visitou','proposta') THEN 2
+      WHEN status='vendido'      THEN 3
+      WHEN status='sem_venda'
+        OR status='perdido'      THEN 4
+      ELSE 5
+    END
   `).all();
 
   const leads_esquecidos = db.prepare(`
