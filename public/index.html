@@ -3932,8 +3932,205 @@ async function confirmarImportacaoFatura() {
 
   const r = await post('/api/financeiro/importar-fatura', { lancamentos });
   if (!r.ok) { toast(r.error, 'error'); return; }
-  toast(`✅ ${r.data.importados} lançamentos importados para o Financeiro!`);
+
+  // Salva parcelas detectadas para projeção
+  const parcelas = lancamentos.filter(l => l.parcela_atual && l.total_parcelas && l.tipo === 'debito').map(l => ({
+    descricao_base: l.descricao_base || l.descricao,
+    descricao_original: l.descricao,
+    parcela_atual: l.parcela_atual,
+    total_parcelas: l.total_parcelas,
+    valor_parcela: Math.abs(l.valor),
+  }));
+  if (parcelas.length) {
+    const fatura_mes = (document.getElementById('fatura-content')?.dataset.mesReferencia) || null;
+    await post('/api/financeiro/salvar-parcelas', { parcelas, fatura_mes });
+  }
+
+  toast(`✅ ${r.data.importados} lançamentos importados!${parcelas.length ? ` ${parcelas.length} parcelas detectadas.` : ''}`);
   renderFinanceiro();
+}
+
+// ── Multi-upload de faturas (novo fluxo) ──────────────────────────────────────
+async function iniciarImportacaoFaturas(input) {
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if (!files.length) return;
+
+  const empOpts = (currentData.emp||[]).map(e => `<option value="${e.id}">${e.nome}</option>`).join('');
+  const catOpts = CATEGORIAS_SAIDA.map(c => `<option value="${c}">${CATEGORIAS_SAIDA_LABEL[c]||c}</option>`).join('');
+
+  // Múltiplas faturas: processa em fila
+  openModal(`💳 Importar ${files.length} Fatura${files.length>1?'s':''}`, `
+    <div id="mf-status" style="padding:16px;text-align:center">
+      <div style="font-size:28px;margin-bottom:8px">⏳</div>
+      <div id="mf-msg" style="color:var(--text2);font-size:14px">Processando fatura 1 de ${files.length}...</div>
+      <div style="margin-top:12px;background:var(--navy3);border-radius:6px;height:6px">
+        <div id="mf-bar" style="height:100%;background:var(--accent);border-radius:6px;width:0%;transition:width .4s"></div>
+      </div>
+    </div>
+    <div id="mf-results" style="display:none"></div>
+  `, async () => { await confirmarMultiFatura(); }, { saveLabel: '💳 Importar tudo' });
+  document.getElementById('modal').classList.add('modal-wide');
+
+  const todasFaturas = [];
+  let parcelasGlobal = {};
+
+  for (let fi = 0; fi < files.length; fi++) {
+    const file = files[fi];
+    const pct = Math.round((fi / files.length) * 100);
+    const msgEl = document.getElementById('mf-msg');
+    const barEl = document.getElementById('mf-bar');
+    if (msgEl) msgEl.textContent = `Processando "${file.name}" (${fi+1}/${files.length})...`;
+    if (barEl) barEl.style.width = pct + '%';
+
+    try {
+      const fd = new FormData();
+      fd.append('fatura', file);
+      const resp = await fetch('/api/financeiro/extrair-fatura', {
+        method: 'POST', headers: { 'x-crm-token': TOKEN }, body: fd,
+      });
+      const r = await resp.json();
+      if (!r.ok) { todasFaturas.push({ file: file.name, erro: r.error, lancamentos: [] }); continue; }
+
+      const d = r.data;
+      const lancamentos = (d.lancamentos || []).map(l => ({ ...l, _arquivo: file.name, _mesRef: d.mes_referencia }));
+      todasFaturas.push({ file: file.name, vencimento: d.vencimento, mes_referencia: d.mes_referencia, total: d.total, lancamentos });
+
+      // Deduplicação de parcelas: mantém o de maior parcela_atual (mais recente)
+      for (const l of lancamentos) {
+        if (!l.parcela_atual || !l.total_parcelas || l.tipo === 'credito') continue;
+        const base = (l.descricao_base || l.descricao || '').trim().toUpperCase();
+        const key = `${base}|${l.total_parcelas}|${Math.round(Math.abs(l.valor))}`;
+        if (!parcelasGlobal[key] || l.parcela_atual > parcelasGlobal[key].parcela_atual) {
+          parcelasGlobal[key] = {
+            descricao_base: base,
+            descricao_original: l.descricao,
+            parcela_atual: l.parcela_atual,
+            total_parcelas: l.total_parcelas,
+            valor_parcela: Math.abs(l.valor),
+            fatura_mes: l._mesRef,
+          };
+        }
+      }
+    } catch(e) {
+      todasFaturas.push({ file: file.name, erro: e.message, lancamentos: [] });
+    }
+  }
+
+  // Salva parcelas deduplcadas imediatamente
+  const parcelasArr = Object.values(parcelasGlobal);
+  if (parcelasArr.length) {
+    await post('/api/financeiro/salvar-parcelas', { parcelas: parcelasArr, fatura_mes: null });
+  }
+
+  // Monta tela de revisão
+  const statusEl = document.getElementById('mf-status');
+  const resultsEl = document.getElementById('mf-results');
+  if (statusEl) statusEl.style.display = 'none';
+  if (!resultsEl) return;
+  resultsEl.style.display = 'block';
+
+  const totalLanc = todasFaturas.reduce((s, f) => s + f.lancamentos.length, 0);
+  const totalParc = parcelasArr.length;
+  const totalRestante = parcelasArr.reduce((s, p) => s + (p.total_parcelas - p.parcela_atual) * p.valor_parcela, 0);
+
+  // Resumo de parcelas
+  const parcelasHtml = parcelasArr.length ? `
+    <div style="background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.25);border-radius:8px;padding:12px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:700;color:#a78bfa;margin-bottom:8px">🔮 ${totalParc} parcelas detectadas — Total futuro comprometido: <span style="color:var(--danger)">${fmt(totalRestante)}</span></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;max-height:120px;overflow-y:auto">
+        ${parcelasArr.map(p => `
+          <div style="font-size:11px;background:var(--navy2);border-radius:5px;padding:4px 8px;display:flex;justify-content:space-between;gap:8px">
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text1)">${p.descricao_original||p.descricao_base}</span>
+            <span style="color:var(--warning);flex-shrink:0">${p.parcela_atual}/${p.total_parcelas}</span>
+          </div>`).join('')}
+      </div>
+    </div>` : '';
+
+  // Tabela de todos os lançamentos
+  let rowsHtml = '';
+  let idxGlobal = 0;
+  window._mfFaturas = todasFaturas;
+  for (const fatura of todasFaturas) {
+    if (fatura.erro) {
+      rowsHtml += `<tr><td colspan="6" style="padding:6px 8px;color:var(--danger);font-size:12px">❌ ${fatura.file}: ${fatura.erro}</td></tr>`;
+      continue;
+    }
+    rowsHtml += `<tr style="background:var(--navy3)"><td colspan="6" style="padding:4px 8px;font-size:11px;color:var(--text2);font-weight:600">
+      📄 ${fatura.file}${fatura.mes_referencia?' — Ref: '+fatura.mes_referencia:''}${fatura.total?' — Total: '+fmt(fatura.total):''}
+    </td></tr>`;
+    for (const l of fatura.lancamentos) {
+      const isParc = l.parcela_atual && l.total_parcelas;
+      rowsHtml += `<tr id="mfr-${idxGlobal}" style="border-bottom:1px solid var(--border);${l.tipo==='credito'?'opacity:.5':''}">
+        <td style="padding:4px;text-align:center"><input type="checkbox" class="mf-chk" data-idx="${idxGlobal}" ${l.tipo!=='credito'?'checked':''} onchange="toggleMFRow(${idxGlobal},this.checked)"></td>
+        <td style="padding:4px 8px;font-size:11px;color:var(--text2);white-space:nowrap">${l.data?fmtDate(l.data):'—'}</td>
+        <td style="padding:4px 8px;font-size:11px;max-width:180px">
+          <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(l.descricao||'').replace(/"/g,'&quot;')}">${l.descricao||'—'}</div>
+          ${isParc?`<div style="font-size:10px;color:#a78bfa">📦 Parcela ${l.parcela_atual}/${l.total_parcelas}</div>`:''}
+          ${l.tipo==='credito'?'<div style="font-size:10px;color:var(--success)">crédito</div>':''}
+        </td>
+        <td style="padding:4px 8px;font-size:11px;text-align:right;font-weight:700;color:${l.tipo==='credito'?'var(--success)':'var(--danger)'}">${l.tipo==='credito'?'+':''}${fmt(l.valor)}</td>
+        <td style="padding:4px 5px"><select class="mf-emp" data-idx="${idxGlobal}" style="width:110px;padding:2px 4px;border-radius:5px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:10px"><option value="">Institucional</option>${empOpts}</select></td>
+        <td style="padding:4px 5px"><select class="mf-cat" data-idx="${idxGlobal}" style="width:100px;padding:2px 4px;border-radius:5px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:10px">${catOpts}</select></td>
+      </tr>`;
+      idxGlobal++;
+    }
+  }
+
+  resultsEl.innerHTML = `
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:13px;font-weight:700">${files.length} fatura${files.length>1?'s':''} processada${files.length>1?'s':''} — ${totalLanc} lançamentos</span>
+      <label style="font-size:12px;display:flex;align-items:center;gap:5px;margin-left:auto;cursor:pointer">
+        <input type="checkbox" id="mf-sel-todos" checked onchange="toggleTodosMF(this.checked)"> Selecionar todos
+      </label>
+    </div>
+    ${parcelasHtml}
+    <div style="overflow:auto;max-height:360px">
+      <table style="min-width:620px;font-size:12px">
+        <thead style="position:sticky;top:0;background:var(--navy2);z-index:1">
+          <tr><th style="width:28px"></th><th>Data</th><th>Descrição</th><th style="text-align:right">Valor</th><th>Empreendimento</th><th>Categoria</th></tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--text2)">💡 Parcelas já foram salvas para projeção de caixa. Aqui você importa os lançamentos para o Financeiro.</div>`;
+}
+
+function toggleMFRow(idx, checked) {
+  const row = document.getElementById(`mfr-${idx}`);
+  if (row) row.style.opacity = checked ? '1' : '0.35';
+}
+function toggleTodosMF(checked) {
+  document.querySelectorAll('.mf-chk').forEach(c => { c.checked = checked; toggleMFRow(+c.dataset.idx, checked); });
+}
+
+async function confirmarMultiFatura() {
+  if (!window._mfFaturas) return;
+  const lancamentos = [];
+  let idx = 0;
+  for (const f of window._mfFaturas) {
+    for (const l of (f.lancamentos||[])) {
+      const chk = document.querySelector(`.mf-chk[data-idx="${idx}"]`);
+      const emp = document.querySelector(`.mf-emp[data-idx="${idx}"]`);
+      const cat = document.querySelector(`.mf-cat[data-idx="${idx}"]`);
+      lancamentos.push({ ...l, incluir: chk?.checked||false, empreendimento_id: emp?.value||null, categoria: cat?.value||'outro' });
+      idx++;
+    }
+  }
+  const selected = lancamentos.filter(l => l.incluir);
+  if (!selected.length) { toast('Nenhum lançamento selecionado', 'error'); return; }
+  const r = await post('/api/financeiro/importar-fatura', { lancamentos });
+  if (!r.ok) { toast(r.error, 'error'); return; }
+  toast(`✅ ${r.data.importados} lançamentos importados! Veja a Projeção de Parcelas na aba Finanças.`);
+  window._mfFaturas = null;
+  renderFinanceiro();
+  if (_currentPage === 'gestao-pessoal') renderGestaoPessoal('financas');
+}
+
+async function gpRemoverParcela(id) {
+  if (!confirm('Remover esta parcela da projeção?')) return;
+  const r = await del(`/api/financeiro/parcelas/${id}`);
+  if (r.ok) { toast('Parcela removida'); renderGestaoPessoal('financas'); }
 }
 
 function openSaidaModal(e = {}) {
@@ -8582,9 +8779,9 @@ async function _gpFinancas() {
       <div style="font-size:13px;color:var(--text2)">Mês de referência:</div>
       <input type="month" id="gp-mes" value="${mesAtual}" onchange="renderGestaoPessoal('financas')" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px">
       <div style="margin-left:auto;display:flex;gap:8px">
-        <label style="padding:8px 14px;border-radius:8px;background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.4);color:#a78bfa;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px" title="Importe a fatura do cartão (PDF ou DOCX) — a IA extrai os lançamentos">
-          💳 Importar Fatura
-          <input type="file" accept=".pdf,.docx" style="display:none" onchange="iniciarImportacaoFatura(this)">
+        <label style="padding:8px 14px;border-radius:8px;background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.4);color:#a78bfa;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px" title="Importe faturas do cartão (PDF) — a IA extrai lançamentos e detecta parcelas para projeção">
+          💳 Importar Faturas
+          <input type="file" accept=".pdf,.docx" multiple style="display:none" onchange="iniciarImportacaoFaturas(this)">
         </label>
         <button onclick="gpAbrirReceitaModal()" style="padding:8px 14px;border-radius:8px;background:rgba(0,196,180,.15);border:1px solid rgba(0,196,180,.4);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer">+ Receita</button>
         <button onclick="gpAbrirDespesaModal()" style="padding:8px 14px;border-radius:8px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#f87171;font-size:13px;font-weight:600;cursor:pointer">+ Despesa</button>
@@ -8609,7 +8806,7 @@ async function _gpFinancas() {
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
       <div class="gp-card">
         <div class="gp-section-title">💚 Receitas</div>
         <div class="table-card" style="overflow-x:auto">
@@ -8640,6 +8837,92 @@ async function _gpFinancas() {
               <td colspan="2"></td>
             </tr></tfoot>
           </table>
+        </div>
+      </div>
+    </div>
+    ${await _gpProjecaoParcelas()}`;
+}
+
+async function _gpProjecaoParcelas() {
+  const [rParcelas, rProjecao] = await Promise.all([
+    get('/api/financeiro/parcelas'),
+    get('/api/financeiro/projecao-parcelas?meses=12'),
+  ]);
+  const parcelas = rParcelas.data || [];
+  const meses = (rProjecao.data?.meses || []).filter(m => m.total > 0);
+
+  if (!parcelas.length) return `
+    <div class="gp-card" style="border:1px dashed rgba(139,92,246,.3);background:rgba(139,92,246,.05)">
+      <div class="gp-section-title">🔮 Projeção de Parcelas do Cartão</div>
+      <div style="text-align:center;padding:24px;color:var(--text2)">
+        <div style="font-size:32px;margin-bottom:8px">📭</div>
+        <div>Nenhuma parcela detectada ainda.</div>
+        <div style="font-size:12px;margin-top:6px">Importe suas faturas de 2026 usando o botão <b>💳 Importar Faturas</b> acima.</div>
+      </div>
+    </div>`;
+
+  const mesesLabels = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const barMax = Math.max(...meses.map(m => m.total), 1);
+
+  const barras = meses.map(m => {
+    const [ano, mes] = m.mes.split('-');
+    const label = `${mesesLabels[parseInt(mes)-1]}/${ano.slice(2)}`;
+    const pct = Math.round(m.total / barMax * 100);
+    const items = m.itens.map(it => `${it.descricao} ${it.parcela}/${it.total_parcelas}: ${fmt(it.valor)}`).join('\n');
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px" title="${items}">
+      <div style="width:52px;font-size:11px;color:var(--text2);flex-shrink:0;text-align:right">${label}</div>
+      <div style="flex:1;background:rgba(139,92,246,.15);border-radius:4px;height:22px;position:relative">
+        <div style="position:absolute;left:0;top:0;height:100%;width:${pct}%;background:rgba(139,92,246,.6);border-radius:4px;transition:width .3s"></div>
+        <div style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:11px;font-weight:700;color:#a78bfa">${fmt(m.total)}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const totalProjetado = meses.reduce((s, m) => s + m.total, 0);
+  const rowsParcelas = parcelas.map(p => {
+    const restantes = p.total_parcelas - p.parcela_atual;
+    const totalRestante = restantes * p.valor_parcela;
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;font-size:12px">${p.descricao_original || p.descricao_base}</td>
+      <td style="padding:5px 8px;font-size:12px;text-align:center">${p.parcela_atual}/${p.total_parcelas}</td>
+      <td style="padding:5px 8px;font-size:12px;text-align:center;color:var(--warning)">${restantes}x</td>
+      <td style="padding:5px 8px;font-size:12px;text-align:right">${fmt(p.valor_parcela)}</td>
+      <td style="padding:5px 8px;font-size:12px;text-align:right;color:var(--danger);font-weight:700">${fmt(totalRestante)}</td>
+      <td style="padding:5px 8px;text-align:center">
+        <button onclick="gpRemoverParcela(${p.id})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px" title="Remover">🗑</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="gp-card" style="border:1px solid rgba(139,92,246,.25)">
+      <div class="gp-section-title" style="display:flex;align-items:center;gap:12px">
+        🔮 Projeção de Parcelas do Cartão
+        <span style="font-size:12px;color:var(--text2);font-weight:400">${parcelas.length} séries ativas · Total projetado: <b style="color:#a78bfa">${fmt(totalProjetado)}</b></span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <!-- Gráfico de barras -->
+        <div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Comprometimento mensal (próximos 12 meses)</div>
+          ${meses.length ? barras : '<div style="color:var(--text2);font-size:12px;padding:12px">Sem parcelas futuras nos próximos 12 meses</div>'}
+        </div>
+        <!-- Tabela de parcelas ativas -->
+        <div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Parcelas em andamento</div>
+          <div style="overflow-x:auto">
+            <table style="width:100%;font-size:12px">
+              <thead><tr style="color:var(--text2)">
+                <th style="padding:4px 8px;text-align:left">Estabelecimento</th>
+                <th style="padding:4px 8px">Parcela</th>
+                <th style="padding:4px 8px">Restam</th>
+                <th style="padding:4px 8px;text-align:right">Valor/mês</th>
+                <th style="padding:4px 8px;text-align:right">Total restante</th>
+                <th></th>
+              </tr></thead>
+              <tbody>${rowsParcelas}</tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>`;

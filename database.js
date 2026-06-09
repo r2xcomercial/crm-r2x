@@ -509,6 +509,22 @@ db.exec(`
   );
 `);
 
+// ─── PARCELAS DO CARTÃO (projeção de caixa) ───────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS parcelas_cartao (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    descricao_base TEXT NOT NULL,
+    descricao_original TEXT,
+    parcela_atual INTEGER NOT NULL,
+    total_parcelas INTEGER NOT NULL,
+    valor_parcela REAL NOT NULL,
+    fatura_mes TEXT,
+    ativo INTEGER DEFAULT 1,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 // ─── PLUGGY OPEN FINANCE ──────────────────────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS pluggy_items (

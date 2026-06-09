@@ -1362,13 +1362,17 @@ Leia a fatura abaixo e extraia TODOS os lançamentos (compras, créditos, tarifa
 Retorne APENAS um objeto JSON válido com este formato:
 {
   "vencimento": "YYYY-MM-DD ou null",
+  "mes_referencia": "YYYY-MM (mês de referência/fechamento desta fatura, ex: 2026-04)",
   "total": número sem formatação ou null,
   "lancamentos": [
     {
       "data": "YYYY-MM-DD",
-      "descricao": "descrição da compra exatamente como aparece na fatura",
+      "descricao": "descrição exatamente como aparece na fatura",
+      "descricao_base": "nome do estabelecimento SEM a parte de parcela (ex: se 'AMAZON 03/12', retorne 'AMAZON')",
       "valor": número positivo (ex: 150.00),
-      "tipo": "debito" ou "credito"
+      "tipo": "debito" ou "credito",
+      "parcela_atual": número inteiro ou null (ex: 3 se for a 3ª parcela),
+      "total_parcelas": número inteiro ou null (ex: 12 se for de 12 parcelas)
     }
   ]
 }
@@ -1378,6 +1382,9 @@ Regras:
 - Para créditos/estornos, use tipo "credito" e valor positivo
 - Para compras/débitos, use tipo "debito" e valor positivo
 - Se a data aparecer apenas como dia/mês, use o ano do vencimento ou o ano atual
+- Detecte parcelas: padrões como "LOJA 03/12", "LOJA PARC 3/12", "LOJA 3 DE 12" indicam parcela 3 de 12
+- Para lançamentos parcelados, preencha parcela_atual e total_parcelas; caso contrário deixe null
+- descricao_base: remova apenas a parte numérica de parcela (03/12), mantenha o restante do nome
 - Não invente lançamentos — extraia somente o que estiver explicitamente na fatura
 
 FATURA:
@@ -1426,6 +1433,111 @@ app.post('/api/financeiro/importar-fatura', (req, res) => {
     importados++;
   }
   ok(res, { importados });
+});
+
+// ─── PARCELAS DO CARTÃO ────────────────────────────────────────────────────────
+
+// Salvar/atualizar parcelas detectadas numa fatura (deduplicação automática)
+app.post('/api/financeiro/salvar-parcelas', (req, res) => {
+  const { parcelas, fatura_mes } = req.body;
+  if (!Array.isArray(parcelas) || !parcelas.length) return ok(res, { salvos: 0, atualizados: 0 });
+
+  let salvos = 0, atualizados = 0;
+
+  for (const p of parcelas) {
+    if (!p.descricao_base || !p.total_parcelas || !p.parcela_atual || !p.valor_parcela) continue;
+
+    const base = String(p.descricao_base).trim().toUpperCase();
+    const total = parseInt(p.total_parcelas);
+    const atual = parseInt(p.parcela_atual);
+    const valor = Math.abs(parseFloat(p.valor_parcela));
+    const mes = fatura_mes || null;
+
+    // Busca por chave: descricao_base + total_parcelas + valor próximo (±5%)
+    const existente = db.prepare(`
+      SELECT * FROM parcelas_cartao
+      WHERE descricao_base=? AND total_parcelas=? AND ativo=1
+        AND ABS(valor_parcela - ?) / MAX(valor_parcela, 0.01) < 0.05
+      ORDER BY parcela_atual DESC LIMIT 1
+    `).get(base, total, valor);
+
+    if (existente) {
+      // Só atualiza se a nova parcela for mais recente (maior parcela_atual)
+      if (atual > existente.parcela_atual) {
+        db.prepare(`
+          UPDATE parcelas_cartao SET parcela_atual=?, descricao_original=?, fatura_mes=?,
+          atualizado_em=CURRENT_TIMESTAMP WHERE id=?
+        `).run(atual, p.descricao_original || base, mes, existente.id);
+        atualizados++;
+      }
+    } else {
+      db.prepare(`
+        INSERT INTO parcelas_cartao (descricao_base, descricao_original, parcela_atual, total_parcelas, valor_parcela, fatura_mes)
+        VALUES (?,?,?,?,?,?)
+      `).run(base, p.descricao_original || base, atual, total, valor, mes);
+      salvos++;
+    }
+  }
+
+  ok(res, { salvos, atualizados });
+});
+
+// Listar parcelas ativas
+app.get('/api/financeiro/parcelas', (req, res) => {
+  const rows = db.prepare(`SELECT * FROM parcelas_cartao WHERE ativo=1 ORDER BY fatura_mes DESC, descricao_base`).all();
+  ok(res, rows);
+});
+
+// Desativar parcela manualmente
+app.delete('/api/financeiro/parcelas/:id', (req, res) => {
+  db.prepare(`UPDATE parcelas_cartao SET ativo=0, atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(req.params.id);
+  ok(res, {});
+});
+
+// Projeção mensal de parcelas para os próximos N meses
+app.get('/api/financeiro/projecao-parcelas', (req, res) => {
+  const meses = parseInt(req.query.meses) || 12;
+  const parcelas = db.prepare(`SELECT * FROM parcelas_cartao WHERE ativo=1`).all();
+
+  // Meses futuros a partir do mês atual
+  const hoje = new Date();
+  const projecao = {};
+  for (let i = 1; i <= meses; i++) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    projecao[key] = { mes: key, total: 0, itens: [] };
+  }
+
+  for (const p of parcelas) {
+    const restantes = p.total_parcelas - p.parcela_atual;
+    if (restantes <= 0) continue;
+
+    // Mês base: fatura_mes da última importação (próximo mês após essa fatura)
+    let baseDate;
+    if (p.fatura_mes) {
+      const [fy, fm] = p.fatura_mes.split('-').map(Number);
+      baseDate = new Date(fy, fm, 1); // mês seguinte ao da fatura
+    } else {
+      baseDate = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1);
+    }
+
+    for (let k = 1; k <= restantes; k++) {
+      const d = new Date(baseDate.getFullYear(), baseDate.getMonth() + k, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      if (projecao[key]) {
+        projecao[key].total += p.valor_parcela;
+        projecao[key].itens.push({
+          id: p.id,
+          descricao: p.descricao_base,
+          valor: p.valor_parcela,
+          parcela: p.parcela_atual + k,
+          total_parcelas: p.total_parcelas,
+        });
+      }
+    }
+  }
+
+  ok(res, { meses: Object.values(projecao), parcelas_ativas: parcelas.length });
 });
 
 // ─── IMPOSTOS (LUCRO PRESUMIDO) ───────────────────────────────────────────────
