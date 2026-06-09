@@ -1935,10 +1935,7 @@ async function revogarLoginIncorporador(usuarioId) {
 async function renderEmpreendimentos(filter = '') {
   const [er, cr, lr] = await Promise.all([get('/api/empreendimentos'), get('/api/clientes'), get('/api/empreendimentos/lucratividade')]);
   currentData.emp = er.data; currentData.clientes = cr.data;
-  // Verifica quais empreendimentos têm mapa importado
-  await Promise.all(er.data.map(async e => {
-    try { const r = await get(`/api/empreendimentos/${e.id}/mapa`); e._temMapa = r.ok; } catch(_) { e._temMapa = false; }
-  }));
+  // tem_mapa já vem no payload principal — sem chamadas extras por empreendimento
   let rows = er.data;
   if (filter) rows = rows.filter(e => e.nome.toLowerCase().includes(filter) || (e.cidade||'').toLowerCase().includes(filter));
 
@@ -2058,9 +2055,9 @@ function openEmpModal(e = {}) {
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <input type="file" id="f-dxf" accept=".jpg,.jpeg,.png" style="flex:1;font-size:13px">
           <button type="button" onclick="uploadMapa(${e.id})" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap">🗺️ Enviar Imagem</button>
-          ${e._temMapa ? `<button type="button" onclick="removerMapa(${e.id})" style="padding:6px 10px;background:var(--danger);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">🗑️ Remover</button>` : ''}
+          ${e.tem_mapa ? `<button type="button" onclick="removerMapa(${e.id})" style="padding:6px 10px;background:var(--danger);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">🗑️ Remover</button>` : ''}
         </div>
-        <div id="mapa-status" style="font-size:12px;margin-top:6px;color:var(--text2)">${e._temMapa ? '✅ Planta importada — clique em 🏠 para ver e posicionar os lotes' : 'Nenhuma planta enviada ainda'}</div>
+        <div id="mapa-status" style="font-size:12px;margin-top:6px;color:var(--text2)">${e.tem_mapa ? '✅ Planta importada — clique em 🏠 para ver e posicionar os lotes' : 'Nenhuma planta enviada ainda'}</div>
       </div>
       <div class="form-group span2" style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
         <label>📄 Contrato de Prestação de Serviços</label>
@@ -4620,7 +4617,7 @@ async function uploadMapa(empId) {
       if(status) { status.style.color='var(--success)'; status.textContent='✅ Imagem salva! Feche este formulário e clique em 🏠 para posicionar os lotes.'; }
       toast('Imagem do mapa enviada! 🗺️');
       const emp = (currentData.emp||[]).find(e=>e.id===empId);
-      if(emp) emp._temMapa = true;
+      if(emp) emp.tem_mapa = true;
     } else {
       if(status) { status.style.color='var(--danger)'; status.textContent='❌ Erro: ' + data.error; }
       toast('Erro: ' + data.error, 'error');
@@ -4636,7 +4633,7 @@ async function removerMapa(empId) {
   await del(`/api/empreendimentos/${empId}/mapa`);
   toast('Planta removida');
   const emp = (currentData.emp||[]).find(e=>e.id===empId);
-  if(emp) emp._temMapa = false;
+  if(emp) emp.tem_mapa = false;
   closeModal(); renderEmpreendimentos();
 }
 

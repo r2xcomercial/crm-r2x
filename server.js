@@ -351,7 +351,8 @@ app.get("/api/empreendimentos/lucratividade", (req, res) => {
 
 app.get("/api/empreendimentos", (req, res) => {
   const rows = db.prepare(`
-    SELECT e.*, c.razao_social as cliente_nome
+    SELECT e.*, c.razao_social as cliente_nome,
+      EXISTS(SELECT 1 FROM mapas m WHERE m.empreendimento_id = e.id) as tem_mapa
     FROM empreendimentos e LEFT JOIN clientes c ON c.id = e.cliente_id
     ORDER BY e.nome
   `).all();
