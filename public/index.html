@@ -8582,6 +8582,10 @@ async function _gpFinancas() {
       <div style="font-size:13px;color:var(--text2)">Mês de referência:</div>
       <input type="month" id="gp-mes" value="${mesAtual}" onchange="renderGestaoPessoal('financas')" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:13px">
       <div style="margin-left:auto;display:flex;gap:8px">
+        <label style="padding:8px 14px;border-radius:8px;background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.4);color:#a78bfa;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:5px" title="Importe a fatura do cartão (PDF ou DOCX) — a IA extrai os lançamentos">
+          💳 Importar Fatura
+          <input type="file" accept=".pdf,.docx" style="display:none" onchange="iniciarImportacaoFatura(this)">
+        </label>
         <button onclick="gpAbrirReceitaModal()" style="padding:8px 14px;border-radius:8px;background:rgba(0,196,180,.15);border:1px solid rgba(0,196,180,.4);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer">+ Receita</button>
         <button onclick="gpAbrirDespesaModal()" style="padding:8px 14px;border-radius:8px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#f87171;font-size:13px;font-weight:600;cursor:pointer">+ Despesa</button>
       </div>
