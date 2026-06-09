@@ -648,14 +648,25 @@ app.post("/api/leads", (req, res) => {
 });
 
 app.put("/api/leads/:id", (req, res) => {
-  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, observacoes, aniversario, tipo, creci, imobiliaria } = req.body;
-  const lead = db.prepare('SELECT status FROM leads WHERE id=?').get(req.params.id);
+  const lead = db.prepare('SELECT * FROM leads WHERE id=?').get(req.params.id);
+  if (!lead) return err(res, "Lead não encontrado", 404);
+  const b = req.body;
+  // Merge: usa valor do body se explicitamente enviado, senão mantém o valor atual
+  const val = (key, fallback) => key in b ? b[key] : (lead[key] !== undefined ? lead[key] : fallback);
   // Auto-move para com_corretor quando corretor é atribuído (exceto vendido/sem_venda)
-  let novoStatus = status;
-  if (corretor_id && lead && !['vendido','sem_venda'].includes(lead.status) && lead.status !== 'com_corretor') {
+  const corretor_id = val('corretor_id', null);
+  let novoStatus = val('status', lead.status);
+  if (corretor_id && !['vendido','sem_venda'].includes(lead.status) && lead.status !== 'com_corretor') {
     novoStatus = 'com_corretor';
   }
-  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, novoStatus, observacoes, aniversario||null, tipo||null, creci||null, imobiliaria||null, req.params.id);
+  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(
+    val('nome', null), val('telefone', null), val('email', null), val('cidade', null),
+    val('objetivo', null), val('faixa_investimento', null), val('prazo', null),
+    val('empreendimento_interesse', null), val('empreendimento_id', null),
+    corretor_id, novoStatus, val('observacoes', null),
+    val('aniversario', null), val('tipo', null), val('creci', null), val('imobiliaria', null),
+    req.params.id
+  );
   ok(res, {});
 });
 
