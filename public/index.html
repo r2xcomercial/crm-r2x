@@ -5058,11 +5058,12 @@ function renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId) {
             const tileSub  = dashIdx > -1 ? u.lote.slice(dashIdx + 3) : '';
             return `
             <div class="espelho-tile ${u.status}" onclick="abrirUnidade(${u.id},${empId})"
-              title="${lblB} ${u.lote}${u.area_m2?' · '+u.area_m2+'m²':''}${u.preco?' · '+fmtPlain(u.preco):''}">
+              title="${lblB} ${u.lote}${u.area_m2?' · '+u.area_m2+'m²':''}${u.preco?' · '+fmtPlain(u.preco):''}${u.num_vagas?' · '+u.num_vagas+' vaga(s)':''}">
               <div class="tile-num">${tileNum}</div>
               ${tileSub ? `<div class="tile-area" style="font-size:8px;opacity:.6;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${tileSub}</div>` : ''}
               ${u.area_m2 ? `<div class="tile-area">${u.area_m2}m²</div>` : ''}
               ${u.preco ? `<div class="tile-preco">${fmtK(u.preco)}</div>` : ''}
+              ${u.num_vagas ? `<div class="tile-area" style="color:#60a5fa">🅿️ ${u.num_vagas}</div>` : ''}
             </div>`;
           }).join('')}
         </div>
@@ -5082,8 +5083,12 @@ function filtrarEspelho() {
 
 async function abrirUnidade(unidadeId, empId) {
   const emp   = (currentData.emp||[]).find(e => e.id === empId) || {};
-  const r     = await get(`/api/empreendimentos/${empId}/unidades`);
-  const u     = (r.data||[]).find(x => x.id === unidadeId);
+  const [ur, vagasR, todasVagasR] = await Promise.all([
+    get(`/api/empreendimentos/${empId}/unidades`),
+    get(`/api/unidades/${unidadeId}/vagas`),
+    get(`/api/empreendimentos/${empId}/vagas`),
+  ]);
+  const u = (ur.data||[]).find(x => x.id === unidadeId);
   if (!u) return;
 
   const isPredio = emp.tipo === 'predio';
@@ -5096,6 +5101,34 @@ async function abrirUnidade(unidadeId, empId) {
     vendido:    { label:'🔴 Vendido',    color:'var(--danger)'  }
   };
   const si = statusInfo[u.status] || statusInfo.disponivel;
+
+  // Vagas já vinculadas a esta unidade
+  const vagasVinculadas = vagasR.data || [];
+  // Vagas disponíveis para vincular (sem unidade ou desta unidade)
+  const vagasLivres = (todasVagasR.data || []).filter(v => !v.unidade_id && v.status !== 'vendida');
+
+  const tipoLabel = { simples:'Simples', dupla:'Dupla', coberta:'Coberta', descoberta:'Descoberta', moto:'Moto' };
+
+  const vagasVinculadasHtml = vagasVinculadas.length
+    ? vagasVinculadas.map(v => `
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--navy2);border-radius:6px;padding:8px 12px;gap:8px">
+          <div>
+            <div style="font-size:13px;font-weight:600">🅿️ Vaga ${v.numero}${v.box?' · Box '+v.box:''}</div>
+            <div style="font-size:11px;color:var(--text2)">${tipoLabel[v.tipo]||v.tipo}${v.pavimento?' · '+v.pavimento:''}${v.tamanho?' · '+v.tamanho+'m²':''}${v.preco?' · '+fmt(v.preco):''}</div>
+          </div>
+          <button onclick="desvincularVaga(${v.id},${unidadeId},${empId})"
+            style="background:none;border:1px solid rgba(239,68,68,.4);color:var(--danger);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;flex-shrink:0">✕ Desvincular</button>
+        </div>`).join('')
+    : '<div style="font-size:12px;color:var(--text2);padding:6px 0">Nenhuma vaga vinculada ainda.</div>';
+
+  const vagasLivresOpts = vagasLivres.length
+    ? `<select id="sel-vaga-vincular" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+        <option value="">— Selecione uma vaga —</option>
+        ${vagasLivres.map(v => `<option value="${v.id}">Vaga ${v.numero}${v.box?' Box '+v.box:''}${v.pavimento?' · '+v.pavimento:''}${v.tipo?' · '+(tipoLabel[v.tipo]||v.tipo):''}</option>`).join('')}
+       </select>
+       <button onclick="vincularVaga(${unidadeId},${empId})"
+         style="background:rgba(0,196,180,.15);border:1px solid rgba(0,196,180,.4);color:var(--accent);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px;font-weight:600;flex-shrink:0">+ Vincular</button>`
+    : '<div style="font-size:12px;color:var(--text2)">Nenhuma vaga disponível para vincular. Cadastre vagas em 🅿️ Vagas.</div>';
 
   document.getElementById('modal-title').textContent = `${lblA} ${u.quadra||'—'} — ${lblB} ${u.lote}`;
   document.getElementById('modal-body').innerHTML = `
@@ -5117,6 +5150,15 @@ async function abrirUnidade(unidadeId, empId) {
         <div style="font-size:20px;font-weight:700;color:var(--success)">${fmt(u.preco)}</div>
       </div>` : ''}
     </div>
+
+    <!-- Vagas de Garagem -->
+    <div style="border-top:1px solid var(--border);padding-top:16px;margin-bottom:16px">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">🅿️ Vagas de Garagem</div>
+      <div id="vagas-vinculadas-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">${vagasVinculadasHtml}</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${vagasLivresOpts}</div>
+    </div>
+
+    <!-- Alterar Status -->
     <div style="border-top:1px solid var(--border);padding-top:16px">
       <div style="font-size:11px;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">Alterar Status</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -5133,6 +5175,23 @@ async function abrirUnidade(unidadeId, empId) {
     <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>
   `;
   document.getElementById('modal-overlay').classList.add('open');
+}
+
+async function vincularVaga(unidadeId, empId) {
+  const sel = document.getElementById('sel-vaga-vincular');
+  const vagaId = sel?.value;
+  if (!vagaId) return toast('Selecione uma vaga', 'error');
+  const r = await put(`/api/vagas/${vagaId}/unidade`, { unidade_id: unidadeId });
+  if (!r.ok) return toast(r.error || 'Erro ao vincular', 'error');
+  toast('Vaga vinculada ✓');
+  abrirUnidade(unidadeId, empId);
+}
+
+async function desvincularVaga(vagaId, unidadeId, empId) {
+  const r = await put(`/api/vagas/${vagaId}/unidade`, { unidade_id: null });
+  if (!r.ok) return toast(r.error || 'Erro ao desvincular', 'error');
+  toast('Vaga desvinculada ✓');
+  abrirUnidade(unidadeId, empId);
 }
 
 async function deletarUnidade(unidadeId, empId) {
@@ -7156,21 +7215,28 @@ async function verVagas(empId) {
 
 function abrirVagaModal(empId, vaga = {}) {
   const isEdit = !!vaga.id;
-  openModal(isEdit ? '✏️ Editar Vaga' : '+ Nova Vaga', `
+  openModal(isEdit ? '✏️ Editar Vaga' : '🅿️ Nova Vaga', `
     <div class="form-grid">
-      <div class="form-group"><label>Número da Vaga *</label>
+      <div class="form-group"><label>Nº da Vaga *</label>
         <input id="vg-numero" value="${vaga.numero||''}" placeholder="01">
       </div>
-      <div class="form-group"><label>Bloco / Torre</label>
-        <input id="vg-bloco" value="${vaga.bloco||''}" placeholder="A">
+      <div class="form-group"><label>Nº do Box</label>
+        <input id="vg-box" value="${vaga.box||''}" placeholder="B-12">
       </div>
       <div class="form-group"><label>Tipo</label>
         <select id="vg-tipo">
-          <option value="coberta" ${(vaga.tipo||'coberta')==='coberta'?'selected':''}>Coberta</option>
+          <option value="simples"    ${(vaga.tipo||'simples')==='simples'   ?'selected':''}>Simples</option>
+          <option value="dupla"      ${vaga.tipo==='dupla'     ?'selected':''}>Dupla</option>
+          <option value="coberta"    ${vaga.tipo==='coberta'   ?'selected':''}>Coberta</option>
           <option value="descoberta" ${vaga.tipo==='descoberta'?'selected':''}>Descoberta</option>
-          <option value="duplex" ${vaga.tipo==='duplex'?'selected':''}>Duplex</option>
-          <option value="moto" ${vaga.tipo==='moto'?'selected':''}>Moto</option>
+          <option value="moto"       ${vaga.tipo==='moto'      ?'selected':''}>Moto</option>
         </select>
+      </div>
+      <div class="form-group"><label>Pavimento</label>
+        <input id="vg-pavimento" value="${vaga.pavimento||''}" placeholder="P1, Subsolo, Térreo...">
+      </div>
+      <div class="form-group"><label>Tamanho (m²)</label>
+        <input id="vg-tamanho" type="number" step="0.01" value="${vaga.tamanho||''}" placeholder="12.5">
       </div>
       <div class="form-group"><label>Preço (R$)</label>
         <input id="vg-preco" type="number" step="0.01" value="${vaga.preco||''}" placeholder="45000">
@@ -7179,13 +7245,13 @@ function abrirVagaModal(empId, vaga = {}) {
       <div class="form-group"><label>Status</label>
         <select id="vg-status" ${vaga.status==='vendida'?'disabled':''}>
           <option value="disponivel" ${vaga.status==='disponivel'?'selected':''}>Disponível</option>
-          <option value="reservada" ${vaga.status==='reservada'?'selected':''}>Reservada</option>
-          <option value="vendida" ${vaga.status==='vendida'?'selected':''}>Vendida</option>
+          <option value="reservada"  ${vaga.status==='reservada' ?'selected':''}>Reservada</option>
+          <option value="vendida"    ${vaga.status==='vendida'   ?'selected':''}>Vendida</option>
         </select>
-        ${vaga.status==='vendida'?'<div style="font-size:11px;color:var(--text2);margin-top:4px">Status gerenciado pela venda vinculada</div>':''}
+        ${vaga.status==='vendida'?'<div style="font-size:11px;color:var(--text2);margin-top:4px">Gerenciado pela venda vinculada</div>':''}
       </div>` : '<div></div>'}
       <div class="form-group span2"><label>Observações</label>
-        <input id="vg-obs" value="${vaga.observacoes||''}" placeholder="Ex: próxima ao elevador">
+        <input id="vg-obs" value="${vaga.observacoes||''}" placeholder="Ex: próxima ao elevador, box duplo">
       </div>
     </div>
   `, async () => {
@@ -7193,10 +7259,13 @@ function abrirVagaModal(empId, vaga = {}) {
     if (!numero) return toast('Número da vaga é obrigatório', 'error');
     const body = {
       numero,
-      bloco:  document.getElementById('vg-bloco')?.value?.trim() || null,
-      tipo:   document.getElementById('vg-tipo')?.value || 'coberta',
-      preco:  parseFloat(document.getElementById('vg-preco')?.value) || null,
-      status: document.getElementById('vg-status')?.value || 'disponivel',
+      box:       document.getElementById('vg-box')?.value?.trim() || null,
+      bloco:     null,
+      tipo:      document.getElementById('vg-tipo')?.value || 'simples',
+      pavimento: document.getElementById('vg-pavimento')?.value?.trim() || null,
+      tamanho:   parseFloat(document.getElementById('vg-tamanho')?.value) || null,
+      preco:     parseFloat(document.getElementById('vg-preco')?.value) || null,
+      status:    document.getElementById('vg-status')?.value || 'disponivel',
       observacoes: document.getElementById('vg-obs')?.value?.trim() || null,
     };
     const r = isEdit

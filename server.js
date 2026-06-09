@@ -375,7 +375,13 @@ app.put("/api/empreendimentos/:id", (req, res) => {
 // ─── UNIDADES ─────────────────────────────────────────────────────────────────
 
 app.get("/api/empreendimentos/:id/unidades", (req, res) => {
-  const rows = db.prepare("SELECT * FROM unidades WHERE empreendimento_id=? ORDER BY quadra, lote").all(req.params.id);
+  const rows = db.prepare(`
+    SELECT u.*,
+      (SELECT COUNT(*) FROM vagas_garagem vg WHERE vg.unidade_id = u.id) as num_vagas
+    FROM unidades u
+    WHERE u.empreendimento_id = ?
+    ORDER BY u.quadra, u.lote
+  `).all(req.params.id);
   ok(res, rows);
 });
 
@@ -538,32 +544,50 @@ app.get("/api/empreendimentos/:id/vagas", (req, res) => {
     SELECT vg.*,
       v.id as venda_ref_id,
       l.nome as comprador,
-      v.imovel
+      v.imovel,
+      u.lote as unidade_lote,
+      u.quadra as unidade_quadra
     FROM vagas_garagem vg
     LEFT JOIN vendas v ON v.id = vg.venda_id AND v.status = 'ativo'
     LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN unidades u ON u.id = vg.unidade_id
     WHERE vg.empreendimento_id = ?
-    ORDER BY vg.bloco, vg.numero
+    ORDER BY vg.pavimento, vg.numero
   `).all(req.params.id);
   ok(res, rows);
 });
 
+// Vagas vinculadas a uma unidade específica
+app.get("/api/unidades/:id/vagas", (req, res) => {
+  const rows = db.prepare(`SELECT * FROM vagas_garagem WHERE unidade_id=? ORDER BY numero`).all(req.params.id);
+  ok(res, rows);
+});
+
+// Vincular/desvincular vaga de uma unidade
+app.put("/api/vagas/:id/unidade", (req, res) => {
+  const { unidade_id } = req.body;
+  const vaga = db.prepare("SELECT * FROM vagas_garagem WHERE id=?").get(req.params.id);
+  if (!vaga) return err(res, "Vaga não encontrada", 404);
+  db.prepare("UPDATE vagas_garagem SET unidade_id=? WHERE id=?").run(unidade_id||null, req.params.id);
+  ok(res, {});
+});
+
 app.post("/api/empreendimentos/:id/vagas", (req, res) => {
-  const { numero, bloco, tipo, preco, observacoes } = req.body;
+  const { numero, box, bloco, tipo, tamanho, pavimento, preco, observacoes, unidade_id } = req.body;
   if (!numero) return err(res, "Número da vaga é obrigatório");
   const r = db.prepare(`
-    INSERT INTO vagas_garagem (empreendimento_id, numero, bloco, tipo, preco, observacoes)
-    VALUES (?,?,?,?,?,?)
-  `).run(req.params.id, numero, bloco||null, tipo||'coberta', preco||null, observacoes||null);
+    INSERT INTO vagas_garagem (empreendimento_id, numero, box, bloco, tipo, tamanho, pavimento, preco, observacoes, unidade_id)
+    VALUES (?,?,?,?,?,?,?,?,?,?)
+  `).run(req.params.id, numero, box||null, bloco||null, tipo||'simples', tamanho||null, pavimento||null, preco||null, observacoes||null, unidade_id||null);
   ok(res, { id: r.lastInsertRowid });
 });
 
 app.put("/api/vagas/:id", (req, res) => {
-  const { numero, bloco, tipo, preco, status, observacoes } = req.body;
+  const { numero, box, bloco, tipo, tamanho, pavimento, preco, status, observacoes, unidade_id } = req.body;
   const vaga = db.prepare("SELECT * FROM vagas_garagem WHERE id=?").get(req.params.id);
   if (!vaga) return err(res, "Vaga não encontrada", 404);
-  db.prepare(`UPDATE vagas_garagem SET numero=?, bloco=?, tipo=?, preco=?, status=?, observacoes=? WHERE id=?`)
-    .run(numero||vaga.numero, bloco||null, tipo||vaga.tipo, preco||null, status||vaga.status, observacoes||null, req.params.id);
+  db.prepare(`UPDATE vagas_garagem SET numero=?, box=?, bloco=?, tipo=?, tamanho=?, pavimento=?, preco=?, status=?, observacoes=?, unidade_id=? WHERE id=?`)
+    .run(numero||vaga.numero, box||null, bloco||null, tipo||vaga.tipo, tamanho||null, pavimento||null, preco||null, status||vaga.status, observacoes||null, unidade_id??vaga.unidade_id, req.params.id);
   ok(res, {});
 });
 
@@ -1877,6 +1901,12 @@ app.get("/api/corretores/conversao", (req, res) => {
 // Migration: posições manuais dos marcadores no mapa
 try { db.exec('ALTER TABLE unidades ADD COLUMN mapa_x REAL'); } catch(_) {}
 try { db.exec('ALTER TABLE unidades ADD COLUMN mapa_y REAL'); } catch(_) {}
+
+// Migration: campos extras de vagas + vínculo com unidade
+try { db.exec('ALTER TABLE vagas_garagem ADD COLUMN box TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE vagas_garagem ADD COLUMN tamanho REAL'); } catch(_) {}
+try { db.exec('ALTER TABLE vagas_garagem ADD COLUMN pavimento TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE vagas_garagem ADD COLUMN unidade_id INTEGER REFERENCES unidades(id)'); } catch(_) {}
 
 // Upload JPEG/PNG do mapa de vendas — armazenado como data URL base64
 app.post('/api/empreendimentos/:id/mapa', upload.single('arquivo'), (req, res) => {
