@@ -645,21 +645,44 @@ async function renderDashboard() {
       <div class="mini-card">
         <h4>🎂 Aniversários do Mês</h4>
         <div class="aniv-list" style="max-height:280px;overflow-y:auto">
-          ${aniversarios_mes.length ? aniversarios_mes.map(a => {
+          ${aniversarios_mes.length ? aniversarios_mes.map((a, idx) => {
             const dia = a.aniversario ? a.aniversario.slice(8,10) : '—';
+            const hoje = new Date();
+            const diaHoje = hoje.getDate();
+            const mesHoje = hoje.getMonth()+1;
+            const diaAniv = parseInt(a.aniversario?.slice(8,10)||0);
+            const mesAniv = parseInt(a.aniversario?.slice(5,7)||0);
+            const ehHoje = diaAniv === diaHoje && mesAniv === mesHoje;
+            // Próximo = primeiro que ainda não passou no mês
+            const jaPassed = mesAniv < mesHoje || (mesAniv === mesHoje && diaAniv < diaHoje);
+            const ehProximo = !ehHoje && !jaPassed && idx === aniversarios_mes.findIndex(x => {
+              const d = parseInt(x.aniversario?.slice(8,10)||0);
+              const m = parseInt(x.aniversario?.slice(5,7)||0);
+              return !(m < mesHoje || (m === mesHoje && d < diaHoje)) && !(d === diaHoje && m === mesHoje);
+            });
             const mensagem = encodeURIComponent(`Feliz Aniversário ${a.nome ? a.nome.split(' ')[0] : ''}! Que Deus continue abençoando você, sua família e seus negócios. Muitas felicidades, saúde e vendas! 🎉🎂`);
             const tel = (a.telefone||'').replace(/\D/g,'');
             const wppLink = tel ? `https://wa.me/55${tel}?text=${mensagem}` : null;
-            return `
-              <div class="aniv-item" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-                <div style="background:var(--accent);color:#fff;border-radius:8px;padding:4px 8px;font-weight:700;font-size:13px;min-width:34px;text-align:center">${dia}</div>
+            if (ehProximo) return `
+              <div class="aniv-item" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;margin-bottom:6px;background:linear-gradient(135deg,rgba(0,196,180,.15),rgba(99,102,241,.12));border:1px solid rgba(0,196,180,.35)">
+                <div style="display:flex;flex-direction:column;align-items:center;background:var(--accent);color:#0f172a;border-radius:10px;padding:6px 10px;font-weight:900;font-size:16px;min-width:40px;text-align:center;line-height:1">
+                  ${dia}<div style="font-size:9px;font-weight:600;margin-top:2px;opacity:.8">PRÓX.</div>
+                </div>
                 <div style="flex:1;min-width:0">
-                  <div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.nome||'—'}</div>
+                  <div style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.nome||'—'}</div>
                   <div style="font-size:11px;color:var(--text2)">${a.tipo==='corretor'?'👤 Corretor':a.tipo==='cliente'?'🏢 Incorporador':'🎯 Lead'}</div>
                 </div>
-                ${wppLink ? `<a href="${wppLink}" target="_blank" title="Enviar mensagem de aniversário" style="background:#25D366;color:#fff;border-radius:6px;padding:4px 10px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap">📱 Parabenizar</a>` : '<span style="font-size:11px;color:var(--text2)">sem tel.</span>'}
-              </div>
-            `;
+                ${wppLink ? `<a href="${wppLink}" target="_blank" style="background:#25D366;color:#fff;border-radius:6px;padding:6px 12px;text-decoration:none;font-size:12px;font-weight:700;white-space:nowrap">📱 Parabenizar</a>` : '<span style="font-size:11px;color:var(--text2)">sem tel.</span>'}
+              </div>`;
+            return `
+              <div class="aniv-item" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+                <div style="background:${ehHoje?'#f59e0b':'var(--navy3)'};color:${ehHoje?'#0f172a':'var(--text2)'};border-radius:8px;padding:4px 8px;font-weight:700;font-size:13px;min-width:34px;text-align:center">${dia}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:${ehHoje?700:500};font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.nome||'—'}${ehHoje?' 🎂':''}</div>
+                  <div style="font-size:11px;color:var(--text2)">${a.tipo==='corretor'?'👤 Corretor':a.tipo==='cliente'?'🏢 Incorporador':'🎯 Lead'}</div>
+                </div>
+                ${wppLink ? `<a href="${wppLink}" target="_blank" style="background:#25D366;color:#fff;border-radius:6px;padding:4px 10px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap">📱 Parabenizar</a>` : '<span style="font-size:11px;color:var(--text2)">sem tel.</span>'}
+              </div>`;
           }).join('') : '<div style="color:var(--text2);font-size:13px;padding-top:8px">Nenhum aniversário este mês</div>'}
         </div>
       </div>
@@ -719,22 +742,6 @@ async function renderDashboard() {
       </div>
     </div>` : ''}
 
-    ${leads_esquecidos && leads_esquecidos.length ? `
-    <div class="mini-card" style="margin-bottom:20px;border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.05)">
-      <h4 style="color:var(--warning)">⚠️ Leads sem Contato (${leads_esquecidos.length}) — há 3+ dias</h4>
-      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
-        ${leads_esquecidos.map(l => {
-          const tel = (l.telefone||'').replace(/\D/g,'');
-          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-            <span class="badge badge-orange">${l.dias}d</span>
-            <div style="flex:1;font-size:13px;font-weight:500">${l.nome||'—'}</div>
-            <span class="badge badge-gray" style="font-size:10px">${l.status}</span>
-            ${tel ? `<a href="https://wa.me/55${tel}" target="_blank" style="background:#25D366;color:#fff;border-radius:6px;padding:3px 10px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap">📱 WPP</a>` : ''}
-            <button class="btn-icon" title="Registrar follow-up" onclick="navigate('kanban')" style="font-size:13px">📋</button>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>` : ''}
 
     <div class="mini-card" style="margin-bottom:20px">
       <h4>📅 Próximos Lançamentos</h4>
