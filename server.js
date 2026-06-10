@@ -552,14 +552,14 @@ app.get("/api/empreendimentos/:id/vagas", (req, res) => {
     LEFT JOIN leads l ON l.id = v.lead_id
     LEFT JOIN unidades u ON u.id = vg.unidade_id
     WHERE vg.empreendimento_id = ?
-    ORDER BY vg.pavimento, vg.numero
+    ORDER BY vg.pavimento, CAST(vg.numero AS INTEGER), vg.numero
   `).all(req.params.id);
   ok(res, rows);
 });
 
 // Vagas vinculadas a uma unidade específica
 app.get("/api/unidades/:id/vagas", (req, res) => {
-  const rows = db.prepare(`SELECT * FROM vagas_garagem WHERE unidade_id=? ORDER BY numero`).all(req.params.id);
+  const rows = db.prepare(`SELECT * FROM vagas_garagem WHERE unidade_id=? ORDER BY CAST(numero AS INTEGER), numero`).all(req.params.id);
   ok(res, rows);
 });
 
