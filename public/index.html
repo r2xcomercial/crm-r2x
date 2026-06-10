@@ -1287,7 +1287,7 @@ async function renderVendas(filter = '') {
         </div>
       </div>
       <table>
-        <thead><tr><th>Data</th><th>Lead</th><th>Imóvel</th><th>Valor</th><th>Corretor</th><th>Empreendimento</th><th>Incorporador</th><th>Status</th><th>Comissões</th><th></th></tr></thead>
+        <thead><tr><th>Data</th><th>Lead</th><th>Imóvel</th><th>Valor</th><th>Corretor</th><th>Empreendimento</th><th>Incorporador</th><th>Status</th><th>Comissão Corretor</th><th>Comissão R2X</th><th></th></tr></thead>
         <tbody>
           ${vendas.length ? vendas.map(v => `
             <tr>
@@ -1299,24 +1299,23 @@ async function renderVendas(filter = '') {
               <td>${v.empreendimento_nome||'—'}</td>
               <td>${v.cliente_nome||'—'}</td>
               <td><span class="badge ${v.status==='ativo'?'badge-green':'badge-red'}">${v.status}</span></td>
-              <td style="white-space:nowrap;min-width:160px">
+              <td style="white-space:nowrap">
                 ${v.comissao_corretor_pct ? `
-                  <div style="font-size:11px;color:var(--text2);margin-bottom:1px">👤 Corretor</div>
                   <div style="font-size:12px;color:var(--text2)">${v.comissao_corretor_pct}% = <strong style="color:var(--warning)">${fmt(v.comissao_corretor_valor)}</strong></div>
-                  <div style="display:flex;align-items:center;gap:4px;margin-top:2px;margin-bottom:6px">
+                  <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
                     <span class="badge ${v.comissao_corretor_status==='pago'?'badge-green':'badge-yellow'}">${v.comissao_corretor_status==='pago'?'✅ Pago':'⏳ Pendente'}</span>
                     ${v.comissao_corretor_status!=='pago'?`<button class="btn-icon" title="Marcar pago" onclick="pagarComissaoCorretor(${v.id})" style="font-size:13px">💳</button>`:''}
                   </div>
-                ` : ''}
+                ` : '<span style="color:var(--text2);font-size:12px">—</span>'}
+              </td>
+              <td style="white-space:nowrap">
                 ${v.percentual_r2x ? `
-                  <div style="font-size:11px;color:var(--text2);margin-bottom:1px">🏢 R2X</div>
                   <div style="font-size:12px;color:var(--text2)">${v.percentual_r2x}% = <strong style="color:var(--accent)">${fmt(v.comissao_r2x || v.valor * v.percentual_r2x / 100)}</strong></div>
-                ` : ''}
-                ${!v.comissao_corretor_pct && !v.percentual_r2x ? '<span style="color:var(--text2);font-size:12px">—</span>' : ''}
+                ` : '<span style="color:var(--text2);font-size:12px">—</span>'}
               </td>
               <td><button class="btn-icon btn-edit" onclick="editVenda(${v.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteVenda(${v.id})">🗑️</button></td>
             </tr>
-          `).join('') : '<tr class="empty-row"><td colspan="10">Nenhuma venda registrada</td></tr>'}
+          `).join('') : '<tr class="empty-row"><td colspan="11">Nenhuma venda registrada</td></tr>'}
         </tbody>
       </table>
     </div>
