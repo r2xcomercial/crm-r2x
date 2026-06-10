@@ -1266,18 +1266,55 @@ async function loadPainelData() {
 
 // ─── VENDAS ───────────────────────────────────────────────────────────────────
 
+// Estado persistente dos filtros de vendas
+window._vendasFiltros = window._vendasFiltros || { mes: '', emp: '', incorporador: '' };
+
 async function renderVendas(filter = '') {
   const [vr, cr, er, lr, clr] = await Promise.all([get('/api/vendas'), get('/api/corretores'), get('/api/empreendimentos'), get('/api/leads'), get('/api/clientes')]);
   currentData.vendas = vr.data; currentData.corretores = cr.data; currentData.emp = er.data; currentData.leads = lr.data; currentData.clientes = clr.data;
   let vendas = vr.data;
   if (filter) vendas = vendas.filter(v => (v.lead_nome||'').toLowerCase().includes(filter) || (v.empreendimento_nome||'').toLowerCase().includes(filter) || (v.corretor_nome||'').toLowerCase().includes(filter));
 
+  // Aplicar filtros persistentes
+  const f = window._vendasFiltros;
+  if (f.mes)         vendas = vendas.filter(v => v.data_venda && v.data_venda.slice(0,7) === f.mes);
+  if (f.emp)         vendas = vendas.filter(v => String(v.empreendimento_id) === f.emp);
+  if (f.incorporador) vendas = vendas.filter(v => String(v.cliente_id) === f.incorporador);
+
+  // Opções de mês (baseado em todas as vendas, não filtradas)
+  const meses = [...new Set((vr.data||[]).map(v => v.data_venda?.slice(0,7)).filter(Boolean))].sort().reverse();
+  const mesOpts = `<option value="">Todos os meses</option>` + meses.map(m => {
+    const [y,mo] = m.split('-');
+    const label = new Date(+y, +mo-1).toLocaleString('pt-BR',{month:'short',year:'numeric'});
+    return `<option value="${m}" ${f.mes===m?'selected':''}>${label}</option>`;
+  }).join('');
+
+  const empOpts = `<option value="">Todos os empreendimentos</option>` +
+    (er.data||[]).map(e => `<option value="${e.id}" ${f.emp===String(e.id)?'selected':''}>${e.nome}</option>`).join('');
+
+  const incOpts = `<option value="">Todos os incorporadores</option>` +
+    (clr.data||[]).map(c => `<option value="${c.id}" ${f.incorporador===String(c.id)?'selected':''}>${c.razao_social}</option>`).join('');
+
+  const temFiltro = f.mes || f.emp || f.incorporador;
+
   const totalVGV = vendas.filter(v => v.status==='ativo').reduce((s, v) => s + v.valor, 0);
+  const totalR2X = vendas.filter(v => v.status==='ativo').reduce((s, v) => s + (v.comissao_r2x || 0), 0);
 
   document.getElementById('content').innerHTML = `
     <div class="kpi-grid" style="margin-bottom:20px">
       ${kpi('💵', 'VGV Total', fmt(totalVGV), `${vendas.filter(v=>v.status==='ativo').length} vendas ativas`)}
+      ${totalR2X ? kpi('🏢', 'Comissão R2X', fmt(totalR2X), 'período selecionado') : ''}
     </div>
+
+    <!-- Filtros -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;background:var(--navy2);border:1px solid var(--border);border-radius:10px;padding:12px 16px">
+      <span style="font-size:12px;color:var(--text2);font-weight:600;white-space:nowrap">🔍 Filtrar:</span>
+      <select onchange="window._vendasFiltros.mes=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer">${mesOpts}</select>
+      <select onchange="window._vendasFiltros.emp=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer">${empOpts}</select>
+      <select onchange="window._vendasFiltros.incorporador=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer">${incOpts}</select>
+      ${temFiltro ? `<button onclick="window._vendasFiltros={mes:'',emp:'',incorporador:''};renderVendas()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
+    </div>
+
     <div class="table-card">
       <div class="table-header">
         <div class="table-title">🏆 Vendas (${vendas.length})</div>
