@@ -552,7 +552,7 @@ app.get("/api/empreendimentos/:id/vagas", (req, res) => {
     LEFT JOIN leads l ON l.id = v.lead_id
     LEFT JOIN unidades u ON u.id = vg.unidade_id
     WHERE vg.empreendimento_id = ?
-    ORDER BY vg.pavimento, CAST(vg.numero AS INTEGER), vg.numero
+    ORDER BY CAST(vg.numero AS INTEGER), vg.numero
   `).all(req.params.id);
   ok(res, rows);
 });
