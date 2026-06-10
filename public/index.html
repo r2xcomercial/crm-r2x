@@ -1367,7 +1367,7 @@ async function carregarVagasVenda(empId, vagaAtualId) {
   const vagas = (r.data || []).filter(v => v.status === 'disponivel' || v.id == vagaAtualId);
   if (!vagas.length) { sel.innerHTML = '<option value="">Nenhuma vaga disponível</option>'; return; }
   sel.innerHTML = '<option value="">— Sem vaga —</option>' + vagas.map(v =>
-    `<option value="${v.id}" ${v.id == vagaAtualId ? 'selected' : ''}>Vaga ${v.numero}${v.bloco ? ' · Bloco '+v.bloco : ''} · ${v.tipo||'coberta'}${v.preco ? ' — R$ '+v.preco.toLocaleString('pt-BR') : ''}${v.status==='vendida'?' 🔴':''}</option>`
+    `<option value="${v.id}" ${v.id == vagaAtualId ? 'selected' : ''}>Vaga ${v.numero}${v.box ? ' · Box '+v.box : ''}${v.pavimento ? ' · '+v.pavimento : ''} · ${v.tipo||'simples'}${v.preco ? ' — R$ '+v.preco.toLocaleString('pt-BR') : ''}${v.status==='vendida'?' 🔴':''}</option>`
   ).join('');
 }
 
