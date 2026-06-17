@@ -1157,9 +1157,8 @@ function sincronizarComissaoVenda(vendaId) {
   if (!pctUsado) return null;
 
   const comissao = parseFloat(((v.valor * pctUsado) / 100).toFixed(2));
-  const imovelDesc = v.imovel ? ` — ${v.imovel}` : '';
-  const overrideLabel = v.percentual_r2x_override ? ` (negociado)` : '';
-  const descBase = `Comissão R2X ${pctUsado}%${overrideLabel} — ${emp.nome}${imovelDesc}`;
+  const imovelPart = v.imovel ? `${v.imovel} — ` : '';
+  const descBase = `${imovelPart}${emp.nome}`;
 
   // Tenta ler parcelas de entrada (JSON: [{data, valor}, ...])
   let parcelas = null;
@@ -1178,7 +1177,8 @@ function sincronizarComissaoVenda(vendaId) {
         ? parseFloat((comissao - somaAlocada).toFixed(2))
         : parseFloat((comissao * pesoValor).toFixed(2));
       somaAlocada += valorParcela;
-      const desc = n > 1 ? `${descBase} (${i+1}/${n})` : descBase;
+      const pad = x => String(x).padStart(2,'0');
+      const desc = n > 1 ? `${descBase} ${pad(i+1)}/${pad(n)}` : descBase;
       db.prepare(`INSERT INTO financeiro_entradas
         (empreendimento_id,venda_id,descricao,tipo,valor,data_prevista,status,parcela_num,parcela_total)
         VALUES (?,?,?,?,?,?,?,?,?)`)
@@ -1297,9 +1297,10 @@ app.get("/api/vendas/ranking", (req, res) => {
 
 app.get("/api/financeiro/entradas", (req, res) => {
   const rows = db.prepare(`
-    SELECT f.*, e.nome as empreendimento_nome
+    SELECT f.*, e.nome as empreendimento_nome, c.razao_social as incorporador_nome
     FROM financeiro_entradas f
     LEFT JOIN empreendimentos e ON e.id = f.empreendimento_id
+    LEFT JOIN clientes c ON c.id = e.cliente_id
     ORDER BY f.data_prevista DESC
   `).all();
   ok(res, rows);
