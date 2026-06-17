@@ -4002,7 +4002,7 @@ process.on('uncaughtException', e => console.error('[uncaughtException]', e));
 process.on('unhandledRejection', e => console.error('[unhandledRejection]', e));
 
 // Re-sincroniza descrições de todas as entradas de comissão existentes
-app.post('/api/financeiro/ressincronizar-descricoes', auth, (req, res) => {
+app.post('/api/financeiro/ressincronizar-descricoes', autenticar, (req, res) => {
   const vendas = db.prepare("SELECT DISTINCT venda_id FROM financeiro_entradas WHERE tipo='comissao_venda' AND venda_id IS NOT NULL").all();
   let atualizadas = 0;
   for (const { venda_id } of vendas) {
