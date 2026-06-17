@@ -2785,33 +2785,70 @@ function renderFinTab() {
   const el = document.getElementById('fin-content');
   if (!el) return;
   if (finTab === 'entradas') {
-    const rows = currentData.entradas || [];
+    const todas = currentData.entradas || [];
+
+    // Opções únicas para filtros
+    const meses = [...new Set(todas.map(e => e.data_prevista?.slice(0,7)).filter(Boolean))].sort().reverse();
+    const emps  = [...new Set(todas.map(e => e.empreendimento_nome).filter(Boolean))].sort();
+    const incs  = [...new Set(todas.map(e => e.incorporador_nome).filter(Boolean))].sort();
+
+    // Lê filtros ativos
+    const fMes = window._finFiltroMes || '';
+    const fEmp = window._finFiltroEmp || '';
+    const fInc = window._finFiltroInc || '';
+    const fSt  = window._finFiltroSt  || '';
+
+    // Aplica filtros
+    let rows = todas;
+    if (fMes) rows = rows.filter(e => (e.data_prevista||'').startsWith(fMes));
+    if (fEmp) rows = rows.filter(e => (e.empreendimento_nome||'') === fEmp);
+    if (fInc) rows = rows.filter(e => (e.incorporador_nome||'') === fInc);
+    if (fSt)  rows = rows.filter(e => e.status === fSt);
+
+    const totalFiltrado = rows.reduce((s,e) => s + (e.valor||0), 0);
+    const sel = (id, val, opts, ph) => `<select id="${id}" onchange="window._finFiltro${id.replace('fin-f-','')}=this.value;renderFinTab()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px">
+      <option value="">${ph}</option>${opts.map(o=>`<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('')}</select>`;
+
     el.innerHTML = `
       <div class="table-card">
-        <div class="table-header"><div class="table-title">📥 Entradas (${rows.length})</div><button class="btn btn-primary" onclick="openEntradaModal()">+ Nova Entrada</button></div>
-        <table>
-          <thead><tr><th>Descrição</th><th>Tipo</th><th>Empreendimento</th><th>Valor</th><th>Previsto</th><th>Recebido</th><th>Status</th><th></th></tr></thead>
+        <div class="table-header" style="flex-wrap:wrap;gap:8px">
+          <div class="table-title">📥 Entradas (${rows.length}${rows.length<todas.length?' de '+todas.length:''})${rows.length<todas.length?` · <span style="color:var(--success);font-weight:700">${fmt(totalFiltrado)}</span>`:''}</div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto">
+            ${sel('fin-f-Mes', fMes, meses, '📅 Mês')}
+            ${sel('fin-f-Emp', fEmp, emps, '🏗️ Empreendimento')}
+            ${sel('fin-f-Inc', fInc, incs, '🏢 Incorporador')}
+            <select id="fin-f-St" onchange="window._finFiltroSt=this.value;renderFinTab()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px">
+              <option value="">● Status</option>
+              <option value="pendente" ${fSt==='pendente'?'selected':''}>⏳ Pendente</option>
+              <option value="recebido" ${fSt==='recebido'?'selected':''}>✅ Recebido</option>
+            </select>
+            ${(fMes||fEmp||fInc||fSt)?`<button onclick="window._finFiltroMes='';window._finFiltroEmp='';window._finFiltroInc='';window._finFiltroSt='';renderFinTab()" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:12px;cursor:pointer">✕ Limpar</button>`:''}
+            <button class="btn btn-primary" onclick="openEntradaModal()" style="padding:5px 12px;font-size:12px">+ Nova Entrada</button>
+          </div>
+        </div>
+        <table style="font-size:12px">
+          <thead><tr><th>Descrição</th><th>Empreendimento</th><th>Incorporador</th><th style="text-align:right">Valor</th><th>Previsto</th><th>Recebido</th><th>Status</th><th></th></tr></thead>
           <tbody>
             ${rows.length ? rows.map(e => `
-              <tr>
-                <td>
-                  ${e.descricao}${e.parcela_num?` <span style="font-size:11px;color:var(--text2)">(${e.parcela_num}/${e.parcela_total})</span>`:''}
-                  ${(e.tem_nf_propria===0||e.tem_nf_propria==='0')?`<span title="Sem NF própria — não computa em impostos" style="font-size:10px;background:#7c3aed22;color:#a78bfa;border:1px solid #7c3aed44;border-radius:4px;padding:1px 5px;margin-left:4px">sem NF</span>`:(e.nf_numero?`<span title="NF ${e.nf_numero}${e.nf_data?' de '+fmtDate(e.nf_data):''}" style="font-size:10px;background:#15803d22;color:#4ade80;border:1px solid #15803d44;border-radius:4px;padding:1px 5px;margin-left:4px">NF ${e.nf_numero}</span>`:'')}
+              <tr style="line-height:1.2">
+                <td style="padding:5px 12px;max-width:280px">
+                  <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(e.descricao||'').replace(/"/g,'&quot;')}">${e.descricao}${e.parcela_num?` <span style="color:var(--text2)">(${e.parcela_num}/${e.parcela_total})</span>`:''}</div>
+                  ${(e.tem_nf_propria===0||e.tem_nf_propria==='0')?`<span style="font-size:10px;background:#7c3aed22;color:#a78bfa;border:1px solid #7c3aed44;border-radius:3px;padding:0 4px">sem NF</span>`:(e.nf_numero?`<span style="font-size:10px;background:#15803d22;color:#4ade80;border:1px solid #15803d44;border-radius:3px;padding:0 4px">NF ${e.nf_numero}</span>`:'')}
                 </td>
-                <td>${e.tipo||'—'}</td>
-                <td>${e.empreendimento_nome||'Institucional'}</td>
-                <td style="color:var(--success);font-weight:600">${fmt(e.valor)}</td>
-                <td>${e.data_prevista?fmtDate(e.data_prevista):'—'}</td>
-                <td>${e.data_recebimento?fmtDate(e.data_recebimento):'—'}</td>
-                <td><span class="badge ${e.status==='recebido'?'badge-green':'badge-yellow'}">${e.status}</span></td>
-                <td style="display:flex;gap:4px;flex-wrap:wrap">
+                <td style="padding:5px 12px;white-space:nowrap">${e.empreendimento_nome||'—'}</td>
+                <td style="padding:5px 12px;white-space:nowrap;color:var(--text2)">${e.incorporador_nome||'—'}</td>
+                <td style="padding:5px 12px;color:var(--success);font-weight:600;text-align:right;white-space:nowrap">${fmt(e.valor)}</td>
+                <td style="padding:5px 12px;white-space:nowrap">${e.data_prevista?fmtDate(e.data_prevista):'—'}</td>
+                <td style="padding:5px 12px;white-space:nowrap">${e.data_recebimento?fmtDate(e.data_recebimento):'—'}</td>
+                <td style="padding:5px 12px"><span class="badge ${e.status==='recebido'?'badge-green':'badge-yellow'}" style="font-size:10px;padding:2px 6px">${e.status}</span></td>
+                <td style="padding:4px 8px;white-space:nowrap">
                   ${e.status!=='recebido'?`<button class="btn-icon" title="Marcar recebido" onclick="marcarRecebido(${e.id})">✅</button>`:''}
                   <button class="btn-icon" title="Emitir recibo" onclick="emitirRecibo(${e.id})">🧾</button>
                   <button class="btn-icon btn-edit" onclick="editEntrada(${e.id})">✏️</button>
                   <button class="btn-icon btn-delete" onclick="deleteEntrada(${e.id})">🗑️</button>
                 </td>
               </tr>
-            `).join('') : '<tr class="empty-row"><td colspan="8">Nenhuma entrada</td></tr>'}
+            `).join('') : '<tr class="empty-row"><td colspan="8">Nenhuma entrada encontrada</td></tr>'}
           </tbody>
         </table>
       </div>`;
