@@ -2792,11 +2792,12 @@ function renderFinTab() {
     const emps  = [...new Set(todas.map(e => e.empreendimento_nome).filter(Boolean))].sort();
     const incs  = [...new Set(todas.map(e => e.incorporador_nome).filter(Boolean))].sort();
 
-    // Lê filtros ativos
-    const fMes = window._finFiltroMes || '';
-    const fEmp = window._finFiltroEmp || '';
-    const fInc = window._finFiltroInc || '';
-    const fSt  = window._finFiltroSt  || '';
+    // Lê filtros e ordenação ativos
+    const fMes  = window._finFiltroMes  || '';
+    const fEmp  = window._finFiltroEmp  || '';
+    const fInc  = window._finFiltroInc  || '';
+    const fSt   = window._finFiltroSt   || '';
+    const fSort = window._finFiltroSort || 'desc'; // 'asc'=mais próximo, 'desc'=mais distante
 
     // Aplica filtros
     let rows = todas;
@@ -2804,6 +2805,14 @@ function renderFinTab() {
     if (fEmp) rows = rows.filter(e => (e.empreendimento_nome||'') === fEmp);
     if (fInc) rows = rows.filter(e => (e.incorporador_nome||'') === fInc);
     if (fSt)  rows = rows.filter(e => e.status === fSt);
+
+    // Aplica ordenação por data prevista
+    const hoje = new Date().toISOString().slice(0,10);
+    rows = [...rows].sort((a, b) => {
+      const da = a.data_prevista || '9999-12-31';
+      const db = b.data_prevista || '9999-12-31';
+      return fSort === 'asc' ? da.localeCompare(db) : db.localeCompare(da);
+    });
 
     const totalFiltrado = rows.reduce((s,e) => s + (e.valor||0), 0);
     const sel = (id, val, opts, ph) => `<select id="${id}" onchange="window._finFiltro${id.replace('fin-f-','')}=this.value;renderFinTab()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px">
@@ -2822,6 +2831,10 @@ function renderFinTab() {
               <option value="pendente" ${fSt==='pendente'?'selected':''}>⏳ Pendente</option>
               <option value="recebido" ${fSt==='recebido'?'selected':''}>✅ Recebido</option>
             </select>
+            <select id="fin-f-Sort" onchange="window._finFiltroSort=this.value;renderFinTab()" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px">
+              <option value="asc"  ${fSort==='asc' ?'selected':''}>📅 Mais próximo primeiro</option>
+              <option value="desc" ${fSort==='desc'?'selected':''}>📅 Mais distante primeiro</option>
+            </select>
             ${(fMes||fEmp||fInc||fSt)?`<button onclick="window._finFiltroMes='';window._finFiltroEmp='';window._finFiltroInc='';window._finFiltroSt='';renderFinTab()" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:12px;cursor:pointer">✕ Limpar</button>`:''}
             <button class="btn btn-primary" onclick="openEntradaModal()" style="padding:5px 12px;font-size:12px">+ Nova Entrada</button>
           </div>
@@ -2829,8 +2842,10 @@ function renderFinTab() {
         <table style="font-size:12px">
           <thead><tr><th>Descrição</th><th>Empreendimento</th><th>Incorporador</th><th style="text-align:right">Valor</th><th>Previsto</th><th>Recebido</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            ${rows.length ? rows.map(e => `
-              <tr style="line-height:1.2">
+            ${rows.length ? rows.map(e => {
+              const vencido = e.status !== 'recebido' && e.data_prevista && e.data_prevista < hoje;
+              return `
+              <tr style="line-height:1.2${vencido?' background:rgba(239,68,68,0.06)':''}">
                 <td style="padding:5px 12px;max-width:280px">
                   <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${(e.descricao||'').replace(/"/g,'&quot;')}">${e.descricao}${e.parcela_num?` <span style="color:var(--text2)">(${e.parcela_num}/${e.parcela_total})</span>`:''}</div>
                   ${(e.tem_nf_propria===0||e.tem_nf_propria==='0')?`<span style="font-size:10px;background:#7c3aed22;color:#a78bfa;border:1px solid #7c3aed44;border-radius:3px;padding:0 4px">sem NF</span>`:(e.nf_numero?`<span style="font-size:10px;background:#15803d22;color:#4ade80;border:1px solid #15803d44;border-radius:3px;padding:0 4px">NF ${e.nf_numero}</span>`:'')}
@@ -2838,7 +2853,7 @@ function renderFinTab() {
                 <td style="padding:5px 12px;white-space:nowrap">${e.empreendimento_nome||'—'}</td>
                 <td style="padding:5px 12px;white-space:nowrap;color:var(--text2)">${e.incorporador_nome||'—'}</td>
                 <td style="padding:5px 12px;color:var(--success);font-weight:600;text-align:right;white-space:nowrap">${fmt(e.valor)}</td>
-                <td style="padding:5px 12px;white-space:nowrap">${e.data_prevista?fmtDate(e.data_prevista):'—'}</td>
+                <td style="padding:5px 12px;white-space:nowrap${vencido?';color:var(--danger);font-weight:600':''}">${e.data_prevista?fmtDate(e.data_prevista):'—'}${vencido?' ⚠️':''}</td>
                 <td style="padding:5px 12px;white-space:nowrap">${e.data_recebimento?fmtDate(e.data_recebimento):'—'}</td>
                 <td style="padding:5px 12px"><span class="badge ${e.status==='recebido'?'badge-green':'badge-yellow'}" style="font-size:10px;padding:2px 6px">${e.status}</span></td>
                 <td style="padding:4px 8px;white-space:nowrap">
@@ -2847,8 +2862,7 @@ function renderFinTab() {
                   <button class="btn-icon btn-edit" onclick="editEntrada(${e.id})">✏️</button>
                   <button class="btn-icon btn-delete" onclick="deleteEntrada(${e.id})">🗑️</button>
                 </td>
-              </tr>
-            `).join('') : '<tr class="empty-row"><td colspan="8">Nenhuma entrada encontrada</td></tr>'}
+              </tr>`}).join('') : '<tr class="empty-row"><td colspan="8">Nenhuma entrada encontrada</td></tr>'}
           </tbody>
         </table>
       </div>`;
