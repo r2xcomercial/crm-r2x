@@ -4001,6 +4001,30 @@ app.use((error, req, res, next) => {
 process.on('uncaughtException', e => console.error('[uncaughtException]', e));
 process.on('unhandledRejection', e => console.error('[unhandledRejection]', e));
 
+// Re-sincroniza descrições de todas as entradas de comissão existentes
+app.post('/api/financeiro/ressincronizar-descricoes', auth, (req, res) => {
+  const vendas = db.prepare("SELECT DISTINCT venda_id FROM financeiro_entradas WHERE tipo='comissao_venda' AND venda_id IS NOT NULL").all();
+  let atualizadas = 0;
+  for (const { venda_id } of vendas) {
+    const v = db.prepare("SELECT * FROM vendas WHERE id=?").get(venda_id);
+    if (!v) continue;
+    const emp = db.prepare("SELECT percentual_r2x, nome FROM empreendimentos WHERE id=?").get(v.empreendimento_id);
+    if (!emp) continue;
+    const imovelPart = v.imovel ? `${v.imovel} — ` : '';
+    const descBase = `${imovelPart}${emp.nome}`;
+    // Atualiza entradas existentes mantendo número de parcela se existir
+    const entradas = db.prepare("SELECT * FROM financeiro_entradas WHERE venda_id=? AND tipo='comissao_venda' ORDER BY parcela_num").all(venda_id);
+    const n = entradas.length;
+    const pad = x => String(x).padStart(2,'0');
+    entradas.forEach((e, i) => {
+      const desc = n > 1 ? `${descBase} ${pad(e.parcela_num||i+1)}/${pad(e.parcela_total||n)}` : descBase;
+      db.prepare("UPDATE financeiro_entradas SET descricao=? WHERE id=?").run(desc, e.id);
+      atualizadas++;
+    });
+  }
+  ok(res, { atualizadas });
+});
+
 // ─── START ────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => console.log(`CRM R2X rodando em http://localhost:${PORT}`));
