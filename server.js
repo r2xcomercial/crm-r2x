@@ -684,12 +684,16 @@ app.put("/api/leads/:id", (req, res) => {
   if (corretor_id && !['vendido','sem_venda'].includes(lead.status) && lead.status !== 'com_corretor') {
     novoStatus = 'com_corretor';
   }
-  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(
+  // Regra de score: vendido = 100, não-vendido = máximo 90
+  let novoScore = val('score', lead.score);
+  if (novoStatus === 'vendido') novoScore = 100;
+  else if (novoScore >= 100) novoScore = 90;
+  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,score=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(
     val('nome', null), val('telefone', null), val('email', null), val('cidade', null),
     val('objetivo', null), val('faixa_investimento', null), val('prazo', null),
     // Se empreendimento_id foi fornecido, limpa o campo texto livre
     'empreendimento_id' in b && b.empreendimento_id ? null : val('empreendimento_interesse', null), val('empreendimento_id', null),
-    corretor_id, novoStatus, val('observacoes', null),
+    corretor_id, novoStatus, novoScore, val('observacoes', null),
     val('aniversario', null), val('tipo', null), val('creci', null), val('imobiliaria', null),
     req.params.id
   );
@@ -774,6 +778,7 @@ app.post("/api/leads/whatsapp", (req, res) => {
   if (existente) {
     let novoStatus = existente.status;
     if (score >= 60 && existente.status === 'novo') novoStatus = 'qualificado';
+    const scoreAjustado = novoStatus === 'vendido' ? 100 : Math.min(score || 0, 90);
     db.prepare(`UPDATE leads SET
       nome=COALESCE(?,nome), email=COALESCE(?,email), cidade=COALESCE(?,cidade), objetivo=COALESCE(?,objetivo),
       faixa_investimento=COALESCE(?,faixa_investimento), prazo=COALESCE(?,prazo),
@@ -781,7 +786,7 @@ app.post("/api/leads/whatsapp", (req, res) => {
       tipo=COALESCE(?,tipo), score=COALESCE(?,score), resumo=COALESCE(?,resumo),
       status=?, atualizado_em=CURRENT_TIMESTAMP WHERE id=?`)
       .run(nome||null, email||null, cidade||null, objetivo||null, faixa_investimento||null, prazo||null,
-           empreendimento_interesse||null, tipo||null, score||null, resumo||null,
+           empreendimento_interesse||null, tipo||null, scoreAjustado||null, resumo||null,
            novoStatus, existente.id);
     return ok(res, { id: existente.id, atualizado: true });
   }
