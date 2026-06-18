@@ -905,15 +905,18 @@ function renderLeadRow(l, statusColors) {
     <td>${l.cidade||'—'}</td>
     <td><span class="badge ${sc[l.status]||'badge-gray'}">${l.status}</span></td>
     <td style="text-align:center">${scoreChip(l.score)}</td>
-    <td style="min-width:130px">
+    <td style="min-width:130px;position:relative">
       <div style="display:flex;align-items:center;gap:4px">
         <span id="lead-cor-txt-${l.id}" style="font-size:12px">${l.corretor_nome||'<span style="color:var(--text2)">—</span>'}</span>
-        <button onclick="toggleLeadSelect(${l.id},'cor')" style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:11px;padding:0 2px" title="Editar corretor">✎</button>
+        <button onclick="toggleCorretorDropdown(${l.id})" style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:11px;padding:0 2px" title="Editar corretor">✎</button>
       </div>
-      <select id="lead-cor-sel-${l.id}" onchange="atualizarCampoLead(${l.id},'corretor_id',this.value)" style="display:none;width:100%;padding:3px 6px;border-radius:5px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px">
-        <option value="">— sem corretor —</option>
-        ${(corretoresData||[]).map(c=>`<option value="${c.id}" ${c.id==l.corretor_id?'selected':''}>${c.nome}</option>`).join('')}
-      </select>
+      <div id="lead-cor-dd-${l.id}" style="display:none;position:absolute;z-index:999;top:100%;left:0;min-width:220px;background:var(--navy2);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.4);padding:6px">
+        <input placeholder="🔍 Buscar corretor..." oninput="filtrarCorretorDD(${l.id},this.value)" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid var(--border);background:var(--navy3);color:var(--text1);font-size:12px;box-sizing:border-box;margin-bottom:4px">
+        <div id="lead-cor-list-${l.id}" style="max-height:180px;overflow-y:auto">
+          <div onclick="atualizarCampoLead(${l.id},'corretor_id','')" style="padding:5px 8px;border-radius:4px;cursor:pointer;font-size:12px;color:var(--text2)" onmouseover="this.style.background='var(--navy3)'" onmouseout="this.style.background=''">— sem corretor —</div>
+          ${(corretoresData||[]).map(c=>`<div onclick="atualizarCampoLead(${l.id},'corretor_id','${c.id}')" data-nome="${c.nome.toLowerCase()}" style="padding:5px 8px;border-radius:4px;cursor:pointer;font-size:12px${c.id==l.corretor_id?';font-weight:700;color:var(--accent)':''}" onmouseover="this.style.background='var(--navy3)'" onmouseout="this.style.background=''">${c.nome}</div>`).join('')}
+        </div>
+      </div>
     </td>
     <td style="min-width:150px">
       <div style="display:flex;align-items:center;gap:4px">
@@ -1056,6 +1059,37 @@ function toggleLeadSelect(id, tipo) {
   if (txt) txt.style.display = aberto ? '' : 'none';
 }
 
+function toggleCorretorDropdown(id) {
+  // fecha todos os outros abertos
+  document.querySelectorAll('[id^="lead-cor-dd-"]').forEach(el => {
+    if (el.id !== `lead-cor-dd-${id}`) el.style.display = 'none';
+  });
+  const dd = document.getElementById(`lead-cor-dd-${id}`);
+  if (!dd) return;
+  const abrindo = dd.style.display === 'none';
+  dd.style.display = abrindo ? 'block' : 'none';
+  if (abrindo) {
+    const inp = dd.querySelector('input');
+    if (inp) { inp.value = ''; filtrarCorretorDD(id, ''); setTimeout(() => inp.focus(), 50); }
+  }
+}
+
+function filtrarCorretorDD(id, q) {
+  const list = document.getElementById(`lead-cor-list-${id}`);
+  if (!list) return;
+  const termo = q.toLowerCase();
+  list.querySelectorAll('[data-nome]').forEach(el => {
+    el.style.display = el.dataset.nome.includes(termo) ? '' : 'none';
+  });
+}
+
+// Fecha dropdowns de corretor ao clicar fora
+document.addEventListener('click', e => {
+  if (!e.target.closest('[id^="lead-cor-dd-"]') && !e.target.closest('button[onclick*="toggleCorretorDropdown"]')) {
+    document.querySelectorAll('[id^="lead-cor-dd-"]').forEach(el => el.style.display = 'none');
+  }
+}, true);
+
 async function atualizarCampoLead(id, campo, valor) {
   const body = { [campo]: valor || null };
   const r = await fetch(`/api/leads/${id}`, { method:'PUT', headers:{'Content-Type':'application/json','x-crm-token':TOKEN}, body:JSON.stringify(body) });
@@ -1077,7 +1111,12 @@ async function atualizarCampoLead(id, campo, valor) {
       if (txt) txt.innerHTML = lead.empreendimento_nome || '<span style="color:var(--text2)">—</span>';
     }
   }
-  toggleLeadSelect(id, campo === 'corretor_id' ? 'cor' : 'emp');
+  if (campo === 'corretor_id') {
+    const dd = document.getElementById(`lead-cor-dd-${id}`);
+    if (dd) dd.style.display = 'none';
+  } else {
+    toggleLeadSelect(id, 'emp');
+  }
   toast('✅ Atualizado');
 }
 
