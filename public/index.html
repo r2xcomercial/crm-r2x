@@ -909,6 +909,7 @@ function renderLeadRow(l, statusColors) {
       <button class="btn-icon" title="Follow-up" onclick='openFollowupModal(${JSON.stringify({id:l.id,nome:l.nome})})'>📞</button>
       <button class="btn-icon" title="Proposta Comercial" onclick="abrirProposta(${l.id})" style="color:var(--accent2)">📋</button>
       ${isCorretorLead ? `<button class="btn-icon" title="Converter em Parceiro" onclick="converterLeadCorretor(${l.id},'${(l.nome||'').replace(/'/g,"\\'")}',event)" style="color:#60a5fa">🤝</button>` : ''}
+      <button class="btn-icon" title="Copiar dados do lead" onclick="copiarDadosLead(${l.id})">📤</button>
       <button class="btn-icon btn-edit" onclick="editLead(${l.id})">✏️</button>
       <button class="btn-icon btn-delete" onclick="deleteLead(${l.id})">🗑️</button>
     </td>
@@ -1022,6 +1023,30 @@ function openLeadModal(lead = {}) {
     closeModal(); if (currentPage === 'kanban') renderKanban(); else renderLeads();
   });
   if (lead.id) { carregarTimeline(lead.id); carregarVisitas(lead.id); }
+}
+
+async function copiarDadosLead(id) {
+  const leads = currentData.leads || [];
+  const l = leads.find(x => x.id === id);
+  if (!l) return;
+  const linhas = [];
+  linhas.push(`👤 *${l.nome}*`);
+  if (l.telefone) linhas.push(`📱 ${fmtPhone(l.telefone)}`);
+  if (l.email)    linhas.push(`✉️ ${l.email}`);
+  if (l.cidade)   linhas.push(`🏙️ ${l.cidade}`);
+  if (l.objetivo) linhas.push(`🎯 Objetivo: ${l.objetivo}`);
+  if (l.faixa_investimento) linhas.push(`💰 Faixa: ${l.faixa_investimento}`);
+  if (l.prazo)    linhas.push(`⏱️ Prazo: ${l.prazo}`);
+  const emp = l.empreendimento_nome || l.empreendimento_interesse;
+  if (emp)        linhas.push(`🏗️ Interesse: ${emp}`);
+  if (l.observacoes) linhas.push(`📝 ${l.observacoes}`);
+  const texto = linhas.join('\n');
+  try {
+    await navigator.clipboard.writeText(texto);
+    toast('✅ Dados copiados! Cole no WhatsApp.');
+  } catch {
+    prompt('Copie o texto abaixo:', texto);
+  }
 }
 
 async function editLead(id) {
