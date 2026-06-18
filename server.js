@@ -4007,6 +4007,13 @@ app.use((error, req, res, next) => {
 process.on('uncaughtException', e => console.error('[uncaughtException]', e));
 process.on('unhandledRejection', e => console.error('[unhandledRejection]', e));
 
+// Corrige score de todos os leads vendidos para 100 e garante não-vendidos <= 90
+app.post('/api/leads/corrigir-score-vendidos', autenticar, (req, res) => {
+  const r1 = db.prepare(`UPDATE leads SET score=100 WHERE status='vendido' AND (score IS NULL OR score < 100)`).run();
+  const r2 = db.prepare(`UPDATE leads SET score=90 WHERE status!='vendido' AND score >= 100`).run();
+  ok(res, { vendidos_atualizados: r1.changes, excesso_corrigido: r2.changes });
+});
+
 // Limpa empreendimento_interesse (texto livre) de leads que já têm empreendimento_id vinculado
 app.post('/api/leads/limpar-emp-interesse', autenticar, (req, res) => {
   const r = db.prepare(`UPDATE leads SET empreendimento_interesse=NULL WHERE empreendimento_id IS NOT NULL AND empreendimento_interesse IS NOT NULL`).run();
