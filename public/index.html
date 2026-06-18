@@ -840,7 +840,7 @@ async function renderLeads(filter = '') {
       </div>
       <table>
         <thead><tr>
-          <th>Nome</th><th>Telefone</th><th>Cidade</th><th>Objetivo</th>
+          <th>Nome</th><th>Telefone</th><th>Cidade</th>
           <th>Status</th><th style="width:64px;text-align:center">Score</th>
           <th>Corretor</th><th>Empreendimento</th><th>Origem</th><th></th>
         </tr></thead>
@@ -903,7 +903,6 @@ function renderLeadRow(l, statusColors) {
     </td>
     <td><a href="https://wa.me/55${l.telefone}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${fmtPhone(l.telefone)}</a></td>
     <td>${l.cidade||'—'}</td>
-    <td>${l.objetivo||'—'}</td>
     <td><span class="badge ${sc[l.status]||'badge-gray'}">${l.status}</span></td>
     <td style="text-align:center">${scoreChip(l.score)}</td>
     <td style="min-width:130px">
