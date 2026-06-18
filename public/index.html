@@ -841,11 +841,11 @@ async function renderLeads(filter = '') {
       <table>
         <thead><tr>
           <th>Nome</th><th>Telefone</th><th>Cidade</th><th>Objetivo</th>
-          <th>Faixa</th><th>Status</th><th style="width:64px;text-align:center">Score</th>
+          <th>Status</th><th style="width:64px;text-align:center">Score</th>
           <th>Corretor</th><th>Empreendimento</th><th>Origem</th><th></th>
         </tr></thead>
         <tbody>
-          ${leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="11">Nenhum lead encontrado</td></tr>'}
+          ${leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="10">Nenhum lead encontrado</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -898,11 +898,20 @@ function renderLeadRow(l, statusColors) {
     <td><a href="https://wa.me/55${l.telefone}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${fmtPhone(l.telefone)}</a></td>
     <td>${l.cidade||'—'}</td>
     <td>${l.objetivo||'—'}</td>
-    <td>${l.faixa_investimento||'—'}</td>
     <td><span class="badge ${sc[l.status]||'badge-gray'}">${l.status}</span></td>
     <td style="text-align:center">${scoreChip(l.score)}</td>
-    <td>${l.corretor_nome||'<span style="color:var(--text2)">—</span>'}</td>
-    <td>${l.empreendimento_nome||l.empreendimento_interesse||'—'}</td>
+    <td style="min-width:130px">
+      <select onchange="atualizarCampoLead(${l.id},'corretor_id',this.value)" style="width:100%;padding:3px 6px;border-radius:5px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;cursor:pointer">
+        <option value="">— sem corretor —</option>
+        ${(corretoresData||[]).map(c=>`<option value="${c.id}" ${c.id==l.corretor_id?'selected':''}>${c.nome}</option>`).join('')}
+      </select>
+    </td>
+    <td style="min-width:150px">
+      <select onchange="atualizarCampoLead(${l.id},'empreendimento_id',this.value)" style="width:100%;padding:3px 6px;border-radius:5px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;cursor:pointer">
+        <option value="">— sem empreendimento —</option>
+        ${(empData||[]).map(e=>`<option value="${e.id}" ${e.id==l.empreendimento_id?'selected':''}>${e.nome}</option>`).join('')}
+      </select>
+    </td>
     <td><span class="badge ${l.origem==='whatsapp'?'badge-green':'badge-gray'}">${l.origem}</span></td>
     <td style="white-space:nowrap">
       ${l.origem==='whatsapp' && l.telefone ? `<button class="btn-icon" title="Ver conversa na Débora" onclick="abrirDeboraParaLead('${l.telefone}')">🤖</button>` : ''}
@@ -1023,6 +1032,26 @@ function openLeadModal(lead = {}) {
     closeModal(); if (currentPage === 'kanban') renderKanban(); else renderLeads();
   });
   if (lead.id) { carregarTimeline(lead.id); carregarVisitas(lead.id); }
+}
+
+async function atualizarCampoLead(id, campo, valor) {
+  const body = { [campo]: valor || null };
+  const r = await fetch(`/api/leads/${id}`, { method:'PUT', headers:{'Content-Type':'application/json','x-crm-token':TOKEN}, body:JSON.stringify(body) });
+  if (!r.ok) { toast('Erro ao atualizar lead', true); return; }
+  const lead = leadsData.find(x => x.id === id);
+  if (lead) {
+    lead[campo] = valor || null;
+    if (campo === 'corretor_id') {
+      const c = (corretoresData||[]).find(x => x.id == valor);
+      lead.corretor_nome = c ? c.nome : null;
+      lead.status = valor && !['vendido','sem_venda'].includes(lead.status) ? 'com_corretor' : lead.status;
+    }
+    if (campo === 'empreendimento_id') {
+      const e = (empData||[]).find(x => x.id == valor);
+      lead.empreendimento_nome = e ? e.nome : null;
+    }
+  }
+  toast('✅ Atualizado');
 }
 
 async function copiarDadosLead(id) {
