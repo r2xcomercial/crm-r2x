@@ -1026,7 +1026,7 @@ function openLeadModal(lead = {}) {
 }
 
 async function copiarDadosLead(id) {
-  const leads = currentData.leads || [];
+  const leads = leadsData || currentData.leads || [];
   const l = leads.find(x => x.id === id);
   if (!l) return;
   const linhas = [];
