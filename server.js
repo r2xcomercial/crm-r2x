@@ -687,7 +687,8 @@ app.put("/api/leads/:id", (req, res) => {
   db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(
     val('nome', null), val('telefone', null), val('email', null), val('cidade', null),
     val('objetivo', null), val('faixa_investimento', null), val('prazo', null),
-    val('empreendimento_interesse', null), val('empreendimento_id', null),
+    // Se empreendimento_id foi fornecido, limpa o campo texto livre
+    'empreendimento_id' in b && b.empreendimento_id ? null : val('empreendimento_interesse', null), val('empreendimento_id', null),
     corretor_id, novoStatus, val('observacoes', null),
     val('aniversario', null), val('tipo', null), val('creci', null), val('imobiliaria', null),
     req.params.id
@@ -4000,6 +4001,12 @@ app.use((error, req, res, next) => {
 // Evita que erros não capturados derrubem o processo
 process.on('uncaughtException', e => console.error('[uncaughtException]', e));
 process.on('unhandledRejection', e => console.error('[unhandledRejection]', e));
+
+// Limpa empreendimento_interesse (texto livre) de leads que já têm empreendimento_id vinculado
+app.post('/api/leads/limpar-emp-interesse', autenticar, (req, res) => {
+  const r = db.prepare(`UPDATE leads SET empreendimento_interesse=NULL WHERE empreendimento_id IS NOT NULL AND empreendimento_interesse IS NOT NULL`).run();
+  ok(res, { atualizados: r.changes });
+});
 
 // Re-sincroniza descrições de todas as entradas de comissão existentes
 app.post('/api/financeiro/ressincronizar-descricoes', autenticar, (req, res) => {
