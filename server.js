@@ -1205,9 +1205,28 @@ function sincronizarComissaoVenda(vendaId) {
   return comissao;
 }
 
+// Retorna unidades vinculadas a uma venda
+app.get("/api/vendas/:id/unidades", autenticar, (req, res) => {
+  const rows = db.prepare(`
+    SELECT u.id, u.quadra, u.lote, u.area_m2, u.preco, u.status,
+           e.tipo as emp_tipo
+    FROM venda_unidades vu
+    JOIN unidades u ON u.id = vu.unidade_id
+    JOIN empreendimentos e ON e.id = u.empreendimento_id
+    WHERE vu.venda_id = ?
+  `).all(req.params.id);
+  ok(res, rows);
+});
+
 app.post("/api/vendas", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, vaga_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, percentual_r2x_override } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, unidade_ids, vaga_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, percentual_r2x_override } = req.body;
   if (!valor || !data_venda) return err(res, "Valor e data obrigatórios");
+
+  // Suporte a múltiplas unidades: unidade_ids tem prioridade, fallback para unidade_id único
+  const idsArray = Array.isArray(unidade_ids) && unidade_ids.length > 0
+    ? unidade_ids.map(Number).filter(Boolean)
+    : (unidade_id ? [Number(unidade_id)] : []);
+  const primeiraUnidade = idsArray[0] || null;
 
   // Serializa parcelas de entrada como JSON
   const parcelasJson = entrada_parcelas && Array.isArray(entrada_parcelas) && entrada_parcelas.length > 0
@@ -1217,14 +1236,19 @@ app.post("/api/vendas", (req, res) => {
     (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,vaga_id,valor,data_venda,observacoes,status,
      comissao_corretor_pct,comissao_corretor_valor,comissao_corretor_status,valor_entrada,entrada_parcelas,percentual_r2x_override)
     VALUES (?,?,?,?,?,?,?,?,?,?,'ativo',?,?,?,?,?,?)`)
-    .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, vaga_id || null,
+    .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, primeiraUnidade, vaga_id || null,
          valor, data_venda, observacoes,
          comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente',
          valor_entrada||null, parcelasJson, percentual_r2x_override||null);
 
   const vendaId = r.lastInsertRowid;
   if (lead_id) db.prepare("UPDATE leads SET status='vendido' WHERE id=?").run(lead_id);
-  if (unidade_id) db.prepare("UPDATE unidades SET status='vendido' WHERE id=?").run(unidade_id);
+  // Insere todas as unidades na junction table e marca como vendido
+  const insVU = db.prepare("INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id) VALUES (?,?)");
+  for (const uid of idsArray) {
+    insVU.run(vendaId, uid);
+    db.prepare("UPDATE unidades SET status='vendido' WHERE id=?").run(uid);
+  }
   if (vaga_id) db.prepare("UPDATE vagas_garagem SET status='vendida', venda_id=? WHERE id=?").run(vendaId, vaga_id);
 
   const comissao = sincronizarComissaoVenda(vendaId);
@@ -1234,8 +1258,13 @@ app.post("/api/vendas", (req, res) => {
 });
 
 app.put("/api/vendas/:id", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, vaga_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, percentual_r2x_override } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, unidade_ids, vaga_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, percentual_r2x_override } = req.body;
   const vendaAntiga = db.prepare("SELECT unidade_id, vaga_id, status FROM vendas WHERE id=?").get(req.params.id);
+
+  const idsArray = Array.isArray(unidade_ids) && unidade_ids.length > 0
+    ? unidade_ids.map(Number).filter(Boolean)
+    : (unidade_id ? [Number(unidade_id)] : []);
+  const primeiraUnidade = idsArray[0] || null;
 
   // Serializa parcelas de entrada como JSON
   const parcelasJson = entrada_parcelas && Array.isArray(entrada_parcelas) && entrada_parcelas.length > 0
@@ -1246,17 +1275,24 @@ app.put("/api/vendas/:id", (req, res) => {
     status=?,observacoes=?,comissao_corretor_pct=?,comissao_corretor_valor=?,comissao_corretor_status=?,
     valor_entrada=?,entrada_parcelas=?,percentual_r2x_override=?
     WHERE id=?`)
-    .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id || null, vaga_id || null,
+    .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, primeiraUnidade, vaga_id || null,
          valor, data_venda, status, observacoes,
          comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente',
          valor_entrada||null, parcelasJson, percentual_r2x_override||null,
          req.params.id);
 
-  // Se mudou unidade, libera a anterior e marca a nova
-  if (vendaAntiga?.unidade_id && vendaAntiga.unidade_id != unidade_id) {
-    db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(vendaAntiga.unidade_id);
+  // Libera todas as unidades antigas e atualiza para as novas
+  const antigasUnidades = db.prepare("SELECT unidade_id FROM venda_unidades WHERE venda_id=?").all(req.params.id).map(r => r.unidade_id);
+  for (const uid of antigasUnidades) {
+    if (!idsArray.includes(uid)) db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(uid);
   }
-  if (unidade_id) db.prepare("UPDATE unidades SET status=? WHERE id=?").run(status === 'distrato' ? 'disponivel' : 'vendido', unidade_id);
+  db.prepare("DELETE FROM venda_unidades WHERE venda_id=?").run(req.params.id);
+  const insVU = db.prepare("INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id) VALUES (?,?)");
+  const unitStatus = status === 'distrato' ? 'disponivel' : 'vendido';
+  for (const uid of idsArray) {
+    insVU.run(req.params.id, uid);
+    db.prepare("UPDATE unidades SET status=? WHERE id=?").run(unitStatus, uid);
+  }
 
   // Gerencia vaga: libera a anterior se trocou, marca a nova
   if (vendaAntiga?.vaga_id && vendaAntiga.vaga_id != vaga_id) {
@@ -1274,11 +1310,14 @@ app.put("/api/vendas/:id", (req, res) => {
 });
 
 app.delete("/api/vendas/:id", (req, res) => {
-  const v = db.prepare("SELECT unidade_id, vaga_id FROM vendas WHERE id=?").get(req.params.id);
+  const v = db.prepare("SELECT vaga_id FROM vendas WHERE id=?").get(req.params.id);
+  // Libera todas as unidades vinculadas
+  const unidsVenda = db.prepare("SELECT unidade_id FROM venda_unidades WHERE venda_id=?").all(req.params.id);
+  for (const { unidade_id: uid } of unidsVenda) {
+    db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(uid);
+  }
   // Remove entradas financeiras vinculadas
   db.prepare("DELETE FROM financeiro_entradas WHERE venda_id=?").run(req.params.id);
-  // Libera unidade e vaga
-  if (v?.unidade_id) db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(v.unidade_id);
   if (v?.vaga_id) db.prepare("UPDATE vagas_garagem SET status='disponivel', venda_id=NULL WHERE id=?").run(v.vaga_id);
   db.prepare("DELETE FROM vendas WHERE id=?").run(req.params.id);
   ok(res, {});
@@ -1914,6 +1953,16 @@ try { db.exec('ALTER TABLE vagas_garagem ADD COLUMN box TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vagas_garagem ADD COLUMN tamanho REAL'); } catch(_) {}
 try { db.exec('ALTER TABLE vagas_garagem ADD COLUMN pavimento TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vagas_garagem ADD COLUMN unidade_id INTEGER REFERENCES unidades(id)'); } catch(_) {}
+
+// Migration: múltiplas unidades por venda
+db.exec(`CREATE TABLE IF NOT EXISTS venda_unidades (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  venda_id INTEGER NOT NULL REFERENCES vendas(id) ON DELETE CASCADE,
+  unidade_id INTEGER NOT NULL REFERENCES unidades(id)
+)`);
+// Migra unidade_id existentes para a junction table (ignora se já existir)
+db.exec(`INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id)
+  SELECT id, unidade_id FROM vendas WHERE unidade_id IS NOT NULL`);
 
 // Upload JPEG/PNG do mapa de vendas — armazenado como data URL base64
 app.post('/api/empreendimentos/:id/mapa', upload.single('arquivo'), (req, res) => {

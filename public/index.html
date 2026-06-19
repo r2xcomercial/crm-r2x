@@ -1523,9 +1523,40 @@ function removeEntradaParcela(btn) {
 }
 
 function preencherUnidade(sel) {
-  const o = sel.options[sel.selectedIndex];
-  if (o.dataset.preco) document.getElementById('f-valor').value = o.dataset.preco;
-  if (o.dataset.label) document.getElementById('f-imovel').value = o.dataset.label;
+  // Auto-preenche valor se só houver uma unidade selecionada
+  const slots = document.querySelectorAll('.venda-unidade-sel');
+  const selecionadas = [...slots].filter(s => s.value);
+  if (selecionadas.length === 1) {
+    const o = sel.options[sel.selectedIndex];
+    if (o.dataset.preco) document.getElementById('f-valor').value = o.dataset.preco;
+  }
+  atualizarDescricaoImovel();
+}
+
+function atualizarDescricaoImovel() {
+  const slots = document.querySelectorAll('.venda-unidade-sel');
+  const labels = [...slots].map(s => s.options[s.selectedIndex]?.dataset.label).filter(Boolean);
+  const campo = document.getElementById('f-imovel');
+  if (campo && labels.length > 0) campo.value = labels.join(' / ');
+}
+
+let _unidadesDisponiveis = [];
+
+function addUnidadeSlot(unidadeIdSelecionada = null) {
+  const lista = document.getElementById('venda-unidades-list');
+  if (!lista) return;
+  const idx = lista.children.length;
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:6px;align-items:center';
+  div.innerHTML = `
+    <select class="venda-unidade-sel" onchange="preencherUnidade(this)" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+      <option value="">— Selecione a unidade —</option>
+      ${_unidadesDisponiveis.map(u => `<option value="${u.id}" data-preco="${u.preco||''}" data-label="${u.label}" ${u.id==unidadeIdSelecionada?'selected':''}>${u.label}${u.preco?' — R$ '+u.preco.toLocaleString('pt-BR'):''}${u.status==='reservado'?' 🟡':''}</option>`).join('')}
+    </select>
+    <button type="button" onclick="this.parentElement.remove();atualizarDescricaoImovel()" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:14px;flex-shrink:0">✕</button>
+  `;
+  lista.appendChild(div);
+  if (unidadeIdSelecionada) atualizarDescricaoImovel();
 }
 
 async function carregarVagasVenda(empId, vagaAtualId) {
@@ -1540,36 +1571,43 @@ async function carregarVagasVenda(empId, vagaAtualId) {
   ).join('');
 }
 
-async function carregarUnidadesVenda(empId) {
-  const sel = document.getElementById('f-unidade');
+async function carregarUnidadesVenda(empId, unidadeIdsSelecionadas = []) {
+  const lista = document.getElementById('venda-unidades-list');
   const infoComissao = document.getElementById('info-comissao');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">⏳ Carregando...</option>';
+  if (!lista) return;
+  lista.innerHTML = '<div style="color:var(--text2);font-size:12px">⏳ Carregando...</div>';
+  _unidadesDisponiveis = [];
   if (!empId) {
-    sel.innerHTML = '<option value="">— Sem unidade —</option>';
+    lista.innerHTML = '';
+    addUnidadeSlot();
     carregarVagasVenda(null);
     return;
   }
   const r = await get(`/api/empreendimentos/${empId}/unidades`);
-  const units = (r.data || []).filter(u => u.status === 'disponivel' || u.status === 'reservado');
+  const units = (r.data || []).filter(u => u.status === 'disponivel' || u.status === 'reservado' || unidadeIdsSelecionadas.includes(u.id));
   const empTipo = (currentData.emp||[]).find(e => e.id == empId)?.tipo || 'loteamento';
   const isPredio = empTipo === 'predio';
   const lblA = isPredio ? 'Andar' : 'Qd';
   const lblB = isPredio ? 'Apto' : 'Lote';
-  sel.innerHTML = '<option value="">— Selecione a unidade —</option>' + units.map(u => `<option value="${u.id}" data-preco="${u.preco||''}" data-label="${lblA} ${u.quadra||'?'} ${lblB} ${u.lote}">${u.quadra ? `${lblA} ${u.quadra} - ` : ''}${lblB} ${u.lote}${u.area_m2 ? ` (${u.area_m2}m²)` : ''}${u.preco ? ` — R$ ${u.preco.toLocaleString('pt-BR')}` : ''}${u.status==='reservado'?' 🟡 RESERVADO':''}</option>`).join('');
-  if (!units.length) sel.innerHTML = '<option value="">Nenhuma unidade disponível</option>';
+  _unidadesDisponiveis = units.map(u => ({
+    id: u.id, preco: u.preco, status: u.status,
+    label: `${u.quadra ? lblA+' '+u.quadra+' ' : ''}${lblB} ${u.lote}${u.area_m2 ? ' ('+u.area_m2+'m²)' : ''}`
+  }));
+  lista.innerHTML = '';
+  if (unidadeIdsSelecionadas.length > 0) {
+    for (const uid of unidadeIdsSelecionadas) addUnidadeSlot(uid);
+  } else {
+    addUnidadeSlot();
+  }
 
-  // Carrega vagas disponíveis para o empreendimento (só prédio tem vagas)
   const empTipoCheck = (currentData.emp||[]).find(e => e.id == empId)?.tipo;
   if (empTipoCheck === 'predio') carregarVagasVenda(empId);
   else { const sv = document.getElementById('f-vaga'); if(sv) sv.innerHTML = '<option value="">— Sem vaga —</option>'; }
 
-  // Atualiza preview de comissão quando muda empreendimento
   const emp = (currentData.emp||[]).find(e => e.id == empId);
   const pctInput = document.getElementById('f-pct-r2x');
   if (emp?.percentual_r2x) {
     if (infoComissao) { infoComissao.textContent = `Padrão do empreendimento: ${emp.percentual_r2x}%. Edite o campo ao lado para negociar um % diferente nesta venda.`; infoComissao.style.color = 'var(--text2)'; }
-    // Só preenche automaticamente se o campo estiver vazio (não sobrescreve edição manual)
     if (pctInput && !pctInput.value) pctInput.value = emp.percentual_r2x;
   } else {
     if (infoComissao) { infoComissao.textContent = 'Empreendimento sem % R2X configurado.'; infoComissao.style.color = 'var(--warning)'; }
@@ -1599,8 +1637,12 @@ function openVendaModal(venda = {}) {
       <div class="form-group"><label>Empreendimento</label>
         <select id="f-emp" onchange="carregarUnidadesVenda(this.value)"><option value="">—</option>${(emp||[]).map(e => `<option value="${e.id}" ${venda.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('')}</select>
       </div>
-      <div class="form-group"><label>Unidade</label>
-        <select id="f-unidade" onchange="preencherUnidade(this)"><option value="">— Selecione o empreendimento —</option></select>
+      <div class="form-group span2">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <label style="margin:0">Unidades</label>
+          <button type="button" onclick="addUnidadeSlot()" style="background:var(--accent);color:var(--navy);border:none;border-radius:6px;padding:3px 12px;font-weight:700;font-size:13px;cursor:pointer">+ Adicionar unidade</button>
+        </div>
+        <div id="venda-unidades-list" style="display:flex;flex-direction:column;gap:6px"></div>
       </div>
       <div class="form-group"><label>Vaga de Garagem</label>
         <select id="f-vaga"><option value="">— Sem vaga —</option></select>
@@ -1683,7 +1725,6 @@ function openVendaModal(venda = {}) {
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${venda.observacoes||''}</textarea></div>
     </div>
   `, async () => {
-    const unidadeId = v('f-unidade') || null;
     let leadId = v('f-lead') || null;
     const valor = parseFloat(v('f-valor'));
 
@@ -1721,12 +1762,16 @@ function openVendaModal(venda = {}) {
       valor: parseFloat(row.querySelector('.ep-valor')?.value) || 0
     })).filter(p => p.data && p.valor > 0);
 
+    // Coleta todas as unidades selecionadas
+    const unidadeIds = [...document.querySelectorAll('.venda-unidade-sel')]
+      .map(s => s.value).filter(Boolean).map(Number);
+
     const pctR2xCustom = parseFloat(document.getElementById('f-pct-r2x')?.value) || null;
     const body = {
       data_venda: v('f-data'), valor, imovel: v('f-imovel'), status: v('f-status'),
       lead_id: leadId, corretor_id: v('f-corretor')||null,
       empreendimento_id: v('f-emp')||null, cliente_id: v('f-cliente')||null,
-      unidade_id: unidadeId, vaga_id: v('f-vaga')||null, observacoes: v('f-obs'),
+      unidade_ids: unidadeIds, vaga_id: v('f-vaga')||null, observacoes: v('f-obs'),
       comissao_corretor_pct: comPct, comissao_corretor_valor: comValor,
       comissao_corretor_status: comPct ? (v('f-com-status')||'pendente') : null,
       valor_entrada: valorEntrada,
@@ -1749,16 +1794,16 @@ function openVendaModal(venda = {}) {
 
   // Carrega unidades e vagas se empreendimento já estiver selecionado
   if (venda.empreendimento_id) setTimeout(async () => {
-    await carregarUnidadesVenda(venda.empreendimento_id);
-    // Seleciona unidade atual
-    if (venda.unidade_id) {
-      const su = document.getElementById('f-unidade');
-      if (su) { su.value = venda.unidade_id; preencherUnidade(su); }
+    // Se venda existente, busca todas as unidades vinculadas na junction table
+    let unidsSelecionadas = [];
+    if (venda.id) {
+      const ru = await get(`/api/vendas/${venda.id}/unidades`);
+      unidsSelecionadas = (ru.data || []).map(u => u.id);
+    } else if (venda.unidade_id) {
+      unidsSelecionadas = [venda.unidade_id];
     }
-    // Carrega e seleciona vaga atual
-    if (venda.vaga_id) {
-      await carregarVagasVenda(venda.empreendimento_id, venda.vaga_id);
-    }
+    await carregarUnidadesVenda(venda.empreendimento_id, unidsSelecionadas);
+    if (venda.vaga_id) await carregarVagasVenda(venda.empreendimento_id, venda.vaga_id);
   }, 100);
 }
 async function editVenda(id) { openVendaModal(currentData.vendas.find(v => v.id === id)); }
