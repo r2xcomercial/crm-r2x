@@ -6358,7 +6358,8 @@ async function abrirUnidade(unidadeId, empId) {
     : '<div style="font-size:12px;color:var(--text2)">Nenhuma vaga disponível para vincular. Cadastre vagas em 🅿️ Vagas.</div>';
 
   document.getElementById('modal-title').textContent = `${lblA} ${u.quadra||'—'} — ${lblB} ${u.lote}`;
-  document.getElementById('modal-body').innerHTML = `
+
+  const infoCards = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
       <div style="background:var(--navy3);border-radius:8px;padding:14px;text-align:center">
         <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${lblB}</div>
@@ -6376,32 +6377,73 @@ async function abrirUnidade(unidadeId, empId) {
         <div style="font-size:10px;color:var(--text2);margin-bottom:4px">Preço</div>
         <div style="font-size:20px;font-weight:700;color:var(--success)">${fmt(u.preco)}</div>
       </div>` : ''}
-    </div>
+    </div>`;
 
-    <!-- Vagas de Garagem -->
-    <div style="border-top:1px solid var(--border);padding-top:16px;margin-bottom:16px">
-      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">🅿️ Vagas de Garagem</div>
-      <div id="vagas-vinculadas-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">${vagasVinculadasHtml}</div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${vagasLivresOpts}</div>
-    </div>
-
-    <!-- Alterar Status -->
-    <div style="border-top:1px solid var(--border);padding-top:16px">
-      <div style="font-size:11px;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">Alterar Status</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${u.status!=='disponivel'?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(34,197,94,.4);color:#4ade80" onclick="mudarStatusEspelho(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
-        ${u.status!=='reservado' ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(245,158,11,.4);color:#fbbf24" onclick="mudarStatusEspelho(${u.id},'reservado',${empId})">🟡 Reservar</button>`:''}
-        ${u.status!=='vendido'   ?`<button class="btn btn-danger"    style="flex:1" onclick="mudarStatusEspelho(${u.id},'vendido',${empId})">🔴 Marcar Vendido</button>`:''}
+  if (USUARIO.perfil === 'corretor') {
+    document.getElementById('modal-body').innerHTML = infoCards + (u.status === 'disponivel' ? `
+      <div style="border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-size:12px;font-weight:600;color:var(--text1);margin-bottom:12px">Dados do cliente para reserva</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <input id="rr-esp-nome" type="text" placeholder="Nome completo *" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          <input id="rr-esp-tel" type="tel" placeholder="Telefone / WhatsApp *" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          <button onclick="reservarDoEspelho(${u.id},${empId})"
+            style="margin-top:4px;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-size:14px;font-weight:700;cursor:pointer">
+            ⚡ Reservar agora
+          </button>
+        </div>
+      </div>` : `
+      <div style="border-top:1px solid var(--border);padding-top:16px;text-align:center;color:var(--text2);font-size:13px">
+        ${u.status === 'reservado' ? '🟡 Esta unidade já está reservada.' : '🔴 Esta unidade já foi vendida.'}
+      </div>`);
+    document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
+  } else {
+    document.getElementById('modal-body').innerHTML = infoCards + `
+      <!-- Vagas de Garagem -->
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-bottom:16px">
+        <div style="font-size:11px;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">🅿️ Vagas de Garagem</div>
+        <div id="vagas-vinculadas-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">${vagasVinculadasHtml}</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${vagasLivresOpts}</div>
       </div>
-      ${u.status==='vendido'?`<div style="font-size:11px;color:var(--text2);margin-top:10px">Para liberar uma unidade vendida, altere o status da venda para "Distrato" na aba Vendas.</div>`:''}
-    </div>
-  `;
-  document.getElementById('modal-foot').innerHTML = `
-    <button class="btn btn-secondary" style="margin-right:auto;color:var(--danger);border-color:rgba(239,68,68,.4)"
-      onclick="deletarUnidade(${u.id},${empId})">🗑️ Excluir unidade</button>
-    <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>
-  `;
+      <!-- Alterar Status -->
+      <div style="border-top:1px solid var(--border);padding-top:16px">
+        <div style="font-size:11px;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">Alterar Status</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${u.status!=='disponivel'?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(34,197,94,.4);color:#4ade80" onclick="mudarStatusEspelho(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
+          ${u.status!=='reservado' ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(245,158,11,.4);color:#fbbf24" onclick="mudarStatusEspelho(${u.id},'reservado',${empId})">🟡 Reservar</button>`:''}
+          ${u.status!=='vendido'   ?`<button class="btn btn-danger"    style="flex:1" onclick="mudarStatusEspelho(${u.id},'vendido',${empId})">🔴 Marcar Vendido</button>`:''}
+        </div>
+        ${u.status==='vendido'?`<div style="font-size:11px;color:var(--text2);margin-top:10px">Para liberar uma unidade vendida, altere o status da venda para "Distrato" na aba Vendas.</div>`:''}
+      </div>`;
+    document.getElementById('modal-foot').innerHTML = `
+      <button class="btn btn-secondary" style="margin-right:auto;color:var(--danger);border-color:rgba(239,68,68,.4)"
+        onclick="deletarUnidade(${u.id},${empId})">🗑️ Excluir unidade</button>
+      <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
+  }
   document.getElementById('modal-overlay').classList.add('open');
+}
+
+async function reservarDoEspelho(unidadeId, empId) {
+  const nome = document.getElementById('rr-esp-nome')?.value?.trim();
+  const tel  = document.getElementById('rr-esp-tel')?.value?.trim();
+  if (!nome) return toast('Informe o nome do cliente', 'error');
+  if (!tel)  return toast('Informe o telefone do cliente', 'error');
+  const btn = document.querySelector('#modal-body button[onclick*="reservarDoEspelho"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Reservando...'; }
+  const r = await post('/api/vendas/reserva-rapida', {
+    empreendimento_id: empId,
+    unidade_id: unidadeId,
+    lead_nome: nome,
+    lead_telefone: tel,
+    corretor_id: USUARIO.corretor_id || null,
+  });
+  if (!r.ok) {
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Reservar agora'; }
+    return toast(r.error || 'Erro ao reservar', 'error');
+  }
+  toast('✅ Unidade reservada com sucesso!');
+  closeModal();
+  await carregarDados();
+  verEspelho(empId);
 }
 
 async function vincularVaga(unidadeId, empId) {
