@@ -708,6 +708,52 @@ app.delete("/api/leads/:id", (req, res) => {
   ok(res, {});
 });
 
+// Extrai dados pessoais de CNH ou RG via Claude Vision
+app.post("/api/leads/extrair-documento", autenticar, upload.single('arquivo'), async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) return err(res, 'ANTHROPIC_API_KEY não configurada no servidor');
+  if (!req.file) return err(res, 'Nenhum arquivo enviado');
+
+  const mime = req.file.mimetype;
+  const isPdf = mime === 'application/pdf';
+  const isImage = mime.startsWith('image/');
+  if (!isPdf && !isImage) return err(res, 'Envie uma imagem (JPG, PNG) ou PDF');
+
+  const b64 = req.file.buffer.toString('base64');
+
+  const content = isPdf
+    ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } }]
+    : [{ type: 'image', source: { type: 'base64', media_type: mime, data: b64 } }];
+
+  content.push({
+    type: 'text',
+    text: `Analise este documento brasileiro (CNH ou RG) e extraia as informações no formato JSON abaixo. Se algum campo não estiver visível, deixe como null. Retorne APENAS o JSON, sem texto adicional.\n\n{"nome": null, "cpf": null, "rg": null, "data_nascimento": null, "nome_pai": null, "nome_mae": null, "endereco": null, "cep": null, "cidade": null, "estado": null, "naturalidade": null, "nacionalidade": null}\n\nFormato de datas: DD/MM/AAAA. CPF: 000.000.000-00. RG: com pontos e traço se visível.`
+  });
+
+  try {
+    const resposta = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        messages: [{ role: 'user', content }]
+      })
+    });
+    const json = await resposta.json();
+    if (!resposta.ok) return err(res, json.error?.message || 'Erro na API do Claude');
+    const texto = json.content?.[0]?.text || '{}';
+    const dados = JSON.parse(texto.trim().replace(/^```json\n?|```$/g, ''));
+    ok(res, dados);
+  } catch(e) {
+    err(res, 'Erro ao processar documento: ' + e.message);
+  }
+});
+
 // Compradores adicionais (cônjuge, sócio, condomínio)
 app.get("/api/leads/:id/compradores", autenticar, (req, res) => {
   ok(res, db.prepare("SELECT * FROM lead_compradores WHERE lead_id=? ORDER BY id").all(req.params.id));

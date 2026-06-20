@@ -1003,7 +1003,15 @@ function openLeadModal(lead = {}) {
         <span>${(lead.cpf||lead.rg||lead.estado_civil||lead.profissao||lead.endereco)?'▼':'▶'}</span> 📄 Dados para Contrato
       </button>
       <div style="display:${(lead.cpf||lead.rg||lead.estado_civil||lead.profissao||lead.endereco)?'block':'none'}">
-        <div class="form-grid" style="margin-top:12px">
+        <div style="margin-top:12px;margin-bottom:14px;padding:10px 14px;background:rgba(96,165,250,.06);border:1px dashed rgba(96,165,250,.3);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:12px;color:var(--text2);flex:1;min-width:160px">📷 Envie a CNH ou RG para preencher os dados automaticamente</span>
+          <label style="cursor:pointer;background:var(--accent);color:var(--navy);border:none;border-radius:6px;padding:7px 16px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px">
+            <span id="doc-btn-txt">📄 Carregar documento</span>
+            <input type="file" accept="image/*,application/pdf" style="display:none" onchange="extrairDocumento(this)">
+          </label>
+          <span id="doc-status" style="font-size:11px;color:var(--text2)"></span>
+        </div>
+        <div class="form-grid" style="margin-top:0">
           <div class="form-group"><label>CPF</label><input id="f-cpf" value="${lead.cpf||''}" placeholder="000.000.000-00"></div>
           <div class="form-group"><label>RG</label><input id="f-rg" value="${lead.rg||''}" placeholder="00.000.000-0"></div>
           <div class="form-group"><label>Estado Civil</label>
@@ -1107,6 +1115,60 @@ function openLeadModal(lead = {}) {
     closeModal(); if (currentPage === 'kanban') renderKanban(); else renderLeads();
   });
   if (lead.id) { carregarTimeline(lead.id); carregarVisitas(lead.id); carregarCompradores(lead.id); }
+}
+
+async function extrairDocumento(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const btn = document.getElementById('doc-btn-txt');
+  const status = document.getElementById('doc-status');
+  btn.textContent = '⏳ Lendo documento...';
+  status.textContent = '';
+  input.disabled = true;
+  try {
+    const fd = new FormData();
+    fd.append('arquivo', file);
+    const r = await fetch('/api/leads/extrair-documento', {
+      method: 'POST',
+      headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' },
+      body: fd
+    });
+    const d = await r.json();
+    if (!d.ok) { status.textContent = '❌ ' + (d.error || 'Erro ao processar'); btn.textContent = '📄 Carregar documento'; input.disabled = false; return; }
+    const campos = d.data || d;
+    const set = (id, val) => { if (val) { const el = document.getElementById(id); if (el) el.value = val; } };
+    // Dados principais (preenche o formulário do lead também)
+    if (campos.nome) { const el = document.getElementById('f-nome'); if (el && !el.value) el.value = campos.nome; }
+    set('f-cpf', campos.cpf);
+    set('f-rg', campos.rg);
+    set('f-nome-pai', campos.nome_pai);
+    set('f-nome-mae', campos.nome_mae);
+    set('f-endereco', campos.endereco);
+    set('f-cep', campos.cep);
+    set('f-cidade-end', campos.cidade);
+    if (campos.estado) { const el = document.getElementById('f-estado-uf'); if (el) el.value = campos.estado.toUpperCase(); }
+    // Aniversário a partir da data de nascimento
+    if (campos.data_nascimento) {
+      const partes = campos.data_nascimento.split('/');
+      if (partes.length === 3) {
+        const iso = `${partes[2]}-${partes[1].padStart(2,'0')}-${partes[0].padStart(2,'0')}`;
+        const elAniv = document.getElementById('f-aniv');
+        if (elAniv && !elAniv.value) elAniv.value = iso;
+      }
+    }
+    // Conta campos preenchidos
+    const preenchidos = Object.values(campos).filter(v => v && v !== null).length;
+    status.textContent = `✅ ${preenchidos} campos extraídos`;
+    btn.textContent = '📄 Carregar outro';
+    // Expande a seção se estava fechada
+    const secao = document.getElementById('doc-status')?.closest('[style*="display"]');
+    if (secao) secao.style.display = 'block';
+  } catch(e) {
+    status.textContent = '❌ Erro de conexão';
+    btn.textContent = '📄 Carregar documento';
+  }
+  input.disabled = false;
+  input.value = '';
 }
 
 async function buscarCepLead(cep) {
