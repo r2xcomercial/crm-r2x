@@ -757,36 +757,31 @@ app.get("/api/vendas/:id/contrato-vertical", autenticar, (req, res) => {
     const cubStr = cubVal ? Number(cubVal).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) + ' CUB/SC' : '_____ CUB/SC';
 
     // Pagamentos (parcelas de entrada)
-    const entradaParcelas = venda.entrada_parcelas ? JSON.parse(venda.entrada_parcelas) : [];
-    const pagtoRows = [];
+    // Monta tabela de pagamentos a partir de saldo_parcelas (todas as linhas)
+    // Fallback: entrada_parcelas antigas para compatibilidade
+    let todasParcelas = [];
+    if (venda.saldo_parcelas) {
+      try { todasParcelas = JSON.parse(venda.saldo_parcelas); } catch(_) {}
+    }
+    if (todasParcelas.length === 0 && venda.entrada_parcelas) {
+      try {
+        const ep = JSON.parse(venda.entrada_parcelas);
+        todasParcelas = ep.map((p, i) => ({
+          titulo: `Entrada ${i + 1}`,
+          vencimento: p.data || null,
+          qtd: 1,
+          valor: p.valor || 0
+        }));
+      } catch(_) {}
+    }
     const letters = ['A','B','C','D','E','F'];
-    if (entradaParcelas.length > 0) {
-      entradaParcelas.forEach((p, i) => {
-        if (i < 6) {
-          pagtoRows.push({
-            letter: letters[i],
-            titulo: p.descricao || `Entrada ${i+1}`,
-            vencimento: p.vencimento || '___',
-            qtd: '1',
-            valor: `R$ ${fmtMoeda(p.valor)}`,
-          });
-        }
-      });
-    }
-    // Saldo devedor como linha D (se houver parcelas mensais)
-    if (venda.saldo_meses && venda.saldo_valor) {
-      const idx = pagtoRows.length;
-      if (idx < 6) {
-        pagtoRows.push({
-          letter: letters[idx],
-          titulo: 'Parcela Mensal',
-          vencimento: venda.saldo_inicio || '___',
-          qtd: String(venda.saldo_meses),
-          valor: `R$ ${fmtMoeda(venda.saldo_valor)}`,
-        });
-      }
-    }
-    // Fill remaining slots with blanks
+    const pagtoRows = todasParcelas.slice(0, 6).map((p, i) => ({
+      letter: letters[i],
+      titulo: p.titulo || `Parcela ${i + 1}`,
+      vencimento: p.vencimento ? new Date(p.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '___',
+      qtd: String(p.qtd || 1),
+      valor: p.valor ? `R$ ${fmtMoeda(p.valor)}` : '___',
+    }));
     while (pagtoRows.length < 6) {
       const i = pagtoRows.length;
       pagtoRows.push({ letter: letters[i], titulo: '___', vencimento: '___', qtd: '___', valor: '___' });
@@ -1142,6 +1137,69 @@ app.post("/api/leads/extrair-documento", autenticar, upload.single('arquivo'), a
     ok(res, dados);
   } catch(e) {
     err(res, 'Erro ao processar documento: ' + e.message);
+  }
+});
+
+// Extrai condições de pagamento (tabela de parcelas) de um contrato PDF
+app.post("/api/vendas/extrair-condicoes-pagamento", autenticar, upload.single("arquivo"), async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) return err(res, 'ANTHROPIC_API_KEY não configurada no servidor');
+  if (!req.file) return err(res, 'Nenhum arquivo enviado');
+
+  const mime = req.file.mimetype;
+  const isPdf = mime === 'application/pdf';
+  if (!isPdf) return err(res, 'Envie o contrato em PDF');
+
+  const b64 = req.file.buffer.toString('base64');
+
+  const prompt = `Analise este contrato imobiliário e extraia SOMENTE a tabela de condições de pagamento (geralmente chamada "Forma de Pagamento", "ITEM VI", ou similar).
+
+Retorne APENAS um JSON com o seguinte formato:
+{
+  "parcelas": [
+    {"titulo": "Entrada / Ato", "vencimento": "2026-04-22", "qtd": 1, "valor": 10000.00},
+    {"titulo": "Parcela Mensal", "vencimento": "2025-10-25", "qtd": 54, "valor": 13027.77},
+    {"titulo": "Reforço Anual", "vencimento": "2027-04-25", "qtd": 4, "valor": 60000.00}
+  ]
+}
+
+Regras:
+- "titulo": nome do tipo de parcela (ex: "Entrada 1", "Parcela Mensal", "Reforço Anual", "Balão")
+- "vencimento": data do primeiro vencimento no formato YYYY-MM-DD (converta de qualquer formato)
+- "qtd": número inteiro de parcelas desse tipo
+- "valor": valor numérico da parcela (sem R$ ou formatação)
+- Inclua TODAS as linhas da tabela de pagamentos, incluindo entradas e saldos
+- Se uma linha tiver vencimento "na assinatura" ou "ato", use a data de assinatura do contrato se disponível, senão null
+- Se não encontrar tabela de pagamento, retorne {"parcelas": []}
+- Retorne APENAS o JSON, sem texto adicional`;
+
+  try {
+    const resposta = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+            { type: 'text', text: prompt }
+          ]
+        }]
+      })
+    });
+    const json = await resposta.json();
+    if (!resposta.ok) return err(res, json.error?.message || 'Erro na API do Claude');
+    const texto = json.content?.[0]?.text || '{}';
+    const dados = JSON.parse(texto.trim().replace(/^```json\n?|```$/g, ''));
+    ok(res, dados);
+  } catch(e) {
+    err(res, 'Erro ao processar contrato: ' + e.message);
   }
 });
 
@@ -1681,7 +1739,7 @@ app.get("/api/vendas/:id/unidades", autenticar, (req, res) => {
 });
 
 app.post("/api/vendas", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, unidade_ids, vaga_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, percentual_r2x_override } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, unidade_ids, vaga_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, saldo_parcelas, percentual_r2x_override } = req.body;
   if (!valor || !data_venda) return err(res, "Valor e data obrigatórios");
 
   // Suporte a múltiplas unidades: unidade_ids tem prioridade, fallback para unidade_id único
@@ -1690,18 +1748,20 @@ app.post("/api/vendas", (req, res) => {
     : (unidade_id ? [Number(unidade_id)] : []);
   const primeiraUnidade = idsArray[0] || null;
 
-  // Serializa parcelas de entrada como JSON
+  // Serializa parcelas como JSON
   const parcelasJson = entrada_parcelas && Array.isArray(entrada_parcelas) && entrada_parcelas.length > 0
     ? JSON.stringify(entrada_parcelas) : null;
+  const saldoParcelasJson = saldo_parcelas && Array.isArray(saldo_parcelas) && saldo_parcelas.length > 0
+    ? JSON.stringify(saldo_parcelas) : null;
 
   const r = db.prepare(`INSERT INTO vendas
     (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,vaga_id,valor,data_venda,observacoes,status,
-     comissao_corretor_pct,comissao_corretor_valor,comissao_corretor_status,valor_entrada,entrada_parcelas,percentual_r2x_override)
-    VALUES (?,?,?,?,?,?,?,?,?,?,'ativo',?,?,?,?,?,?)`)
+     comissao_corretor_pct,comissao_corretor_valor,comissao_corretor_status,valor_entrada,entrada_parcelas,saldo_parcelas,percentual_r2x_override)
+    VALUES (?,?,?,?,?,?,?,?,?,?,'ativo',?,?,?,?,?,?,?)`)
     .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, primeiraUnidade, vaga_id || null,
          valor, data_venda, observacoes,
          comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente',
-         valor_entrada||null, parcelasJson, percentual_r2x_override||null);
+         valor_entrada||null, parcelasJson, saldoParcelasJson, percentual_r2x_override||null);
 
   const vendaId = r.lastInsertRowid;
   if (lead_id) db.prepare("UPDATE leads SET status='vendido' WHERE id=?").run(lead_id);
@@ -1720,7 +1780,7 @@ app.post("/api/vendas", (req, res) => {
 });
 
 app.put("/api/vendas/:id", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, unidade_ids, vaga_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, percentual_r2x_override } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, unidade_ids, vaga_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, saldo_parcelas, percentual_r2x_override } = req.body;
   const vendaAntiga = db.prepare("SELECT unidade_id, vaga_id, status FROM vendas WHERE id=?").get(req.params.id);
 
   const idsArray = Array.isArray(unidade_ids) && unidade_ids.length > 0
@@ -1728,19 +1788,21 @@ app.put("/api/vendas/:id", (req, res) => {
     : (unidade_id ? [Number(unidade_id)] : []);
   const primeiraUnidade = idsArray[0] || null;
 
-  // Serializa parcelas de entrada como JSON
+  // Serializa parcelas como JSON
   const parcelasJson = entrada_parcelas && Array.isArray(entrada_parcelas) && entrada_parcelas.length > 0
     ? JSON.stringify(entrada_parcelas) : null;
+  const saldoParcelasJson = saldo_parcelas && Array.isArray(saldo_parcelas) && saldo_parcelas.length > 0
+    ? JSON.stringify(saldo_parcelas) : null;
 
   db.prepare(`UPDATE vendas SET
     lead_id=?,empreendimento_id=?,corretor_id=?,cliente_id=?,imovel=?,unidade_id=?,vaga_id=?,valor=?,data_venda=?,
     status=?,observacoes=?,comissao_corretor_pct=?,comissao_corretor_valor=?,comissao_corretor_status=?,
-    valor_entrada=?,entrada_parcelas=?,percentual_r2x_override=?
+    valor_entrada=?,entrada_parcelas=?,saldo_parcelas=?,percentual_r2x_override=?
     WHERE id=?`)
     .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, primeiraUnidade, vaga_id || null,
          valor, data_venda, status, observacoes,
          comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente',
-         valor_entrada||null, parcelasJson, percentual_r2x_override||null,
+         valor_entrada||null, parcelasJson, saldoParcelasJson, percentual_r2x_override||null,
          req.params.id);
 
   // Libera todas as unidades antigas e atualiza para as novas
@@ -2450,6 +2512,7 @@ try { db.exec('ALTER TABLE leads ADD COLUMN representante_nome TEXT'); } catch(_
 try { db.exec('ALTER TABLE leads ADD COLUMN representante_cpf TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN representante_rg TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN representante_cargo TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE vendas ADD COLUMN saldo_parcelas TEXT'); } catch(_) {}
 
 // Campos adicionais empreendimentos para contrato vertical (Oslo)
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN matricula_registro TEXT'); } catch(_) {}

@@ -2133,6 +2133,44 @@ function openVendaModal(venda = {}) {
         </div>
       </div>
 
+      <!-- Seção de Saldo Devedor -->
+      <div class="form-group span2" style="background:rgba(46,95,138,.1);border:1px solid rgba(46,95,138,.3);border-radius:10px;padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div style="font-size:13px;font-weight:600;color:#7EB8E0">🏦 Saldo Devedor / Financiamento</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button type="button" onclick="addSaldoParcela()" style="background:#2E5F8A;color:#fff;border:none;border-radius:7px;padding:6px 13px;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap">+ Tipo de parcela</button>
+            <label style="background:rgba(46,95,138,.3);color:#7EB8E0;border:1px solid rgba(46,95,138,.5);border-radius:7px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap" title="Importar tabela de pagamentos do contrato PDF automaticamente">
+              📎 Importar do contrato
+              <input type="file" accept="application/pdf" style="display:none" onchange="importarContratoCondicoes(this)">
+            </label>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:2fr 1.4fr 80px 1.3fr 28px;gap:6px;margin-bottom:6px;padding:0 2px">
+          <span style="font-size:11px;color:var(--text2);font-weight:600">Tipo / Título</span>
+          <span style="font-size:11px;color:var(--text2);font-weight:600">1º Vencimento</span>
+          <span style="font-size:11px;color:var(--text2);font-weight:600;text-align:center">Nº Parc.</span>
+          <span style="font-size:11px;color:var(--text2);font-weight:600">Valor unitário (R$)</span>
+          <span></span>
+        </div>
+        <div id="saldo-parcelas-list" style="display:flex;flex-direction:column;gap:6px">
+          ${(() => {
+            let parcelas = [];
+            try { parcelas = venda.saldo_parcelas ? JSON.parse(venda.saldo_parcelas) : []; } catch(_) {}
+            return parcelas.map((p, i) => `
+              <div class="sp-row" style="display:grid;grid-template-columns:2fr 1.4fr 80px 1.3fr 28px;gap:6px;align-items:center">
+                <input type="text" class="sp-titulo" placeholder="ex: Parcela Mensal" value="${p.titulo||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                <input type="date" class="sp-vencimento" value="${p.vencimento||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                <input type="number" class="sp-qtd" min="1" placeholder="1" value="${p.qtd||1}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
+                <input type="number" class="sp-valor" step="0.01" placeholder="0.00" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                <button type="button" onclick="removeSaldoParcela(this)" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
+              </div>`).join('');
+          })()}
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:8px">
+          Inclua todas as linhas: entradas, parcelas mensais, reforços anuais, etc. O botão "Importar" lê o PDF do contrato e preenche automaticamente.
+        </div>
+      </div>
+
       <div class="form-group" style="position:relative">
         <label>Lead</label>
         <input id="f-lead-search" type="text" autocomplete="off"
@@ -2189,6 +2227,14 @@ function openVendaModal(venda = {}) {
       valor: parseFloat(row.querySelector('.ep-valor')?.value) || 0
     })).filter(p => p.data && p.valor > 0);
 
+    const spRows = [...document.querySelectorAll('#saldo-parcelas-list .sp-row')];
+    const saldoParcelas = spRows.map(row => ({
+      titulo: row.querySelector('.sp-titulo')?.value?.trim() || '',
+      vencimento: row.querySelector('.sp-vencimento')?.value || null,
+      qtd: parseInt(row.querySelector('.sp-qtd')?.value) || 1,
+      valor: parseFloat(row.querySelector('.sp-valor')?.value) || 0
+    })).filter(p => p.titulo || p.valor > 0);
+
     // Coleta todas as unidades selecionadas
     const unidadeIds = [...document.querySelectorAll('.venda-unidade-sel')]
       .map(s => s.value).filter(Boolean).map(Number);
@@ -2203,6 +2249,7 @@ function openVendaModal(venda = {}) {
       comissao_corretor_status: comPct ? (v('f-com-status')||'pendente') : null,
       valor_entrada: valorEntrada,
       entrada_parcelas: entradaParcelas.length > 0 ? entradaParcelas : null,
+      saldo_parcelas: saldoParcelas.length > 0 ? saldoParcelas : null,
       percentual_r2x_override: pctR2xCustom
     };
     if (!body.valor || !body.data_venda) return toast('Valor e data são obrigatórios', 'error');
@@ -3014,6 +3061,51 @@ async function gerarContratoCompraVenda(vendaId) {
     toast('Contrato gerado! 📄');
   } catch(e) {
     toast('Falha ao gerar contrato', 'error');
+  }
+}
+
+function addSaldoParcela(titulo = '', vencimento = '', qtd = 1, valor = '') {
+  const list = document.getElementById('saldo-parcelas-list');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'sp-row';
+  row.style.cssText = 'display:grid;grid-template-columns:2fr 1.4fr 80px 1.3fr 28px;gap:6px;align-items:center';
+  row.innerHTML = `
+    <input type="text" class="sp-titulo" placeholder="ex: Parcela Mensal" value="${titulo}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+    <input type="date" class="sp-vencimento" value="${vencimento}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+    <input type="number" class="sp-qtd" min="1" placeholder="1" value="${qtd}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
+    <input type="number" class="sp-valor" step="0.01" placeholder="0.00" value="${valor}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+    <button type="button" onclick="removeSaldoParcela(this)" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>`;
+  list.appendChild(row);
+}
+
+function removeSaldoParcela(btn) {
+  btn.closest('.sp-row')?.remove();
+}
+
+async function importarContratoCondicoes(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  input.value = '';
+  toast('Lendo contrato com IA...', 'info');
+  const form = new FormData();
+  form.append('arquivo', file);
+  try {
+    const res = await fetch('/api/vendas/extrair-condicoes-pagamento', {
+      method: 'POST',
+      headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' },
+      body: form
+    });
+    const data = await res.json();
+    if (!res.ok || !data.parcelas) return toast(data.error || 'Não encontrei tabela de pagamentos', 'error');
+    if (data.parcelas.length === 0) return toast('Nenhuma parcela encontrada no contrato', 'error');
+    // Limpa lista atual e preenche com o que veio do Claude
+    const list = document.getElementById('saldo-parcelas-list');
+    if (list) list.innerHTML = '';
+    data.parcelas.forEach(p => addSaldoParcela(p.titulo || '', p.vencimento || '', p.qtd || 1, p.valor || ''));
+    toast(`${data.parcelas.length} linha(s) importadas do contrato ✓`);
+  } catch(e) {
+    toast('Erro ao importar: ' + e.message, 'error');
   }
 }
 
