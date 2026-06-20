@@ -2063,15 +2063,25 @@ async function carregarUnidadesVenda(empId, unidadeIdsSelecionadas = []) {
     if (infoComissao) { infoComissao.textContent = 'Empreendimento sem % R2X configurado.'; infoComissao.style.color = 'var(--warning)'; }
   }
 
-  // Auto-preencher condição de pagamento padrão se lista estiver vazia
-  const spList = document.getElementById('saldo-parcelas-list');
-  if (spList && spList.querySelectorAll('.sp-row').length === 0 && emp?.condicao_pagamento_padrao) {
-    let padrao = [];
-    try { padrao = JSON.parse(emp.condicao_pagamento_padrao); } catch(_) {}
-    if (padrao.length > 0) {
-      padrao.forEach(p => addSaldoParcela(p.titulo||'', p.vencimento||'', p.qtd||1, p.valor||'', p.correcao||'', p.juros||'', p.forma_pagamento||''));
-      toast('💡 Condição de pagamento padrão carregada do empreendimento', 'info');
+  // Condições de pagamento padrão do empreendimento
+  const cpSelector = document.getElementById('ecp-selector-wrapper');
+  if (cpSelector && emp?.condicao_pagamento_padrao) {
+    let conds = [];
+    try { conds = JSON.parse(emp.condicao_pagamento_padrao); } catch(_) {}
+    if (conds.length > 0 && !conds[0].parcelas) conds = [{ nome: 'Condição padrão', parcelas: conds }];
+    if (conds.length > 0) {
+      window._cpConds = conds;
+      cpSelector.innerHTML = conds.length === 1
+        ? `<button type="button" onclick="aplicarCondicaoPadrao(0)" style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:7px;padding:5px 12px;font-size:12px;cursor:pointer;white-space:nowrap">💡 Aplicar: ${conds[0].nome||'Condição padrão'}</button>`
+        : `<select id="ecp-select" style="padding:5px 8px;border-radius:6px;border:1px solid rgba(34,197,94,.3);background:var(--navy2);color:var(--text1);font-size:12px">${conds.map((c,i)=>`<option value="${i}">${c.nome||'Condição '+(i+1)}</option>`).join('')}</select>
+           <button type="button" onclick="aplicarCondicaoPadrao(+document.getElementById('ecp-select').value)" style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:7px;padding:5px 12px;font-size:12px;cursor:pointer;white-space:nowrap">💡 Aplicar</button>`;
+    } else {
+      cpSelector.innerHTML = '';
+      window._cpConds = [];
     }
+  } else if (cpSelector) {
+    cpSelector.innerHTML = '';
+    window._cpConds = [];
   }
 }
 
@@ -2164,7 +2174,8 @@ function openVendaModal(venda = {}) {
             </label>
           </div>
         </div>
-        <div id="saldo-parcelas-list" style="display:flex;flex-direction:column;gap:8px">
+        <div id="ecp-selector-wrapper" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px"></div>
+        <div id="saldo-parcelas-list" style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
           ${(() => {
             let parcelas = [];
             try { parcelas = venda.saldo_parcelas ? JSON.parse(venda.saldo_parcelas) : []; } catch(_) {}
@@ -2180,7 +2191,7 @@ function openVendaModal(venda = {}) {
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
                   ${selOpts('sp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], p.correcao)}
-                  ${selOpts('sp-juros', ['Sem Juros','0,5% a.m.','1% a.m.','1,5% a.m.'], p.juros)}
+                  ${selOpts('sp-juros', ['Sem Juros','0,5% a.m.','0,75% a.m.','1% a.m.','1,5% a.m.'], p.juros)}
                   ${selOpts('sp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'], p.forma_pagamento)}
                 </div>
               </div>`).join('');
@@ -2801,41 +2812,52 @@ function openEmpModal(e = {}) {
         <div style="font-size:11px;color:var(--text2);margin-top:10px">💡 Esses dados preenchem automaticamente os contratos de compra e venda gerados pelo sistema.</div>
       </div>
 
-      <!-- Condição de Pagamento Padrão -->
+      <!-- Condições de Pagamento Padrão -->
       <div class="form-group span2" style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:16px 18px;margin-top:4px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
           <div>
-            <div style="font-size:13px;font-weight:700;color:#4ade80">⚡ Condição de Pagamento Padrão</div>
-            <div style="font-size:11px;color:var(--text2);margin-top:2px">Pré-carregada automaticamente em toda nova venda deste empreendimento</div>
+            <div style="font-size:13px;font-weight:700;color:#4ade80">⚡ Condições de Pagamento Padrão</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:2px">Cadastre uma ou mais condições. Na venda, o corretor escolhe qual aplicar.</div>
           </div>
-          <button type="button" onclick="addEmpCpParcela()"
+          <button type="button" onclick="addEmpCondicao()"
             style="background:rgba(34,197,94,.2);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:7px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
-            + Adicionar linha
+            + Nova Condição
           </button>
         </div>
-        <div id="emp-cp-list" style="display:flex;flex-direction:column;gap:8px">
+        <div id="emp-cp-list" style="display:flex;flex-direction:column;gap:12px">
           ${(() => {
-            let cp = [];
-            try { cp = e.condicao_pagamento_padrao ? JSON.parse(e.condicao_pagamento_padrao) : []; } catch(_) {}
+            let conds = [];
+            try { conds = e.condicao_pagamento_padrao ? JSON.parse(e.condicao_pagamento_padrao) : []; } catch(_) {}
+            if (conds.length > 0 && !conds[0].parcelas) conds = [{ nome: 'Condição 1', parcelas: conds }];
             const selOpts = (cls, opts, val) => `<select class="${cls}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">${opts.map(o => `<option value="${o}" ${o===(val||opts[0])?'selected':''}>${o}</option>`).join('')}</select>`;
-            return cp.map(p => `
-              <div class="emp-cp-row" style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:rgba(0,0,0,.15)">
-                <div style="display:grid;grid-template-columns:2fr 1.3fr 70px 1.2fr 28px;gap:6px;align-items:center">
-                  <input type="text" class="ecp-titulo" placeholder="ex: Saldo Mensal" value="${p.titulo||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-                  <input type="date" class="ecp-vencimento" value="${p.vencimento||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-                  <input type="number" class="ecp-qtd" min="1" placeholder="1" value="${p.qtd||1}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
-                  <input type="number" class="ecp-valor" step="0.01" placeholder="0.00" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-                  <button type="button" onclick="this.closest('.emp-cp-row').remove()" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
+            return conds.map(cond => `
+              <div class="ecp-condicao" style="border:1px solid rgba(34,197,94,.25);border-radius:8px;padding:10px 12px;background:rgba(0,0,0,.15)">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <input type="text" class="ecp-nome" placeholder="Nome (ex: 10% + 48x sem juros)" value="${(cond.nome||'').replace(/"/g,'&quot;')}" style="flex:1;padding:5px 10px;border-radius:6px;border:1px solid rgba(34,197,94,.3);background:var(--navy2);color:var(--text1);font-size:12px;font-weight:600">
+                  <button type="button" onclick="addEmpCpParcela(this)" style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap">+ Parcela</button>
+                  <button type="button" onclick="this.closest('.ecp-condicao').remove()" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:6px;padding:4px 8px;font-size:13px;cursor:pointer">✕</button>
                 </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
-                  ${selOpts('ecp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], p.correcao)}
-                  ${selOpts('ecp-juros', ['Sem Juros','0,5% a.m.','1% a.m.','1,5% a.m.'], p.juros)}
-                  ${selOpts('ecp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'], p.forma_pagamento)}
+                <div class="ecp-parcelas-list" style="display:flex;flex-direction:column;gap:6px">
+                  ${(cond.parcelas||[]).map(p => `
+                    <div class="emp-cp-row" style="border:1px solid var(--border);border-radius:7px;padding:7px 9px;display:flex;flex-direction:column;gap:5px;background:rgba(0,0,0,.1)">
+                      <div style="display:grid;grid-template-columns:2fr 1.3fr 70px 1.2fr 28px;gap:5px;align-items:center">
+                        <input type="text" class="ecp-titulo" placeholder="ex: Entrada" value="${(p.titulo||'').replace(/"/g,'&quot;')}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                        <input type="date" class="ecp-vencimento" value="${p.vencimento||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                        <input type="number" class="ecp-qtd" min="1" placeholder="1" value="${p.qtd||1}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
+                        <input type="number" class="ecp-valor" step="0.01" placeholder="0.00" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                        <button type="button" onclick="this.closest('.emp-cp-row').remove()" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
+                      </div>
+                      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">
+                        ${selOpts('ecp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], p.correcao)}
+                        ${selOpts('ecp-juros', ['Sem Juros','0,5% a.m.','0,75% a.m.','1% a.m.','1,5% a.m.'], p.juros)}
+                        ${selOpts('ecp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'], p.forma_pagamento)}
+                      </div>
+                    </div>`).join('')}
                 </div>
               </div>`).join('');
           })()}
         </div>
-        <div style="font-size:11px;color:var(--text2);margin-top:8px">Deixe os valores em branco — serve como template de estrutura (tipos de parcela, correção e forma). Os valores específicos são ajustados em cada venda.</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:8px">Deixe os valores em branco — a estrutura serve como template. Os valores específicos são ajustados em cada venda.</div>
       </div>
 
       ${e.id ? `
@@ -2890,15 +2912,18 @@ function openEmpModal(e = {}) {
       inicio_obra_previsto: v('f-inicio-obra')||null,
       valor_cub: parseFloat(v('f-valor-cub'))||null,
       patrimonio_afetacao: document.getElementById('f-patrimonio-afetacao')?.checked ? 1 : 0,
-      condicao_pagamento_padrao: [...document.querySelectorAll('#emp-cp-list .emp-cp-row')].map(row => ({
-        titulo: row.querySelector('.ecp-titulo')?.value?.trim() || '',
-        vencimento: row.querySelector('.ecp-vencimento')?.value || null,
-        qtd: parseInt(row.querySelector('.ecp-qtd')?.value) || 1,
-        valor: parseFloat(row.querySelector('.ecp-valor')?.value) || 0,
-        correcao: row.querySelector('.ecp-correcao')?.value || 'Sem Correção',
-        juros: row.querySelector('.ecp-juros')?.value || 'Sem Juros',
-        forma_pagamento: row.querySelector('.ecp-forma')?.value || 'PIX',
-      })).filter(p => p.titulo),
+      condicao_pagamento_padrao: [...document.querySelectorAll('#emp-cp-list .ecp-condicao')].map(cond => ({
+        nome: cond.querySelector('.ecp-nome')?.value?.trim() || '',
+        parcelas: [...cond.querySelectorAll('.emp-cp-row')].map(row => ({
+          titulo: row.querySelector('.ecp-titulo')?.value?.trim() || '',
+          vencimento: row.querySelector('.ecp-vencimento')?.value || null,
+          qtd: parseInt(row.querySelector('.ecp-qtd')?.value) || 1,
+          valor: parseFloat(row.querySelector('.ecp-valor')?.value) || 0,
+          correcao: row.querySelector('.ecp-correcao')?.value || 'Sem Correção',
+          juros: row.querySelector('.ecp-juros')?.value || 'Sem Juros',
+          forma_pagamento: row.querySelector('.ecp-forma')?.value || 'PIX',
+        })).filter(p => p.titulo),
+      })).filter(c => c.parcelas.length > 0),
     };
     if (!body.nome) return toast('Nome obrigatório', 'error');
     const r = e.id ? await put(`/api/empreendimentos/${e.id}`, body) : await post('/api/empreendimentos', body);
@@ -2908,28 +2933,57 @@ function openEmpModal(e = {}) {
   });
 }
 
-function addEmpCpParcela() {
+function addEmpCondicao(nome = '', parcelas = []) {
   const list = document.getElementById('emp-cp-list');
   if (!list) return;
+  const cond = document.createElement('div');
+  cond.className = 'ecp-condicao';
+  cond.style.cssText = 'border:1px solid rgba(34,197,94,.25);border-radius:8px;padding:10px 12px;background:rgba(0,0,0,.15)';
+  cond.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <input type="text" class="ecp-nome" placeholder="Nome (ex: 10% + 48x sem juros)" value="${nome.replace(/"/g,'&quot;')}" style="flex:1;padding:5px 10px;border-radius:6px;border:1px solid rgba(34,197,94,.3);background:var(--navy2);color:var(--text1);font-size:12px;font-weight:600">
+      <button type="button" onclick="addEmpCpParcela(this)" style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap">+ Parcela</button>
+      <button type="button" onclick="this.closest('.ecp-condicao').remove()" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:6px;padding:4px 8px;font-size:13px;cursor:pointer">✕</button>
+    </div>
+    <div class="ecp-parcelas-list" style="display:flex;flex-direction:column;gap:6px"></div>`;
+  list.appendChild(cond);
+  parcelas.forEach(p => addEmpCpParcela(cond.querySelector('button'), p));
+  cond.querySelector('.ecp-nome').focus();
+}
+
+function addEmpCpParcela(btn, p = {}) {
+  const parcList = btn.closest('.ecp-condicao')?.querySelector('.ecp-parcelas-list');
+  if (!parcList) return;
+  const sel = (cls, opts, val) => `<select class="${cls}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">${opts.map(o => `<option value="${o}" ${o===(val||opts[0])?'selected':''}>${o}</option>`).join('')}</select>`;
   const row = document.createElement('div');
   row.className = 'emp-cp-row';
-  row.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:rgba(0,0,0,.15)';
-  const sel = (cls, opts) => `<select class="${cls}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">${opts.map(o => `<option value="${o}">${o}</option>`).join('')}</select>`;
+  row.style.cssText = 'border:1px solid var(--border);border-radius:7px;padding:7px 9px;display:flex;flex-direction:column;gap:5px;background:rgba(0,0,0,.1)';
   row.innerHTML = `
-    <div style="display:grid;grid-template-columns:2fr 1.3fr 70px 1.2fr 28px;gap:6px;align-items:center">
-      <input type="text" class="ecp-titulo" placeholder="ex: Saldo Mensal" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-      <input type="date" class="ecp-vencimento" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-      <input type="number" class="ecp-qtd" min="1" placeholder="1" value="1" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
-      <input type="number" class="ecp-valor" step="0.01" placeholder="0.00" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+    <div style="display:grid;grid-template-columns:2fr 1.3fr 70px 1.2fr 28px;gap:5px;align-items:center">
+      <input type="text" class="ecp-titulo" placeholder="ex: Entrada" value="${(p.titulo||'').replace(/"/g,'&quot;')}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+      <input type="date" class="ecp-vencimento" value="${p.vencimento||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+      <input type="number" class="ecp-qtd" min="1" placeholder="1" value="${p.qtd||1}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
+      <input type="number" class="ecp-valor" step="0.01" placeholder="0.00" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
       <button type="button" onclick="this.closest('.emp-cp-row').remove()" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
-      ${sel('ecp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'])}
-      ${sel('ecp-juros', ['Sem Juros','0,5% a.m.','1% a.m.','1,5% a.m.'])}
-      ${sel('ecp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'])}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">
+      ${sel('ecp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], p.correcao)}
+      ${sel('ecp-juros', ['Sem Juros','0,5% a.m.','0,75% a.m.','1% a.m.','1,5% a.m.'], p.juros)}
+      ${sel('ecp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'], p.forma_pagamento)}
     </div>`;
-  list.appendChild(row);
-  row.querySelector('.ecp-titulo').focus();
+  parcList.appendChild(row);
+  if (!p.titulo) row.querySelector('.ecp-titulo').focus();
+}
+
+function aplicarCondicaoPadrao(index) {
+  const conds = window._cpConds || [];
+  const cond = conds[index];
+  if (!cond) return;
+  const spList = document.getElementById('saldo-parcelas-list');
+  if (!spList) return;
+  spList.innerHTML = '';
+  (cond.parcelas || []).forEach(p => addSaldoParcela(p.titulo||'', p.vencimento||'', p.qtd||1, p.valor||'', p.correcao||'', p.juros||'', p.forma_pagamento||''));
+  toast(`💡 Condição "${cond.nome||''}" aplicada`, 'info');
 }
 
 // ─── CHECKLIST DE MARKETING ───────────────────────────────────────────────────
@@ -3398,7 +3452,7 @@ function addSaldoParcela(titulo = '', vencimento = '', qtd = 1, valor = '', corr
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
       ${sel('sp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], correcao || 'Sem Correção')}
-      ${sel('sp-juros', ['Sem Juros','0,5% a.m.','1% a.m.','1,5% a.m.'], juros || 'Sem Juros')}
+      ${sel('sp-juros', ['Sem Juros','0,5% a.m.','0,75% a.m.','1% a.m.','1,5% a.m.'], juros || 'Sem Juros')}
       ${sel('sp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'], forma_pagamento || 'PIX')}
     </div>`;
   list.appendChild(row);
