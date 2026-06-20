@@ -2728,6 +2728,47 @@ function openEmpModal(e = {}) {
       <div class="form-group"><label>Data de Lançamento</label><input id="f-launch" type="date" value="${e.data_lancamento||''}"></div>
       <div class="form-group"><label>Início das Vendas</label><input id="f-vendas" type="date" value="${e.data_inicio_vendas||''}"></div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${e.observacoes||''}</textarea></div>
+
+      <!-- Seção Dados para Contrato de Venda -->
+      <div class="form-group span2" style="background:rgba(46,95,138,.08);border:1px solid rgba(46,95,138,.25);border-radius:10px;padding:16px 18px;margin-top:4px">
+        <div style="font-size:13px;font-weight:700;color:#7EB8E0;margin-bottom:14px">📄 Dados para Contrato de Venda</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Comarca (foro do contrato)</label>
+            <input id="f-comarca" placeholder="ex: Braço do Norte" value="${e.comarca||''}" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Matrícula — Registro de Imóveis</label>
+            <input id="f-matricula" placeholder="ex: 12.345" value="${e.matricula_registro||''}" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div class="span2" style="grid-column:span 2">
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Registro de Incorporação / Protocolo</label>
+            <input id="f-incorporacao" placeholder="ex: R-4-38.001, Protocolo 104.973 de 13/05/2025" value="${e.incorporacao_protocolo||''}" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Vendedora / SPE (nome)</label>
+            <input id="f-vendedora-nome" placeholder="ex: RESIDENCIAL BELVEDERE - SPE LTDA" value="${e.vendedora_nome||''}" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Prazo de Entrega (meses) — Prédios</label>
+            <input id="f-prazo-entrega" type="number" min="1" placeholder="ex: 36" value="${e.prazo_entrega_meses||''}" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div class="span2" style="grid-column:span 2">
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Qualificação completa da Vendedora (CNPJ, endereço, representante legal)</label>
+            <textarea id="f-vendedora-qual" placeholder="ex: cadastrada sob o CNPJ n. 13.926.863/0001-36, com sede na Rua ..., neste ato representada por Carlos Alberto Prudêncio de Souza, CPF 020.093.769-35" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;box-sizing:border-box;height:72px;resize:vertical">${e.vendedora_qualificacao||''}</textarea>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Início de Obra Previsto — Prédios</label>
+            <input id="f-inicio-obra" placeholder="ex: outubro de 2025" value="${e.inicio_obra_previsto||''}" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Valor CUB referência — Prédios</label>
+            <input id="f-valor-cub" type="number" step="0.0001" placeholder="ex: 11.0234" value="${e.valor_cub||''}" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:10px">💡 Esses dados preenchem automaticamente os contratos de compra e venda gerados pelo sistema.</div>
+      </div>
+
       ${e.id ? `
       <div class="form-group span2" style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
         <label>🗺️ Planta do Empreendimento (Mapa de Vendas)</label>
@@ -2765,7 +2806,21 @@ function openEmpModal(e = {}) {
       </div>` : '<div class="form-group span2" style="font-size:12px;color:var(--text2)">💡 Salve o empreendimento primeiro para importar a tabela de unidades.</div>'}
     </div>
   `, async () => {
-    const body = { nome: v('f-nome'), tipo: v('f-tipo')||'loteamento', cliente_id: v('f-cliente')||null, status: v('f-status'), endereco: v('f-end'), cidade: v('f-cidade'), estado: v('f-estado'), num_unidades: parseInt(v('f-units'))||null, vgv_estimado: parseFloat(v('f-vgv'))||null, percentual_r2x: parseFloat(v('f-pct'))||null, data_lancamento: v('f-launch'), data_inicio_vendas: v('f-vendas'), observacoes: v('f-obs') };
+    const body = {
+      nome: v('f-nome'), tipo: v('f-tipo')||'loteamento', cliente_id: v('f-cliente')||null,
+      status: v('f-status'), endereco: v('f-end'), cidade: v('f-cidade'), estado: v('f-estado'),
+      num_unidades: parseInt(v('f-units'))||null, vgv_estimado: parseFloat(v('f-vgv'))||null,
+      percentual_r2x: parseFloat(v('f-pct'))||null,
+      data_lancamento: v('f-launch'), data_inicio_vendas: v('f-vendas'), observacoes: v('f-obs'),
+      comarca: v('f-comarca')||null,
+      matricula_registro: v('f-matricula')||null,
+      incorporacao_protocolo: v('f-incorporacao')||null,
+      vendedora_nome: v('f-vendedora-nome')||null,
+      vendedora_qualificacao: v('f-vendedora-qual')||null,
+      prazo_entrega_meses: parseInt(v('f-prazo-entrega'))||null,
+      inicio_obra_previsto: v('f-inicio-obra')||null,
+      valor_cub: parseFloat(v('f-valor-cub'))||null,
+    };
     if (!body.nome) return toast('Nome obrigatório', 'error');
     const r = e.id ? await put(`/api/empreendimentos/${e.id}`, body) : await post('/api/empreendimentos', body);
     if (!r.ok) return toast(r.error, 'error');

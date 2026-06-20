@@ -360,15 +360,45 @@ app.get("/api/empreendimentos", (req, res) => {
 });
 
 app.post("/api/empreendimentos", (req, res) => {
-  const { cliente_id, nome, tipo, endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x } = req.body;
+  const { cliente_id, nome, tipo, endereco, cidade, estado, num_unidades, vgv_estimado, status,
+    data_lancamento, data_inicio_vendas, observacoes, percentual_r2x,
+    comarca, matricula_registro, incorporacao_protocolo,
+    vendedora_nome, vendedora_qualificacao,
+    prazo_entrega_meses, inicio_obra_previsto, valor_cub } = req.body;
   if (!nome) return err(res, "Nome obrigatório");
-  const r = db.prepare(`INSERT INTO empreendimentos (cliente_id,nome,tipo,endereco,cidade,estado,num_unidades,vgv_estimado,status,data_lancamento,data_inicio_vendas,observacoes,percentual_r2x) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(cliente_id, nome, tipo || 'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado, status || 'prospecto', data_lancamento, data_inicio_vendas, observacoes, percentual_r2x || null);
+  const r = db.prepare(`INSERT INTO empreendimentos
+    (cliente_id,nome,tipo,endereco,cidade,estado,num_unidades,vgv_estimado,status,
+     data_lancamento,data_inicio_vendas,observacoes,percentual_r2x,
+     comarca,matricula_registro,incorporacao_protocolo,
+     vendedora_nome,vendedora_qualificacao,prazo_entrega_meses,inicio_obra_previsto,valor_cub)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
+      status||'prospecto', data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
+      comarca||null, matricula_registro||null, incorporacao_protocolo||null,
+      vendedora_nome||null, vendedora_qualificacao||null,
+      prazo_entrega_meses||null, inicio_obra_previsto||null, valor_cub||null);
   ok(res, { id: r.lastInsertRowid });
 });
 
 app.put("/api/empreendimentos/:id", (req, res) => {
-  const { cliente_id, nome, tipo, endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x } = req.body;
-  db.prepare(`UPDATE empreendimentos SET cliente_id=?,nome=?,tipo=?,endereco=?,cidade=?,estado=?,num_unidades=?,vgv_estimado=?,status=?,data_lancamento=?,data_inicio_vendas=?,observacoes=?,percentual_r2x=? WHERE id=?`).run(cliente_id, nome, tipo || 'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado, status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x || null, req.params.id);
+  const { cliente_id, nome, tipo, endereco, cidade, estado, num_unidades, vgv_estimado, status,
+    data_lancamento, data_inicio_vendas, observacoes, percentual_r2x,
+    comarca, matricula_registro, incorporacao_protocolo,
+    vendedora_nome, vendedora_qualificacao,
+    prazo_entrega_meses, inicio_obra_previsto, valor_cub } = req.body;
+  db.prepare(`UPDATE empreendimentos SET
+    cliente_id=?,nome=?,tipo=?,endereco=?,cidade=?,estado=?,num_unidades=?,vgv_estimado=?,
+    status=?,data_lancamento=?,data_inicio_vendas=?,observacoes=?,percentual_r2x=?,
+    comarca=?,matricula_registro=?,incorporacao_protocolo=?,
+    vendedora_nome=?,vendedora_qualificacao=?,
+    prazo_entrega_meses=?,inicio_obra_previsto=?,valor_cub=?
+    WHERE id=?`).run(
+    cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
+    status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
+    comarca||null, matricula_registro||null, incorporacao_protocolo||null,
+    vendedora_nome||null, vendedora_qualificacao||null,
+    prazo_entrega_meses||null, inicio_obra_previsto||null, valor_cub||null,
+    req.params.id);
   ok(res, {});
 });
 
@@ -569,7 +599,9 @@ app.get("/api/vendas/:id/contrato-compra-venda", autenticar, (req, res) => {
         l.representante_nome, l.representante_cpf, l.representante_rg, l.representante_cargo,
         c.nome as corretor_nome,
         u.lote as unid_lote, u.quadra as unid_quadra, u.area_m2,
-        e.nome as emp_nome, e.cidade as emp_cidade
+        e.nome as emp_nome, e.cidade as emp_cidade, e.estado as emp_estado,
+        e.vendedora_nome, e.vendedora_qualificacao, e.comarca,
+        e.matricula_registro, e.incorporacao_protocolo
       FROM vendas v
       LEFT JOIN leads l ON l.id = v.lead_id
       LEFT JOIN corretores c ON c.id = v.corretor_id
@@ -656,8 +688,23 @@ app.get("/api/vendas/:id/contrato-compra-venda", autenticar, (req, res) => {
       ? `R$ ${fmtMoeda(venda.comissao_corretor_valor)} (${numExtenso(venda.comissao_corretor_valor)})`
       : '___________________';
 
+    // Vendedora — puxa do empreendimento, com fallback genérico
+    const vendedoraNome = venda.vendedora_nome || '___________________';
+    const vendedoraQual = venda.vendedora_qualificacao
+      ? `, ${venda.vendedora_qualificacao}`
+      : ', cadastrada sob o CNPJ n. ___, com sede na ___, neste ato representado pelo seu administrador ___';
+    const vendedoraPix = venda.vendedora_qualificacao
+      ? (venda.vendedora_qualificacao.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/) || ['___'])[0]
+      : '___';
+    const cidadeAssinatura = venda.comarca || venda.emp_cidade || '___';
+
     const dados = {
       LOTE_RESUMO:               loteResumo,
+      EMP_NOME:                  venda.emp_nome || '___________________',
+      VENDEDORA_NOME:            vendedoraNome,
+      VENDEDORA_QUALIFICACAO:    vendedoraQual,
+      VENDEDORA_PIX:             vendedoraPix,
+      CIDADE_ASSINATURA:         cidadeAssinatura,
       COMPRADOR_NOME:            compradorNome,
       COMPRADOR_QUALIFICACAO:    compradorQualificacao,
       REPRESENTANTE_NOME:        representanteNome,
