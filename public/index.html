@@ -941,7 +941,7 @@ function renderLeadRow(l, statusColors) {
   </tr>`;
 }
 
-function openLeadModal(lead = {}) {
+function openLeadModal(lead = {}, onSave = null) {
   const isCorretor = lead.tipo === 'corretor';
   openModal(lead.id ? 'Editar Lead' : 'Novo Lead', `
     ${lead.tipo === 'corretor' ? `
@@ -1170,7 +1170,9 @@ function openLeadModal(lead = {}) {
     // Salva compradores adicionais
     await salvarCompradores(leadId, lead.id ? true : false);
     toast(lead.id ? 'Lead atualizado!' : 'Lead criado!');
-    closeModal(); if (currentPage === 'kanban') renderKanban(); else renderLeads();
+    closeModal();
+    if (onSave) { await onSave(leadId, body); }
+    else { if (currentPage === 'kanban') renderKanban(); else renderLeads(); }
   });
   if (lead.id) { carregarTimeline(lead.id); carregarVisitas(lead.id); carregarCompradores(lead.id); }
 }
@@ -1839,9 +1841,96 @@ async function renderVendas(filter = '') {
   `;
 }
 
-function toggleNovoLead(value) {
-  const el = document.getElementById('novo-lead-fields');
-  if (el) el.style.display = value === '__novo__' ? 'block' : 'none';
+function toggleNovoLead(value) {} // mantido para compatibilidade
+
+// ── Dropdown de busca de lead no modal de venda ───────────────────────────────
+let _leadsParaVenda = [];
+
+function abrirLeadVendaDD() {
+  const dd = document.getElementById('lead-venda-dd');
+  if (!dd) return;
+  _leadsParaVenda = leadsData || [];
+  renderLeadVendaDD('');
+  dd.style.display = 'block';
+  // Fecha ao clicar fora
+  setTimeout(() => {
+    const fechar = (e) => {
+      if (!dd.contains(e.target) && e.target.id !== 'f-lead-search') {
+        dd.style.display = 'none';
+        document.removeEventListener('mousedown', fechar);
+      }
+    };
+    document.addEventListener('mousedown', fechar);
+  }, 50);
+}
+
+function filtrarLeadVendaDD(q) {
+  renderLeadVendaDD(q);
+  const dd = document.getElementById('lead-venda-dd');
+  if (dd) dd.style.display = 'block';
+}
+
+function renderLeadVendaDD(q) {
+  const lista = document.getElementById('lead-venda-dd-lista');
+  if (!lista) return;
+  const termo = (q || '').toLowerCase();
+  const filtrados = _leadsParaVenda.filter(l =>
+    (l.nome||'').toLowerCase().includes(termo) ||
+    (l.telefone||'').includes(termo) ||
+    (l.cidade||'').toLowerCase().includes(termo)
+  ).slice(0, 40);
+  lista.innerHTML = filtrados.map(l =>
+    `<div onclick="selecionarLeadVenda('${l.id}','${(l.nome||l.telefone||'').replace(/'/g,"\\'")}')"
+      style="padding:8px 12px;cursor:pointer;font-size:13px;border-top:1px solid rgba(255,255,255,.04)"
+      onmouseover="this.style.background='var(--navy3)'" onmouseout="this.style.background=''">
+      <span style="font-weight:600">${l.nome||l.telefone}</span>
+      ${l.telefone && l.nome ? `<span style="color:var(--text2);font-size:11px;margin-left:6px">${l.telefone}</span>` : ''}
+      ${l.cidade ? `<span style="color:var(--text2);font-size:11px;margin-left:6px">· ${l.cidade}</span>` : ''}
+    </div>`
+  ).join('');
+}
+
+function selecionarLeadVenda(id, nome) {
+  const hidden = document.getElementById('f-lead');
+  const search = document.getElementById('f-lead-search');
+  const dd = document.getElementById('lead-venda-dd');
+  if (hidden) hidden.value = id;
+  if (search) search.value = nome;
+  if (dd) dd.style.display = 'none';
+}
+
+// ── Cadastrar novo lead a partir do modal de venda ────────────────────────────
+let _vendaPendente = null;
+
+function novoLeadParaVenda() {
+  // Captura estado atual do formulário de venda
+  const unidadeIds = [...document.querySelectorAll('.venda-unidade-sel')].map(s=>s.value).filter(Boolean);
+  const epRows = [...document.querySelectorAll('#entrada-parcelas-list .ep-row')];
+  const parcelas = epRows.map(r => ({data:r.querySelector('.ep-data')?.value, valor:r.querySelector('.ep-valor')?.value})).filter(p=>p.data||p.valor);
+  _vendaPendente = {
+    data_venda: v('f-data'), status: v('f-status'),
+    empreendimento_id: v('f-emp'), imovel: v('f-imovel'),
+    valor: v('f-valor'), corretor_id: v('f-corretor'),
+    cliente_id: v('f-cliente'),
+    comissao_corretor_pct: v('f-com-pct'), comissao_corretor_valor: v('f-com-valor'),
+    comissao_corretor_status: v('f-com-status'),
+    valor_entrada: v('f-valor-entrada'),
+    entrada_parcelas: parcelas.length ? JSON.stringify(parcelas) : null,
+    observacoes: v('f-obs'),
+    percentual_r2x: document.getElementById('f-pct-r2x')?.value || '',
+    _unidade_ids: unidadeIds
+  };
+  closeModal();
+  openLeadModal({}, async (leadId, leadBody) => {
+    // Recarrega leads e reabre venda com o novo lead pré-selecionado
+    const lr = await get('/api/leads');
+    if (lr.ok) leadsData = lr.data;
+    const estado = _vendaPendente || {};
+    _vendaPendente = null;
+    estado.lead_id = leadId;
+    estado._leadNome = leadBody?.nome || '';
+    openVendaModal(estado);
+  });
 }
 
 function addEntradaParcela(data = '', valor = '') {
@@ -2044,22 +2133,20 @@ function openVendaModal(venda = {}) {
         </div>
       </div>
 
-      <div class="form-group"><label>Lead</label>
-        <select id="f-lead" onchange="toggleNovoLead(this.value)">
-          <option value="">— Sem lead —</option>
-          <option value="__novo__">➕ Cadastrar novo lead</option>
-          ${(leads||[]).map(l => `<option value="${l.id}" ${venda.lead_id==l.id?'selected':''}>${l.nome||l.telefone}</option>`).join('')}
-        </select>
-      </div>
-      <div id="novo-lead-fields" class="form-group span2" style="display:none;background:var(--navy3);border-radius:8px;padding:12px">
-        <label style="margin-bottom:8px;display:block;font-weight:600">➕ Dados do novo lead</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <input id="nl-nome" placeholder="Nome do lead *" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
-          <input id="nl-tel" placeholder="Telefone" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
-          <input id="nl-email" type="email" placeholder="Email" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
-          <input id="nl-cidade" placeholder="Cidade" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+      <div class="form-group" style="position:relative">
+        <label>Lead</label>
+        <input id="f-lead-search" type="text" autocomplete="off"
+          placeholder="Buscar lead pelo nome ou telefone..."
+          value="${venda.lead_id ? ((leads||[]).find(l=>l.id==venda.lead_id)?.nome || '') : ''}"
+          oninput="filtrarLeadVendaDD(this.value)"
+          onfocus="abrirLeadVendaDD()"
+          style="width:100%;box-sizing:border-box">
+        <input id="f-lead" type="hidden" value="${venda.lead_id||''}">
+        <div id="lead-venda-dd" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:200;background:var(--navy2);border:1px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)">
+          <div onclick="selecionarLeadVenda('','')" style="padding:8px 12px;cursor:pointer;font-size:13px;color:var(--text2)" onmouseover="this.style.background='var(--navy3)'" onmouseout="this.style.background=''">— Sem lead —</div>
+          <div onclick="novoLeadParaVenda()" style="padding:8px 12px;cursor:pointer;font-size:13px;color:var(--accent);font-weight:600;border-top:1px solid var(--border)" onmouseover="this.style.background='var(--navy3)'" onmouseout="this.style.background=''">➕ Cadastrar novo lead (formulário completo)</div>
+          <div id="lead-venda-dd-lista"></div>
         </div>
-        <div style="font-size:11px;color:var(--text2);margin-top:6px">O lead será criado com status "vendido" e faixa de investimento igual ao valor da venda.</div>
       </div>
       <div class="form-group"><label>Corretor</label>
         <select id="f-corretor"><option value="">—</option>${(corretores||[]).map(c => `<option value="${c.id}" ${venda.corretor_id==c.id?'selected':''}>${c.nome}</option>`).join('')}</select>
@@ -2078,31 +2165,8 @@ function openVendaModal(venda = {}) {
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${venda.observacoes||''}</textarea></div>
     </div>
   `, async () => {
-    let leadId = v('f-lead') || null;
+    const leadId = document.getElementById('f-lead')?.value || null;
     const valor = parseFloat(v('f-valor'));
-
-    // Se for novo lead, cria primeiro
-    if (leadId === '__novo__') {
-      const nome = v('nl-nome');
-      if (!nome) return toast('Nome do novo lead é obrigatório', 'error');
-      const empId = v('f-emp') || null;
-      const empNome = empId ? (currentData.emp||[]).find(e => e.id == empId)?.nome : null;
-      const novoLead = {
-        nome,
-        telefone: v('nl-tel'),
-        email: v('nl-email'),
-        cidade: v('nl-cidade'),
-        empreendimento_id: empId,
-        empreendimento_interesse: empNome,
-        corretor_id: v('f-corretor') || null,
-        faixa_investimento: valor ? `R$ ${valor.toLocaleString('pt-BR')}` : null,
-        status: 'vendido',
-        origem: 'venda_direta'
-      };
-      const lr = await post('/api/leads', novoLead);
-      if (!lr.ok) return toast('Erro ao criar lead: ' + lr.error, 'error');
-      leadId = lr.data.id;
-    }
 
     const comPct = parseFloat(v('f-com-pct'))||null;
     const comValor = parseFloat(v('f-com-valor'))||null;
@@ -2147,16 +2211,21 @@ function openVendaModal(venda = {}) {
 
   // Carrega unidades e vagas se empreendimento já estiver selecionado
   if (venda.empreendimento_id) setTimeout(async () => {
-    // Se venda existente, busca todas as unidades vinculadas na junction table
     let unidsSelecionadas = [];
     if (venda.id) {
       const ru = await get(`/api/vendas/${venda.id}/unidades`);
       unidsSelecionadas = (ru.data || []).map(u => u.id);
+    } else if (venda._unidade_ids?.length) {
+      unidsSelecionadas = venda._unidade_ids.map(Number);
     } else if (venda.unidade_id) {
       unidsSelecionadas = [venda.unidade_id];
     }
     await carregarUnidadesVenda(venda.empreendimento_id, unidsSelecionadas);
     if (venda.vaga_id) await carregarVagasVenda(venda.empreendimento_id, venda.vaga_id);
+    // Se veio do fluxo "novo lead para venda", pre-seleciona o lead no search input
+    if (venda._leadNome && venda.lead_id) {
+      selecionarLeadVenda(String(venda.lead_id), venda._leadNome);
+    }
   }, 100);
 }
 async function editVenda(id) { openVendaModal(currentData.vendas.find(v => v.id === id)); }
@@ -2240,27 +2309,16 @@ async function importarContrato(input) {
     // Seleciona o lead criado/encontrado pela IA
     let leadInfo = '';
     if (d.lead_id) {
-      const leadSel = document.getElementById('f-lead');
-      // Verifica se o lead já está nas options
-      const existingOpt = [...leadSel.options].find(o => o.value == d.lead_id);
-      if (existingOpt) {
-        leadSel.value = d.lead_id;
-        toggleNovoLead(d.lead_id);
-        leadInfo = d.lead_criado
-          ? `<br>👤 <b>Novo lead criado:</b> ${existingOpt.text}`
-          : `<br>👤 <b>Lead vinculado:</b> ${existingOpt.text}`;
-      } else {
-        // Lead não está no select ainda — adiciona a option dinamicamente
-        const novaOpt = document.createElement('option');
-        novaOpt.value = d.lead_id;
-        novaOpt.text = d.comprador_nome || `Lead #${d.lead_id}`;
-        novaOpt.selected = true;
-        leadSel.appendChild(novaOpt);
-        toggleNovoLead(d.lead_id);
-        leadInfo = d.lead_criado
-          ? `<br>👤 <b>Novo lead criado:</b> ${novaOpt.text}`
-          : `<br>👤 <b>Lead vinculado:</b> ${novaOpt.text}`;
+      const leadNome = d.comprador_nome || (leadsData||[]).find(l=>l.id==d.lead_id)?.nome || `Lead #${d.lead_id}`;
+      selecionarLeadVenda(d.lead_id, leadNome);
+      // Atualiza cache de leads para incluir o novo se foi criado
+      if (d.lead_criado) {
+        const lr = await get('/api/leads');
+        if (lr.ok) leadsData = lr.data;
       }
+      leadInfo = d.lead_criado
+        ? `<br>👤 <b>Novo lead criado:</b> ${leadNome}`
+        : `<br>👤 <b>Lead vinculado:</b> ${leadNome}`;
     }
 
     // Preenche valor de entrada e parcelas
