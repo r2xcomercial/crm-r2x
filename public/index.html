@@ -1000,31 +1000,83 @@ function openLeadModal(lead = {}) {
 
     <div style="margin-top:18px">
       <button type="button" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('span').textContent=this.nextElementSibling.style.display==='none'?'▶':'▼'" style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px;padding:0">
-        <span>${(lead.cpf||lead.rg||lead.estado_civil||lead.profissao||lead.endereco)?'▼':'▶'}</span> 📄 Dados para Contrato
+        <span>${(lead.cpf||lead.rg||lead.cnpj||lead.razao_social||lead.endereco)?'▼':'▶'}</span> 📄 Dados para Contrato
       </button>
-      <div style="display:${(lead.cpf||lead.rg||lead.estado_civil||lead.profissao||lead.endereco)?'block':'none'}">
-        <div style="margin-top:12px;margin-bottom:14px;padding:10px 14px;background:rgba(96,165,250,.06);border:1px dashed rgba(96,165,250,.3);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <span style="font-size:12px;color:var(--text2);flex:1;min-width:160px">📷 Envie a CNH ou RG para preencher os dados automaticamente</span>
-          <label style="cursor:pointer;background:var(--accent);color:var(--navy);border:none;border-radius:6px;padding:7px 16px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px">
-            <span id="doc-btn-txt">📄 Carregar documento</span>
-            <input type="file" accept="image/*,application/pdf" style="display:none" onchange="extrairDocumento(this)">
-          </label>
-          <span id="doc-status" style="font-size:11px;color:var(--text2)"></span>
+      <div style="display:${(lead.cpf||lead.rg||lead.cnpj||lead.razao_social||lead.endereco)?'block':'none'}">
+
+        <!-- Toggle PF / PJ -->
+        <div style="display:flex;gap:8px;margin-top:14px;margin-bottom:14px">
+          <button type="button" id="btn-pf" onclick="togglePjLead(false)" style="flex:1;padding:8px;border-radius:8px;border:2px solid ${!lead.pessoa_juridica?'var(--accent)':'var(--border)'};background:${!lead.pessoa_juridica?'rgba(250,204,21,.08)':'var(--navy3)'};color:${!lead.pessoa_juridica?'var(--accent)':'var(--text2)'};font-weight:700;font-size:13px;cursor:pointer">👤 Pessoa Física</button>
+          <button type="button" id="btn-pj" onclick="togglePjLead(true)"  style="flex:1;padding:8px;border-radius:8px;border:2px solid ${lead.pessoa_juridica?'var(--accent)':'var(--border)'};background:${lead.pessoa_juridica?'rgba(250,204,21,.08)':'var(--navy3)'};color:${lead.pessoa_juridica?'var(--accent)':'var(--text2)'};font-weight:700;font-size:13px;cursor:pointer">🏢 Pessoa Jurídica</button>
         </div>
-        <div class="form-grid" style="margin-top:0">
-          <div class="form-group"><label>CPF</label><input id="f-cpf" value="${lead.cpf||''}" placeholder="000.000.000-00"></div>
-          <div class="form-group"><label>RG</label><input id="f-rg" value="${lead.rg||''}" placeholder="00.000.000-0"></div>
-          <div class="form-group"><label>Estado Civil</label>
-            <select id="f-estado-civil">
-              <option value="">—</option>
-              ${(()=>{const ec=lead.estado_civil||'';const lb={solteiro:'Solteiro(a)',casado:'Casado(a)',divorciado:'Divorciado(a)',viuvo:'Viúvo(a)',uniao_estavel:'União Estável'};return['solteiro','casado','divorciado','viuvo','uniao_estavel'].map(v=>'<option value="'+v+'" '+(ec===v?'selected':'')+'>'+lb[v]+'</option>').join('');})()}
-            </select>
+        <input type="hidden" id="f-pessoa-juridica" value="${lead.pessoa_juridica?'1':'0'}">
+
+        <!-- BLOCO PF -->
+        <div id="bloco-pf" style="display:${lead.pessoa_juridica?'none':'block'}">
+          <div style="margin-bottom:12px;padding:10px 14px;background:rgba(96,165,250,.06);border:1px dashed rgba(96,165,250,.3);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:12px;color:var(--text2);flex:1;min-width:140px">📷 Envie a CNH ou RG para preencher automaticamente</span>
+            <label style="cursor:pointer;background:var(--accent);color:var(--navy);border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px">
+              <span id="doc-btn-txt">📄 Carregar CNH / RG</span>
+              <input type="file" accept="image/*,application/pdf" style="display:none" onchange="extrairDocumento(this,'identidade')">
+            </label>
+            <span id="doc-status" style="font-size:11px;color:var(--text2)"></span>
           </div>
-          <div class="form-group"><label>Profissão</label><input id="f-profissao" value="${lead.profissao||''}" placeholder="ex: Empresário"></div>
-          <div class="form-group"><label>Nome do Pai</label><input id="f-nome-pai" value="${lead.nome_pai||''}"></div>
-          <div class="form-group"><label>Nome da Mãe</label><input id="f-nome-mae" value="${lead.nome_mae||''}"></div>
+          <div class="form-grid">
+            <div class="form-group"><label>CPF</label><input id="f-cpf" value="${lead.cpf||''}" placeholder="000.000.000-00"></div>
+            <div class="form-group"><label>RG</label><input id="f-rg" value="${lead.rg||''}" placeholder="00.000.000-0"></div>
+            <div class="form-group"><label>Estado Civil</label>
+              <select id="f-estado-civil">
+                <option value="">—</option>
+                ${(()=>{const ec=lead.estado_civil||'';const lb={solteiro:'Solteiro(a)',casado:'Casado(a)',divorciado:'Divorciado(a)',viuvo:'Viúvo(a)',uniao_estavel:'União Estável'};return['solteiro','casado','divorciado','viuvo','uniao_estavel'].map(v=>'<option value="'+v+'" '+(ec===v?'selected':'')+'>'+lb[v]+'</option>').join('');})()}
+              </select>
+            </div>
+            <div class="form-group"><label>Profissão</label><input id="f-profissao" value="${lead.profissao||''}" placeholder="ex: Empresário"></div>
+            <div class="form-group"><label>Nome do Pai</label><input id="f-nome-pai" value="${lead.nome_pai||''}"></div>
+            <div class="form-group"><label>Nome da Mãe</label><input id="f-nome-mae" value="${lead.nome_mae||''}"></div>
+          </div>
         </div>
-        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px;font-weight:600">📍 Endereço</div>
+
+        <!-- BLOCO PJ -->
+        <div id="bloco-pj" style="display:${lead.pessoa_juridica?'block':'none'}">
+          <div style="margin-bottom:12px;padding:10px 14px;background:rgba(96,165,250,.06);border:1px dashed rgba(96,165,250,.3);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:12px;color:var(--text2);flex:1;min-width:140px">📷 Envie o Cartão CNPJ ou Contrato Social para preencher automaticamente</span>
+            <label style="cursor:pointer;background:var(--accent);color:var(--navy);border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px">
+              <span id="doc-btn-pj-txt">📄 Carregar documento</span>
+              <input type="file" accept="image/*,application/pdf" style="display:none" onchange="extrairDocumento(this,'empresa')">
+            </label>
+            <span id="doc-status-pj" style="font-size:11px;color:var(--text2)"></span>
+          </div>
+          <div class="form-grid">
+            <div class="form-group"><label>CNPJ</label>
+              <div style="display:flex;gap:6px">
+                <input id="f-cnpj" value="${lead.cnpj||''}" placeholder="00.000.000/0000-00" style="flex:1" oninput="agendarBuscaCnpj(this.value)">
+                <button type="button" onclick="buscarCnpj()" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:0 10px;cursor:pointer;font-size:12px;white-space:nowrap" title="Buscar CNPJ">🔍</button>
+              </div>
+            </div>
+            <div class="form-group"><label>Razão Social</label><input id="f-razao-social" value="${lead.razao_social||''}"></div>
+            <div class="form-group"><label>Nome Fantasia</label><input id="f-nome-fantasia" value="${lead.nome_fantasia||''}"></div>
+            <div class="form-group"><label>Inscrição Estadual</label><input id="f-ie" value="${lead.inscricao_estadual||''}"></div>
+            <div class="form-group"><label>Inscrição Municipal</label><input id="f-im" value="${lead.inscricao_municipal||''}"></div>
+          </div>
+          <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px;font-weight:600">👤 Representante Legal</div>
+          <div class="form-grid">
+            <div class="form-group"><label>Nome</label><input id="f-rep-nome" value="${lead.representante_nome||''}"></div>
+            <div class="form-group"><label>CPF</label><input id="f-rep-cpf" value="${lead.representante_cpf||''}" placeholder="000.000.000-00"></div>
+            <div class="form-group"><label>RG</label><input id="f-rep-rg" value="${lead.representante_rg||''}"></div>
+            <div class="form-group"><label>Cargo</label><input id="f-rep-cargo" value="${lead.representante_cargo||''}" placeholder="ex: Sócio-Administrador"></div>
+          </div>
+        </div>
+
+        <!-- ENDEREÇO -->
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px;font-weight:600">📍 Endereço</div>
+        <div style="margin-bottom:10px;padding:8px 12px;background:rgba(96,165,250,.06);border:1px dashed rgba(96,165,250,.3);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:12px;color:var(--text2);flex:1;min-width:140px">📋 Envie um comprovante de residência para preencher o endereço</span>
+          <label style="cursor:pointer;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px">
+            <span id="end-btn-txt">📄 Carregar comprovante</span>
+            <input type="file" accept="image/*,application/pdf" style="display:none" onchange="extrairDocumento(this,'endereco')">
+          </label>
+          <span id="end-status" style="font-size:11px;color:var(--text2)"></span>
+        </div>
         <div class="form-grid">
           <div class="form-group span2"><label>Logradouro</label><input id="f-endereco" value="${lead.endereco||''}" placeholder="Rua, Avenida, etc."></div>
           <div class="form-group"><label>Número</label><input id="f-numero" value="${lead.numero||''}"></div>
@@ -1104,7 +1156,13 @@ function openLeadModal(lead = {}) {
       nome_pai: v('f-nome-pai')||null, nome_mae: v('f-nome-mae')||null,
       endereco: v('f-endereco')||null, numero: v('f-numero')||null,
       complemento: v('f-complemento')||null, bairro: v('f-bairro')||null,
-      cep: v('f-cep')||null, estado: v('f-estado-uf')||null
+      cep: v('f-cep')||null, estado: v('f-estado-uf')||null,
+      pessoa_juridica: document.getElementById('f-pessoa-juridica')?.value === '1',
+      cnpj: v('f-cnpj')||null, razao_social: v('f-razao-social')||null,
+      nome_fantasia: v('f-nome-fantasia')||null,
+      inscricao_estadual: v('f-ie')||null, inscricao_municipal: v('f-im')||null,
+      representante_nome: v('f-rep-nome')||null, representante_cpf: v('f-rep-cpf')||null,
+      representante_rg: v('f-rep-rg')||null, representante_cargo: v('f-rep-cargo')||null
     };
     const r = lead.id ? await put(`/api/leads/${lead.id}`, body) : await post('/api/leads', body);
     if (!r.ok) return toast(r.error, 'error');
@@ -1117,55 +1175,117 @@ function openLeadModal(lead = {}) {
   if (lead.id) { carregarTimeline(lead.id); carregarVisitas(lead.id); carregarCompradores(lead.id); }
 }
 
-async function extrairDocumento(input) {
+function togglePjLead(isPj) {
+  document.getElementById('f-pessoa-juridica').value = isPj ? '1' : '0';
+  document.getElementById('bloco-pf').style.display = isPj ? 'none' : 'block';
+  document.getElementById('bloco-pj').style.display = isPj ? 'block' : 'none';
+  const btnPf = document.getElementById('btn-pf');
+  const btnPj = document.getElementById('btn-pj');
+  const activeStyle = 'border:2px solid var(--accent);background:rgba(250,204,21,.08);color:var(--accent);font-weight:700';
+  const inactiveStyle = 'border:2px solid var(--border);background:var(--navy3);color:var(--text2);font-weight:700';
+  btnPf.style.cssText = btnPf.style.cssText.replace(/border:[^;]+;background:[^;]+;color:[^;]+;font-weight:[^;]+/, isPj ? inactiveStyle : activeStyle);
+  btnPj.style.cssText = btnPj.style.cssText.replace(/border:[^;]+;background:[^;]+;color:[^;]+;font-weight:[^;]+/, isPj ? activeStyle : inactiveStyle);
+}
+
+let _cnpjTimer = null;
+function agendarBuscaCnpj(val) {
+  clearTimeout(_cnpjTimer);
+  const digits = val.replace(/\D/g,'');
+  if (digits.length === 14) _cnpjTimer = setTimeout(buscarCnpj, 600);
+}
+
+async function buscarCnpj() {
+  const cnpj = (document.getElementById('f-cnpj')?.value || '').replace(/\D/g,'');
+  if (cnpj.length !== 14) return;
+  const statusEl = document.getElementById('doc-status-pj');
+  if (statusEl) statusEl.textContent = '⏳ Consultando...';
+  try {
+    const d = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`).then(r=>r.json());
+    if (d.message || d.erro) { if (statusEl) statusEl.textContent = '❌ CNPJ não encontrado'; return; }
+    const set = (id, val) => { if (val) { const el = document.getElementById(id); if (el) el.value = val; } };
+    set('f-razao-social', d.razao_social);
+    set('f-nome-fantasia', d.nome_fantasia);
+    set('f-endereco', d.logradouro || d.descricao_tipo_de_logradouro ? ((d.descricao_tipo_de_logradouro||'') + ' ' + (d.logradouro||'')).trim() : null);
+    set('f-numero', d.numero);
+    set('f-complemento', d.complemento);
+    set('f-bairro', d.bairro);
+    set('f-cep', d.cep);
+    set('f-cidade-end', d.municipio);
+    if (d.uf) { const el = document.getElementById('f-estado-uf'); if (el) el.value = d.uf; }
+    // Formata CNPJ no campo
+    const elCnpj = document.getElementById('f-cnpj');
+    if (elCnpj) elCnpj.value = cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');
+    if (statusEl) statusEl.textContent = '✅ Dados preenchidos';
+  } catch(e) {
+    if (statusEl) statusEl.textContent = '❌ Erro ao consultar';
+  }
+}
+
+async function extrairDocumento(input, tipo) {
   const file = input.files[0];
   if (!file) return;
-  const btn = document.getElementById('doc-btn-txt');
-  const status = document.getElementById('doc-status');
-  btn.textContent = '⏳ Lendo documento...';
-  status.textContent = '';
+  // Determina quais elementos de status usar
+  const btnId = tipo === 'empresa' ? 'doc-btn-pj-txt' : tipo === 'endereco' ? 'end-btn-txt' : 'doc-btn-txt';
+  const statusId = tipo === 'empresa' ? 'doc-status-pj' : tipo === 'endereco' ? 'end-status' : 'doc-status';
+  const btn = document.getElementById(btnId);
+  const statusEl = document.getElementById(statusId);
+  if (btn) btn.textContent = '⏳ Lendo...';
+  if (statusEl) statusEl.textContent = '';
   input.disabled = true;
   try {
     const fd = new FormData();
     fd.append('arquivo', file);
+    fd.append('tipo', tipo || 'identidade');
     const r = await fetch('/api/leads/extrair-documento', {
       method: 'POST',
       headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' },
       body: fd
     });
     const d = await r.json();
-    if (!d.ok) { status.textContent = '❌ ' + (d.error || 'Erro ao processar'); btn.textContent = '📄 Carregar documento'; input.disabled = false; return; }
-    const campos = d.data || d;
-    const set = (id, val) => { if (val) { const el = document.getElementById(id); if (el) el.value = val; } };
-    // Dados principais (preenche o formulário do lead também)
-    if (campos.nome) { const el = document.getElementById('f-nome'); if (el && !el.value) el.value = campos.nome; }
-    set('f-cpf', campos.cpf);
-    set('f-rg', campos.rg);
-    set('f-nome-pai', campos.nome_pai);
-    set('f-nome-mae', campos.nome_mae);
-    set('f-endereco', campos.endereco);
-    set('f-cep', campos.cep);
-    set('f-cidade-end', campos.cidade);
-    if (campos.estado) { const el = document.getElementById('f-estado-uf'); if (el) el.value = campos.estado.toUpperCase(); }
-    // Aniversário a partir da data de nascimento
-    if (campos.data_nascimento) {
-      const partes = campos.data_nascimento.split('/');
-      if (partes.length === 3) {
-        const iso = `${partes[2]}-${partes[1].padStart(2,'0')}-${partes[0].padStart(2,'0')}`;
-        const elAniv = document.getElementById('f-aniv');
-        if (elAniv && !elAniv.value) elAniv.value = iso;
-      }
+    if (!d.ok) {
+      if (statusEl) statusEl.textContent = '❌ ' + (d.error || 'Erro ao processar');
+      if (btn) btn.textContent = '📄 Tentar novamente';
+      input.disabled = false; return;
     }
-    // Conta campos preenchidos
-    const preenchidos = Object.values(campos).filter(v => v && v !== null).length;
-    status.textContent = `✅ ${preenchidos} campos extraídos`;
-    btn.textContent = '📄 Carregar outro';
-    // Expande a seção se estava fechada
-    const secao = document.getElementById('doc-status')?.closest('[style*="display"]');
-    if (secao) secao.style.display = 'block';
+    const c = d.data || d;
+    const set = (id, val) => { if (val) { const el = document.getElementById(id); if (el) el.value = val; } };
+
+    if (tipo === 'identidade') {
+      if (c.nome) { const el = document.getElementById('f-nome'); if (el && !el.value) el.value = c.nome; }
+      set('f-cpf', c.cpf); set('f-rg', c.rg);
+      set('f-nome-pai', c.nome_pai); set('f-nome-mae', c.nome_mae);
+      set('f-endereco', c.endereco); set('f-numero', c.numero);
+      set('f-complemento', c.complemento); set('f-bairro', c.bairro);
+      set('f-cep', c.cep); set('f-cidade-end', c.cidade);
+      if (c.estado) { const el = document.getElementById('f-estado-uf'); if (el) el.value = c.estado.toUpperCase(); }
+      if (c.data_nascimento) {
+        const p = c.data_nascimento.split('/');
+        if (p.length === 3) { const el = document.getElementById('f-aniv'); if (el && !el.value) el.value = p[2]+'-'+p[1].padStart(2,'0')+'-'+p[0].padStart(2,'0'); }
+      }
+    } else if (tipo === 'empresa') {
+      if (c.razao_social) { const el = document.getElementById('f-nome'); if (el && !el.value) el.value = c.razao_social; }
+      set('f-cnpj', c.cnpj); set('f-razao-social', c.razao_social);
+      set('f-nome-fantasia', c.nome_fantasia);
+      set('f-ie', c.inscricao_estadual); set('f-im', c.inscricao_municipal);
+      set('f-rep-nome', c.representante_nome); set('f-rep-cpf', c.representante_cpf);
+      set('f-rep-cargo', c.representante_cargo);
+      set('f-endereco', c.endereco); set('f-numero', c.numero);
+      set('f-complemento', c.complemento); set('f-bairro', c.bairro);
+      set('f-cep', c.cep); set('f-cidade-end', c.cidade);
+      if (c.estado) { const el = document.getElementById('f-estado-uf'); if (el) el.value = c.estado.toUpperCase(); }
+    } else if (tipo === 'endereco') {
+      set('f-endereco', c.endereco); set('f-numero', c.numero);
+      set('f-complemento', c.complemento); set('f-bairro', c.bairro);
+      set('f-cep', c.cep); set('f-cidade-end', c.cidade);
+      if (c.estado) { const el = document.getElementById('f-estado-uf'); if (el) el.value = c.estado.toUpperCase(); }
+    }
+
+    const preenchidos = Object.values(c).filter(x => x && x !== null).length;
+    if (statusEl) statusEl.textContent = '✅ ' + preenchidos + ' campos extraídos';
+    if (btn) btn.textContent = '📄 Carregar outro';
   } catch(e) {
-    status.textContent = '❌ Erro de conexão';
-    btn.textContent = '📄 Carregar documento';
+    if (statusEl) statusEl.textContent = '❌ Erro de conexão';
+    if (btn) btn.textContent = '📄 Carregar documento';
   }
   input.disabled = false;
   input.value = '';

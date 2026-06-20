@@ -667,8 +667,8 @@ app.get("/api/leads", (req, res) => {
 });
 
 app.post("/api/leads", (req, res) => {
-  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, origem, observacoes, aniversario, tipo, creci, imobiliaria, cpf, rg, estado_civil, profissao, nome_pai, nome_mae, endereco, numero, complemento, bairro, cep, estado } = req.body;
-  const r = db.prepare(`INSERT INTO leads (nome,telefone,email,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,empreendimento_id,corretor_id,status,origem,observacoes,aniversario,tipo,creci,imobiliaria,cpf,rg,estado_civil,profissao,nome_pai,nome_mae,endereco,numero,complemento,bairro,cep,estado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status || 'novo', origem || 'manual', observacoes, aniversario||null, tipo||null, creci||null, imobiliaria||null, cpf||null, rg||null, estado_civil||null, profissao||null, nome_pai||null, nome_mae||null, endereco||null, numero||null, complemento||null, bairro||null, cep||null, estado||null);
+  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, origem, observacoes, aniversario, tipo, creci, imobiliaria, cpf, rg, estado_civil, profissao, nome_pai, nome_mae, endereco, numero, complemento, bairro, cep, estado, pessoa_juridica, cnpj, razao_social, nome_fantasia, inscricao_estadual, inscricao_municipal, representante_nome, representante_cpf, representante_rg, representante_cargo } = req.body;
+  const r = db.prepare(`INSERT INTO leads (nome,telefone,email,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,empreendimento_id,corretor_id,status,origem,observacoes,aniversario,tipo,creci,imobiliaria,cpf,rg,estado_civil,profissao,nome_pai,nome_mae,endereco,numero,complemento,bairro,cep,estado,pessoa_juridica,cnpj,razao_social,nome_fantasia,inscricao_estadual,inscricao_municipal,representante_nome,representante_cpf,representante_rg,representante_cargo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status || 'novo', origem || 'manual', observacoes, aniversario||null, tipo||null, creci||null, imobiliaria||null, cpf||null, rg||null, estado_civil||null, profissao||null, nome_pai||null, nome_mae||null, endereco||null, numero||null, complemento||null, bairro||null, cep||null, estado||null, pessoa_juridica?1:0, cnpj||null, razao_social||null, nome_fantasia||null, inscricao_estadual||null, inscricao_municipal||null, representante_nome||null, representante_cpf||null, representante_rg||null, representante_cargo||null);
   ok(res, { id: r.lastInsertRowid });
 });
 
@@ -688,16 +688,20 @@ app.put("/api/leads/:id", (req, res) => {
   let novoScore = val('score', lead.score);
   if (novoStatus === 'vendido') novoScore = 100;
   else if (novoScore >= 100) novoScore = 90;
-  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,score=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,cpf=?,rg=?,estado_civil=?,profissao=?,nome_pai=?,nome_mae=?,endereco=?,numero=?,complemento=?,bairro=?,cep=?,estado=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(
+  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,score=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,cpf=?,rg=?,estado_civil=?,profissao=?,nome_pai=?,nome_mae=?,endereco=?,numero=?,complemento=?,bairro=?,cep=?,estado=?,pessoa_juridica=?,cnpj=?,razao_social=?,nome_fantasia=?,inscricao_estadual=?,inscricao_municipal=?,representante_nome=?,representante_cpf=?,representante_rg=?,representante_cargo=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(
     val('nome', null), val('telefone', null), val('email', null), val('cidade', null),
     val('objetivo', null), val('faixa_investimento', null), val('prazo', null),
-    // Se empreendimento_id foi fornecido, limpa o campo texto livre
     'empreendimento_id' in b && b.empreendimento_id ? null : val('empreendimento_interesse', null), val('empreendimento_id', null),
     corretor_id, novoStatus, novoScore, val('observacoes', null),
     val('aniversario', null), val('tipo', null), val('creci', null), val('imobiliaria', null),
     val('cpf', null), val('rg', null), val('estado_civil', null), val('profissao', null),
     val('nome_pai', null), val('nome_mae', null), val('endereco', null), val('numero', null),
     val('complemento', null), val('bairro', null), val('cep', null), val('estado', null),
+    'pessoa_juridica' in b ? (b.pessoa_juridica ? 1 : 0) : val('pessoa_juridica', 0),
+    val('cnpj', null), val('razao_social', null), val('nome_fantasia', null),
+    val('inscricao_estadual', null), val('inscricao_municipal', null),
+    val('representante_nome', null), val('representante_cpf', null),
+    val('representante_rg', null), val('representante_cargo', null),
     req.params.id
   );
   ok(res, {});
@@ -708,7 +712,8 @@ app.delete("/api/leads/:id", (req, res) => {
   ok(res, {});
 });
 
-// Extrai dados pessoais de CNH ou RG via Claude Vision
+// Extrai dados de documentos via Claude Vision
+// tipo: 'identidade' (CNH/RG) | 'empresa' (CNPJ/Contrato Social) | 'endereco' (comprovante de residência)
 app.post("/api/leads/extrair-documento", autenticar, upload.single('arquivo'), async (req, res) => {
   if (!process.env.ANTHROPIC_API_KEY) return err(res, 'ANTHROPIC_API_KEY não configurada no servidor');
   if (!req.file) return err(res, 'Nenhum arquivo enviado');
@@ -718,16 +723,22 @@ app.post("/api/leads/extrair-documento", autenticar, upload.single('arquivo'), a
   const isImage = mime.startsWith('image/');
   if (!isPdf && !isImage) return err(res, 'Envie uma imagem (JPG, PNG) ou PDF');
 
+  const tipo = req.body.tipo || req.query.tipo || 'identidade';
   const b64 = req.file.buffer.toString('base64');
 
   const content = isPdf
     ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } }]
     : [{ type: 'image', source: { type: 'base64', media_type: mime, data: b64 } }];
 
-  content.push({
-    type: 'text',
-    text: `Analise este documento brasileiro (CNH ou RG) e extraia as informações no formato JSON abaixo. Se algum campo não estiver visível, deixe como null. Retorne APENAS o JSON, sem texto adicional.\n\n{"nome": null, "cpf": null, "rg": null, "data_nascimento": null, "nome_pai": null, "nome_mae": null, "endereco": null, "cep": null, "cidade": null, "estado": null, "naturalidade": null, "nacionalidade": null}\n\nFormato de datas: DD/MM/AAAA. CPF: 000.000.000-00. RG: com pontos e traço se visível.`
-  });
+  const prompts = {
+    identidade: `Analise este documento brasileiro (CNH ou RG) e extraia as informações no formato JSON. Se algum campo não estiver visível, deixe como null. Retorne APENAS o JSON.\n\n{"nome": null, "cpf": null, "rg": null, "data_nascimento": null, "nome_pai": null, "nome_mae": null, "endereco": null, "numero": null, "complemento": null, "bairro": null, "cep": null, "cidade": null, "estado": null, "naturalidade": null, "nacionalidade": null}\n\nFormato de datas: DD/MM/AAAA. CPF: 000.000.000-00. RG: com pontos e traço se visível.`,
+
+    empresa: `Analise este documento brasileiro (Cartão CNPJ, Contrato Social ou documento empresarial) e extraia as informações no formato JSON. Se algum campo não estiver visível, deixe como null. Retorne APENAS o JSON.\n\n{"razao_social": null, "nome_fantasia": null, "cnpj": null, "inscricao_estadual": null, "inscricao_municipal": null, "endereco": null, "numero": null, "complemento": null, "bairro": null, "cep": null, "cidade": null, "estado": null, "representante_nome": null, "representante_cpf": null, "representante_cargo": null, "email": null, "telefone": null}\n\nCNPJ formato: 00.000.000/0000-00.`,
+
+    endereco: `Analise este comprovante de residência (conta de luz, água, gás, fatura de cartão, condomínio ou similar) e extraia o endereço do titular. Se algum campo não estiver visível, deixe como null. Retorne APENAS o JSON.\n\n{"nome_titular": null, "endereco": null, "numero": null, "complemento": null, "bairro": null, "cep": null, "cidade": null, "estado": null}\n\nExtraia o endereço de correspondência/entrega, não o endereço da empresa emissora.`
+  };
+
+  content.push({ type: 'text', text: prompts[tipo] || prompts.identidade });
 
   try {
     const resposta = await fetch('https://api.anthropic.com/v1/messages', {
@@ -2048,6 +2059,17 @@ try { db.exec('ALTER TABLE leads ADD COLUMN complemento TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN bairro TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN cep TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN estado TEXT'); } catch(_) {}
+// Migration: pessoa jurídica
+try { db.exec('ALTER TABLE leads ADD COLUMN pessoa_juridica INTEGER DEFAULT 0'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN cnpj TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN razao_social TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN nome_fantasia TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN inscricao_estadual TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN inscricao_municipal TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN representante_nome TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN representante_cpf TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN representante_rg TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN representante_cargo TEXT'); } catch(_) {}
 
 // Tabela de compradores adicionais (cônjuge, sócio, condomínio)
 db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (
