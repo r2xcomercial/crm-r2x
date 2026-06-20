@@ -694,6 +694,200 @@ app.get("/api/vendas/:id/contrato-compra-venda", autenticar, (req, res) => {
   }
 });
 
+// Contrato de Compra e Venda - empreendimentos verticais (Oslo/apartamentos)
+app.get("/api/vendas/:id/contrato-vertical", autenticar, (req, res) => {
+  try {
+    const venda = db.prepare(`
+      SELECT v.*, l.nome as lead_nome, l.cpf, l.rg, l.estado_civil, l.profissao,
+        l.nome_pai, l.nome_mae, l.endereco as lead_endereco, l.numero as lead_numero,
+        l.complemento as lead_complemento, l.bairro as lead_bairro, l.cep as lead_cep,
+        l.cidade as lead_cidade, l.estado as lead_estado,
+        l.pessoa_juridica, l.cnpj, l.razao_social,
+        l.representante_nome, l.representante_cpf, l.representante_rg, l.representante_cargo,
+        c.nome as corretor_nome, c.cpf as corretor_cpf, c.creci as corretor_creci,
+        u.tipo as unidade_tipo, u.numero as unidade_num, u.area as unidade_area,
+        u.quadra, u.lote, u.preco as unidade_preco,
+        e.nome as emp_nome, e.endereco as emp_endereco, e.cidade as emp_cidade,
+        e.estado as emp_estado, e.matricula_registro, e.incorporacao_protocolo,
+        e.prazo_entrega_meses, e.inicio_obra_previsto, e.comarca, e.valor_cub,
+        e.vendedora_nome, e.vendedora_qualificacao
+      FROM vendas v
+      LEFT JOIN leads l ON l.id = v.lead_id
+      LEFT JOIN corretores c ON c.id = v.corretor_id
+      LEFT JOIN unidades u ON u.id = v.unidade_id
+      LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
+      WHERE v.id=?`).get(parseInt(req.params.id));
+
+    if (!venda) return err(res, 'Venda não encontrada', 404);
+
+    const lead = venda;
+    const isPJ = !!lead.pessoa_juridica;
+
+    // Qualificação do comprador
+    let compradorQual = '';
+    if (isPJ) {
+      compradorQual = `${lead.razao_social}, pessoa jurídica de direito privado, inscrita no CNPJ sob nº ${lead.cnpj || '___'}, com sede na ${lead.lead_endereco || '___'}, ${lead.lead_cidade || '___'}/${lead.lead_estado || 'SC'}`;
+      if (lead.representante_nome) {
+        compradorQual += `, neste ato representada por ${lead.representante_nome}, ${lead.representante_cargo || 'representante legal'}, CPF ${lead.representante_cpf || '___'}`;
+      }
+    } else {
+      compradorQual = `${lead.lead_nome || '___'}`;
+      if (lead.estado_civil) compradorQual += `, ${lead.estado_civil}`;
+      if (lead.profissao) compradorQual += `, ${lead.profissao}`;
+      compradorQual += `, portador(a) do CPF nº ${lead.cpf || '___'}, RG nº ${lead.rg || '___'}`;
+      if (lead.lead_endereco) compradorQual += `, residente e domiciliado(a) na ${lead.lead_endereco}${lead.lead_numero ? ', nº '+lead.lead_numero : ''}${lead.lead_bairro ? ', '+lead.lead_bairro : ''}, ${lead.lead_cidade || ''}/${lead.lead_estado || 'SC'}`;
+    }
+
+    // Vagas de garagem
+    const vagas = db.prepare("SELECT * FROM vagas_garagem WHERE venda_id=?").all(venda.id);
+    let vagasStr = '';
+    if (vagas && vagas.length > 0) {
+      vagasStr = vagas.map(v => `Vaga nº ${v.numero}${v.pavimento ? ' ('+v.pavimento+')' : ''}`).join(', ');
+    } else {
+      vagasStr = '___________________';
+    }
+
+    // Valor total
+    const valorTotal = venda.valor_total || venda.unidade_preco || 0;
+    const valorTotalFmt = fmtMoeda(valorTotal);
+    const valorTotalExtenso = numExtenso(valorTotal);
+
+    // CUB value
+    const cubVal = venda.valor_cub;
+    const cubStr = cubVal ? Number(cubVal).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) + ' CUB/SC' : '_____ CUB/SC';
+
+    // Pagamentos (parcelas de entrada)
+    const entradaParcelas = venda.entrada_parcelas ? JSON.parse(venda.entrada_parcelas) : [];
+    const pagtoRows = [];
+    const letters = ['A','B','C','D','E','F'];
+    if (entradaParcelas.length > 0) {
+      entradaParcelas.forEach((p, i) => {
+        if (i < 6) {
+          pagtoRows.push({
+            letter: letters[i],
+            titulo: p.descricao || `Entrada ${i+1}`,
+            vencimento: p.vencimento || '___',
+            qtd: '1',
+            valor: `R$ ${fmtMoeda(p.valor)}`,
+          });
+        }
+      });
+    }
+    // Saldo devedor como linha D (se houver parcelas mensais)
+    if (venda.saldo_meses && venda.saldo_valor) {
+      const idx = pagtoRows.length;
+      if (idx < 6) {
+        pagtoRows.push({
+          letter: letters[idx],
+          titulo: 'Parcela Mensal',
+          vencimento: venda.saldo_inicio || '___',
+          qtd: String(venda.saldo_meses),
+          valor: `R$ ${fmtMoeda(venda.saldo_valor)}`,
+        });
+      }
+    }
+    // Fill remaining slots with blanks
+    while (pagtoRows.length < 6) {
+      const i = pagtoRows.length;
+      pagtoRows.push({ letter: letters[i], titulo: '___', vencimento: '___', qtd: '___', valor: '___' });
+    }
+
+    // Corretor
+    let corretorIdent = '___________________';
+    let corretorComissao = '___________________';
+    if (venda.corretor_nome) {
+      corretorIdent = venda.corretor_nome;
+      if (venda.corretor_creci) corretorIdent += `, CRECI ${venda.corretor_creci}`;
+      if (venda.corretor_cpf) corretorIdent += `, CPF ${venda.corretor_cpf}`;
+    }
+    if (venda.comissao_valor) {
+      corretorComissao = `R$ ${fmtMoeda(venda.comissao_valor)} (${numExtenso(venda.comissao_valor)})`;
+    }
+
+    // Prazo entrega
+    const prazoMeses = venda.prazo_entrega_meses || '___';
+    const prazoExtenso = prazoMeses && prazoMeses !== '___' ? numExtenso(Number(prazoMeses)).replace(' reais','') : '___';
+    const inicioObra = venda.inicio_obra_previsto || '___________________';
+    const comarca = venda.comarca || venda.emp_cidade || '___';
+    const dataAssinatura = fmtDataExtenso(venda.data_venda);
+    const cidadeAssinatura = comarca;
+
+    // Vendedora
+    const vendedoraNome = venda.vendedora_nome || '___________________';
+    const vendedoraQual = venda.vendedora_qualificacao || '___________________';
+
+    // Unidade
+    const unidadeTipo = venda.unidade_tipo || 'Apartamento';
+    const unidadeNum = venda.unidade_num || '___';
+    const unidadeArea = venda.unidade_area || '___';
+
+    const empNome = venda.emp_nome || '___________________';
+    const empEnd = [venda.emp_endereco, venda.emp_cidade, venda.emp_estado].filter(Boolean).join(', ');
+    const empMatricula = venda.matricula_registro || '___________________';
+    const empIncorporacao = venda.incorporacao_protocolo || '___________________';
+
+    // Fill template
+    const PizZip = require('pizzip');
+    const Docxtemplater = require('docxtemplater');
+    const path = require('path');
+    const fs = require('fs');
+
+    const templatePath = path.join(__dirname, 'templates', 'oslo-compra-venda.docx');
+    const content = fs.readFileSync(templatePath, 'binary');
+    const zip = new PizZip(content);
+    const doct = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+
+    const data = {
+      VENDEDORA_NOME: vendedoraNome,
+      VENDEDORA_QUALIFICACAO: vendedoraQual,
+      COMPRADOR_QUALIFICACAO: compradorQual,
+      EMP_NOME: empNome,
+      EMP_ENDERECO: empEnd || '___________________',
+      EMP_MATRICULA: empMatricula,
+      EMP_COMARCA: comarca,
+      EMP_INCORPORACAO: empIncorporacao,
+      UNIDADE_TIPO: unidadeTipo,
+      UNIDADE_NUM: String(unidadeNum),
+      UNIDADE_AREA: String(unidadeArea),
+      VAGAS_GARAGEM: vagasStr,
+      VALOR_TOTAL: valorTotalFmt,
+      VALOR_TOTAL_EXTENSO: valorTotalExtenso,
+      VALOR_CUB: cubStr,
+      PAGTO_A_TITULO: pagtoRows[0].titulo, PAGTO_A_VENCIMENTO: pagtoRows[0].vencimento, PAGTO_A_QTD: pagtoRows[0].qtd, PAGTO_A_VALOR: pagtoRows[0].valor,
+      PAGTO_B_TITULO: pagtoRows[1].titulo, PAGTO_B_VENCIMENTO: pagtoRows[1].vencimento, PAGTO_B_QTD: pagtoRows[1].qtd, PAGTO_B_VALOR: pagtoRows[1].valor,
+      PAGTO_C_TITULO: pagtoRows[2].titulo, PAGTO_C_VENCIMENTO: pagtoRows[2].vencimento, PAGTO_C_QTD: pagtoRows[2].qtd, PAGTO_C_VALOR: pagtoRows[2].valor,
+      PAGTO_D_TITULO: pagtoRows[3].titulo, PAGTO_D_VENCIMENTO: pagtoRows[3].vencimento, PAGTO_D_QTD: pagtoRows[3].qtd, PAGTO_D_VALOR: pagtoRows[3].valor,
+      PAGTO_E_TITULO: pagtoRows[4].titulo, PAGTO_E_VENCIMENTO: pagtoRows[4].vencimento, PAGTO_E_QTD: pagtoRows[4].qtd, PAGTO_E_VALOR: pagtoRows[4].valor,
+      PAGTO_F_TITULO: pagtoRows[5].titulo, PAGTO_F_VENCIMENTO: pagtoRows[5].vencimento, PAGTO_F_QTD: pagtoRows[5].qtd, PAGTO_F_VALOR: pagtoRows[5].valor,
+      PAGTO_CORRECAO: 'CUB/SC',
+      PAGTO_OBSERVACOES: '___________________',
+      CORRETOR_IDENTIFICACAO: corretorIdent,
+      CORRETOR_COMISSAO: corretorComissao,
+      PRAZO_ENTREGA_MESES: String(prazoMeses),
+      PRAZO_ENTREGA_EXTENSO: prazoExtenso,
+      INICIO_OBRA_PREVISTO: inicioObra,
+      CIDADE_ASSINATURA: cidadeAssinatura,
+      DATA_ASSINATURA: dataAssinatura,
+      COMPRADOR_ASSINATURA_1: lead.lead_nome || lead.razao_social || '___________________',
+      COMPRADOR_ASSINATURA_2: '___________________',
+      VENDEDORA_NOME: vendedoraNome,
+    };
+
+    doct.render(data);
+    const buf = doct.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+
+    const compNome = (lead.lead_nome || lead.razao_social || 'comprador').replace(/[^a-zA-Z0-9À-ɏ]/g, '-').toLowerCase();
+    const filename = `contrato-vertical-${unidadeTipo.toLowerCase()}-${unidadeNum}-${compNome}.docx`;
+    const encodedName = encodeURIComponent(filename);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+    res.send(buf);
+  } catch(e) {
+    console.error('[contrato-vertical]', e);
+    err(res, 'Erro ao gerar contrato: ' + e.message);
+  }
+});
+
 // Atualiza status de uma unidade (disponivel / reservado / vendido)
 app.put("/api/unidades/:id/status", (req, res) => {
   const { status } = req.body;
@@ -2256,6 +2450,16 @@ try { db.exec('ALTER TABLE leads ADD COLUMN representante_nome TEXT'); } catch(_
 try { db.exec('ALTER TABLE leads ADD COLUMN representante_cpf TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN representante_rg TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN representante_cargo TEXT'); } catch(_) {}
+
+// Campos adicionais empreendimentos para contrato vertical (Oslo)
+try { db.exec('ALTER TABLE empreendimentos ADD COLUMN matricula_registro TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE empreendimentos ADD COLUMN incorporacao_protocolo TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE empreendimentos ADD COLUMN prazo_entrega_meses INTEGER'); } catch(_) {}
+try { db.exec('ALTER TABLE empreendimentos ADD COLUMN inicio_obra_previsto TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE empreendimentos ADD COLUMN comarca TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE empreendimentos ADD COLUMN vendedora_nome TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE empreendimentos ADD COLUMN vendedora_qualificacao TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE empreendimentos ADD COLUMN valor_cub REAL'); } catch(_) {}
 
 // Tabela de compradores adicionais (cônjuge, sócio, condomínio)
 db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (
