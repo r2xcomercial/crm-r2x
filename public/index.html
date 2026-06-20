@@ -2766,6 +2766,15 @@ function openEmpModal(e = {}) {
             <input id="f-valor-cub" type="number" step="0.0001" placeholder="ex: 11.0234" value="${e.valor_cub||''}" style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
           </div>
         </div>
+        <div style="margin-top:14px;padding:12px;border-radius:8px;background:rgba(255,200,50,.07);border:1px solid rgba(255,200,50,.2)">
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+            <input type="checkbox" id="f-patrimonio-afetacao" ${e.patrimonio_afetacao ? 'checked' : ''} style="margin-top:2px;width:16px;height:16px;flex-shrink:0;accent-color:var(--accent)">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:var(--text1)">Regime de Patrimônio de Afetação</div>
+              <div style="font-size:11px;color:var(--text2);margin-top:3px;line-height:1.5">Ative se este empreendimento adota o patrimônio de afetação (arts. 31-A a 31-F da Lei 4.591/64). <strong>Impacto no contrato:</strong> multa de distrato de <strong>50%</strong> (com afetação) ou <strong>25%</strong> (sem), e restituição em <strong>12 meses pós-habite-se</strong> (com) ou <strong>180 dias</strong> (sem). A maioria dos empreendimentos <em>não</em> adota este regime.</div>
+            </div>
+          </label>
+        </div>
         <div style="font-size:11px;color:var(--text2);margin-top:10px">💡 Esses dados preenchem automaticamente os contratos de compra e venda gerados pelo sistema.</div>
       </div>
 
@@ -2820,6 +2829,7 @@ function openEmpModal(e = {}) {
       prazo_entrega_meses: parseInt(v('f-prazo-entrega'))||null,
       inicio_obra_previsto: v('f-inicio-obra')||null,
       valor_cub: parseFloat(v('f-valor-cub'))||null,
+      patrimonio_afetacao: document.getElementById('f-patrimonio-afetacao')?.checked ? 1 : 0,
     };
     if (!body.nome) return toast('Nome obrigatório', 'error');
     const r = e.id ? await put(`/api/empreendimentos/${e.id}`, body) : await post('/api/empreendimentos', body);

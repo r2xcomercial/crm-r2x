@@ -364,19 +364,21 @@ app.post("/api/empreendimentos", (req, res) => {
     data_lancamento, data_inicio_vendas, observacoes, percentual_r2x,
     comarca, matricula_registro, incorporacao_protocolo,
     vendedora_nome, vendedora_qualificacao,
-    prazo_entrega_meses, inicio_obra_previsto, valor_cub } = req.body;
+    prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao } = req.body;
   if (!nome) return err(res, "Nome obrigatório");
   const r = db.prepare(`INSERT INTO empreendimentos
     (cliente_id,nome,tipo,endereco,cidade,estado,num_unidades,vgv_estimado,status,
      data_lancamento,data_inicio_vendas,observacoes,percentual_r2x,
      comarca,matricula_registro,incorporacao_protocolo,
-     vendedora_nome,vendedora_qualificacao,prazo_entrega_meses,inicio_obra_previsto,valor_cub)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+     vendedora_nome,vendedora_qualificacao,prazo_entrega_meses,inicio_obra_previsto,valor_cub,
+     patrimonio_afetacao)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
       status||'prospecto', data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
       comarca||null, matricula_registro||null, incorporacao_protocolo||null,
       vendedora_nome||null, vendedora_qualificacao||null,
-      prazo_entrega_meses||null, inicio_obra_previsto||null, valor_cub||null);
+      prazo_entrega_meses||null, inicio_obra_previsto||null, valor_cub||null,
+      patrimonio_afetacao ? 1 : 0);
   ok(res, { id: r.lastInsertRowid });
 });
 
@@ -385,19 +387,21 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     data_lancamento, data_inicio_vendas, observacoes, percentual_r2x,
     comarca, matricula_registro, incorporacao_protocolo,
     vendedora_nome, vendedora_qualificacao,
-    prazo_entrega_meses, inicio_obra_previsto, valor_cub } = req.body;
+    prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao } = req.body;
   db.prepare(`UPDATE empreendimentos SET
     cliente_id=?,nome=?,tipo=?,endereco=?,cidade=?,estado=?,num_unidades=?,vgv_estimado=?,
     status=?,data_lancamento=?,data_inicio_vendas=?,observacoes=?,percentual_r2x=?,
     comarca=?,matricula_registro=?,incorporacao_protocolo=?,
     vendedora_nome=?,vendedora_qualificacao=?,
-    prazo_entrega_meses=?,inicio_obra_previsto=?,valor_cub=?
+    prazo_entrega_meses=?,inicio_obra_previsto=?,valor_cub=?,
+    patrimonio_afetacao=?
     WHERE id=?`).run(
     cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
     status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
     comarca||null, matricula_registro||null, incorporacao_protocolo||null,
     vendedora_nome||null, vendedora_qualificacao||null,
     prazo_entrega_meses||null, inicio_obra_previsto||null, valor_cub||null,
+    patrimonio_afetacao ? 1 : 0,
     req.params.id);
   ok(res, {});
 });
@@ -757,7 +761,7 @@ app.get("/api/vendas/:id/contrato-vertical", autenticar, (req, res) => {
         e.nome as emp_nome, e.endereco as emp_endereco, e.cidade as emp_cidade,
         e.estado as emp_estado, e.matricula_registro, e.incorporacao_protocolo,
         e.prazo_entrega_meses, e.inicio_obra_previsto, e.comarca, e.valor_cub,
-        e.vendedora_nome, e.vendedora_qualificacao
+        e.vendedora_nome, e.vendedora_qualificacao, e.patrimonio_afetacao
       FROM vendas v
       LEFT JOIN leads l ON l.id = v.lead_id
       LEFT JOIN corretores c ON c.id = v.corretor_id
@@ -868,6 +872,21 @@ app.get("/api/vendas/:id/contrato-vertical", autenticar, (req, res) => {
     const empMatricula = venda.matricula_registro || '___________________';
     const empIncorporacao = venda.incorporacao_protocolo || '___________________';
 
+    // Patrimônio de afetação: textos dinâmicos por cláusula
+    const afetacao = !!venda.patrimonio_afetacao;
+    const afetacaoRegimeClausula = afetacao
+      ? ', em regime de patrimônio de afetação,'
+      : ',';
+    const afetacaoItem10 = afetacao
+      ? '10.1. O adquirente declara-se expressamente ciente de que o empreendimento objeto deste contrato está submetido ao Regime de Patrimônio de Afetação, conforme faculta o Art. 31-A da Lei nº 4.591/64. A adoção deste regime visa garantir a consecução da obra e a entrega das unidades, segregando os ativos do empreendimento do patrimônio geral da Incorporadora.\n10.2. Em razão dessa segregação e do compromisso com a coletividade dos adquirentes, a saúde financeira da obra deve ser preservada. Por este motivo, em caso de resolução contratual por inadimplemento do(a) COMPRADOR(A), aplicam-se as penalidades previstas no Art. 67-A, § 5º da Lei nº 4.591/64 (incluído pela Lei nº 13.786/18), cujo detalhamento segue descrito na Cláusula 13 das condições gerais.'
+      : '10.1. O empreendimento objeto deste contrato não está submetido ao Regime de Patrimônio de Afetação, nos termos da Lei nº 4.591/64. Em caso de resolução contratual por inadimplemento do(a) COMPRADOR(A), aplicam-se as penalidades previstas no Art. 67-A da Lei nº 4.591/64 (incluído pela Lei nº 13.786/18), cujo detalhamento segue descrito na Cláusula 13 das condições gerais.';
+    const afetacaoMultaTexto = afetacao
+      ? 'a) cláusula penal compensatória equivalente a 50% (cinquenta por cento) do valor total pago, nos termos do artigo 67-A, II c/c § 5º, da Lei n. 4.591/64, considerando que o empreendimento é submetido ao regime do patrimônio de afetação, previsto nos arts. 31-A a 31-F da citada lei;'
+      : 'a) cláusula penal compensatória equivalente a 25% (vinte e cinco por cento) do valor total pago, nos termos do artigo 67-A, II, da Lei n. 4.591/64;';
+    const afetacaoRestituicaoTexto = afetacao
+      ? '13.3. Eventual saldo favorável ao(à) COMPRADOR(A) será restituído em até 12 (doze) parcelas mensais, sendo a primeira paga no prazo de até 30 (trinta) dias contados da expedição do "Habite-se" ou documento equivalente expedido pelo órgão público municipal competente, considerando a adoção do regime do patrimônio de afetação, nos termos do artigo 67-A, § 5º, da Lei nº 4.591/64.'
+      : '13.3. Eventual saldo favorável ao(à) COMPRADOR(A) será restituído no prazo de até 180 (cento e oitenta) dias corridos, contados da data da resolução contratual, nos termos do artigo 67-A, § 2º, da Lei nº 4.591/64.';
+
     // Fill template
     const PizZip = require('pizzip');
     const Docxtemplater = require('docxtemplater');
@@ -912,7 +931,10 @@ app.get("/api/vendas/:id/contrato-vertical", autenticar, (req, res) => {
       DATA_ASSINATURA: dataAssinatura,
       COMPRADOR_ASSINATURA_1: lead.lead_nome || lead.razao_social || '___________________',
       COMPRADOR_ASSINATURA_2: '___________________',
-      VENDEDORA_NOME: vendedoraNome,
+      AFETACAO_REGIME_CLAUSULA: afetacaoRegimeClausula,
+      AFETACAO_ITEM10: afetacaoItem10,
+      AFETACAO_MULTA_TEXTO: afetacaoMultaTexto,
+      AFETACAO_RESTITUICAO_TEXTO: afetacaoRestituicaoTexto,
     };
 
     doct.render(data);
@@ -2570,6 +2592,7 @@ try { db.exec('ALTER TABLE empreendimentos ADD COLUMN comarca TEXT'); } catch(_)
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN vendedora_nome TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN vendedora_qualificacao TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN valor_cub REAL'); } catch(_) {}
+try { db.exec('ALTER TABLE empreendimentos ADD COLUMN patrimonio_afetacao INTEGER DEFAULT 0'); } catch(_) {}
 
 // Tabela de compradores adicionais (cônjuge, sócio, condomínio)
 db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (
