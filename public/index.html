@@ -2164,6 +2164,13 @@ function openVendaModal(venda = {}) {
       </div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${venda.observacoes||''}</textarea></div>
     </div>
+    ${venda.id ? `
+    <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <button type="button" onclick="gerarContratoCompraVenda(${venda.id})" style="padding:8px 18px;background:var(--success);color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px">
+        📄 Gerar Contrato de Compra e Venda
+      </button>
+      <span style="font-size:11px;color:var(--text2)">Preenche automaticamente com os dados do lead, lote, valores e corretor</span>
+    </div>` : ''}
   `, async () => {
     const leadId = document.getElementById('f-lead')?.value || null;
     const valor = parseFloat(v('f-valor'));
@@ -2982,6 +2989,29 @@ async function excluirItemChecklist(id) {
   const row = document.getElementById(`ck-row-${id}`);
   if (row) row.remove();
   toast('Item removido');
+}
+
+async function gerarContratoCompraVenda(vendaId) {
+  const url = `/api/vendas/${vendaId}/contrato-compra-venda`;
+  try {
+    toast('Gerando contrato...', 'info');
+    const res = await fetch(url, { headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' } });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return toast('Erro: ' + (data.error || 'falha ao gerar'), 'error');
+    }
+    const blob = await res.blob();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    const cd = res.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename\*=UTF-8''(.+)/i) || cd.match(/filename="(.+)"/i);
+    link.download = m ? decodeURIComponent(m[1]) : 'contrato-compra-venda.docx';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast('Contrato gerado! 📄');
+  } catch(e) {
+    toast('Falha ao gerar contrato', 'error');
+  }
 }
 
 async function gerarContrato(empId) {

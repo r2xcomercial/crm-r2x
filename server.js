@@ -508,6 +508,192 @@ app.get("/api/empreendimentos/:id/contrato", (req, res) => {
   }
 });
 
+// ─── CONTRATO DE COMPRA E VENDA (COMPRADOR-INCORPORADOR) ─────────────────────
+
+function numExtenso(valor) {
+  if (!valor) return 'zero reais';
+  const n = Math.round(Number(valor));
+  if (n === 0) return 'zero reais';
+  const unidades = ['','um','dois','três','quatro','cinco','seis','sete','oito','nove','dez',
+    'onze','doze','treze','quatorze','quinze','dezesseis','dezessete','dezoito','dezenove'];
+  const dezenas = ['','dez','vinte','trinta','quarenta','cinquenta','sessenta','setenta','oitenta','noventa'];
+  const centenas = ['','cem','duzentos','trezentos','quatrocentos','quinhentos','seiscentos','setecentos','oitocentos','novecentos'];
+  function grupo(n, masc) {
+    if (n === 0) return '';
+    if (n === 100) return 'cem';
+    const c = Math.floor(n/100), resto = n%100;
+    const partes = [];
+    if (c > 0) partes.push(centenas[c] + (c===1 && resto>0 ? 'to' : ''));
+    if (resto > 0) {
+      if (resto < 20) partes.push(unidades[resto]);
+      else {
+        const d = Math.floor(resto/10), u = resto%10;
+        if (u === 0) partes.push(dezenas[d]);
+        else partes.push(dezenas[d] + ' e ' + unidades[u]);
+      }
+    }
+    return partes.join(' e ');
+  }
+  const milh = Math.floor(n/1000000), mil = Math.floor((n%1000000)/1000), cent = n%1000;
+  const partes = [];
+  if (milh > 0) partes.push(grupo(milh,true) + (milh===1?' milhão':' milhões'));
+  if (mil > 0) partes.push(grupo(mil,true) + ' mil');
+  if (cent > 0) partes.push(grupo(cent,true));
+  const palavras = partes.join(' e ');
+  return palavras + (n===1?' real':' reais');
+}
+
+function fmtDataExtenso(dataStr) {
+  if (!dataStr) return new Date().toLocaleDateString('pt-BR', {day:'numeric',month:'long',year:'numeric'});
+  const d = new Date(dataStr + 'T12:00:00');
+  return d.toLocaleDateString('pt-BR', {day:'numeric',month:'long',year:'numeric'});
+}
+
+function fmtMoeda(v) {
+  return v ? Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) : '___';
+}
+
+// Gera Contrato de Compra e Venda Belvedere (comprador ↔ incorporador)
+app.get("/api/vendas/:id/contrato-compra-venda", autenticar, (req, res) => {
+  try {
+    const venda = db.prepare(`
+      SELECT v.*,
+        l.nome as lead_nome, l.cpf as lead_cpf, l.rg as lead_rg,
+        l.estado_civil, l.profissao, l.nome_pai, l.nome_mae,
+        l.endereco as lead_end, l.numero as lead_num,
+        l.complemento as lead_comp, l.bairro as lead_bairro,
+        l.cidade as lead_cidade, l.cep as lead_cep, l.estado as lead_uf,
+        l.telefone as lead_tel, l.email as lead_email,
+        l.pessoa_juridica, l.cnpj, l.razao_social,
+        l.inscricao_estadual, l.inscricao_municipal,
+        l.representante_nome, l.representante_cpf, l.representante_rg, l.representante_cargo,
+        c.nome as corretor_nome,
+        u.lote as unid_lote, u.quadra as unid_quadra, u.area_m2,
+        e.nome as emp_nome, e.cidade as emp_cidade
+      FROM vendas v
+      LEFT JOIN leads l ON l.id = v.lead_id
+      LEFT JOIN corretores c ON c.id = v.corretor_id
+      LEFT JOIN unidades u ON u.id = v.unidade_id
+      LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
+      WHERE v.id = ?
+    `).get(req.params.id);
+
+    if (!venda) return err(res, "Venda não encontrada");
+
+    // Lote
+    const loteResumo = venda.unid_quadra
+      ? `LOTE Nº ${venda.unid_lote} Quadra ${venda.unid_quadra}`
+      : (venda.unid_lote || venda.imovel || '___');
+
+    const areaStr = venda.area_m2
+      ? `${Number(venda.area_m2).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}m²`
+      : '____,__m²';
+    const cidadeEmp = venda.emp_cidade || 'São Ludgero';
+    const loteDesc = `, ${cidadeEmp}/SC, com área total de ${areaStr}, e as seguintes medidas e confrontações: ___________________`;
+
+    // Endereço do comprador
+    const endParts = [venda.lead_end, venda.lead_num, venda.lead_comp, venda.lead_bairro,
+      (venda.lead_cidade && venda.lead_uf) ? `${venda.lead_cidade}/${venda.lead_uf}` : (venda.lead_cidade || venda.lead_uf || null),
+      venda.lead_cep ? `CEP ${venda.lead_cep}` : null].filter(Boolean);
+    const endCompleto = endParts.length > 0 ? endParts.join(', ') : '___________________';
+
+    // Dados do comprador (PF ou PJ)
+    let compradorNome, compradorQualificacao, representanteNome, representanteQualificacao;
+    if (venda.pessoa_juridica) {
+      compradorNome = venda.razao_social || venda.lead_nome || '___';
+      const cnpjFmt = venda.cnpj || '__.___.___/____-__';
+      compradorQualificacao = `, pessoa jurídica de direito privado inscrita no CNPJ sob o nº ${cnpjFmt}` +
+        (venda.inscricao_estadual ? `, Inscrição Estadual ${venda.inscricao_estadual}` : '') +
+        `, com endereço na ${endCompleto}, neste ato representado pelo seu ${venda.representante_cargo||'sócio administrador'} `;
+      representanteNome = venda.representante_nome || '___';
+      representanteQualificacao = `, portador(a) da carteira de identidade nº ${venda.representante_rg||'___'}` +
+        `, inscrito(a) no CPF nº ${venda.representante_cpf||'___.___.___-__'}` +
+        `, residente e domiciliado(a) na ${endCompleto}.`;
+    } else {
+      compradorNome = venda.lead_nome || '___';
+      const ecMap = {solteiro:'solteiro(a)',casado:'casado(a)',divorciado:'divorciado(a)',viuvo:'viúvo(a)',uniao_estavel:'em união estável'};
+      const ec = ecMap[venda.estado_civil] || venda.estado_civil || '___';
+      compradorQualificacao = `, ${ec}, ${venda.profissao||'___'}` +
+        `, portador(a) da carteira de identidade nº ${venda.lead_rg||'___'}` +
+        `, inscrito(a) no CPF nº ${venda.lead_cpf||'___.___.___-__'}` +
+        (venda.nome_pai ? `, filho(a) de ${venda.nome_pai}${venda.nome_mae ? ' e '+venda.nome_mae : ''}` : '') +
+        `, residente e domiciliado(a) na ${endCompleto}.`;
+      representanteNome = '';
+      representanteQualificacao = '';
+    }
+
+    // Condições de pagamento (ARRAS) a partir de entrada_parcelas
+    let arrasDescricao = '___________________';
+    let arrasVencimentos = '___________________';
+    let parcelas = [];
+    try { parcelas = venda.entrada_parcelas ? JSON.parse(venda.entrada_parcelas) : []; } catch(_) {}
+
+    if (parcelas.length > 0) {
+      const totalArras = parcelas.reduce((s,p) => s + (Number(p.valor)||0), 0);
+      const valParcela = Number(parcelas[0]?.valor||0);
+      const sufixoParcelas = parcelas.length === 1 ? 'prestação' : `${parcelas.length} prestações mensais e sucessivas`;
+      arrasDescricao = `R$ ${fmtMoeda(totalArras)} a serem pagos em ${sufixoParcelas}, cada uma no valor de R$ ${fmtMoeda(valParcela)}, sendo que`;
+
+      const fmtD = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '___/___/____';
+      if (parcelas.length === 1) {
+        arrasVencimentos = `com vencimento em ${fmtD(parcelas[0].data)},`;
+      } else if (parcelas.length === 2) {
+        arrasVencimentos = `a primeira prestação tem vencimento em ${fmtD(parcelas[0].data)} e a segunda em ${fmtD(parcelas[1].data)},`;
+      } else {
+        const ordens = ['primeira','segunda','terceira','quarta','quinta','sexta','sétima','oitava','nona','décima'];
+        const vs = parcelas.map((p,i) => `a ${ordens[i]||i+1+'ª'} em ${fmtD(p.data)}`).join(', ');
+        arrasVencimentos = vs + ',';
+      }
+    }
+
+    // Valor total
+    const valorTotal = fmtMoeda(venda.valor);
+    const valorTotalExtenso = numExtenso(venda.valor);
+
+    // Corretor
+    const corretorNome = venda.corretor_nome || '___________________';
+    const corretorComissao = venda.comissao_corretor_valor
+      ? `R$ ${fmtMoeda(venda.comissao_corretor_valor)} (${numExtenso(venda.comissao_corretor_valor)})`
+      : '___________________';
+
+    const dados = {
+      LOTE_RESUMO:               loteResumo,
+      COMPRADOR_NOME:            compradorNome,
+      COMPRADOR_QUALIFICACAO:    compradorQualificacao,
+      REPRESENTANTE_NOME:        representanteNome,
+      REPRESENTANTE_QUALIFICACAO: representanteQualificacao,
+      LOTE_DESCRICAO:            loteDesc,
+      VALOR_TOTAL:               valorTotal,
+      VALOR_TOTAL_EXTENSO:       valorTotalExtenso,
+      ARRAS_DESCRICAO:           arrasDescricao,
+      ARRAS_VENCIMENTOS:         arrasVencimentos,
+      SALDO_VALOR_INICIO:        '___________________ ',
+      SALDO_PARCELAS:            '___________________',
+      SALDO_COMPLEMENTO:         '___________________',
+      SALDO_COMPLEMENTO_TABELA:  '___________________(ou através de depósito bancário, na conta ',
+      INTERCALADAS_DESCRICAO:    '___________________',
+      CORRETOR_NOME:             corretorNome,
+      CORRETOR_COMISSAO:         corretorComissao,
+      DATA_VENDA:                fmtDataExtenso(venda.data_venda),
+    };
+
+    const tplPath = path.join(__dirname, 'templates', 'belvedere-compra-venda.docx');
+    const content = fs.readFileSync(tplPath, 'binary');
+    const zip = new PizZip(content);
+    const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+    doc.render(dados);
+    const buf = doc.getZip().generate({ type: 'nodebuffer' });
+
+    const nomeArq = `Contrato_${(compradorNome||'comprador').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚãõÃÕçÇ ]/g,'_').trim().replace(/ /g,'_')}_${loteResumo.replace(/[^a-zA-Z0-9]/g,'_')}.docx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(nomeArq)}`);
+    res.send(buf);
+  } catch(e) {
+    console.error('[contrato-compra-venda]', e);
+    err(res, 'Erro ao gerar contrato: ' + e.message);
+  }
+});
+
 // Atualiza status de uma unidade (disponivel / reservado / vendido)
 app.put("/api/unidades/:id/status", (req, res) => {
   const { status } = req.body;
