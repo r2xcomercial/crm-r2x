@@ -2668,15 +2668,30 @@ async function deleteEmp(id) { if(!confirm('Excluir?')) return; await del(`/api/
 
 // ─── CORRETORES ───────────────────────────────────────────────────────────────
 
-async function renderCorretores(filter = '', cidadeFilter = '', sortByVendas = false) {
+// Normaliza cidade: remove acentos, trim, title case — para agrupar variações como "braço do norte" / "Braco do Norte"
+function normalizarCidade(c) {
+  if (!c) return '';
+  return c.trim().normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase()
+    .replace(/\b\w/g, l => l.toUpperCase());
+}
+
+async function renderCorretores(filter = '', cidadeFilter = '', imobFilter = '', sortByVendas = false) {
   const r = await get('/api/corretores');
   currentData.corretores = r.data;
   let rows = r.data;
   if (filter) rows = rows.filter(c => c.nome.toLowerCase().includes(filter) || (c.imobiliaria||'').toLowerCase().includes(filter) || (c.cidade||'').toLowerCase().includes(filter));
-  if (cidadeFilter) rows = rows.filter(c => (c.cidade||'').toLowerCase() === cidadeFilter.toLowerCase());
+  if (cidadeFilter) rows = rows.filter(c => normalizarCidade(c.cidade) === cidadeFilter);
+  if (imobFilter)   rows = rows.filter(c => (c.imobiliaria||'').toLowerCase() === imobFilter.toLowerCase());
   if (sortByVendas) rows = [...rows].sort((a, b) => (b.total_vendas - a.total_vendas) || (b.vgv_vendido - a.vgv_vendido));
 
-  const cidades = [...new Set(r.data.map(c => c.cidade).filter(Boolean))].sort();
+  // Cidades normalizadas e deduplicadas
+  const cidadesMap = {};
+  r.data.forEach(c => { if (c.cidade) { const n = normalizarCidade(c.cidade); if (!cidadesMap[n]) cidadesMap[n] = n; } });
+  const cidades = Object.keys(cidadesMap).sort();
+
+  // Imobiliárias únicas
+  const imobs = [...new Set(r.data.map(c => c.imobiliaria).filter(Boolean))].sort();
+
   const linkCorretor = `${window.location.origin}/login`;
 
   document.getElementById('content').innerHTML = `
@@ -2692,11 +2707,15 @@ async function renderCorretores(filter = '', cidadeFilter = '', sortByVendas = f
       <div class="table-header">
         <div class="table-title">👥 Corretores (${rows.length})</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <select id="filtro-cidade" onchange="renderCorretores('','this.value',document.getElementById('sort-vendas').dataset.ativo==='1')" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text1);font-size:13px">
-            <option value="">Todas as cidades</option>
-            ${cidades.map(ci => `<option value="${ci}" ${ci.toLowerCase()===cidadeFilter.toLowerCase()&&cidadeFilter?'selected':''}>${ci}</option>`).join('')}
+          <select id="filtro-cidade" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text1);font-size:13px">
+            <option value="">🏙️ Todas as cidades</option>
+            ${cidades.map(ci => `<option value="${ci}" ${ci===cidadeFilter?'selected':''}>${ci}</option>`).join('')}
           </select>
-          <button id="sort-vendas" data-ativo="${sortByVendas?'1':'0'}" onclick="(function(){const s=document.getElementById('sort-vendas');const ativo=s.dataset.ativo==='1';const cidade=document.getElementById('filtro-cidade').value;renderCorretores('',cidade,!ativo);})()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:${sortByVendas?'var(--accent)':'var(--navy3)'};color:${sortByVendas?'#fff':'var(--text1)'};font-size:13px;cursor:pointer">
+          <select id="filtro-imob" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text1);font-size:13px">
+            <option value="">🏢 Todas as imobiliárias</option>
+            ${imobs.map(im => `<option value="${im}" ${im===imobFilter?'selected':''}>${im}</option>`).join('')}
+          </select>
+          <button id="sort-vendas" data-ativo="${sortByVendas?'1':'0'}" onclick="(function(){const s=document.getElementById('sort-vendas');const cidade=document.getElementById('filtro-cidade').value;const imob=document.getElementById('filtro-imob').value;const ativo=s.dataset.ativo==='1';renderCorretores('',cidade,imob,!ativo);})()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:${sortByVendas?'var(--accent)':'var(--navy3)'};color:${sortByVendas?'#fff':'var(--text1)'};font-size:13px;cursor:pointer">
             🏆 ${sortByVendas ? 'Ranking ativo' : 'Ordenar por vendas'}
           </button>
         </div>
@@ -2732,11 +2751,12 @@ async function renderCorretores(filter = '', cidadeFilter = '', sortByVendas = f
     </div>
   `;
 
-  // fix select onchange after render
-  document.getElementById('filtro-cidade').addEventListener('change', function() {
-    const sortAtivo = document.getElementById('sort-vendas').dataset.ativo === '1';
-    renderCorretores('', this.value, sortAtivo);
-  });
+  // Listeners dos filtros após render
+  const _getSort = () => document.getElementById('sort-vendas').dataset.ativo === '1';
+  const _getCidade = () => document.getElementById('filtro-cidade').value;
+  const _getImob   = () => document.getElementById('filtro-imob').value;
+  document.getElementById('filtro-cidade').addEventListener('change', () => renderCorretores('', _getCidade(), _getImob(), _getSort()));
+  document.getElementById('filtro-imob').addEventListener('change',   () => renderCorretores('', _getCidade(), _getImob(), _getSort()));
 }
 
 function criarLoginCorretor(c) {
