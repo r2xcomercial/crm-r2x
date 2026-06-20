@@ -2191,7 +2191,7 @@ function openVendaModal(venda = {}) {
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
                   ${selOpts('sp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], p.correcao)}
-                  ${selOpts('sp-juros', ['Sem Juros','0,5% a.m.','0,75% a.m.','1% a.m.','1,5% a.m.'], p.juros)}
+                  <input type="text" class="sp-juros" placeholder="ex: 0,75% a.m." value="${p.juros||''}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">
                   ${selOpts('sp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'], p.forma_pagamento)}
                 </div>
               </div>`).join('');
@@ -2849,7 +2849,7 @@ function openEmpModal(e = {}) {
                       </div>
                       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">
                         ${selOpts('ecp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], p.correcao)}
-                        ${selOpts('ecp-juros', ['Sem Juros','0,5% a.m.','0,75% a.m.','1% a.m.','1,5% a.m.'], p.juros)}
+                        <input type="text" class="ecp-juros" placeholder="ex: 0,75% a.m." value="${p.juros||''}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">
                         ${selOpts('ecp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'], p.forma_pagamento)}
                       </div>
                     </div>`).join('')}
@@ -2968,7 +2968,7 @@ function addEmpCpParcela(btn, p = {}) {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">
       ${sel('ecp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], p.correcao)}
-      ${sel('ecp-juros', ['Sem Juros','0,5% a.m.','0,75% a.m.','1% a.m.','1,5% a.m.'], p.juros)}
+      <input type="text" class="ecp-juros" placeholder="ex: 0,75% a.m." value="${(p.juros||'').replace(/"/g,'&quot;')}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">
       ${sel('ecp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'], p.forma_pagamento)}
     </div>`;
   parcList.appendChild(row);
@@ -3452,7 +3452,7 @@ function addSaldoParcela(titulo = '', vencimento = '', qtd = 1, valor = '', corr
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
       ${sel('sp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], correcao || 'Sem Correção')}
-      ${sel('sp-juros', ['Sem Juros','0,5% a.m.','0,75% a.m.','1% a.m.','1,5% a.m.'], juros || 'Sem Juros')}
+      <input type="text" class="sp-juros" placeholder="ex: 0,75% a.m." value="${(juros||'').replace(/"/g,'&quot;')}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">
       ${sel('sp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'], forma_pagamento || 'PIX')}
     </div>`;
   list.appendChild(row);
