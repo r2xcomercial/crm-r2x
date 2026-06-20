@@ -562,6 +562,14 @@ let USUARIO = {};
 try { USUARIO = JSON.parse(localStorage.getItem('crm_usuario') || '{}'); } catch(_) {}
 if (!TOKEN) { window.location.href = '/login'; }
 
+// Botão reserva rápida — visível para admin/corretor, não para incorporador
+if (TOKEN && USUARIO.perfil !== 'incorporador') {
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btn-reserva-rapida');
+    if (btn) btn.style.display = 'flex';
+  });
+}
+
 async function api(method, path, body) {
   const r = await fetch(API + path, {
     method,
@@ -2054,6 +2062,17 @@ async function carregarUnidadesVenda(empId, unidadeIdsSelecionadas = []) {
   } else {
     if (infoComissao) { infoComissao.textContent = 'Empreendimento sem % R2X configurado.'; infoComissao.style.color = 'var(--warning)'; }
   }
+
+  // Auto-preencher condição de pagamento padrão se lista estiver vazia
+  const spList = document.getElementById('saldo-parcelas-list');
+  if (spList && spList.querySelectorAll('.sp-row').length === 0 && emp?.condicao_pagamento_padrao) {
+    let padrao = [];
+    try { padrao = JSON.parse(emp.condicao_pagamento_padrao); } catch(_) {}
+    if (padrao.length > 0) {
+      padrao.forEach(p => addSaldoParcela(p.titulo||'', p.vencimento||'', p.qtd||1, p.valor||'', p.correcao||'', p.juros||'', p.forma_pagamento||''));
+      toast('💡 Condição de pagamento padrão carregada do empreendimento', 'info');
+    }
+  }
 }
 
 function openVendaModal(venda = {}) {
@@ -2074,7 +2093,7 @@ function openVendaModal(venda = {}) {
     <div class="form-grid">
       <div class="form-group"><label>Data da Venda *</label><input id="f-data" type="date" value="${venda.data_venda||today()}"></div>
       <div class="form-group"><label>Status</label>
-        <select id="f-status"><option value="ativo" ${venda.status==='ativo'?'selected':''}>Ativo</option><option value="distrato" ${venda.status==='distrato'?'selected':''}>Distrato</option></select>
+        <select id="f-status"><option value="ativo" ${venda.status==='ativo'?'selected':''}>Ativo</option><option value="reserva" ${venda.status==='reserva'?'selected':''}>Reserva</option><option value="distrato" ${venda.status==='distrato'?'selected':''}>Distrato</option></select>
       </div>
       <div class="form-group"><label>Empreendimento</label>
         <select id="f-emp" onchange="carregarUnidadesVenda(this.value)"><option value="">—</option>${(emp||[]).map(e => `<option value="${e.id}" ${venda.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('')}</select>
@@ -2782,6 +2801,43 @@ function openEmpModal(e = {}) {
         <div style="font-size:11px;color:var(--text2);margin-top:10px">💡 Esses dados preenchem automaticamente os contratos de compra e venda gerados pelo sistema.</div>
       </div>
 
+      <!-- Condição de Pagamento Padrão -->
+      <div class="form-group span2" style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:16px 18px;margin-top:4px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#4ade80">⚡ Condição de Pagamento Padrão</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:2px">Pré-carregada automaticamente em toda nova venda deste empreendimento</div>
+          </div>
+          <button type="button" onclick="addEmpCpParcela()"
+            style="background:rgba(34,197,94,.2);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:7px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+            + Adicionar linha
+          </button>
+        </div>
+        <div id="emp-cp-list" style="display:flex;flex-direction:column;gap:8px">
+          ${(() => {
+            let cp = [];
+            try { cp = e.condicao_pagamento_padrao ? JSON.parse(e.condicao_pagamento_padrao) : []; } catch(_) {}
+            const selOpts = (cls, opts, val) => `<select class="${cls}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">${opts.map(o => `<option value="${o}" ${o===(val||opts[0])?'selected':''}>${o}</option>`).join('')}</select>`;
+            return cp.map(p => `
+              <div class="emp-cp-row" style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:rgba(0,0,0,.15)">
+                <div style="display:grid;grid-template-columns:2fr 1.3fr 70px 1.2fr 28px;gap:6px;align-items:center">
+                  <input type="text" class="ecp-titulo" placeholder="ex: Saldo Mensal" value="${p.titulo||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                  <input type="date" class="ecp-vencimento" value="${p.vencimento||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                  <input type="number" class="ecp-qtd" min="1" placeholder="1" value="${p.qtd||1}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
+                  <input type="number" class="ecp-valor" step="0.01" placeholder="0.00" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                  <button type="button" onclick="this.closest('.emp-cp-row').remove()" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+                  ${selOpts('ecp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], p.correcao)}
+                  ${selOpts('ecp-juros', ['Sem Juros','0,5% a.m.','1% a.m.','1,5% a.m.'], p.juros)}
+                  ${selOpts('ecp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'], p.forma_pagamento)}
+                </div>
+              </div>`).join('');
+          })()}
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:8px">Deixe os valores em branco — serve como template de estrutura (tipos de parcela, correção e forma). Os valores específicos são ajustados em cada venda.</div>
+      </div>
+
       ${e.id ? `
       <div class="form-group span2" style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
         <label>🗺️ Planta do Empreendimento (Mapa de Vendas)</label>
@@ -2834,13 +2890,46 @@ function openEmpModal(e = {}) {
       inicio_obra_previsto: v('f-inicio-obra')||null,
       valor_cub: parseFloat(v('f-valor-cub'))||null,
       patrimonio_afetacao: document.getElementById('f-patrimonio-afetacao')?.checked ? 1 : 0,
+      condicao_pagamento_padrao: [...document.querySelectorAll('#emp-cp-list .emp-cp-row')].map(row => ({
+        titulo: row.querySelector('.ecp-titulo')?.value?.trim() || '',
+        vencimento: row.querySelector('.ecp-vencimento')?.value || null,
+        qtd: parseInt(row.querySelector('.ecp-qtd')?.value) || 1,
+        valor: parseFloat(row.querySelector('.ecp-valor')?.value) || 0,
+        correcao: row.querySelector('.ecp-correcao')?.value || 'Sem Correção',
+        juros: row.querySelector('.ecp-juros')?.value || 'Sem Juros',
+        forma_pagamento: row.querySelector('.ecp-forma')?.value || 'PIX',
+      })).filter(p => p.titulo),
     };
     if (!body.nome) return toast('Nome obrigatório', 'error');
     const r = e.id ? await put(`/api/empreendimentos/${e.id}`, body) : await post('/api/empreendimentos', body);
     if (!r.ok) return toast(r.error, 'error');
     toast(e.id ? 'Atualizado!' : 'Empreendimento criado!');
-    closeModal(); renderEmpreendimentos();
+    await carregarDados(); closeModal(); renderEmpreendimentos();
   });
+}
+
+function addEmpCpParcela() {
+  const list = document.getElementById('emp-cp-list');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'emp-cp-row';
+  row.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:rgba(0,0,0,.15)';
+  const sel = (cls, opts) => `<select class="${cls}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">${opts.map(o => `<option value="${o}">${o}</option>`).join('')}</select>`;
+  row.innerHTML = `
+    <div style="display:grid;grid-template-columns:2fr 1.3fr 70px 1.2fr 28px;gap:6px;align-items:center">
+      <input type="text" class="ecp-titulo" placeholder="ex: Saldo Mensal" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+      <input type="date" class="ecp-vencimento" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+      <input type="number" class="ecp-qtd" min="1" placeholder="1" value="1" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
+      <input type="number" class="ecp-valor" step="0.01" placeholder="0.00" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+      <button type="button" onclick="this.closest('.emp-cp-row').remove()" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+      ${sel('ecp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'])}
+      ${sel('ecp-juros', ['Sem Juros','0,5% a.m.','1% a.m.','1,5% a.m.'])}
+      ${sel('ecp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'])}
+    </div>`;
+  list.appendChild(row);
+  row.querySelector('.ecp-titulo').focus();
 }
 
 // ─── CHECKLIST DE MARKETING ───────────────────────────────────────────────────
@@ -3110,7 +3199,166 @@ async function excluirItemChecklist(id) {
   toast('Item removido');
 }
 
+// ─── RESERVA RÁPIDA ──────────────────────────────────────────────────────────
+function openReservaRapida() {
+  const overlay = document.getElementById('rr-overlay');
+  if (!overlay) return;
+  // Preencher empreendimentos
+  const empSel = document.getElementById('rr-emp');
+  const corrSel = document.getElementById('rr-corretor');
+  const { emp, corretores } = currentData;
+  empSel.innerHTML = '<option value="">— Selecione —</option>' +
+    (emp||[]).map(e => `<option value="${e.id}">${e.nome}</option>`).join('');
+  corrSel.innerHTML = '<option value="">— Sem corretor —</option>' +
+    (corretores||[]).map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+  document.getElementById('rr-nome').value = '';
+  document.getElementById('rr-telefone').value = '';
+  document.getElementById('rr-unidade').innerHTML = '<option value="">— Selecione o empreendimento —</option>';
+  const st = document.getElementById('rr-status');
+  st.style.display = 'none'; st.textContent = '';
+  overlay.style.display = 'flex';
+  setTimeout(() => document.getElementById('rr-nome').focus(), 100);
+}
+
+function closeReservaRapida() {
+  const overlay = document.getElementById('rr-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+async function carregarUnidadesRR(empId) {
+  const sel = document.getElementById('rr-unidade');
+  sel.innerHTML = '<option value="">⏳ Carregando...</option>';
+  if (!empId) { sel.innerHTML = '<option value="">— Selecione o empreendimento —</option>'; return; }
+  const r = await get(`/api/empreendimentos/${empId}/unidades`);
+  const disponiveis = (r.data||[]).filter(u => u.status === 'disponivel');
+  if (disponiveis.length === 0) {
+    sel.innerHTML = '<option value="">Sem unidades disponíveis</option>';
+    return;
+  }
+  const emp = (currentData.emp||[]).find(e => e.id == empId);
+  const isPredio = emp?.tipo === 'predio';
+  const lblA = isPredio ? 'Andar' : 'Qd';
+  const lblB = isPredio ? 'Apto' : 'Lote';
+  sel.innerHTML = '<option value="">— Selecione —</option>' + disponiveis.map(u => {
+    const label = `${u.quadra ? lblA+' '+u.quadra+' ' : ''}${lblB} ${u.lote}${u.area_m2?' ('+u.area_m2+'m²)':''}`;
+    const preco = u.preco ? ` — R$ ${Number(u.preco).toLocaleString('pt-BR')}` : '';
+    return `<option value="${u.id}" data-preco="${u.preco||0}">${label}${preco}</option>`;
+  }).join('');
+}
+
+async function confirmarReservaRapida() {
+  const empId = document.getElementById('rr-emp').value;
+  const unidadeId = document.getElementById('rr-unidade').value;
+  const nome = document.getElementById('rr-nome').value.trim();
+  const telefone = document.getElementById('rr-telefone').value.trim();
+  const corretorId = document.getElementById('rr-corretor').value;
+  const st = document.getElementById('rr-status');
+
+  if (!empId || !unidadeId || !nome || !telefone) {
+    st.style.display = 'block';
+    st.style.background = 'rgba(239,68,68,.15)';
+    st.style.color = 'var(--danger)';
+    st.textContent = '⚠️ Preencha todos os campos obrigatórios.';
+    return;
+  }
+
+  const btn = document.querySelector('#rr-overlay button[onclick="confirmarReservaRapida()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Reservando...'; }
+
+  try {
+    const r = await post('/api/vendas/reserva-rapida', {
+      empreendimento_id: parseInt(empId), unidade_id: parseInt(unidadeId),
+      lead_nome: nome, lead_telefone: telefone,
+      corretor_id: corretorId ? parseInt(corretorId) : null
+    });
+    if (!r.ok) {
+      st.style.display = 'block';
+      st.style.background = 'rgba(239,68,68,.15)';
+      st.style.color = 'var(--danger)';
+      st.textContent = '❌ ' + r.error;
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ Reservar agora'; }
+      return;
+    }
+    closeReservaRapida();
+    toast(`✅ Reserva registrada para ${nome}! Complete os dados da venda quando possível.`);
+    await renderVendas(); await renderEmpreendimentos();
+    // Oferecer completar agora
+    if (r.data?.venda_id) {
+      setTimeout(() => {
+        if (confirm(`Reserva criada! Deseja completar os dados da venda agora?`)) {
+          editVenda(r.data.venda_id);
+        }
+      }, 400);
+    }
+  } catch(e) {
+    st.style.display = 'block';
+    st.style.background = 'rgba(239,68,68,.15)';
+    st.style.color = 'var(--danger)';
+    st.textContent = '❌ Erro: ' + e.message;
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Reservar agora'; }
+  }
+}
+
+// Fechar modal reserva rápida ao clicar fora
+document.getElementById('rr-overlay')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('rr-overlay')) closeReservaRapida();
+});
+
+// ─── VALIDAÇÃO DE CONTRATO ────────────────────────────────────────────────────
+async function validarEGerarContrato(vendaId, tipo) {
+  const vRes = await get(`/api/vendas/${vendaId}/validar-contrato`);
+  if (!vRes.ok) return tipo === 'loteamento' ? gerarContratoCompraVendaFinal(vendaId) : gerarContratoVerticalFinal(vendaId);
+
+  const { erros, avisos, pode_gerar } = vRes.data;
+
+  if (erros.length === 0 && avisos.length === 0) {
+    return tipo === 'loteamento' ? gerarContratoCompraVendaFinal(vendaId) : gerarContratoVerticalFinal(vendaId);
+  }
+
+  let msg = '';
+  if (erros.length > 0) {
+    msg += `<div style="font-weight:700;color:var(--danger);margin-bottom:8px">❌ Erros — o contrato terá campos em branco:</div>`;
+    msg += `<ul style="margin:0 0 12px 0;padding-left:18px;color:var(--danger)">` + erros.map(e => `<li style="margin-bottom:4px">${e}</li>`).join('') + `</ul>`;
+  }
+  if (avisos.length > 0) {
+    msg += `<div style="font-weight:700;color:#f59e0b;margin-bottom:8px">⚠️ Avisos:</div>`;
+    msg += `<ul style="margin:0 0 12px 0;padding-left:18px;color:#fbbf24">` + avisos.map(a => `<li style="margin-bottom:4px">${a}</li>`).join('') + `</ul>`;
+  }
+
+  const confirmed = await showValidacaoModal(msg, pode_gerar);
+  if (!confirmed) return;
+  return tipo === 'loteamento' ? gerarContratoCompraVendaFinal(vendaId) : gerarContratoVerticalFinal(vendaId);
+}
+
+function showValidacaoModal(msg, podeGerar) {
+  return new Promise(resolve => {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9600;display:flex;align-items:center;justify-content:center';
+    d.innerHTML = `
+      <div style="background:var(--card);border-radius:14px;padding:24px;width:min(520px,94vw);box-shadow:0 20px 60px rgba(0,0,0,.5)">
+        <div style="font-size:16px;font-weight:700;color:var(--text1);margin-bottom:16px">📋 Verificação antes de gerar</div>
+        <div style="font-size:13px;line-height:1.6;max-height:280px;overflow-y:auto">${msg}</div>
+        <div style="display:flex;gap:10px;margin-top:20px">
+          <button onclick="this.closest('div[style*=fixed]').remove();_rrResolve(false)"
+            style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text2);font-size:13px;cursor:pointer">
+            Corrigir antes
+          </button>
+          ${podeGerar !== false ? `<button onclick="this.closest('div[style*=fixed]').remove();_rrResolve(true)"
+            style="flex:1;padding:10px;border-radius:8px;border:none;background:${podeGerar?'var(--success)':'#d97706'};color:#fff;font-size:13px;font-weight:700;cursor:pointer">
+            ${podeGerar ? 'Gerar mesmo assim' : '⚠️ Gerar com pendências'}
+          </button>` : ''}
+        </div>
+      </div>`;
+    window._rrResolve = v => { resolve(v); d.remove(); };
+    document.body.appendChild(d);
+  });
+}
+
 async function gerarContratoCompraVenda(vendaId) {
+  await validarEGerarContrato(vendaId, 'loteamento');
+}
+
+async function gerarContratoCompraVendaFinal(vendaId) {
   const url = `/api/vendas/${vendaId}/contrato-compra-venda`;
   try {
     toast('Gerando contrato...', 'info');
@@ -3187,6 +3435,10 @@ async function importarContratoCondicoes(input) {
 }
 
 async function gerarContratoVertical(vendaId) {
+  await validarEGerarContrato(vendaId, 'vertical');
+}
+
+async function gerarContratoVerticalFinal(vendaId) {
   const url = `/api/vendas/${vendaId}/contrato-vertical`;
   try {
     toast('Gerando contrato vertical...', 'info');
@@ -11042,6 +11294,76 @@ async function gpToggleHabito(id) {
 }
 // ── fim Gestão Pessoal ───────────────────────────────────────────
 </script>
+
+<!-- RESERVA RÁPIDA — BOTÃO FLUTUANTE -->
+<button id="btn-reserva-rapida" onclick="openReservaRapida()"
+  title="Reserva Rápida — registre um cliente em segundos"
+  style="display:none;position:fixed;bottom:24px;right:24px;z-index:8000;
+    background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;
+    border-radius:50px;padding:13px 22px;font-size:14px;font-weight:700;
+    cursor:pointer;box-shadow:0 4px 20px rgba(245,158,11,.5);
+    align-items:center;gap:8px;white-space:nowrap">
+  ⚡ Reserva Rápida
+</button>
+
+<!-- MODAL RESERVA RÁPIDA -->
+<div id="rr-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9500;align-items:center;justify-content:center">
+  <div style="background:var(--card);border-radius:16px;padding:28px;width:min(480px,94vw);box-shadow:0 20px 60px rgba(0,0,0,.5);position:relative">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-size:18px;font-weight:700;color:var(--text1)">⚡ Reserva Rápida</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">Registre agora, complete os dados depois</div>
+      </div>
+      <button onclick="closeReservaRapida()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;line-height:1">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Empreendimento *</label>
+        <select id="rr-emp" onchange="carregarUnidadesRR(this.value)"
+          style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:14px;box-sizing:border-box">
+          <option value="">— Selecione —</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Unidade *</label>
+        <select id="rr-unidade"
+          style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:14px;box-sizing:border-box">
+          <option value="">— Selecione o empreendimento primeiro —</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Nome do Cliente *</label>
+          <input id="rr-nome" type="text" placeholder="Nome completo"
+            style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:14px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Telefone *</label>
+          <input id="rr-telefone" type="tel" placeholder="(48) 9xxxx-xxxx"
+            style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:14px;box-sizing:border-box">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Corretor (opcional)</label>
+        <select id="rr-corretor"
+          style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:14px;box-sizing:border-box">
+          <option value="">— Sem corretor —</option>
+        </select>
+      </div>
+      <div id="rr-status" style="display:none;font-size:12px;padding:8px 12px;border-radius:8px;margin-top:4px"></div>
+      <div style="display:flex;gap:10px;margin-top:6px">
+        <button onclick="closeReservaRapida()"
+          style="flex:1;padding:11px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text2);font-size:14px;cursor:pointer">
+          Cancelar
+        </button>
+        <button onclick="confirmarReservaRapida()"
+          style="flex:2;padding:11px;border-radius:8px;border:none;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-size:14px;font-weight:700;cursor:pointer">
+          ⚡ Reservar agora
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- PWA INSTALL BANNER -->
 <div id="pwa-banner" style="display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--accent);border-radius:12px;padding:12px 20px;z-index:9000;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.4);white-space:nowrap">

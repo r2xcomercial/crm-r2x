@@ -364,21 +364,24 @@ app.post("/api/empreendimentos", (req, res) => {
     data_lancamento, data_inicio_vendas, observacoes, percentual_r2x,
     comarca, matricula_registro, incorporacao_protocolo,
     vendedora_nome, vendedora_qualificacao,
-    prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao } = req.body;
+    prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao,
+    condicao_pagamento_padrao } = req.body;
   if (!nome) return err(res, "Nome obrigatório");
+  const cpPadrao = condicao_pagamento_padrao && Array.isArray(condicao_pagamento_padrao) && condicao_pagamento_padrao.length > 0
+    ? JSON.stringify(condicao_pagamento_padrao) : null;
   const r = db.prepare(`INSERT INTO empreendimentos
     (cliente_id,nome,tipo,endereco,cidade,estado,num_unidades,vgv_estimado,status,
      data_lancamento,data_inicio_vendas,observacoes,percentual_r2x,
      comarca,matricula_registro,incorporacao_protocolo,
      vendedora_nome,vendedora_qualificacao,prazo_entrega_meses,inicio_obra_previsto,valor_cub,
-     patrimonio_afetacao)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+     patrimonio_afetacao,condicao_pagamento_padrao)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
       status||'prospecto', data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
       comarca||null, matricula_registro||null, incorporacao_protocolo||null,
       vendedora_nome||null, vendedora_qualificacao||null,
       prazo_entrega_meses||null, inicio_obra_previsto||null, valor_cub||null,
-      patrimonio_afetacao ? 1 : 0);
+      patrimonio_afetacao ? 1 : 0, cpPadrao);
   ok(res, { id: r.lastInsertRowid });
 });
 
@@ -387,21 +390,24 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     data_lancamento, data_inicio_vendas, observacoes, percentual_r2x,
     comarca, matricula_registro, incorporacao_protocolo,
     vendedora_nome, vendedora_qualificacao,
-    prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao } = req.body;
+    prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao,
+    condicao_pagamento_padrao } = req.body;
+  const cpPadrao = condicao_pagamento_padrao && Array.isArray(condicao_pagamento_padrao) && condicao_pagamento_padrao.length > 0
+    ? JSON.stringify(condicao_pagamento_padrao) : null;
   db.prepare(`UPDATE empreendimentos SET
     cliente_id=?,nome=?,tipo=?,endereco=?,cidade=?,estado=?,num_unidades=?,vgv_estimado=?,
     status=?,data_lancamento=?,data_inicio_vendas=?,observacoes=?,percentual_r2x=?,
     comarca=?,matricula_registro=?,incorporacao_protocolo=?,
     vendedora_nome=?,vendedora_qualificacao=?,
     prazo_entrega_meses=?,inicio_obra_previsto=?,valor_cub=?,
-    patrimonio_afetacao=?
+    patrimonio_afetacao=?,condicao_pagamento_padrao=?
     WHERE id=?`).run(
     cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
     status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
     comarca||null, matricula_registro||null, incorporacao_protocolo||null,
     vendedora_nome||null, vendedora_qualificacao||null,
     prazo_entrega_meses||null, inicio_obra_previsto||null, valor_cub||null,
-    patrimonio_afetacao ? 1 : 0,
+    patrimonio_afetacao ? 1 : 0, cpPadrao,
     req.params.id);
   ok(res, {});
 });
@@ -1863,6 +1869,96 @@ app.get("/api/vendas/:id/unidades", autenticar, (req, res) => {
   ok(res, rows);
 });
 
+// ─── RESERVA RÁPIDA ──────────────────────────────────────────────────────────
+app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
+  const { empreendimento_id, unidade_id, lead_nome, lead_telefone, corretor_id } = req.body;
+  if (!empreendimento_id || !unidade_id) return err(res, "Empreendimento e unidade obrigatórios");
+  if (!lead_nome || !lead_telefone) return err(res, "Nome e telefone do cliente obrigatórios");
+
+  // Verificar disponibilidade da unidade
+  const unidade = db.prepare("SELECT * FROM unidades WHERE id=?").get(unidade_id);
+  if (!unidade) return err(res, "Unidade não encontrada");
+  if (unidade.status === 'vendido') return err(res, "Unidade já vendida");
+
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  // Criar ou reutilizar lead pelo telefone
+  let lead = db.prepare("SELECT id FROM leads WHERE telefone=? LIMIT 1").get(lead_telefone);
+  if (!lead) {
+    const r = db.prepare("INSERT INTO leads (nome, telefone, status, empreendimento_id) VALUES (?,?,?,?)")
+      .run(lead_nome.trim(), lead_telefone.trim(), 'reserva', empreendimento_id);
+    lead = { id: r.lastInsertRowid };
+  }
+
+  // Criar venda com status reserva
+  const preco = unidade.preco || 0;
+  const rv = db.prepare(`INSERT INTO vendas
+    (lead_id, empreendimento_id, corretor_id, unidade_id, valor, valor_total, data_venda, status, observacoes)
+    VALUES (?,?,?,?,?,?,?,'reserva','Reserva rápida — dados pendentes')`)
+    .run(lead.id, empreendimento_id, corretor_id || null, unidade_id, preco, preco, hoje);
+
+  // Marcar unidade como reservada
+  db.prepare("UPDATE unidades SET status='reservado' WHERE id=?").run(unidade_id);
+
+  ok(res, { venda_id: rv.lastInsertRowid, lead_id: lead.id });
+});
+
+// ─── CONDIÇÃO DE PAGAMENTO PADRÃO ─────────────────────────────────────────────
+app.get("/api/empreendimentos/:id/condicao-padrao", autenticar, (req, res) => {
+  const emp = db.prepare("SELECT condicao_pagamento_padrao FROM empreendimentos WHERE id=?").get(req.params.id);
+  if (!emp) return err(res, "Empreendimento não encontrado", 404);
+  let parcelas = [];
+  try { parcelas = emp.condicao_pagamento_padrao ? JSON.parse(emp.condicao_pagamento_padrao) : []; } catch(_) {}
+  ok(res, parcelas);
+});
+
+// ─── VALIDAÇÃO DE CONTRATO ────────────────────────────────────────────────────
+app.get("/api/vendas/:id/validar-contrato", autenticar, (req, res) => {
+  const venda = db.prepare(`
+    SELECT v.*, l.nome as lead_nome, l.cpf, l.rg, l.endereco as lead_end,
+      e.nome as emp_nome, e.tipo as emp_tipo, e.comarca, e.vendedora_nome,
+      e.vendedora_qualificacao, e.matricula_registro, e.incorporacao_protocolo,
+      e.prazo_entrega_meses, e.inicio_obra_previsto
+    FROM vendas v
+    LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
+    WHERE v.id=?`).get(req.params.id);
+  if (!venda) return err(res, "Venda não encontrada", 404);
+
+  const erros = [];
+  const avisos = [];
+
+  // Campos do lead
+  if (!venda.lead_nome) erros.push("Cliente: nome não preenchido");
+  if (!venda.cpf && !venda.rg) avisos.push("Cliente: CPF e RG ausentes — contrato sairá com espaços em branco");
+  if (!venda.lead_end) avisos.push("Cliente: endereço não preenchido");
+
+  // Campos do empreendimento
+  if (!venda.comarca) erros.push("Empreendimento: comarca/foro não preenchido");
+  if (!venda.vendedora_nome) erros.push("Empreendimento: nome da vendedora não preenchido");
+  if (!venda.vendedora_qualificacao) avisos.push("Empreendimento: qualificação da vendedora não preenchida");
+
+  // Específicos para vertical
+  if (venda.emp_tipo === 'predio') {
+    if (!venda.matricula_registro) erros.push("Empreendimento: matrícula do registro de imóveis não preenchida");
+    if (!venda.incorporacao_protocolo) avisos.push("Empreendimento: nº da incorporação não preenchido");
+    if (!venda.prazo_entrega_meses) avisos.push("Empreendimento: prazo de entrega (meses) não preenchido");
+    if (!venda.inicio_obra_previsto) avisos.push("Empreendimento: início de obra previsto não preenchido");
+  }
+
+  // Campos da venda
+  if (!venda.valor || venda.valor <= 0) erros.push("Venda: valor total não informado");
+  if (!venda.data_venda) erros.push("Venda: data não informada");
+  if (!venda.unidade_id) avisos.push("Venda: nenhuma unidade vinculada");
+
+  // Parcelas de pagamento
+  let parcelas = [];
+  try { parcelas = venda.saldo_parcelas ? JSON.parse(venda.saldo_parcelas) : []; } catch(_) {}
+  if (parcelas.length === 0) avisos.push("Condições de pagamento: nenhuma parcela cadastrada — tabela de pagamento ficará em branco");
+
+  ok(res, { erros, avisos, pode_gerar: erros.length === 0 });
+});
+
 app.post("/api/vendas", (req, res) => {
   const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, unidade_ids, vaga_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, saldo_parcelas, percentual_r2x_override } = req.body;
   if (!valor || !data_venda) return err(res, "Valor e data obrigatórios");
@@ -2649,6 +2745,7 @@ try { db.exec('ALTER TABLE empreendimentos ADD COLUMN vendedora_nome TEXT'); } c
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN vendedora_qualificacao TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN valor_cub REAL'); } catch(_) {}
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN patrimonio_afetacao INTEGER DEFAULT 0'); } catch(_) {}
+try { db.exec('ALTER TABLE empreendimentos ADD COLUMN condicao_pagamento_padrao TEXT'); } catch(_) {}
 
 // Tabela de compradores adicionais (cônjuge, sócio, condomínio)
 db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (
