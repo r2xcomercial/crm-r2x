@@ -2145,24 +2145,25 @@ function openVendaModal(venda = {}) {
             </label>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:2fr 1.4fr 80px 1.3fr 28px;gap:6px;margin-bottom:6px;padding:0 2px">
-          <span style="font-size:11px;color:var(--text2);font-weight:600">Tipo / Título</span>
-          <span style="font-size:11px;color:var(--text2);font-weight:600">1º Vencimento</span>
-          <span style="font-size:11px;color:var(--text2);font-weight:600;text-align:center">Nº Parc.</span>
-          <span style="font-size:11px;color:var(--text2);font-weight:600">Valor unitário (R$)</span>
-          <span></span>
-        </div>
-        <div id="saldo-parcelas-list" style="display:flex;flex-direction:column;gap:6px">
+        <div id="saldo-parcelas-list" style="display:flex;flex-direction:column;gap:8px">
           ${(() => {
             let parcelas = [];
             try { parcelas = venda.saldo_parcelas ? JSON.parse(venda.saldo_parcelas) : []; } catch(_) {}
+            const selOpts = (cls, opts, val) => `<select class="${cls}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">${opts.map(o => `<option value="${o}" ${o===(val||opts[0])?'selected':''}>${o}</option>`).join('')}</select>`;
             return parcelas.map((p, i) => `
-              <div class="sp-row" style="display:grid;grid-template-columns:2fr 1.4fr 80px 1.3fr 28px;gap:6px;align-items:center">
-                <input type="text" class="sp-titulo" placeholder="ex: Parcela Mensal" value="${p.titulo||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-                <input type="date" class="sp-vencimento" value="${p.vencimento||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-                <input type="number" class="sp-qtd" min="1" placeholder="1" value="${p.qtd||1}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
-                <input type="number" class="sp-valor" step="0.01" placeholder="0.00" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-                <button type="button" onclick="removeSaldoParcela(this)" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
+              <div class="sp-row" style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:rgba(0,0,0,.15)">
+                <div style="display:grid;grid-template-columns:2fr 1.3fr 70px 1.2fr 28px;gap:6px;align-items:center">
+                  <input type="text" class="sp-titulo" placeholder="ex: Parcela Mensal" value="${p.titulo||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                  <input type="date" class="sp-vencimento" value="${p.vencimento||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                  <input type="number" class="sp-qtd" min="1" placeholder="1" value="${p.qtd||1}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
+                  <input type="number" class="sp-valor" step="0.01" placeholder="0.00" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                  <button type="button" onclick="removeSaldoParcela(this)" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+                  ${selOpts('sp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], p.correcao)}
+                  ${selOpts('sp-juros', ['Sem Juros','0,5% a.m.','1% a.m.','1,5% a.m.'], p.juros)}
+                  ${selOpts('sp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'], p.forma_pagamento)}
+                </div>
               </div>`).join('');
           })()}
         </div>
@@ -2232,7 +2233,10 @@ function openVendaModal(venda = {}) {
       titulo: row.querySelector('.sp-titulo')?.value?.trim() || '',
       vencimento: row.querySelector('.sp-vencimento')?.value || null,
       qtd: parseInt(row.querySelector('.sp-qtd')?.value) || 1,
-      valor: parseFloat(row.querySelector('.sp-valor')?.value) || 0
+      valor: parseFloat(row.querySelector('.sp-valor')?.value) || 0,
+      correcao: row.querySelector('.sp-correcao')?.value || 'Sem Correção',
+      juros: row.querySelector('.sp-juros')?.value || 'Sem Juros',
+      forma_pagamento: row.querySelector('.sp-forma')?.value || 'PIX'
     })).filter(p => p.titulo || p.valor > 0);
 
     // Coleta todas as unidades selecionadas
@@ -3129,18 +3133,26 @@ async function gerarContratoCompraVenda(vendaId) {
   }
 }
 
-function addSaldoParcela(titulo = '', vencimento = '', qtd = 1, valor = '') {
+function addSaldoParcela(titulo = '', vencimento = '', qtd = 1, valor = '', correcao = '', juros = '', forma_pagamento = '') {
   const list = document.getElementById('saldo-parcelas-list');
   if (!list) return;
   const row = document.createElement('div');
   row.className = 'sp-row';
-  row.style.cssText = 'display:grid;grid-template-columns:2fr 1.4fr 80px 1.3fr 28px;gap:6px;align-items:center';
+  row.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:rgba(0,0,0,.15)';
+  const sel = (cls, opts, val) => `<select class="${cls}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">${opts.map(o => `<option value="${o}" ${o===val?'selected':''}>${o}</option>`).join('')}</select>`;
   row.innerHTML = `
-    <input type="text" class="sp-titulo" placeholder="ex: Parcela Mensal" value="${titulo}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-    <input type="date" class="sp-vencimento" value="${vencimento}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-    <input type="number" class="sp-qtd" min="1" placeholder="1" value="${qtd}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
-    <input type="number" class="sp-valor" step="0.01" placeholder="0.00" value="${valor}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-    <button type="button" onclick="removeSaldoParcela(this)" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>`;
+    <div style="display:grid;grid-template-columns:2fr 1.3fr 70px 1.2fr 28px;gap:6px;align-items:center">
+      <input type="text" class="sp-titulo" placeholder="ex: Parcela Mensal" value="${titulo}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+      <input type="date" class="sp-vencimento" value="${vencimento}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+      <input type="number" class="sp-qtd" min="1" placeholder="1" value="${qtd}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
+      <input type="number" class="sp-valor" step="0.01" placeholder="0.00" value="${valor}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+      <button type="button" onclick="removeSaldoParcela(this)" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+      ${sel('sp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], correcao || 'Sem Correção')}
+      ${sel('sp-juros', ['Sem Juros','0,5% a.m.','1% a.m.','1,5% a.m.'], juros || 'Sem Juros')}
+      ${sel('sp-forma', ['PIX','Boleto','Espécie','Financiamento Bancário'], forma_pagamento || 'PIX')}
+    </div>`;
   list.appendChild(row);
 }
 
@@ -3167,7 +3179,7 @@ async function importarContratoCondicoes(input) {
     // Limpa lista atual e preenche com o que veio do Claude
     const list = document.getElementById('saldo-parcelas-list');
     if (list) list.innerHTML = '';
-    data.parcelas.forEach(p => addSaldoParcela(p.titulo || '', p.vencimento || '', p.qtd || 1, p.valor || ''));
+    data.parcelas.forEach(p => addSaldoParcela(p.titulo || '', p.vencimento || '', p.qtd || 1, p.valor || '', p.correcao || '', p.juros || '', p.forma_pagamento || ''));
     toast(`${data.parcelas.length} linha(s) importadas do contrato ✓`);
   } catch(e) {
     toast('Erro ao importar: ' + e.message, 'error');

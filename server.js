@@ -682,6 +682,52 @@ app.get("/api/vendas/:id/contrato-compra-venda", autenticar, (req, res) => {
       }
     }
 
+    // Saldo devedor — usa saldo_parcelas (novo formato) com encargos e forma
+    let saldoParcelas = [];
+    try { saldoParcelas = venda.saldo_parcelas ? JSON.parse(venda.saldo_parcelas) : []; } catch(_) {}
+
+    let saldoValorInicio = '___________________';
+    let saldoParcelasTexto = '___________________';
+    let dadosBancarios = '___________________';
+
+    if (saldoParcelas.length > 0) {
+      const fmtD = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '___/___/____';
+      const ordens = ['primeira','segunda','terceira','quarta','quinta','sexta','sétima','oitava','nona','décima'];
+
+      // Valor inicial do saldo (primeira parcela ou soma)
+      const primeiraSaldo = saldoParcelas[0];
+      if (primeiraSaldo?.valor) {
+        saldoValorInicio = `R$ ${fmtMoeda(primeiraSaldo.valor)} (${numExtenso(primeiraSaldo.valor)})`;
+      }
+
+      // Descrição completa de cada grupo de parcelas
+      const linhas = saldoParcelas.map((p, i) => {
+        const encargosPartes = [];
+        if (p.correcao && p.correcao !== 'Sem Correção') encargosPartes.push(`correção pelo ${p.correcao}`);
+        if (p.juros && p.juros !== 'Sem Juros') encargosPartes.push(`juros de ${p.juros}`);
+        const encargosStr = encargosPartes.length > 0 ? ` com ${encargosPartes.join(' e ')}` : ' sem correção e sem juros';
+        const formaStr = p.forma_pagamento ? ` — pagamento via ${p.forma_pagamento}` : '';
+        const qtd = Number(p.qtd) || 1;
+        const sufixo = qtd === 1 ? '1 parcela' : `${qtd} parcelas mensais e sucessivas`;
+        return `${sufixo} de R$ ${fmtMoeda(p.valor || 0)} com vencimento a partir de ${fmtD(p.vencimento)} (${p.titulo || `Parcela ${i+1}`})${encargosStr}${formaStr}`;
+      });
+      saldoParcelasTexto = linhas.join('; ');
+
+      // Forma de pagamento principal (da parcela de maior valor)
+      const formas = saldoParcelas.map(p => p.forma_pagamento).filter(Boolean);
+      const formaPrincipal = formas[0] || 'PIX';
+      const pixExtraido = (venda.vendedora_qualificacao || '').match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/)?.[0] || '___________________';
+      if (formaPrincipal === 'PIX') {
+        dadosBancarios = `chave PIX ${pixExtraido}`;
+      } else if (formaPrincipal === 'Boleto') {
+        dadosBancarios = 'boleto bancário emitido pela VENDEDORA';
+      } else if (formaPrincipal === 'Espécie') {
+        dadosBancarios = 'pagamento em espécie';
+      } else if (formaPrincipal === 'Financiamento Bancário') {
+        dadosBancarios = 'financiamento bancário conforme condições da instituição financeira escolhida pelo(a) COMPRADOR(A)';
+      }
+    }
+
     // Valor total
     const valorTotal = fmtMoeda(venda.valor);
     const valorTotalExtenso = numExtenso(venda.valor);
@@ -718,17 +764,18 @@ app.get("/api/vendas/:id/contrato-compra-venda", autenticar, (req, res) => {
       VALOR_TOTAL_EXTENSO:       valorTotalExtenso,
       ARRAS_DESCRICAO:           arrasDescricao,
       ARRAS_VENCIMENTOS:         arrasVencimentos,
-      SALDO_VALOR_INICIO:        '___________________ ',
-      SALDO_PARCELAS:            '___________________',
+      SALDO_VALOR_INICIO:        saldoValorInicio,
+      SALDO_PARCELAS:            saldoParcelasTexto,
       SALDO_COMPLEMENTO:         '___________________',
-      SALDO_COMPLEMENTO_TABELA:  '___________________(ou através de depósito bancário, na conta ',
+      SALDO_COMPLEMENTO_TABELA:  saldoParcelasTexto !== '___________________' ? `${saldoParcelasTexto} (ou através de ` : '___________________(ou através de depósito bancário, na conta ',
+      DADOS_BANCARIOS:           dadosBancarios,
       INTERCALADAS_DESCRICAO:    '___________________',
       CORRETOR_NOME:             corretorNome,
       CORRETOR_COMISSAO:         corretorComissao,
       DATA_VENDA:                fmtDataExtenso(venda.data_venda),
     };
 
-    const tplPath = path.join(__dirname, 'templates', 'belvedere-compra-venda.docx');
+    const tplPath = path.join(__dirname, 'templates', 'template-loteamento.docx');
     const content = fs.readFileSync(tplPath, 'binary');
     const zip = new PizZip(content);
     const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
@@ -826,16 +873,25 @@ app.get("/api/vendas/:id/contrato-vertical", autenticar, (req, res) => {
       } catch(_) {}
     }
     const letters = ['A','B','C','D','E','F'];
-    const pagtoRows = todasParcelas.slice(0, 6).map((p, i) => ({
-      letter: letters[i],
-      titulo: p.titulo || `Parcela ${i + 1}`,
-      vencimento: p.vencimento ? new Date(p.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '___',
-      qtd: String(p.qtd || 1),
-      valor: p.valor ? `R$ ${fmtMoeda(p.valor)}` : '___',
-    }));
+    const pagtoRows = todasParcelas.slice(0, 6).map((p, i) => {
+      // Monta string de encargos: correção + juros + forma de pagamento
+      const partes = [];
+      if (p.correcao && p.correcao !== 'Sem Correção') partes.push(p.correcao);
+      if (p.juros && p.juros !== 'Sem Juros') partes.push(`juros ${p.juros}`);
+      if (p.forma_pagamento) partes.push(p.forma_pagamento);
+      const encargos = partes.length > 0 ? partes.join(' · ') : 'Sem encargos';
+      return {
+        letter: letters[i],
+        titulo: p.titulo || `Parcela ${i + 1}`,
+        vencimento: p.vencimento ? new Date(p.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '___',
+        qtd: String(p.qtd || 1),
+        valor: p.valor ? `R$ ${fmtMoeda(p.valor)}` : '___',
+        encargos,
+      };
+    });
     while (pagtoRows.length < 6) {
       const i = pagtoRows.length;
-      pagtoRows.push({ letter: letters[i], titulo: '___', vencimento: '___', qtd: '___', valor: '___' });
+      pagtoRows.push({ letter: letters[i], titulo: '___', vencimento: '___', qtd: '___', valor: '___', encargos: '___' });
     }
 
     // Corretor
@@ -893,7 +949,7 @@ app.get("/api/vendas/:id/contrato-vertical", autenticar, (req, res) => {
     const path = require('path');
     const fs = require('fs');
 
-    const templatePath = path.join(__dirname, 'templates', 'oslo-compra-venda.docx');
+    const templatePath = path.join(__dirname, 'templates', 'template-vertical.docx');
     const content = fs.readFileSync(templatePath, 'binary');
     const zip = new PizZip(content);
     const doct = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
@@ -914,12 +970,12 @@ app.get("/api/vendas/:id/contrato-vertical", autenticar, (req, res) => {
       VALOR_TOTAL: valorTotalFmt,
       VALOR_TOTAL_EXTENSO: valorTotalExtenso,
       VALOR_CUB: cubStr,
-      PAGTO_A_TITULO: pagtoRows[0].titulo, PAGTO_A_VENCIMENTO: pagtoRows[0].vencimento, PAGTO_A_QTD: pagtoRows[0].qtd, PAGTO_A_VALOR: pagtoRows[0].valor,
-      PAGTO_B_TITULO: pagtoRows[1].titulo, PAGTO_B_VENCIMENTO: pagtoRows[1].vencimento, PAGTO_B_QTD: pagtoRows[1].qtd, PAGTO_B_VALOR: pagtoRows[1].valor,
-      PAGTO_C_TITULO: pagtoRows[2].titulo, PAGTO_C_VENCIMENTO: pagtoRows[2].vencimento, PAGTO_C_QTD: pagtoRows[2].qtd, PAGTO_C_VALOR: pagtoRows[2].valor,
-      PAGTO_D_TITULO: pagtoRows[3].titulo, PAGTO_D_VENCIMENTO: pagtoRows[3].vencimento, PAGTO_D_QTD: pagtoRows[3].qtd, PAGTO_D_VALOR: pagtoRows[3].valor,
-      PAGTO_E_TITULO: pagtoRows[4].titulo, PAGTO_E_VENCIMENTO: pagtoRows[4].vencimento, PAGTO_E_QTD: pagtoRows[4].qtd, PAGTO_E_VALOR: pagtoRows[4].valor,
-      PAGTO_F_TITULO: pagtoRows[5].titulo, PAGTO_F_VENCIMENTO: pagtoRows[5].vencimento, PAGTO_F_QTD: pagtoRows[5].qtd, PAGTO_F_VALOR: pagtoRows[5].valor,
+      PAGTO_A_TITULO: pagtoRows[0].titulo, PAGTO_A_VENCIMENTO: pagtoRows[0].vencimento, PAGTO_A_QTD: pagtoRows[0].qtd, PAGTO_A_VALOR: pagtoRows[0].valor, PAGTO_A_ENCARGOS: pagtoRows[0].encargos,
+      PAGTO_B_TITULO: pagtoRows[1].titulo, PAGTO_B_VENCIMENTO: pagtoRows[1].vencimento, PAGTO_B_QTD: pagtoRows[1].qtd, PAGTO_B_VALOR: pagtoRows[1].valor, PAGTO_B_ENCARGOS: pagtoRows[1].encargos,
+      PAGTO_C_TITULO: pagtoRows[2].titulo, PAGTO_C_VENCIMENTO: pagtoRows[2].vencimento, PAGTO_C_QTD: pagtoRows[2].qtd, PAGTO_C_VALOR: pagtoRows[2].valor, PAGTO_C_ENCARGOS: pagtoRows[2].encargos,
+      PAGTO_D_TITULO: pagtoRows[3].titulo, PAGTO_D_VENCIMENTO: pagtoRows[3].vencimento, PAGTO_D_QTD: pagtoRows[3].qtd, PAGTO_D_VALOR: pagtoRows[3].valor, PAGTO_D_ENCARGOS: pagtoRows[3].encargos,
+      PAGTO_E_TITULO: pagtoRows[4].titulo, PAGTO_E_VENCIMENTO: pagtoRows[4].vencimento, PAGTO_E_QTD: pagtoRows[4].qtd, PAGTO_E_VALOR: pagtoRows[4].valor, PAGTO_E_ENCARGOS: pagtoRows[4].encargos,
+      PAGTO_F_TITULO: pagtoRows[5].titulo, PAGTO_F_VENCIMENTO: pagtoRows[5].vencimento, PAGTO_F_QTD: pagtoRows[5].qtd, PAGTO_F_VALOR: pagtoRows[5].valor, PAGTO_F_ENCARGOS: pagtoRows[5].encargos,
       PAGTO_CORRECAO: 'CUB/SC',
       PAGTO_OBSERVACOES: '___________________',
       CORRETOR_IDENTIFICACAO: corretorIdent,
