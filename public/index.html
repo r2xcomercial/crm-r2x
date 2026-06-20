@@ -997,6 +997,47 @@ function openLeadModal(lead = {}) {
       <div class="form-group"><label>Aniversário</label><input id="f-aniv" type="date" value="${lead.aniversario||''}"></div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${lead.observacoes||''}</textarea></div>
     </div>
+
+    <div style="margin-top:18px">
+      <button type="button" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('span').textContent=this.nextElementSibling.style.display==='none'?'▶':'▼'" style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px;padding:0">
+        <span>${(lead.cpf||lead.rg||lead.estado_civil||lead.profissao||lead.endereco)?'▼':'▶'}</span> 📄 Dados para Contrato
+      </button>
+      <div style="display:${(lead.cpf||lead.rg||lead.estado_civil||lead.profissao||lead.endereco)?'block':'none'}">
+        <div class="form-grid" style="margin-top:12px">
+          <div class="form-group"><label>CPF</label><input id="f-cpf" value="${lead.cpf||''}" placeholder="000.000.000-00"></div>
+          <div class="form-group"><label>RG</label><input id="f-rg" value="${lead.rg||''}" placeholder="00.000.000-0"></div>
+          <div class="form-group"><label>Estado Civil</label>
+            <select id="f-estado-civil">
+              <option value="">—</option>
+              ${['solteiro','casado','divorciado','viuvo','uniao_estavel'].map(v=>\`<option value="\${v}" \${lead.estado_civil===v?'selected':''}>\${{solteiro:'Solteiro(a)',casado:'Casado(a)',divorciado:'Divorciado(a)',viuvo:'Viúvo(a)',uniao_estavel:'União Estável'}[v]}</option>\`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label>Profissão</label><input id="f-profissao" value="${lead.profissao||''}" placeholder="ex: Empresário"></div>
+          <div class="form-group"><label>Nome do Pai</label><input id="f-nome-pai" value="${lead.nome_pai||''}"></div>
+          <div class="form-group"><label>Nome da Mãe</label><input id="f-nome-mae" value="${lead.nome_mae||''}"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px;font-weight:600">📍 Endereço</div>
+        <div class="form-grid">
+          <div class="form-group span2"><label>Logradouro</label><input id="f-endereco" value="${lead.endereco||''}" placeholder="Rua, Avenida, etc."></div>
+          <div class="form-group"><label>Número</label><input id="f-numero" value="${lead.numero||''}"></div>
+          <div class="form-group"><label>Complemento</label><input id="f-complemento" value="${lead.complemento||''}" placeholder="Apto, Bloco..."></div>
+          <div class="form-group"><label>Bairro</label><input id="f-bairro" value="${lead.bairro||''}"></div>
+          <div class="form-group"><label>CEP</label><input id="f-cep" value="${lead.cep||''}" placeholder="00000-000" onblur="buscarCepLead(this.value)"></div>
+          <div class="form-group"><label>Cidade</label><input id="f-cidade-end" value="${lead.cidade||''}"></div>
+          <div class="form-group"><label>Estado (UF)</label>
+            <select id="f-estado-uf">
+              <option value="">—</option>
+              ${['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map(uf=>\`<option value="\${uf}" \${(lead.estado||'').toUpperCase()===uf?'selected':''}>\${uf}</option>\`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px;font-weight:600">👥 Compradores Adicionais <span style="text-transform:none;font-weight:400;font-size:10px">(cônjuge, sócio, condomínio)</span></div>
+        <div id="compradores-list" style="display:flex;flex-direction:column;gap:10px"></div>
+        <button type="button" onclick="adicionarComprador()" style="margin-top:8px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600">➕ Adicionar comprador</button>
+      </div>
+    </div>
+
     ${lead.telefone ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📱 Ação Rápida WhatsApp</div>
       <a href="https://wa.me/55${(lead.telefone||'').replace(/\D/g,'')}" target="_blank"
@@ -1041,13 +1082,143 @@ function openLeadModal(lead = {}) {
     const statusSelecionado = v('f-status');
     // Auto-move: se corretor foi atribuído e status ainda é 'novo', vai para com_corretor
     const statusFinal = (corretorId && statusSelecionado === 'novo') ? 'com_corretor' : statusSelecionado;
-    const body = { nome: v('f-nome'), telefone: v('f-tel'), email: v('f-email'), cidade: v('f-cidade'), objetivo: v('f-obj'), faixa_investimento: v('f-faixa'), prazo: v('f-prazo'), status: statusFinal, corretor_id: corretorId, empreendimento_id: v('f-emp')||null, aniversario: v('f-aniv')||null, observacoes: v('f-obs'), tipo: tipoLead, creci: tipoLead==='corretor' ? (v('f-creci')||null) : null, imobiliaria: tipoLead==='corretor' ? (v('f-imob')||null) : null };
+    const cidadeEnd = v('f-cidade-end');
+    const body = {
+      nome: v('f-nome'), telefone: v('f-tel'), email: v('f-email'),
+      cidade: cidadeEnd || v('f-cidade'),
+      objetivo: v('f-obj'), faixa_investimento: v('f-faixa'), prazo: v('f-prazo'),
+      status: statusFinal, corretor_id: corretorId, empreendimento_id: v('f-emp')||null,
+      aniversario: v('f-aniv')||null, observacoes: v('f-obs'), tipo: tipoLead,
+      creci: tipoLead==='corretor' ? (v('f-creci')||null) : null,
+      imobiliaria: tipoLead==='corretor' ? (v('f-imob')||null) : null,
+      cpf: v('f-cpf')||null, rg: v('f-rg')||null,
+      estado_civil: v('f-estado-civil')||null, profissao: v('f-profissao')||null,
+      nome_pai: v('f-nome-pai')||null, nome_mae: v('f-nome-mae')||null,
+      endereco: v('f-endereco')||null, numero: v('f-numero')||null,
+      complemento: v('f-complemento')||null, bairro: v('f-bairro')||null,
+      cep: v('f-cep')||null, estado: v('f-estado-uf')||null
+    };
     const r = lead.id ? await put(`/api/leads/${lead.id}`, body) : await post('/api/leads', body);
     if (!r.ok) return toast(r.error, 'error');
+    const leadId = lead.id || r.id;
+    // Salva compradores adicionais
+    await salvarCompradores(leadId, lead.id ? true : false);
     toast(lead.id ? 'Lead atualizado!' : 'Lead criado!');
     closeModal(); if (currentPage === 'kanban') renderKanban(); else renderLeads();
   });
-  if (lead.id) { carregarTimeline(lead.id); carregarVisitas(lead.id); }
+  if (lead.id) { carregarTimeline(lead.id); carregarVisitas(lead.id); carregarCompradores(lead.id); }
+}
+
+async function buscarCepLead(cep) {
+  if (!cep) return;
+  const c = cep.replace(/\D/g,'');
+  if (c.length !== 8) return;
+  try {
+    const d = await fetch(`https://viacep.com.br/ws/${c}/json/`).then(r=>r.json());
+    if (d.erro) return;
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+    set('f-endereco', d.logradouro);
+    set('f-bairro', d.bairro);
+    set('f-cidade-end', d.localidade);
+    const uf = document.getElementById('f-estado-uf');
+    if (uf && d.uf) uf.value = d.uf;
+  } catch(_) {}
+}
+
+let _compradoresOriginais = [];
+
+async function carregarCompradores(leadId) {
+  const lista = document.getElementById('compradores-list');
+  if (!lista) return;
+  const data = await get(`/api/leads/${leadId}/compradores`);
+  _compradoresOriginais = data.ok ? data.data : [];
+  lista.innerHTML = '';
+  for (const c of _compradoresOriginais) renderCompradorCard(c);
+}
+
+function renderCompradorCard(c = {}) {
+  const lista = document.getElementById('compradores-list');
+  if (!lista) return;
+  const idx = Date.now() + Math.random();
+  const tipos = {conjuge:'Cônjuge',socio:'Sócio',condominio:'Cond. Comprador'};
+  const div = document.createElement('div');
+  div.dataset.compradorId = c.id || '';
+  div.style.cssText = 'background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:12px';
+  div.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <select class="cp-tipo" style="font-size:12px;padding:4px 8px;border-radius:6px;background:var(--navy2);border:1px solid var(--border);color:var(--text)">
+        ${Object.entries(tipos).map(([v,l])=>`<option value="${v}" ${c.tipo===v?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <button type="button" onclick="this.closest('[data-comprador-id]').remove()" style="margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px">✕</button>
+    </div>
+    <div class="form-grid">
+      <div class="form-group span2"><label>Nome completo</label><input class="cp-nome" value="${c.nome||''}"></div>
+      <div class="form-group"><label>CPF</label><input class="cp-cpf" value="${c.cpf||''}" placeholder="000.000.000-00"></div>
+      <div class="form-group"><label>RG</label><input class="cp-rg" value="${c.rg||''}"></div>
+      <div class="form-group"><label>Estado Civil</label>
+        <select class="cp-estado-civil">
+          <option value="">—</option>
+          ${['solteiro','casado','divorciado','viuvo','uniao_estavel'].map(v=>`<option value="${v}" ${c.estado_civil===v?'selected':''}>${{solteiro:'Solteiro(a)',casado:'Casado(a)',divorciado:'Divorciado(a)',viuvo:'Viúvo(a)',uniao_estavel:'União Estável'}[v]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Profissão</label><input class="cp-profissao" value="${c.profissao||''}"></div>
+      <div class="form-group"><label>Telefone</label><input class="cp-tel" value="${c.telefone||''}"></div>
+      <div class="form-group"><label>Email</label><input class="cp-email" value="${c.email||''}"></div>
+      <div class="form-group span2"><label>Endereço</label><input class="cp-end" value="${c.endereco||''}"></div>
+      <div class="form-group"><label>Nº</label><input class="cp-num" value="${c.numero||''}"></div>
+      <div class="form-group"><label>Complemento</label><input class="cp-comp" value="${c.complemento||''}"></div>
+      <div class="form-group"><label>Bairro</label><input class="cp-bairro" value="${c.bairro||''}"></div>
+      <div class="form-group"><label>CEP</label><input class="cp-cep" value="${c.cep||''}"></div>
+      <div class="form-group"><label>Cidade</label><input class="cp-cidade" value="${c.cidade||''}"></div>
+      <div class="form-group"><label>UF</label><input class="cp-uf" value="${c.estado||''}" maxlength="2" style="text-transform:uppercase"></div>
+      <div class="form-group"><label>Nome do Pai</label><input class="cp-pai" value="${c.nome_pai||''}"></div>
+      <div class="form-group"><label>Nome da Mãe</label><input class="cp-mae" value="${c.nome_mae||''}"></div>
+    </div>`;
+  lista.appendChild(div);
+}
+
+function adicionarComprador() {
+  renderCompradorCard({});
+}
+
+async function salvarCompradores(leadId, isEdit) {
+  const lista = document.getElementById('compradores-list');
+  if (!lista) return;
+  const cards = lista.querySelectorAll('[data-comprador-id]');
+  const idsExistentes = new Set([..._compradoresOriginais.map(c=>String(c.id))]);
+  const idsNoModal = new Set();
+  for (const card of cards) {
+    const cid = card.dataset.compradorId;
+    if (cid) idsNoModal.add(cid);
+    const body = {
+      tipo: card.querySelector('.cp-tipo')?.value || 'conjuge',
+      nome: card.querySelector('.cp-nome')?.value || null,
+      cpf: card.querySelector('.cp-cpf')?.value || null,
+      rg: card.querySelector('.cp-rg')?.value || null,
+      estado_civil: card.querySelector('.cp-estado-civil')?.value || null,
+      profissao: card.querySelector('.cp-profissao')?.value || null,
+      telefone: card.querySelector('.cp-tel')?.value || null,
+      email: card.querySelector('.cp-email')?.value || null,
+      endereco: card.querySelector('.cp-end')?.value || null,
+      numero: card.querySelector('.cp-num')?.value || null,
+      complemento: card.querySelector('.cp-comp')?.value || null,
+      bairro: card.querySelector('.cp-bairro')?.value || null,
+      cep: card.querySelector('.cp-cep')?.value || null,
+      cidade: card.querySelector('.cp-cidade')?.value || null,
+      estado: card.querySelector('.cp-uf')?.value || null,
+      nome_pai: card.querySelector('.cp-pai')?.value || null,
+      nome_mae: card.querySelector('.cp-mae')?.value || null
+    };
+    if (!body.nome) continue;
+    if (cid) await put(`/api/leads/${leadId}/compradores/${cid}`, body);
+    else await post(`/api/leads/${leadId}/compradores`, body);
+  }
+  // Remove os que foram deletados do modal
+  for (const orig of _compradoresOriginais) {
+    if (!idsNoModal.has(String(orig.id))) {
+      await del(`/api/leads/${leadId}/compradores/${orig.id}`);
+    }
+  }
 }
 
 function toggleLeadSelect(id, tipo) {

@@ -667,8 +667,8 @@ app.get("/api/leads", (req, res) => {
 });
 
 app.post("/api/leads", (req, res) => {
-  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, origem, observacoes, aniversario, tipo, creci, imobiliaria } = req.body;
-  const r = db.prepare(`INSERT INTO leads (nome,telefone,email,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,empreendimento_id,corretor_id,status,origem,observacoes,aniversario,tipo,creci,imobiliaria) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status || 'novo', origem || 'manual', observacoes, aniversario||null, tipo||null, creci||null, imobiliaria||null);
+  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, origem, observacoes, aniversario, tipo, creci, imobiliaria, cpf, rg, estado_civil, profissao, nome_pai, nome_mae, endereco, numero, complemento, bairro, cep, estado } = req.body;
+  const r = db.prepare(`INSERT INTO leads (nome,telefone,email,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,empreendimento_id,corretor_id,status,origem,observacoes,aniversario,tipo,creci,imobiliaria,cpf,rg,estado_civil,profissao,nome_pai,nome_mae,endereco,numero,complemento,bairro,cep,estado) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status || 'novo', origem || 'manual', observacoes, aniversario||null, tipo||null, creci||null, imobiliaria||null, cpf||null, rg||null, estado_civil||null, profissao||null, nome_pai||null, nome_mae||null, endereco||null, numero||null, complemento||null, bairro||null, cep||null, estado||null);
   ok(res, { id: r.lastInsertRowid });
 });
 
@@ -688,13 +688,16 @@ app.put("/api/leads/:id", (req, res) => {
   let novoScore = val('score', lead.score);
   if (novoStatus === 'vendido') novoScore = 100;
   else if (novoScore >= 100) novoScore = 90;
-  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,score=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(
+  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,score=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,cpf=?,rg=?,estado_civil=?,profissao=?,nome_pai=?,nome_mae=?,endereco=?,numero=?,complemento=?,bairro=?,cep=?,estado=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(
     val('nome', null), val('telefone', null), val('email', null), val('cidade', null),
     val('objetivo', null), val('faixa_investimento', null), val('prazo', null),
     // Se empreendimento_id foi fornecido, limpa o campo texto livre
     'empreendimento_id' in b && b.empreendimento_id ? null : val('empreendimento_interesse', null), val('empreendimento_id', null),
     corretor_id, novoStatus, novoScore, val('observacoes', null),
     val('aniversario', null), val('tipo', null), val('creci', null), val('imobiliaria', null),
+    val('cpf', null), val('rg', null), val('estado_civil', null), val('profissao', null),
+    val('nome_pai', null), val('nome_mae', null), val('endereco', null), val('numero', null),
+    val('complemento', null), val('bairro', null), val('cep', null), val('estado', null),
     req.params.id
   );
   ok(res, {});
@@ -702,6 +705,28 @@ app.put("/api/leads/:id", (req, res) => {
 
 app.delete("/api/leads/:id", (req, res) => {
   db.prepare("DELETE FROM leads WHERE id=?").run(req.params.id);
+  ok(res, {});
+});
+
+// Compradores adicionais (cônjuge, sócio, condomínio)
+app.get("/api/leads/:id/compradores", autenticar, (req, res) => {
+  ok(res, db.prepare("SELECT * FROM lead_compradores WHERE lead_id=? ORDER BY id").all(req.params.id));
+});
+
+app.post("/api/leads/:id/compradores", autenticar, (req, res) => {
+  const { tipo, nome, cpf, rg, estado_civil, profissao, endereco, numero, complemento, bairro, cep, cidade, estado, email, telefone, nome_pai, nome_mae } = req.body;
+  const r = db.prepare(`INSERT INTO lead_compradores (lead_id,tipo,nome,cpf,rg,estado_civil,profissao,endereco,numero,complemento,bairro,cep,cidade,estado,email,telefone,nome_pai,nome_mae) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(req.params.id, tipo||'conjuge', nome||null, cpf||null, rg||null, estado_civil||null, profissao||null, endereco||null, numero||null, complemento||null, bairro||null, cep||null, cidade||null, estado||null, email||null, telefone||null, nome_pai||null, nome_mae||null);
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.put("/api/leads/:leadId/compradores/:id", autenticar, (req, res) => {
+  const { tipo, nome, cpf, rg, estado_civil, profissao, endereco, numero, complemento, bairro, cep, cidade, estado, email, telefone, nome_pai, nome_mae } = req.body;
+  db.prepare(`UPDATE lead_compradores SET tipo=?,nome=?,cpf=?,rg=?,estado_civil=?,profissao=?,endereco=?,numero=?,complemento=?,bairro=?,cep=?,cidade=?,estado=?,email=?,telefone=?,nome_pai=?,nome_mae=? WHERE id=? AND lead_id=?`).run(tipo||'conjuge', nome||null, cpf||null, rg||null, estado_civil||null, profissao||null, endereco||null, numero||null, complemento||null, bairro||null, cep||null, cidade||null, estado||null, email||null, telefone||null, nome_pai||null, nome_mae||null, req.params.id, req.params.leadId);
+  ok(res, {});
+});
+
+app.delete("/api/leads/:leadId/compradores/:id", autenticar, (req, res) => {
+  db.prepare("DELETE FROM lead_compradores WHERE id=? AND lead_id=?").run(req.params.id, req.params.leadId);
   ok(res, {});
 });
 
@@ -1963,6 +1988,44 @@ db.exec(`CREATE TABLE IF NOT EXISTS venda_unidades (
 // Migra unidade_id existentes para a junction table (ignora se já existir)
 db.exec(`INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id)
   SELECT id, unidade_id FROM vendas WHERE unidade_id IS NOT NULL`);
+
+// Migration: dados pessoais do lead para geração de contrato
+try { db.exec('ALTER TABLE leads ADD COLUMN cpf TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN estado_civil TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN profissao TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN nome_pai TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN nome_mae TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN rg TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN endereco TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN numero TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN complemento TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN bairro TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN cep TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN estado TEXT'); } catch(_) {}
+
+// Tabela de compradores adicionais (cônjuge, sócio, condomínio)
+db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+  tipo TEXT NOT NULL DEFAULT 'conjuge',
+  nome TEXT,
+  cpf TEXT,
+  rg TEXT,
+  estado_civil TEXT,
+  profissao TEXT,
+  endereco TEXT,
+  numero TEXT,
+  complemento TEXT,
+  bairro TEXT,
+  cep TEXT,
+  cidade TEXT,
+  estado TEXT,
+  email TEXT,
+  telefone TEXT,
+  nome_pai TEXT,
+  nome_mae TEXT,
+  criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
 
 // Upload JPEG/PNG do mapa de vendas — armazenado como data URL base64
 app.post('/api/empreendimentos/:id/mapa', upload.single('arquivo'), (req, res) => {
