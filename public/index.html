@@ -5937,7 +5937,7 @@ async function verEspelhoImagem(empId, emp, mapaData) {
 
     <div id="mapa-instrucao" style="display:none;background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.3);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:13px">
       <strong style="color:var(--accent)">Modo Posicionamento:</strong>
-      <span id="instrucao-texto">Clique em uma unidade da lista ao lado, depois clique no mapa para posicioná-la.</span>
+      <span id="instrucao-texto">Selecione uma unidade na lista ou arraste direto no mapa.</span>
     </div>
 
     <div style="display:flex;gap:14px;align-items:flex-start">
@@ -5978,7 +5978,7 @@ async function verEspelhoImagem(empId, emp, mapaData) {
   _mapaZoomLevel = 1;
   renderMarkers();
 
-  // Click para posicionar unidades (no mapa-zoom-wrap para pegar scroll também)
+  // Click para posicionar unidades
   document.getElementById('mapa-zoom-wrap').addEventListener('click', onMapaClick);
 
   // Zoom com scroll do mouse
@@ -5987,6 +5987,28 @@ async function verEspelhoImagem(empId, emp, mapaData) {
     const delta = e.deltaY < 0 ? 0.15 : -0.15;
     mapaZoom(delta);
   }, { passive: false });
+
+  // Drag & drop — arrastar chips da lista ou marcadores existentes para o mapa
+  const inner = document.getElementById('mapa-inner');
+  inner.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+  inner.addEventListener('drop', e => {
+    e.preventDefault();
+    const uid = parseInt(e.dataTransfer.getData('uid'));
+    if (!uid || !_modoPosiconar) return;
+    const rect = inner.getBoundingClientRect();
+    const x = parseFloat(((e.clientX - rect.left) / rect.width  * 100).toFixed(2));
+    const y = parseFloat(((e.clientY - rect.top)  / rect.height * 100).toFixed(2));
+    _posicoes[uid] = { x, y };
+    // Avança para próxima sem posição
+    const semPos = Object.values(_mapaUnits).filter(u => !_posicoes[u.id]);
+    _unitAtiva = semPos[0]?.id ?? null;
+    renderMarkers();
+    atualizarListaSemPos();
+    const instr = document.getElementById('instrucao-texto');
+    if (instr) instr.textContent = _unitAtiva
+      ? `Agora posicione: ${_mapaUnits[_unitAtiva]?.lote || _unitAtiva}`
+      : 'Todas posicionadas! Clique em 💾 Salvar Posições.';
+  });
 }
 
 // Função de zoom do mapa — escala o mapa-inner dentro do scroll container
@@ -5996,6 +6018,7 @@ function mapaZoom(delta) {
   if (inner) inner.style.width = (_mapaZoomLevel * 100) + '%';
   const pct = document.getElementById('mapa-zoom-pct');
   if (pct) pct.textContent = Math.round(_mapaZoomLevel * 100) + '%';
+  renderMarkers();
 }
 
 function renderMarkers() {
@@ -6005,11 +6028,14 @@ function renderMarkers() {
   if (!img.complete) { img.onload = renderMarkers; return; }
 
   const statusColors = {
-    disponivel: 'rgba(34,197,94,.65)',
-    reservado:  'rgba(245,158,11,.75)',
-    vendido:    'rgba(239,68,68,.8)',
+    disponivel: 'rgba(34,197,94,.7)',
+    reservado:  'rgba(245,158,11,.8)',
+    vendido:    'rgba(239,68,68,.85)',
   };
   const borderColors = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#ef4444' };
+
+  const sz = Math.round(Math.max(22, Math.min(64, 34 * _mapaZoomLevel)));
+  const fs = Math.round(Math.max(7,  Math.min(15, 10 * _mapaZoomLevel)));
 
   wrap.innerHTML = Object.entries(_posicoes).map(([idStr, pos]) => {
     const id = parseInt(idStr);
@@ -6020,30 +6046,38 @@ function renderMarkers() {
     const isAtivo = _unitAtiva === id;
     return `<div
       data-uid="${id}"
-      onclick="onMarkerClick(event, ${id})"
+      draggable="true"
+      ondragstart="onMarkerDragStart(event,${id})"
+      onclick="onMarkerClick(event,${id})"
       style="
         position:absolute;
-        left:calc(${pos.x}% - 18px);
-        top:calc(${pos.y}% - 18px);
-        width:36px;height:36px;
+        left:calc(${pos.x}% - ${sz/2}px);
+        top:calc(${pos.y}% - ${sz/2}px);
+        width:${sz}px;height:${sz}px;
         border-radius:50%;
         background:${cor};
         border:2px solid ${brd};
         display:flex;align-items:center;justify-content:center;
-        font-size:10px;font-weight:700;color:#fff;
-        cursor:pointer;pointer-events:all;
-        box-shadow:${isAtivo ? '0 0 0 4px var(--accent)' : '0 2px 6px rgba(0,0,0,.4)'};
-        transition:transform .12s;
+        font-size:${fs}px;font-weight:700;color:#fff;
+        cursor:${_modoPosiconar?'grab':'pointer'};pointer-events:all;
+        box-shadow:${isAtivo ? '0 0 0 3px var(--accent),0 2px 8px rgba(0,0,0,.5)' : '0 2px 6px rgba(0,0,0,.45)'};
         user-select:none;
-        text-shadow:0 1px 2px rgba(0,0,0,.6);
+        text-shadow:0 1px 2px rgba(0,0,0,.7);
         white-space:nowrap;overflow:hidden;
         text-overflow:ellipsis;
-        line-height:1;
-        padding:2px;
+        line-height:1;padding:2px;
       "
       title="${u.quadra ? `Qd ${u.quadra} - ` : ''}${u.lote}${u.area_m2 ? ` · ${u.area_m2}m²` : ''}${u.preco ? ` · ${fmtPlain(u.preco)}` : ''}"
     >${u.lote}</div>`;
   }).join('');
+}
+
+function onMarkerDragStart(e, uid) {
+  e.dataTransfer.setData('uid', String(uid));
+  e.dataTransfer.effectAllowed = 'move';
+  _unitAtiva = uid;
+  renderMarkers();
+  atualizarListaSemPos();
 }
 
 function onMarkerClick(evt, uid) {
@@ -6084,10 +6118,10 @@ function onMapaClick(evt) {
   atualizarListaSemPos();
   if (_unitAtiva) {
     document.getElementById('instrucao-texto').textContent =
-      `Agora clique no mapa para posicionar: ${_mapaUnits[_unitAtiva]?.lote || _unitAtiva}`;
+      `Agora posicione: ${_mapaUnits[_unitAtiva]?.lote || _unitAtiva}`;
   } else {
     document.getElementById('instrucao-texto').textContent =
-      'Todas as unidades posicionadas! Clique em 💾 Salvar Posições.';
+      'Todas posicionadas! Clique em 💾 Salvar Posições.';
   }
 }
 
@@ -6110,7 +6144,7 @@ function toggleModoPosiconar(empId) {
     _unitAtiva = semPos[0]?.id ?? null;
     if (_unitAtiva) {
       document.getElementById('instrucao-texto').textContent =
-        `Clique no mapa para posicionar: ${_mapaUnits[_unitAtiva]?.lote || _unitAtiva}`;
+        `Arraste ou clique no mapa para posicionar: ${_mapaUnits[_unitAtiva]?.lote || _unitAtiva}`;
     }
   } else {
     btn.textContent = '📍 Posicionar Unidades';
@@ -6135,16 +6169,19 @@ function atualizarListaSemPos() {
     const temPos  = !!_posicoes[u.id];
     const isAtivo = _unitAtiva === u.id;
     const statusColor = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#f87171' };
-    return `<div onclick="_unitAtiva=${u.id};renderMarkers();atualizarListaSemPos();document.getElementById('instrucao-texto').textContent='Clique no mapa: ${u.lote}'" style="
-      display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;margin-bottom:3px;
-      background:${isAtivo ? 'rgba(0,196,180,.15)' : 'transparent'};
-      border:1px solid ${isAtivo ? 'var(--accent)' : 'transparent'};
-    ">
+    const lbl = `${u.quadra ? `Qd${u.quadra} - ` : ''}${u.lote}`;
+    return `<div
+      draggable="true"
+      ondragstart="event.dataTransfer.setData('uid',String(${u.id}));event.dataTransfer.effectAllowed='move';_unitAtiva=${u.id};renderMarkers();atualizarListaSemPos()"
+      onclick="_unitAtiva=${u.id};renderMarkers();atualizarListaSemPos();document.getElementById('instrucao-texto').textContent='Arraste ou clique no mapa: ${lbl.replace(/'/g,"\\'")}'"
+      style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:grab;margin-bottom:3px;
+        background:${isAtivo ? 'rgba(0,196,180,.15)' : 'transparent'};
+        border:1px solid ${isAtivo ? 'var(--accent)' : 'transparent'};">
       <span style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${statusColor[u.status]||'#64748b'};border:${temPos?'2px solid #fff':'1px dashed #64748b'}"></span>
       <span style="font-size:12px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:${isAtivo?'var(--accent)':'var(--text)'}">
-        ${u.quadra ? `Qd${u.quadra} - ` : ''}${u.lote}
+        ${lbl}
       </span>
-      ${temPos ? '<span style="font-size:10px;color:var(--success)">✓</span>' : '<span style="font-size:10px;color:var(--text2)">—</span>'}
+      ${temPos ? '<span style="font-size:10px;color:var(--success)">✓</span>' : '<span style="font-size:10px;color:var(--text2)">⠿</span>'}
     </div>`;
   }).join('');
 }
@@ -6256,8 +6293,8 @@ async function verEspelho(empId) {
     </div>
 
     <!-- Grid do espelho -->
-    <div id="espelho-corpo" data-empid="${empId}" data-lblb="${lblB}" data-lbla="${lblA}">
-      ${renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId)}
+    <div id="espelho-corpo" data-empid="${empId}" data-lblb="${lblB}" data-lbla="${lblA}" data-tipo="${emp.tipo||'loteamento'}">
+      ${isPredio ? renderEspelhoPredio(grupoKeys, grupos, empId) : renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId)}
     </div>
   `;
 }
@@ -6298,14 +6335,86 @@ function renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId) {
   }).join('');
 }
 
+function renderEspelhoPredio(grupoKeys, grupos, empId) {
+  if (!grupoKeys.length) return '<div style="color:var(--text2);padding:32px;text-align:center">Nenhuma unidade importada para este empreendimento</div>';
+
+  // Todos os apartamentos únicos (para alinhar colunas entre andares)
+  const aptoSet = new Set();
+  grupoKeys.forEach(g => grupos[g].forEach(u => aptoSet.add(u.lote)));
+  const aptoCols = [...aptoSet].sort((a, b) => {
+    const na = parseFloat(a), nb = parseFloat(b);
+    return (!isNaN(na) && !isNaN(nb)) ? na - nb : (a||'').localeCompare(b||'', 'pt-BR', {numeric:true});
+  });
+
+  const stBg  = { disponivel:'rgba(34,197,94,.13)',  reservado:'rgba(245,158,11,.13)',  vendido:'rgba(239,68,68,.13)'  };
+  const stBdr = { disponivel:'rgba(34,197,94,.5)',   reservado:'rgba(245,158,11,.5)',   vendido:'rgba(239,68,68,.5)'   };
+  const stClr = { disponivel:'#4ade80',              reservado:'#fbbf24',               vendido:'#f87171'              };
+
+  const thead = `<tr>
+    <th style="min-width:96px;padding:0 14px 8px 0"></th>
+    ${aptoCols.map(lbl => `<th style="font-size:10px;font-weight:600;color:var(--text2);padding:0 4px 8px;text-align:center;min-width:76px">${lbl}</th>`).join('')}
+  </tr>`;
+
+  const rows = grupoKeys.map(g => {
+    const byLote = {};
+    grupos[g].forEach(u => { byLote[u.lote] = u; });
+    const cntG = { d: grupos[g].filter(u=>u.status==='disponivel').length, r: grupos[g].filter(u=>u.status==='reservado').length, v: grupos[g].filter(u=>u.status==='vendido').length };
+    const andLabel = !isNaN(parseFloat(g)) ? `${parseFloat(g)}º` : g;
+
+    const cells = aptoCols.map(lbl => {
+      const u = byLote[lbl];
+      if (!u) return `<td style="padding:3px 4px"><div style="min-width:76px;height:56px"></div></td>`;
+      return `<td style="padding:3px 4px">
+        <div onclick="abrirUnidade(${u.id},${empId})"
+          onmouseover="this.style.filter='brightness(1.2)'" onmouseout="this.style.filter=''"
+          title="Apto ${u.lote}${u.area_m2?' · '+u.area_m2+'m²':''}${u.preco?' · '+fmtPlain(u.preco):''}${u.tipologia?' · '+u.tipologia:''}"
+          style="cursor:pointer;border-radius:7px;padding:8px 4px;text-align:center;min-width:76px;
+            background:${stBg[u.status]||'rgba(148,163,184,.1)'};
+            border:1.5px solid ${stBdr[u.status]||'rgba(148,163,184,.3)'};
+            transition:filter .15s">
+          <div style="font-size:13px;font-weight:800;color:${stClr[u.status]||'var(--text2)'};line-height:1">${u.lote}</div>
+          ${u.tipologia?`<div style="font-size:8px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70px">${u.tipologia}</div>`:''}
+          ${u.area_m2 ?`<div style="font-size:9px;color:var(--text2);margin-top:2px">${u.area_m2}m²</div>`:''}
+          ${u.preco   ?`<div style="font-size:9px;color:var(--text2);margin-top:1px">${fmtK(u.preco)}</div>`:''}
+        </div>
+      </td>`;
+    }).join('');
+
+    return `<tr data-grupo="${g}">
+      <td style="padding:3px 14px 3px 0;vertical-align:middle;border-right:2px solid var(--border)">
+        <div style="text-align:right;white-space:nowrap">
+          <div style="font-size:13px;font-weight:700">${andLabel} andar</div>
+          <div style="font-size:10px;color:var(--text2);margin-top:2px">
+            <span style="color:#4ade80">${cntG.d}d</span> · <span style="color:#fbbf24">${cntG.r}r</span> · <span style="color:#f87171">${cntG.v}v</span>
+          </div>
+        </div>
+      </td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  return `<div style="overflow-x:auto">
+    <table style="border-collapse:separate;border-spacing:0;min-width:max-content">
+      <thead>${thead}</thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
 function filtrarEspelho() {
   const sel = document.getElementById('espelho-filtro');
   const val = sel?.value;
   const corpo = document.getElementById('espelho-corpo');
   if (!corpo) return;
-  corpo.querySelectorAll('.espelho-secao').forEach(sec => {
-    sec.style.display = (!val || sec.dataset.grupo === val) ? '' : 'none';
-  });
+  if (corpo.dataset.tipo === 'predio') {
+    corpo.querySelectorAll('tr[data-grupo]').forEach(tr => {
+      tr.style.display = (!val || tr.dataset.grupo === val) ? '' : 'none';
+    });
+  } else {
+    corpo.querySelectorAll('.espelho-secao').forEach(sec => {
+      sec.style.display = (!val || sec.dataset.grupo === val) ? '' : 'none';
+    });
+  }
 }
 
 async function abrirUnidade(unidadeId, empId) {
