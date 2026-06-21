@@ -558,9 +558,37 @@ async function renderPage(page) {
 
 // ─── API HELPERS ──────────────────────────────────────────────────────────────
 
-const TOKEN = localStorage.getItem('crm_token') || '';
+// Preview mode: se URL tiver ?preview=TOKEN abre sessão isolada nesta aba
+(function() {
+  const p = new URLSearchParams(window.location.search);
+  const pt = p.get('preview');
+  if (pt) {
+    sessionStorage.setItem('crm_preview_token',       pt);
+    sessionStorage.setItem('crm_preview_nome',        p.get('nome') || '');
+    sessionStorage.setItem('crm_preview_perfil',      p.get('perfil') || '');
+    sessionStorage.setItem('crm_preview_corretor_id', p.get('corretor_id') || '');
+    sessionStorage.setItem('crm_preview_cliente_id',  p.get('cliente_id') || '');
+    window.history.replaceState({}, '', '/');
+  }
+})();
+
+const _isPreview = !!sessionStorage.getItem('crm_preview_token');
+const TOKEN = _isPreview
+  ? sessionStorage.getItem('crm_preview_token')
+  : (localStorage.getItem('crm_token') || '');
 let USUARIO = {};
-try { USUARIO = JSON.parse(localStorage.getItem('crm_usuario') || '{}'); } catch(_) {}
+try {
+  if (_isPreview) {
+    USUARIO = {
+      nome:         sessionStorage.getItem('crm_preview_nome') || '',
+      perfil:       sessionStorage.getItem('crm_preview_perfil') || '',
+      corretor_id:  sessionStorage.getItem('crm_preview_corretor_id') || null,
+      cliente_id:   sessionStorage.getItem('crm_preview_cliente_id') || null,
+    };
+  } else {
+    USUARIO = JSON.parse(localStorage.getItem('crm_usuario') || '{}');
+  }
+} catch(_) {}
 if (!TOKEN) { window.location.href = '/login'; }
 
 // Botão reserva rápida — visível para admin/corretor, não para incorporador
@@ -2493,7 +2521,11 @@ async function renderClientes(filter = '') {
                   ? `<span class="badge badge-green" style="cursor:pointer" title="${c.usuario_email}" onclick="gerenciarLoginIncorporador(${JSON.stringify(c).replace(/"/g,'&quot;')})">🔑 Ativo</span>`
                   : `<span class="badge badge-gray" style="cursor:pointer" onclick="criarLoginIncorporador(${JSON.stringify(c).replace(/"/g,'&quot;')})">➕ Criar</span>`}
               </td>
-              <td><button class="btn-icon btn-edit" onclick="editCliente(${c.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteCliente(${c.id})">🗑️</button></td>
+              <td>
+                ${c.usuario_id ? `<button class="btn-icon" title="Ver como este incorporador" onclick="abrirPreview(${c.usuario_id})" style="color:#a78bfa">👁️</button>` : ''}
+                <button class="btn-icon btn-edit" onclick="editCliente(${c.id})">✏️</button>
+                <button class="btn-icon btn-delete" onclick="deleteCliente(${c.id})">🗑️</button>
+              </td>
             </tr>
           `).join('') : '<tr class="empty-row"><td colspan="8">Nenhum cliente cadastrado</td></tr>'}
         </tbody>
@@ -3412,6 +3444,21 @@ function showValidacaoModal(msg, podeGerar) {
   });
 }
 
+async function abrirPreview(usuarioId) {
+  toast('Abrindo prévia...', 'info');
+  const r = await post('/api/admin/impersonar', { usuario_id: usuarioId });
+  if (!r.ok) return toast(r.error || 'Erro ao abrir prévia', 'error');
+  const { token, nome, perfil, corretor_id, cliente_id } = r.data;
+  const params = new URLSearchParams({
+    preview: token,
+    nome: nome || '',
+    perfil: perfil || '',
+    corretor_id: corretor_id || '',
+    cliente_id: cliente_id || '',
+  });
+  window.open(`/?${params.toString()}`, '_blank');
+}
+
 async function gerarContratoCompraVenda(vendaId) {
   await validarEGerarContrato(vendaId, 'loteamento');
 }
@@ -3721,6 +3768,7 @@ async function renderCorretores(filter = '', cidadeFilter = '', imobFilter = '',
               </td>
               <td style="white-space:nowrap">
                 <button class="btn-icon" title="Relatório do corretor" onclick="gerarRelatorioCorretor(${c.id})" style="color:var(--accent)">📄</button>
+                ${c.usuario_id ? `<button class="btn-icon" title="Ver como este corretor" onclick="abrirPreview(${c.usuario_id})" style="color:#a78bfa">👁️</button>` : ''}
                 <button class="btn-icon btn-edit" onclick="editCorretor(${c.id})">✏️</button>
                 <button class="btn-icon btn-delete" onclick="deleteCorretor(${c.id})">🗑️</button>
               </td>
@@ -8737,6 +8785,20 @@ function initUsuarioUI() {
     if (addBtn)     addBtn.style.display     = 'none';
   } else {
     if (navUsuarios && USUARIO.perfil === 'admin') navUsuarios.style.display = 'flex';
+  }
+
+  // Banner de preview (aba aberta via "Ver como")
+  const bannerExistente = document.getElementById('preview-banner');
+  if (bannerExistente) bannerExistente.remove();
+  if (_isPreview) {
+    const banner = document.createElement('div');
+    banner.id = 'preview-banner';
+    banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#7c3aed,#5b21b6);color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600;box-shadow:0 -2px 12px rgba(0,0,0,.4)';
+    banner.innerHTML = `
+      <span>👁️ Visualizando como <strong>${USUARIO.nome}</strong> (${USUARIO.perfil}) — aba de prévia, sem afetar sua sessão</span>
+      <button onclick="window.close()" style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">✕ Fechar</button>
+    `;
+    document.body.appendChild(banner);
   }
 }
 

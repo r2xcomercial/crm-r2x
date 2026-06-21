@@ -103,6 +103,18 @@ app.get('/api/auth/me', (req, res) => {
   ok(res, req.usuario);
 });
 
+// Abre sessão temporária (2h) para visualizar como outro usuário — somente admin
+app.post('/api/admin/impersonar', autenticar, soAdmin, (req, res) => {
+  const { usuario_id } = req.body;
+  if (!usuario_id) return err(res, 'usuario_id obrigatório');
+  const u = db.prepare("SELECT id, nome, email, perfil, corretor_id, cliente_id FROM usuarios WHERE id=? AND ativo=1").get(usuario_id);
+  if (!u) return err(res, 'Usuário não encontrado', 404);
+  const token = gerarToken();
+  const expira = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString().replace('T',' ').slice(0,19);
+  db.prepare("INSERT INTO sessoes(token, usuario_id, expira_em) VALUES(?,?,?)").run(token, u.id, expira);
+  ok(res, { token, nome: u.nome, perfil: u.perfil, corretor_id: u.corretor_id, cliente_id: u.cliente_id });
+});
+
 // ─── USUÁRIOS (admin only) ────────────────────────────────────────────────────
 
 function soAdmin(req, res, next) {
