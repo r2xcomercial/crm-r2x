@@ -265,9 +265,10 @@
     .kpi-grid { grid-template-columns: 1fr 1fr; }
     .topbar-search { display: none; }
     #add-btn { padding: 7px 10px; font-size: 12px; }
-    .espelho-tile { width: 72px; min-height: 68px; }
-    .espelho-tile .tile-num { font-size: 10px; }
-    .espelho-tile .tile-preco { font-size: 8px; }
+    .espelho-tile { width: 88px; min-height: 80px; }
+    .espelho-tile .tile-num { font-size: 11px; }
+    .espelho-tile .tile-preco { font-size: 9px; }
+    .espelho-predio-table { font-size: 11px; min-width: 320px; }
   }
 
   /* ── RESPONSIVE ── */
@@ -2241,6 +2242,9 @@ function openVendaModal(venda = {}) {
       <button type="button" onclick="gerarContratoVertical(${venda.id})" style="padding:8px 18px;background:#2E5F8A;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px">
         🏢 Contrato Vertical
       </button>
+      <button type="button" onclick="enviarAssinatura(${venda.id})" style="padding:8px 18px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px">
+        ✍️ Assinar digitalmente
+      </button>
       <span style="font-size:11px;color:var(--text2)">Preenche automaticamente com os dados do lead, unidade, valores e corretor</span>
     </div>` : ''}
   `, async () => {
@@ -3512,6 +3516,40 @@ async function gerarContratoVerticalFinal(vendaId) {
     toast('Contrato gerado! 🏢');
   } catch(e) {
     toast('Falha ao gerar contrato', 'error');
+  }
+}
+
+async function enviarAssinatura(vendaId) {
+  const confirmado = confirm('Isso vai gerar o contrato e enviar para o comprador assinar digitalmente via ClickSign.\n\nO comprador precisa ter e-mail cadastrado.\n\nContinuar?');
+  if (!confirmado) return;
+  toast('Enviando para ClickSign...', 'info');
+  try {
+    const r = await post(`/api/vendas/${vendaId}/enviar-assinatura`, {});
+    if (!r.ok) return toast(r.error || 'Erro ao enviar para assinatura', 'error');
+    const { signingUrl } = r.data;
+    const waMsgRaw = `Olá! Seu contrato está disponível para assinatura digital. Acesse o link abaixo para assinar:\n\n${signingUrl}`;
+    const waMsg = encodeURIComponent(waMsgRaw);
+    openModal('✍️ Assinatura Digital', `
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div style="background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.3);border-radius:10px;padding:16px;text-align:center">
+          <div style="font-size:32px;margin-bottom:8px">✅</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text1);margin-bottom:4px">Contrato enviado com sucesso!</div>
+          <div style="font-size:12px;color:var(--text2)">O comprador receberá um e-mail do ClickSign para assinar.</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Link de assinatura</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="clicksign-link" type="text" readonly value="${signingUrl}" style="flex:1;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text1);font-size:12px">
+            <button onclick="navigator.clipboard.writeText('${signingUrl}');toast('Link copiado!')" style="padding:8px 12px;border-radius:7px;border:none;background:var(--navy3);color:var(--text2);cursor:pointer;font-size:13px">📋</button>
+          </div>
+        </div>
+        <a href="https://wa.me/?text=${waMsg}" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:12px;border-radius:10px;background:linear-gradient(135deg,#25D366,#128C7E);color:#fff;font-size:14px;font-weight:700;text-decoration:none">
+          <span style="font-size:20px">💬</span> Compartilhar via WhatsApp
+        </a>
+      </div>
+    `, null, 'Fechar');
+  } catch(e) {
+    toast('Erro: ' + e.message, 'error');
   }
 }
 
@@ -6547,7 +6585,14 @@ async function reservarDoEspelho(unidadeId, empId) {
   });
   if (!r.ok) {
     if (btn) { btn.disabled = false; btn.textContent = '⚡ Reservar agora'; }
-    return toast(r.error || 'Erro ao reservar', 'error');
+    toast(r.error || 'Erro ao reservar', 'error');
+    // Se unidade já foi reservada por outro, fecha o modal e atualiza o espelho
+    if ((r.error || '').includes('reservada') || (r.error || '').includes('disponível')) {
+      closeModal();
+      await carregarDados();
+      verEspelho(empId);
+    }
+    return;
   }
   toast('✅ Unidade reservada com sucesso!');
   closeModal();
@@ -9094,6 +9139,17 @@ let _cpData = null; // cache do painel
 
 async function renderCorretorPainel(tab) {
   if (tab) _cpTab = tab;
+
+  // Auto-navega para o espelho se houver exatamente 1 empreendimento ativo (apenas no primeiro carregamento)
+  if (!tab && !window._corretorAutoNavDone) {
+    window._corretorAutoNavDone = true;
+    const erEmp = await get('/api/empreendimentos');
+    if (erEmp.ok) {
+      const ativos = (erEmp.data || []).filter(e => e.status === 'ativo' || e.status === 'lancamento' || !e.status);
+      if (ativos.length === 1) { verEspelho(ativos[0].id); return; }
+    }
+  }
+
   const r = await get('/api/corretor/painel');
   if (!r.ok) { document.getElementById('content').innerHTML = `<div style="padding:40px;color:var(--danger)">❌ ${r.error}</div>`; return; }
   _cpData = r.data;

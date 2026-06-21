@@ -593,34 +593,34 @@ function fmtMoeda(v) {
   return v ? Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) : '___';
 }
 
-// Gera Contrato de Compra e Venda Belvedere (comprador ↔ incorporador)
-app.get("/api/vendas/:id/contrato-compra-venda", autenticar, (req, res) => {
-  try {
-    const venda = db.prepare(`
-      SELECT v.*,
-        l.nome as lead_nome, l.cpf as lead_cpf, l.rg as lead_rg,
-        l.estado_civil, l.profissao, l.nome_pai, l.nome_mae,
-        l.endereco as lead_end, l.numero as lead_num,
-        l.complemento as lead_comp, l.bairro as lead_bairro,
-        l.cidade as lead_cidade, l.cep as lead_cep, l.estado as lead_uf,
-        l.telefone as lead_tel, l.email as lead_email,
-        l.pessoa_juridica, l.cnpj, l.razao_social,
-        l.inscricao_estadual, l.inscricao_municipal,
-        l.representante_nome, l.representante_cpf, l.representante_rg, l.representante_cargo,
-        c.nome as corretor_nome,
-        u.lote as unid_lote, u.quadra as unid_quadra, u.area_m2,
-        e.nome as emp_nome, e.cidade as emp_cidade, e.estado as emp_estado,
-        e.vendedora_nome, e.vendedora_qualificacao, e.comarca,
-        e.matricula_registro, e.incorporacao_protocolo
-      FROM vendas v
-      LEFT JOIN leads l ON l.id = v.lead_id
-      LEFT JOIN corretores c ON c.id = v.corretor_id
-      LEFT JOIN unidades u ON u.id = v.unidade_id
-      LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
-      WHERE v.id = ?
-    `).get(req.params.id);
+// ─── HELPERS DE GERAÇÃO DE CONTRATO ─────────────────────────────────────────
 
-    if (!venda) return err(res, "Venda não encontrada");
+function gerarContratoLoteamentoBuf(vendaId) {
+  const venda = db.prepare(`
+    SELECT v.*,
+      l.nome as lead_nome, l.cpf as lead_cpf, l.rg as lead_rg,
+      l.estado_civil, l.profissao, l.nome_pai, l.nome_mae,
+      l.endereco as lead_end, l.numero as lead_num,
+      l.complemento as lead_comp, l.bairro as lead_bairro,
+      l.cidade as lead_cidade, l.cep as lead_cep, l.estado as lead_uf,
+      l.telefone as lead_tel, l.email as lead_email,
+      l.pessoa_juridica, l.cnpj, l.razao_social,
+      l.inscricao_estadual, l.inscricao_municipal,
+      l.representante_nome, l.representante_cpf, l.representante_rg, l.representante_cargo,
+      c.nome as corretor_nome,
+      u.lote as unid_lote, u.quadra as unid_quadra, u.area_m2,
+      e.nome as emp_nome, e.cidade as emp_cidade, e.estado as emp_estado,
+      e.vendedora_nome, e.vendedora_qualificacao, e.comarca,
+      e.matricula_registro, e.incorporacao_protocolo
+    FROM vendas v
+    LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN corretores c ON c.id = v.corretor_id
+    LEFT JOIN unidades u ON u.id = v.unidade_id
+    LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
+    WHERE v.id = ?
+  `).get(vendaId);
+
+  if (!venda) throw new Error("Venda não encontrada");
 
     // Lote
     const loteResumo = venda.unid_quadra
@@ -781,16 +781,21 @@ app.get("/api/vendas/:id/contrato-compra-venda", autenticar, (req, res) => {
       DATA_VENDA:                fmtDataExtenso(venda.data_venda),
     };
 
-    const tplPath = path.join(__dirname, 'templates', 'template-loteamento.docx');
-    const content = fs.readFileSync(tplPath, 'binary');
-    const zip = new PizZip(content);
-    const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
-    doc.render(dados);
-    const buf = doc.getZip().generate({ type: 'nodebuffer' });
+  const tplPath = path.join(__dirname, 'templates', 'template-loteamento.docx');
+  const content = fs.readFileSync(tplPath, 'binary');
+  const zip = new PizZip(content);
+  const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+  doc.render(dados);
+  const buf = doc.getZip().generate({ type: 'nodebuffer' });
+  const filename = `Contrato_${(compradorNome||'comprador').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚãõÃÕçÇ ]/g,'_').trim().replace(/ /g,'_')}_${loteResumo.replace(/[^a-zA-Z0-9]/g,'_')}.docx`;
+  return { buf, filename };
+}
 
-    const nomeArq = `Contrato_${(compradorNome||'comprador').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚãõÃÕçÇ ]/g,'_').trim().replace(/ /g,'_')}_${loteResumo.replace(/[^a-zA-Z0-9]/g,'_')}.docx`;
+app.get("/api/vendas/:id/contrato-compra-venda", autenticar, (req, res) => {
+  try {
+    const { buf, filename } = gerarContratoLoteamentoBuf(req.params.id);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(nomeArq)}`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
     res.send(buf);
   } catch(e) {
     console.error('[contrato-compra-venda]', e);
@@ -798,31 +803,29 @@ app.get("/api/vendas/:id/contrato-compra-venda", autenticar, (req, res) => {
   }
 });
 
-// Contrato de Compra e Venda - empreendimentos verticais (Oslo/apartamentos)
-app.get("/api/vendas/:id/contrato-vertical", autenticar, (req, res) => {
-  try {
-    const venda = db.prepare(`
-      SELECT v.*, l.nome as lead_nome, l.cpf, l.rg, l.estado_civil, l.profissao,
-        l.nome_pai, l.nome_mae, l.endereco as lead_endereco, l.numero as lead_numero,
-        l.complemento as lead_complemento, l.bairro as lead_bairro, l.cep as lead_cep,
-        l.cidade as lead_cidade, l.estado as lead_estado,
-        l.pessoa_juridica, l.cnpj, l.razao_social,
-        l.representante_nome, l.representante_cpf, l.representante_rg, l.representante_cargo,
-        c.nome as corretor_nome, c.cpf as corretor_cpf, c.creci as corretor_creci,
-        u.tipo as unidade_tipo, u.numero as unidade_num, u.area as unidade_area,
-        u.quadra, u.lote, u.preco as unidade_preco,
-        e.nome as emp_nome, e.endereco as emp_endereco, e.cidade as emp_cidade,
-        e.estado as emp_estado, e.matricula_registro, e.incorporacao_protocolo,
-        e.prazo_entrega_meses, e.inicio_obra_previsto, e.comarca, e.valor_cub,
-        e.vendedora_nome, e.vendedora_qualificacao, e.patrimonio_afetacao
-      FROM vendas v
-      LEFT JOIN leads l ON l.id = v.lead_id
-      LEFT JOIN corretores c ON c.id = v.corretor_id
-      LEFT JOIN unidades u ON u.id = v.unidade_id
-      LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
-      WHERE v.id=?`).get(parseInt(req.params.id));
+function gerarContratoVerticalBuf(vendaId) {
+  const venda = db.prepare(`
+    SELECT v.*, l.nome as lead_nome, l.cpf, l.rg, l.estado_civil, l.profissao,
+      l.nome_pai, l.nome_mae, l.endereco as lead_endereco, l.numero as lead_numero,
+      l.complemento as lead_complemento, l.bairro as lead_bairro, l.cep as lead_cep,
+      l.cidade as lead_cidade, l.estado as lead_estado,
+      l.pessoa_juridica, l.cnpj, l.razao_social,
+      l.representante_nome, l.representante_cpf, l.representante_rg, l.representante_cargo,
+      c.nome as corretor_nome, c.cpf as corretor_cpf, c.creci as corretor_creci,
+      u.tipo as unidade_tipo, u.numero as unidade_num, u.area as unidade_area,
+      u.quadra, u.lote, u.preco as unidade_preco,
+      e.nome as emp_nome, e.endereco as emp_endereco, e.cidade as emp_cidade,
+      e.estado as emp_estado, e.matricula_registro, e.incorporacao_protocolo,
+      e.prazo_entrega_meses, e.inicio_obra_previsto, e.comarca, e.valor_cub,
+      e.vendedora_nome, e.vendedora_qualificacao, e.patrimonio_afetacao
+    FROM vendas v
+    LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN corretores c ON c.id = v.corretor_id
+    LEFT JOIN unidades u ON u.id = v.unidade_id
+    LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
+    WHERE v.id=?`).get(parseInt(vendaId));
 
-    if (!venda) return err(res, 'Venda não encontrada', 404);
+  if (!venda) throw new Error('Venda não encontrada');
 
     const lead = venda;
     const isPJ = !!lead.pessoa_juridica;
@@ -949,18 +952,12 @@ app.get("/api/vendas/:id/contrato-vertical", autenticar, (req, res) => {
       ? '13.3. Eventual saldo favorável ao(à) COMPRADOR(A) será restituído em até 12 (doze) parcelas mensais, sendo a primeira paga no prazo de até 30 (trinta) dias contados da expedição do "Habite-se" ou documento equivalente expedido pelo órgão público municipal competente, considerando a adoção do regime do patrimônio de afetação, nos termos do artigo 67-A, § 5º, da Lei nº 4.591/64.'
       : '13.3. Eventual saldo favorável ao(à) COMPRADOR(A) será restituído no prazo de até 180 (cento e oitenta) dias corridos, contados da data da resolução contratual, nos termos do artigo 67-A, § 2º, da Lei nº 4.591/64.';
 
-    // Fill template
-    const PizZip = require('pizzip');
-    const Docxtemplater = require('docxtemplater');
-    const path = require('path');
-    const fs = require('fs');
+  const templatePath = path.join(__dirname, 'templates', 'template-vertical.docx');
+  const content = fs.readFileSync(templatePath, 'binary');
+  const zip = new PizZip(content);
+  const doct = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
 
-    const templatePath = path.join(__dirname, 'templates', 'template-vertical.docx');
-    const content = fs.readFileSync(templatePath, 'binary');
-    const zip = new PizZip(content);
-    const doct = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
-
-    const data = {
+  const data = {
       VENDEDORA_NOME: vendedoraNome,
       VENDEDORA_QUALIFICACAO: vendedoraQual,
       COMPRADOR_QUALIFICACAO: compradorQual,
@@ -999,14 +996,19 @@ app.get("/api/vendas/:id/contrato-vertical", autenticar, (req, res) => {
       AFETACAO_RESTITUICAO_TEXTO: afetacaoRestituicaoTexto,
     };
 
-    doct.render(data);
-    const buf = doct.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+  doct.render(data);
+  const buf = doct.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+  const compNome = (lead.lead_nome || lead.razao_social || 'comprador').replace(/[^a-zA-Z0-9À-ɏ]/g, '-').toLowerCase();
+  const filename = `contrato-vertical-${unidadeTipo.toLowerCase()}-${unidadeNum}-${compNome}.docx`;
+  return { buf, filename };
+}
 
-    const compNome = (lead.lead_nome || lead.razao_social || 'comprador').replace(/[^a-zA-Z0-9À-ɏ]/g, '-').toLowerCase();
-    const filename = `contrato-vertical-${unidadeTipo.toLowerCase()}-${unidadeNum}-${compNome}.docx`;
-    const encodedName = encodeURIComponent(filename);
+// Contrato de Compra e Venda - empreendimentos verticais (Oslo/apartamentos)
+app.get("/api/vendas/:id/contrato-vertical", autenticar, (req, res) => {
+  try {
+    const { buf, filename } = gerarContratoVerticalBuf(req.params.id);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
     res.send(buf);
   } catch(e) {
     console.error('[contrato-vertical]', e);
@@ -1875,32 +1877,178 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
   if (!empreendimento_id || !unidade_id) return err(res, "Empreendimento e unidade obrigatórios");
   if (!lead_nome || !lead_telefone) return err(res, "Nome e telefone do cliente obrigatórios");
 
-  // Verificar disponibilidade da unidade
-  const unidade = db.prepare("SELECT * FROM unidades WHERE id=?").get(unidade_id);
-  if (!unidade) return err(res, "Unidade não encontrada");
-  if (unidade.status === 'vendido') return err(res, "Unidade já vendida");
+  try {
+    const resultado = db.transaction(() => {
+      const unidade = db.prepare("SELECT * FROM unidades WHERE id=?").get(unidade_id);
+      if (!unidade) throw Object.assign(new Error("Unidade não encontrada"), { status: 404 });
+      if (unidade.status !== 'disponivel') {
+        const msg = unidade.status === 'reservado'
+          ? 'Esta unidade acabou de ser reservada por outro corretor. Escolha outra.'
+          : 'Esta unidade não está disponível para reserva.';
+        throw Object.assign(new Error(msg), { status: 409 });
+      }
 
-  const hoje = new Date().toISOString().slice(0, 10);
+      const hoje = new Date().toISOString().slice(0, 10);
+      let lead = db.prepare("SELECT id FROM leads WHERE telefone=? LIMIT 1").get(lead_telefone);
+      if (!lead) {
+        const r = db.prepare("INSERT INTO leads (nome, telefone, status, empreendimento_id) VALUES (?,?,?,?)")
+          .run(lead_nome.trim(), lead_telefone.trim(), 'reserva', empreendimento_id);
+        lead = { id: r.lastInsertRowid };
+      }
 
-  // Criar ou reutilizar lead pelo telefone
-  let lead = db.prepare("SELECT id FROM leads WHERE telefone=? LIMIT 1").get(lead_telefone);
-  if (!lead) {
-    const r = db.prepare("INSERT INTO leads (nome, telefone, status, empreendimento_id) VALUES (?,?,?,?)")
-      .run(lead_nome.trim(), lead_telefone.trim(), 'reserva', empreendimento_id);
-    lead = { id: r.lastInsertRowid };
+      const preco = unidade.preco || 0;
+      const rv = db.prepare(`INSERT INTO vendas
+        (lead_id, empreendimento_id, corretor_id, unidade_id, valor, valor_total, data_venda, status, observacoes)
+        VALUES (?,?,?,?,?,?,?,'reserva','Reserva rápida — dados pendentes')`)
+        .run(lead.id, empreendimento_id, corretor_id || null, unidade_id, preco, preco, hoje);
+
+      db.prepare("UPDATE unidades SET status='reservado' WHERE id=?").run(unidade_id);
+      return { venda_id: rv.lastInsertRowid, lead_id: lead.id };
+    })();
+
+    ok(res, resultado);
+  } catch(e) {
+    err(res, e.message, e.status || 400);
   }
+});
 
-  // Criar venda com status reserva
-  const preco = unidade.preco || 0;
-  const rv = db.prepare(`INSERT INTO vendas
-    (lead_id, empreendimento_id, corretor_id, unidade_id, valor, valor_total, data_venda, status, observacoes)
-    VALUES (?,?,?,?,?,?,?,'reserva','Reserva rápida — dados pendentes')`)
-    .run(lead.id, empreendimento_id, corretor_id || null, unidade_id, preco, preco, hoje);
+// ─── ASSINATURA DIGITAL (ClickSign) ──────────────────────────────────────────
 
-  // Marcar unidade como reservada
-  db.prepare("UPDATE unidades SET status='reservado' WHERE id=?").run(unidade_id);
+app.post("/api/vendas/:id/enviar-assinatura", autenticar, async (req, res) => {
+  const token = process.env.CLICKSIGN_ACCESS_TOKEN;
+  if (!token) return err(res, 'ClickSign não configurado. Adicione CLICKSIGN_ACCESS_TOKEN nas variáveis de ambiente.');
 
-  ok(res, { venda_id: rv.lastInsertRowid, lead_id: lead.id });
+  const venda = db.prepare(`
+    SELECT v.*, e.tipo as emp_tipo,
+      l.nome as lead_nome, l.email as lead_email, l.telefone as lead_tel
+    FROM vendas v
+    LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
+    LEFT JOIN leads l ON l.id = v.lead_id
+    WHERE v.id = ?
+  `).get(req.params.id);
+
+  if (!venda) return err(res, 'Venda não encontrada', 404);
+  if (!venda.lead_email) return err(res, 'Comprador precisa ter e-mail cadastrado para assinatura digital.');
+
+  try {
+    let buf, filename;
+    if (venda.emp_tipo === 'vertical' || venda.emp_tipo === 'predio') {
+      ({ buf, filename } = gerarContratoVerticalBuf(req.params.id));
+    } else {
+      ({ buf, filename } = gerarContratoLoteamentoBuf(req.params.id));
+    }
+
+    const base = 'https://app.clicksign.com/api/v1';
+    const deadline = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    // 1. Upload document
+    const docResp = await fetch(`${base}/documents?access_token=${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        document: {
+          path: `/${Date.now()}_${filename}`,
+          content_base64: `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${buf.toString('base64')}`,
+          deadline_at: deadline,
+          auto_close: true,
+          locale: 'pt-BR',
+          sequence_enabled: false,
+        }
+      })
+    });
+
+    if (!docResp.ok) {
+      const txt = await docResp.text();
+      throw new Error(`ClickSign upload falhou (${docResp.status}): ${txt}`);
+    }
+
+    const docData = await docResp.json();
+    const docKey = docData.document?.key;
+    if (!docKey) throw new Error('ClickSign não retornou key do documento');
+
+    // 2. Create signer
+    const signerResp = await fetch(`${base}/signers?access_token=${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        signer: {
+          email: venda.lead_email,
+          phone_number: (venda.lead_tel || '').replace(/\D/g, ''),
+          name: venda.lead_nome || 'Comprador',
+          has_documentation: false,
+          delivery: 'email',
+          auth: 'email',
+        }
+      })
+    });
+
+    if (!signerResp.ok) {
+      const txt = await signerResp.text();
+      throw new Error(`ClickSign signatário falhou (${signerResp.status}): ${txt}`);
+    }
+
+    const signerData = await signerResp.json();
+    const signerKey = signerData.signer?.key;
+    if (!signerKey) throw new Error('ClickSign não retornou key do signatário');
+
+    // 3. Link signer to document
+    const listResp = await fetch(`${base}/lists?access_token=${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        list: { document_key: docKey, signer_key: signerKey, sign_as: 'sign', refusable: true }
+      })
+    });
+
+    if (!listResp.ok) {
+      const txt = await listResp.text();
+      throw new Error(`ClickSign vínculo falhou (${listResp.status}): ${txt}`);
+    }
+
+    const listData = await listResp.json();
+    const signingUrl = listData.list?.url || `https://app.clicksign.com/sign/${signerKey}`;
+
+    // 4. Notify via email
+    await fetch(`${base}/notifications?access_token=${token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: {
+          email: venda.lead_email,
+          message: `Olá ${venda.lead_nome || ''}! Seu contrato está disponível para assinatura digital. Clique no link enviado por e-mail para assinar.`
+        }
+      })
+    }).catch(() => {}); // notificação é best-effort
+
+    // 5. Save to DB
+    db.prepare("UPDATE vendas SET clicksign_key=?, clicksign_status='pendente' WHERE id=?").run(docKey, req.params.id);
+
+    ok(res, { docKey, signerKey, signingUrl });
+  } catch(e) {
+    console.error('[enviar-assinatura]', e);
+    err(res, e.message);
+  }
+});
+
+app.get("/api/vendas/:id/status-assinatura", autenticar, async (req, res) => {
+  const token = process.env.CLICKSIGN_ACCESS_TOKEN;
+  if (!token) return err(res, 'ClickSign não configurado');
+
+  const venda = db.prepare("SELECT clicksign_key, clicksign_status FROM vendas WHERE id=?").get(req.params.id);
+  if (!venda) return err(res, 'Venda não encontrada', 404);
+  if (!venda.clicksign_key) return err(res, 'Nenhum documento enviado para assinatura', 404);
+
+  try {
+    const resp = await fetch(`https://app.clicksign.com/api/v1/documents/${venda.clicksign_key}?access_token=${token}`);
+    if (!resp.ok) throw new Error(`ClickSign retornou ${resp.status}`);
+    const data = await resp.json();
+    const status = data.document?.status || venda.clicksign_status;
+    db.prepare("UPDATE vendas SET clicksign_status=? WHERE id=?").run(status, req.params.id);
+    ok(res, { status, document: data.document });
+  } catch(e) {
+    console.error('[status-assinatura]', e);
+    err(res, e.message);
+  }
 });
 
 // ─── CONDIÇÃO DE PAGAMENTO PADRÃO ─────────────────────────────────────────────

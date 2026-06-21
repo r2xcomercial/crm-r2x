@@ -209,6 +209,8 @@ const migrations = [
   "ALTER TABLE vendas ADD COLUMN vaga_id INTEGER REFERENCES vagas_garagem(id)",
   "ALTER TABLE leads ADD COLUMN creci TEXT",
   "ALTER TABLE leads ADD COLUMN imobiliaria TEXT",
+  "ALTER TABLE vendas ADD COLUMN clicksign_key TEXT",
+  "ALTER TABLE vendas ADD COLUMN clicksign_status TEXT",
 ];
 for (const sql of migrations) {
   try { db.exec(sql); } catch (_) { /* coluna já existe */ }
