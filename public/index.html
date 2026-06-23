@@ -6071,11 +6071,11 @@ async function verEspelhoImagem(empId, emp, mapaData) {
   // Click para posicionar unidades
   document.getElementById('mapa-zoom-wrap').addEventListener('click', onMapaClick);
 
-  // Zoom com scroll do mouse
+  // Zoom com scroll do mouse — centraliza no cursor
   document.getElementById('mapa-zoom-wrap').addEventListener('wheel', function(e) {
     e.preventDefault();
     const delta = e.deltaY < 0 ? 0.15 : -0.15;
-    mapaZoom(delta);
+    mapaZoom(delta, e.clientX, e.clientY);
   }, { passive: false });
 
   // Drag & drop — arrastar chips da lista ou marcadores existentes para o mapa
@@ -6102,13 +6102,32 @@ async function verEspelhoImagem(empId, emp, mapaData) {
 }
 
 // Função de zoom do mapa — escala o mapa-inner dentro do scroll container
-function mapaZoom(delta) {
-  _mapaZoomLevel = Math.max(0.4, Math.min(5, _mapaZoomLevel + delta));
+// clientX/clientY opcionais: quando fornecidos, mantém o ponto sob o cursor no lugar
+function mapaZoom(delta, clientX, clientY) {
+  const wrap = document.getElementById('mapa-zoom-wrap');
   const inner = document.getElementById('mapa-inner');
-  if (inner) inner.style.width = (_mapaZoomLevel * 100) + '%';
+  if (!wrap || !inner) return;
+
+  let pctX, pctY;
+  if (clientX != null && clientY != null) {
+    const rect = wrap.getBoundingClientRect();
+    const cursorXInContent = wrap.scrollLeft + (clientX - rect.left);
+    const cursorYInContent = wrap.scrollTop  + (clientY - rect.top);
+    pctX = cursorXInContent / inner.offsetWidth;
+    pctY = cursorYInContent / inner.offsetHeight;
+  }
+
+  _mapaZoomLevel = Math.max(0.4, Math.min(5, _mapaZoomLevel + delta));
+  inner.style.width = (_mapaZoomLevel * 100) + '%';
   const pct = document.getElementById('mapa-zoom-pct');
   if (pct) pct.textContent = Math.round(_mapaZoomLevel * 100) + '%';
   renderMarkers();
+
+  if (pctX != null) {
+    const rect = wrap.getBoundingClientRect();
+    wrap.scrollLeft = pctX * inner.offsetWidth  - (clientX - rect.left);
+    wrap.scrollTop  = pctY * inner.offsetHeight - (clientY - rect.top);
+  }
 }
 
 function renderMarkers() {
