@@ -293,7 +293,11 @@
     th, td { padding: 8px 10px; white-space: nowrap; }
     .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
     .kpi-card { padding: 14px; }
-    .modal { max-width: 100%; margin: 0 10px; }
+    .modal { max-width: 100%; margin: 0; border-radius: 12px 12px 0 0; }
+    .modal-overlay { align-items: flex-end; padding: 0; }
+    .modal-body { padding: 16px; }
+    .modal-head { padding: 16px 16px 12px; }
+    .modal-foot { padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
   }
 
   /* ── GESTÃO PESSOAL ── */
@@ -6333,7 +6337,28 @@ async function verEspelho(empId) {
   const filtros = [`<option value="">Todas as ${lblA}s</option>`,
     ...grupoKeys.map(g => `<option value="${g}">${lblA} ${g}</option>`)].join('');
 
+  const isCorretor = USUARIO.perfil === 'corretor';
+
   document.getElementById('content').innerHTML = `
+    ${isCorretor ? `
+    <!-- ── CABEÇALHO CORRETOR (simplificado para mobile/estande) ── -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:18px;font-weight:800;line-height:1.2">${emp.nome}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">${emp.cidade||''}${emp.estado?'/'+emp.estado:''}</div>
+      </div>
+      ${grupoKeys.length > 1 ? `<select id="espelho-filtro" onchange="filtrarEspelho()" style="font-size:13px;padding:8px 12px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:8px">${filtros}</select>` : ''}
+      <button onclick="verEspelho(${empId})" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:16px;cursor:pointer" title="Atualizar">🔄</button>
+    </div>
+
+    <!-- Contador compacto para corretor -->
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);color:#4ade80;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:700">✅ ${cnt.disponivel} disponíveis</span>
+      <span style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);color:#fbbf24;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:700">🟡 ${cnt.reservado} reservados</span>
+      <span style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#f87171;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:700">🔴 ${cnt.vendido} vendidos</span>
+    </div>
+    ` : `
+    <!-- ── CABEÇALHO ADMIN (completo) ── -->
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
       <button class="btn btn-secondary" onclick="navigate('empreendimentos')" style="font-size:12px;padding:6px 12px">← Voltar</button>
       <div style="flex:1;min-width:0">
@@ -6349,7 +6374,7 @@ async function verEspelho(empId) {
       </label>
     </div>
 
-    <!-- Barra VSO -->
+    <!-- Barra VSO (somente admin) -->
     <div class="mini-card" style="margin-bottom:20px;padding:16px 20px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div style="font-size:13px;font-weight:600">📊 Velocidade de Vendas (VSO) — <span style="color:var(--accent)">${vsoNum.toFixed(1)}%</span> absorvido</div>
@@ -6369,7 +6394,7 @@ async function verEspelho(empId) {
       </div>
     </div>
 
-    <!-- Legenda -->
+    <!-- Legenda (somente admin) -->
     <div style="display:flex;gap:20px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
       <span style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Legenda:</span>
       <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(34,197,94,.15);border:2px solid rgba(34,197,94,.5);border-radius:3px;display:inline-block"></span>Disponível</span>
@@ -6377,6 +6402,7 @@ async function verEspelho(empId) {
       <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(239,68,68,.15);border:2px solid rgba(239,68,68,.5);border-radius:3px;display:inline-block"></span>Vendido</span>
       <span style="margin-left:auto;font-size:11px;color:var(--text2)">Clique em qualquer unidade para ver detalhes ou alterar status</span>
     </div>
+    `}
 
     <!-- Grid do espelho -->
     <div id="espelho-corpo" data-empid="${empId}" data-lblb="${lblB}" data-lbla="${lblA}" data-tipo="${emp.tipo||'loteamento'}">
@@ -8793,7 +8819,7 @@ function initUsuarioUI() {
   if (_isPreview) {
     const banner = document.createElement('div');
     banner.id = 'preview-banner';
-    banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#7c3aed,#5b21b6);color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600;box-shadow:0 -2px 12px rgba(0,0,0,.4)';
+    banner.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#7c3aed,#5b21b6);color:#fff;padding:10px 20px;padding-bottom:max(10px,env(safe-area-inset-bottom));display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600;box-shadow:0 -2px 12px rgba(0,0,0,.4)';
     banner.innerHTML = `
       <span>👁️ Visualizando como <strong>${USUARIO.nome}</strong> (${USUARIO.perfil}) — aba de prévia, sem afetar sua sessão</span>
       <button onclick="window.close()" style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">✕ Fechar</button>
