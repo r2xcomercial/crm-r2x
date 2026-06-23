@@ -3274,15 +3274,21 @@ app.get('/api/leads/:id/proposta', (req, res) => {
 // ─── RELATÓRIO DE COMISSÕES ───────────────────────────────────────────────────
 
 app.get('/api/relatorios/comissoes', (req, res) => {
+  const { emp, mes, incorporador } = req.query;
+  const vendaConds = ["v.status='ativo'"];
+  if (emp)          vendaConds.push(`v.empreendimento_id=${parseInt(emp)}`);
+  if (mes)          vendaConds.push(`strftime('%Y-%m', v.data_venda)='${mes.replace(/'/g,"")}'`);
+  if (incorporador) vendaConds.push(`v.cliente_id=${parseInt(incorporador)}`);
+  const joinCond = vendaConds.join(' AND ');
   const rows = db.prepare(`
-    SELECT c.nome, c.telefone,
+    SELECT c.nome as corretor_nome, c.telefone,
       COUNT(v.id) as total_vendas,
-      SUM(v.valor) as vgv_total,
-      SUM(v.comissao_corretor_valor) as comissao_total,
-      SUM(CASE WHEN v.comissao_corretor_status='pago' THEN v.comissao_corretor_valor ELSE 0 END) as comissao_paga,
-      SUM(CASE WHEN v.comissao_corretor_status='pendente' THEN v.comissao_corretor_valor ELSE 0 END) as comissao_pendente
+      COALESCE(SUM(v.valor), 0) as vgv_total,
+      COALESCE(SUM(v.comissao_corretor_valor), 0) as comissao_total,
+      COALESCE(SUM(CASE WHEN v.comissao_corretor_status='pago' THEN v.comissao_corretor_valor ELSE 0 END), 0) as comissao_paga,
+      COALESCE(SUM(CASE WHEN v.comissao_corretor_status='pendente' THEN v.comissao_corretor_valor ELSE 0 END), 0) as comissao_pendente
     FROM corretores c
-    LEFT JOIN vendas v ON v.corretor_id=c.id AND v.status='ativo'
+    LEFT JOIN vendas v ON v.corretor_id=c.id AND ${joinCond}
     WHERE c.ativo=1
     GROUP BY c.id ORDER BY comissao_total DESC
   `).all();
