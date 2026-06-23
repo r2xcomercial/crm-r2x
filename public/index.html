@@ -6124,8 +6124,8 @@ function renderMarkers() {
   };
   const borderColors = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#ef4444' };
 
-  const sz = Math.round(Math.max(22, Math.min(64, 34 * _mapaZoomLevel)));
-  const fs = Math.round(Math.max(7,  Math.min(15, 10 * _mapaZoomLevel)));
+  const sz = Math.round(Math.max(14, Math.min(36, 20 * _mapaZoomLevel)));
+  const fs = Math.round(Math.max(6,  Math.min(11,  8 * _mapaZoomLevel)));
 
   wrap.innerHTML = Object.entries(_posicoes).map(([idStr, pos]) => {
     const id = parseInt(idStr);
@@ -6134,6 +6134,8 @@ function renderMarkers() {
     const cor = statusColors[u.status] || 'rgba(148,163,184,.45)';
     const brd = borderColors[u.status] || '#94a3b8';
     const isAtivo = _unitAtiva === id;
+    // Remove zeros à esquerda para números ficarem menores dentro do marcador
+    const loteLabel = /^\d+$/.test(u.lote) ? String(parseInt(u.lote, 10)) : u.lote;
     return `<div
       data-uid="${id}"
       draggable="true"
@@ -6146,19 +6148,18 @@ function renderMarkers() {
         width:${sz}px;height:${sz}px;
         border-radius:50%;
         background:${cor};
-        border:2px solid ${brd};
+        border:${isAtivo ? '2px solid var(--accent)' : '1.5px solid ' + brd};
         display:flex;align-items:center;justify-content:center;
-        font-size:${fs}px;font-weight:700;color:#fff;
+        font-size:${fs}px;font-weight:800;color:#fff;
         cursor:${_modoPosiconar?'grab':'pointer'};pointer-events:all;
-        box-shadow:${isAtivo ? '0 0 0 3px var(--accent),0 2px 8px rgba(0,0,0,.5)' : '0 2px 6px rgba(0,0,0,.45)'};
+        box-shadow:${isAtivo ? '0 0 0 3px var(--accent),0 2px 8px rgba(0,0,0,.5)' : '0 1px 4px rgba(0,0,0,.5)'};
         user-select:none;
-        text-shadow:0 1px 2px rgba(0,0,0,.7);
+        text-shadow:0 1px 2px rgba(0,0,0,.8);
         white-space:nowrap;overflow:hidden;
-        text-overflow:ellipsis;
-        line-height:1;padding:2px;
+        line-height:1;padding:1px;
       "
       title="${u.quadra ? `Qd ${u.quadra} - ` : ''}${u.lote}${u.area_m2 ? ` · ${u.area_m2}m²` : ''}${u.preco ? ` · ${fmtPlain(u.preco)}` : ''}"
-    >${u.lote}</div>`;
+    >${loteLabel}</div>`;
   }).join('');
 }
 
