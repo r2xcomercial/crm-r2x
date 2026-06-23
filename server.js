@@ -2146,7 +2146,16 @@ app.post("/api/vendas", (req, res) => {
          valor_entrada||null, parcelasJson, saldoParcelasJson, percentual_r2x_override||null);
 
   const vendaId = r.lastInsertRowid;
-  if (lead_id) db.prepare("UPDATE leads SET status='vendido' WHERE id=?").run(lead_id);
+  if (lead_id) {
+    // Sincroniza lead com os dados da venda: status, score e corretor/empreendimento se ausentes
+    const leadAtual = db.prepare("SELECT corretor_id, empreendimento_id FROM leads WHERE id=?").get(lead_id);
+    const updateFields = ['status=\'vendido\'', 'score=100'];
+    const updateParams = [];
+    if (corretor_id && !leadAtual?.corretor_id) { updateFields.push('corretor_id=?'); updateParams.push(corretor_id); }
+    if (empreendimento_id && !leadAtual?.empreendimento_id) { updateFields.push('empreendimento_id=?'); updateParams.push(empreendimento_id); }
+    updateParams.push(lead_id);
+    db.prepare(`UPDATE leads SET ${updateFields.join(',')} WHERE id=?`).run(...updateParams);
+  }
   // Insere todas as unidades na junction table e marca como vendido
   const insVU = db.prepare("INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id) VALUES (?,?)");
   for (const uid of idsArray) {
@@ -2208,6 +2217,18 @@ app.put("/api/vendas/:id", (req, res) => {
     const vagaStatus = status === 'distrato' ? 'disponivel' : 'vendida';
     const vagaVendaId = status === 'distrato' ? null : req.params.id;
     db.prepare("UPDATE vagas_garagem SET status=?, venda_id=? WHERE id=?").run(vagaStatus, vagaVendaId, vaga_id);
+  }
+
+  // Sincroniza lead: score, status, corretor e empreendimento com base na venda
+  if (lead_id) {
+    const leadAtual = db.prepare("SELECT corretor_id, empreendimento_id FROM leads WHERE id=?").get(lead_id);
+    const isVendido = !status || status === 'ativo';
+    const updateFields = [`status='${isVendido ? 'vendido' : 'sem_venda'}'`, `score=${isVendido ? 100 : 0}`];
+    const updateParams = [];
+    if (corretor_id && !leadAtual?.corretor_id) { updateFields.push('corretor_id=?'); updateParams.push(corretor_id); }
+    if (empreendimento_id && !leadAtual?.empreendimento_id) { updateFields.push('empreendimento_id=?'); updateParams.push(empreendimento_id); }
+    updateParams.push(lead_id);
+    db.prepare(`UPDATE leads SET ${updateFields.join(',')} WHERE id=?`).run(...updateParams);
   }
 
   // Recalcula comissão (cria, atualiza ou remove dependendo do estado)
@@ -2869,6 +2890,18 @@ db.exec(`CREATE TABLE IF NOT EXISTS venda_unidades (
 // Migra unidade_id existentes para a junction table (ignora se já existir)
 db.exec(`INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id)
   SELECT id, unidade_id FROM vendas WHERE unidade_id IS NOT NULL`);
+
+// Sincroniza leads com vendas ativas: score=100, corretor e empreendimento quando ausentes
+db.exec(`UPDATE leads SET score=100, status='vendido'
+  WHERE id IN (SELECT lead_id FROM vendas WHERE status='ativo' AND lead_id IS NOT NULL)`);
+db.exec(`UPDATE leads SET corretor_id=(
+    SELECT v.corretor_id FROM vendas v WHERE v.lead_id=leads.id AND v.status='ativo' AND v.corretor_id IS NOT NULL LIMIT 1)
+  WHERE corretor_id IS NULL
+  AND id IN (SELECT lead_id FROM vendas WHERE status='ativo' AND corretor_id IS NOT NULL AND lead_id IS NOT NULL)`);
+db.exec(`UPDATE leads SET empreendimento_id=(
+    SELECT v.empreendimento_id FROM vendas v WHERE v.lead_id=leads.id AND v.status='ativo' AND v.empreendimento_id IS NOT NULL LIMIT 1)
+  WHERE empreendimento_id IS NULL
+  AND id IN (SELECT lead_id FROM vendas WHERE status='ativo' AND empreendimento_id IS NOT NULL AND lead_id IS NOT NULL)`);
 
 // Sincroniza unidades.status com vendas ativas (corrige dados históricos)
 db.exec(`UPDATE unidades SET status='vendido'
