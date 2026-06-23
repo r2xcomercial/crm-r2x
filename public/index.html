@@ -9048,7 +9048,12 @@ function exportarLeads() {
 }
 
 function exportarVendas() {
-  window.open(`/api/exportar/vendas?token=${TOKEN}`, '_blank');
+  const f = window._vendasFiltros || {};
+  const params = new URLSearchParams({ token: TOKEN });
+  if (f.emp)         params.set('emp', f.emp);
+  if (f.mes)         params.set('mes', f.mes);
+  if (f.incorporador) params.set('incorporador', f.incorporador);
+  window.open(`/api/exportar/vendas?${params.toString()}`, '_blank');
 }
 
 // ─── PORTAL DO INCORPORADOR ───────────────────────────────────────────────────

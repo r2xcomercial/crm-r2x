@@ -3303,7 +3303,34 @@ app.get('/api/exportar/leads', (req, res) => {
 });
 
 app.get('/api/exportar/vendas', (req, res) => {
-  const rows = db.prepare(`SELECT v.data_venda, l.nome as lead, e.nome as empreendimento, c.nome as corretor, v.imovel, v.valor, v.comissao_corretor_pct, v.comissao_corretor_valor, v.comissao_corretor_status, v.status, v.observacoes FROM vendas v LEFT JOIN leads l ON l.id=v.lead_id LEFT JOIN empreendimentos e ON e.id=v.empreendimento_id LEFT JOIN corretores c ON c.id=v.corretor_id ORDER BY v.data_venda DESC`).all();
+  const { emp, mes, incorporador } = req.query;
+  const conditions = ['1=1'];
+  const params = [];
+  if (emp)          { conditions.push('v.empreendimento_id=?'); params.push(Number(emp)); }
+  if (mes)          { conditions.push("strftime('%Y-%m', v.data_venda)=?"); params.push(mes); }
+  if (incorporador) { conditions.push('v.cliente_id=?'); params.push(Number(incorporador)); }
+  const rows = db.prepare(`
+    SELECT
+      v.data_venda        AS "Data",
+      l.nome              AS "Cliente",
+      e.nome              AS "Empreendimento",
+      c.nome              AS "Corretor",
+      v.imovel            AS "Imóvel/Unidade",
+      v.valor             AS "Valor (R$)",
+      v.comissao_corretor_pct    AS "% Comissão Corretor",
+      v.comissao_corretor_valor  AS "Comissão Corretor (R$)",
+      v.comissao_corretor_status AS "Status Comissão Corretor",
+      v.percentual_r2x           AS "% R2X",
+      v.comissao_r2x             AS "Comissão R2X (R$)",
+      v.status            AS "Status Venda",
+      v.observacoes       AS "Observações"
+    FROM vendas v
+    LEFT JOIN leads l ON l.id=v.lead_id
+    LEFT JOIN empreendimentos e ON e.id=v.empreendimento_id
+    LEFT JOIN corretores c ON c.id=v.corretor_id
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY v.data_venda DESC
+  `).all(...params);
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Vendas');
