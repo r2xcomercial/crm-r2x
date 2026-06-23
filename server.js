@@ -1915,6 +1915,7 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
         .run(lead.id, empreendimento_id, corretor_id || null, unidade_id, preco, preco, hoje);
 
       db.prepare("UPDATE unidades SET status='reservado' WHERE id=?").run(unidade_id);
+      db.prepare("INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id) VALUES (?,?)").run(rv.lastInsertRowid, unidade_id);
       return { venda_id: rv.lastInsertRowid, lead_id: lead.id };
     })();
 
@@ -2868,6 +2869,22 @@ db.exec(`CREATE TABLE IF NOT EXISTS venda_unidades (
 // Migra unidade_id existentes para a junction table (ignora se já existir)
 db.exec(`INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id)
   SELECT id, unidade_id FROM vendas WHERE unidade_id IS NOT NULL`);
+
+// Sincroniza unidades.status com vendas ativas (corrige dados históricos)
+db.exec(`UPDATE unidades SET status='vendido'
+  WHERE status='disponivel'
+  AND id IN (
+    SELECT vu.unidade_id FROM venda_unidades vu
+    JOIN vendas v ON v.id = vu.venda_id
+    WHERE v.status='ativo'
+  )`);
+db.exec(`UPDATE unidades SET status='reservado'
+  WHERE status='disponivel'
+  AND id IN (
+    SELECT vu.unidade_id FROM venda_unidades vu
+    JOIN vendas v ON v.id = vu.venda_id
+    WHERE v.status='reserva'
+  )`);
 
 // Migration: dados pessoais do lead para geração de contrato
 try { db.exec('ALTER TABLE leads ADD COLUMN cpf TEXT'); } catch(_) {}
