@@ -6078,6 +6078,46 @@ async function verEspelhoImagem(empId, emp, mapaData) {
     mapaZoom(delta, e.clientX, e.clientY);
   }, { passive: false });
 
+  // Pinch-to-zoom com dois dedos no celular
+  (function() {
+    const wrap = document.getElementById('mapa-zoom-wrap');
+    let _pinchDist = null;
+
+    function touchDist(t) {
+      const dx = t[0].clientX - t[1].clientX;
+      const dy = t[0].clientY - t[1].clientY;
+      return Math.hypot(dx, dy);
+    }
+    function touchMid(t) {
+      return {
+        x: (t[0].clientX + t[1].clientX) / 2,
+        y: (t[0].clientY + t[1].clientY) / 2
+      };
+    }
+
+    wrap.addEventListener('touchstart', function(e) {
+      if (e.touches.length === 2) {
+        _pinchDist = touchDist(e.touches);
+      }
+    }, { passive: true });
+
+    wrap.addEventListener('touchmove', function(e) {
+      if (e.touches.length !== 2 || _pinchDist === null) return;
+      e.preventDefault();
+      const newDist = touchDist(e.touches);
+      const ratio   = newDist / _pinchDist;
+      // Converte ratio para delta incremental suavizado
+      const delta = (ratio - 1) * 0.6;
+      const mid   = touchMid(e.touches);
+      mapaZoom(delta, mid.x, mid.y);
+      _pinchDist = newDist;
+    }, { passive: false });
+
+    wrap.addEventListener('touchend', function(e) {
+      if (e.touches.length < 2) _pinchDist = null;
+    }, { passive: true });
+  })();
+
   // Drag & drop — arrastar chips da lista ou marcadores existentes para o mapa
   const inner = document.getElementById('mapa-inner');
   inner.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
