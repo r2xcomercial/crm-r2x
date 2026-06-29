@@ -3994,6 +3994,7 @@ async function renderFinanceiro(filter = '') {
       <button class="fin-tab ${finTab==='fluxo'?'active':''}" onclick="setFinTab('fluxo')">📅 Fluxo de Caixa</button>
       <button class="fin-tab ${finTab==='fixas'?'active':''}" onclick="setFinTab('fixas')">🔁 Despesas Fixas</button>
       <button class="fin-tab ${finTab==='impostos'?'active':''}" onclick="setFinTab('impostos')">🏛️ Impostos</button>
+      <button class="fin-tab ${finTab==='reconciliacao'?'active':''}" onclick="setFinTab('reconciliacao')">🔗 Reconciliação</button>
     </div>
     <div id="fin-content"></div>
   `;
@@ -4002,7 +4003,7 @@ async function renderFinanceiro(filter = '') {
 
 function setFinTab(tab) {
   finTab = tab;
-  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo', fixas:'Fixas', impostos:'Impost' };
+  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo', fixas:'Fixas', impostos:'Impost', reconciliacao:'Reconcil' };
   document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(keys[tab]||'')));
   renderFinTab();
 }
@@ -4182,6 +4183,8 @@ function renderFinTab() {
     renderDespesasFixas(el);
   } else if (finTab === 'fluxo') {
     renderFluxoCaixa(el);
+  } else if (finTab === 'reconciliacao') {
+    renderReconciliacao(el);
   } else {
     // resumo por empreendimento
     const rows = (currentData.emp || []);
@@ -4799,6 +4802,97 @@ function renderFluxoCaixa(el) {
       Use ✅ nas Entradas para confirmar recebimento — o fluxo atualiza em tempo real.
     </div>
   `;
+}
+
+async function renderReconciliacao(el) {
+  el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text2)">Buscando sugestões…</div>`;
+  const r = await get('/api/pluggy/sugestoes-reconciliacao');
+  if (!r.ok) { el.innerHTML = `<div style="padding:24px;color:var(--red)">Erro: ${r.error}</div>`; return; }
+  const sugestoes = r.data;
+  if (!sugestoes.length) {
+    el.innerHTML = `<div class="table-card"><div style="padding:32px;text-align:center;color:var(--text2)">
+      <div style="font-size:32px;margin-bottom:8px">✅</div>
+      <div style="font-weight:600;margin-bottom:4px">Nenhuma sugestão no momento</div>
+      <div style="font-size:13px">Todas as entradas pendentes foram reconciliadas ou não há transações bancárias compatíveis.</div>
+    </div></div>`;
+    return;
+  }
+  const rows = sugestoes.map(s => {
+    const e = s.entrada, tx = s.transacao;
+    const diffValor = Math.abs(tx.valor - e.valor);
+    const diffValorPct = ((diffValor / e.valor) * 100).toFixed(1);
+    const scoreColor = s.score >= 80 ? 'var(--green)' : s.score >= 65 ? 'var(--gold,#f59e0b)' : 'var(--text2)';
+    const diffDias = e.data_prevista && tx.data
+      ? Math.round((new Date(tx.data) - new Date(e.data_prevista)) / 86400000) : null;
+    const diffDiasStr = diffDias === null ? '—' : diffDias === 0 ? 'mesmo dia' : diffDias > 0 ? `+${diffDias}d` : `${diffDias}d`;
+    return `
+    <tr>
+      <td style="padding:14px 12px">
+        <div style="font-weight:600;font-size:13px">${e.descricao}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">${e.empreendimento_nome||'—'} · ${e.tipo||''}</div>
+        ${e.parcela_num ? `<div style="font-size:11px;color:var(--text2)">Parcela ${e.parcela_num}/${e.parcela_total}</div>` : ''}
+      </td>
+      <td style="padding:14px 12px;text-align:right">
+        <div style="font-weight:700">${fmt(e.valor)}</div>
+        <div style="font-size:11px;color:var(--text2)">${e.data_prevista||'sem data'}</div>
+      </td>
+      <td style="padding:14px 12px;text-align:center;color:var(--text2);font-size:20px">↔</td>
+      <td style="padding:14px 12px">
+        <div style="font-weight:600;font-size:13px">${tx.descricao||tx.merchant||'Transação'}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">${tx.conta_nome||''} · ${tx.nome_banco||''}</div>
+      </td>
+      <td style="padding:14px 12px;text-align:right">
+        <div style="font-weight:700">${fmt(tx.valor)}</div>
+        <div style="font-size:11px;color:var(--text2)">${tx.data||'sem data'}</div>
+      </td>
+      <td style="padding:14px 12px;text-align:center">
+        <div style="font-size:11px;color:${scoreColor};font-weight:700">${s.score}%</div>
+        <div style="font-size:10px;color:var(--text2)">Δ${diffValorPct}% · ${diffDiasStr}</div>
+      </td>
+      <td style="padding:14px 12px;text-align:center">
+        <div style="display:flex;gap:6px;justify-content:center">
+          <button onclick="confirmarReconciliacao(${e.id},'${tx.transaction_id}','${tx.data}')"
+            style="padding:6px 12px;border-radius:6px;background:var(--green);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer">✓ Confirmar</button>
+          <button onclick="rejeitarReconciliacao(${e.id},'${tx.transaction_id}')"
+            style="padding:6px 10px;border-radius:6px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);font-size:12px;cursor:pointer">✗</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">🔗 Sugestões de Reconciliação (${sugestoes.length})</div>
+        <div style="font-size:12px;color:var(--text2)">Entradas pendentes × transações bancárias · confirme ou rejeite cada par</div>
+      </div>
+      <table style="width:100%">
+        <thead><tr style="font-size:11px;color:var(--text2);border-bottom:1px solid var(--border)">
+          <th style="padding:8px 12px;text-align:left;font-weight:600">Entrada Pendente</th>
+          <th style="padding:8px 12px;text-align:right;font-weight:600">Valor / Data</th>
+          <th></th>
+          <th style="padding:8px 12px;text-align:left;font-weight:600">Transação Bancária</th>
+          <th style="padding:8px 12px;text-align:right;font-weight:600">Valor / Data</th>
+          <th style="padding:8px 12px;text-align:center;font-weight:600">Score</th>
+          <th style="padding:8px 12px;text-align:center;font-weight:600">Ação</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function confirmarReconciliacao(entrada_id, transaction_id, data_recebimento) {
+  const r = await post('/api/pluggy/confirmar-reconciliacao', { entrada_id, transaction_id, data_recebimento });
+  if (!r.ok) { toast('Erro: ' + r.error); return; }
+  toast('Entrada marcada como recebida!');
+  renderFinanceiro();
+}
+
+async function rejeitarReconciliacao(entrada_id, transaction_id) {
+  const r = await post('/api/pluggy/rejeitar-reconciliacao', { entrada_id, transaction_id });
+  if (!r.ok) { toast('Erro: ' + r.error); return; }
+  const el = document.getElementById('fin-content');
+  if (el) renderReconciliacao(el);
 }
 
 const TIPOS_ENTRADA = ['comissao_venda','fee_fixo_mensal','consultoria','bonus','outro'];

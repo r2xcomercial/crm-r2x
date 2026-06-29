@@ -2956,6 +2956,8 @@ try { db.exec('ALTER TABLE empreendimentos ADD COLUMN vendedora_qualificacao TEX
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN valor_cub REAL'); } catch(_) {}
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN patrimonio_afetacao INTEGER DEFAULT 0'); } catch(_) {}
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN condicao_pagamento_padrao TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN pluggy_transaction_id TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE usuarios ADD COLUMN cliente_id INTEGER'); } catch(_) {}
 
 // Tabela de compradores adicionais (cônjuge, sócio, condomínio)
 db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (
@@ -4823,6 +4825,86 @@ app.post('/api/pluggy/webhook', async (req, res) => {
     console.error('[Pluggy Webhook]', e.message);
     res.json({ ok: true }); // sempre 200 pro Pluggy
   }
+});
+
+// ─── RECONCILIAÇÃO PLUGGY ↔ FINANCEIRO ───────────────────────────────────────
+
+// Retorna sugestões de match entre transações bancárias e entradas pendentes
+app.get('/api/pluggy/sugestoes-reconciliacao', (req, res) => {
+  try {
+    const entradas = db.prepare(`
+      SELECT fe.*, e.nome as empreendimento_nome
+      FROM financeiro_entradas fe
+      LEFT JOIN empreendimentos e ON e.id=fe.empreendimento_id
+      WHERE fe.status='pendente' AND fe.pluggy_transaction_id IS NULL
+      ORDER BY fe.data_prevista ASC
+    `).all();
+
+    const transacoes = db.prepare(`
+      SELECT t.*, c.nome as conta_nome, i.nome_banco
+      FROM pluggy_transacoes t
+      JOIN pluggy_contas c ON c.account_id=t.account_id
+      JOIN pluggy_items i ON i.item_id=c.item_id
+      WHERE t.tipo='CREDIT'
+      ORDER BY t.data DESC
+    `).all();
+
+    const sugestoes = [];
+    const txUsadas = new Set();
+
+    for (const entrada of entradas) {
+      if (!entrada.valor || entrada.valor <= 0) continue;
+      const dataPrevista = entrada.data_prevista ? new Date(entrada.data_prevista) : null;
+      let melhor = null;
+      let melhorScore = 0;
+
+      for (const tx of transacoes) {
+        if (txUsadas.has(tx.transaction_id)) continue;
+        const diffValor = Math.abs(tx.valor - entrada.valor) / entrada.valor;
+        if (diffValor > 0.1) continue; // descarta se diferença > 10%
+
+        let score = 100 - Math.round(diffValor * 100); // 0-100 baseado em valor
+        if (dataPrevista && tx.data) {
+          const diffDias = Math.abs((new Date(tx.data) - dataPrevista) / 86400000);
+          if (diffDias > 60) continue; // ignora se data muito distante
+          score -= Math.round(diffDias * 0.5); // penaliza por dias de diferença
+        }
+        if (score > melhorScore) { melhorScore = score; melhor = tx; }
+      }
+
+      if (melhor && melhorScore >= 50) {
+        sugestoes.push({ entrada, transacao: melhor, score: melhorScore });
+        txUsadas.add(melhor.transaction_id);
+      }
+    }
+
+    ok(res, sugestoes);
+  } catch(e) { err(res, e.message); }
+});
+
+// Confirma um match: marca entrada como recebida e transação como importada
+app.post('/api/pluggy/confirmar-reconciliacao', (req, res) => {
+  try {
+    const { entrada_id, transaction_id, data_recebimento } = req.body;
+    if (!entrada_id || !transaction_id) return err(res, 'entrada_id e transaction_id obrigatórios');
+    const dataRec = data_recebimento || new Date().toISOString().slice(0,10);
+    db.transaction(() => {
+      db.prepare(`UPDATE financeiro_entradas SET status='recebido', data_recebimento=?, pluggy_transaction_id=? WHERE id=?`)
+        .run(dataRec, transaction_id, entrada_id);
+    })();
+    ok(res, { confirmado: true });
+  } catch(e) { err(res, e.message); }
+});
+
+// Rejeita uma sugestão: vincula transaction_id à entrada como "rejeitado" para não sugerir novamente
+app.post('/api/pluggy/rejeitar-reconciliacao', (req, res) => {
+  try {
+    const { entrada_id, transaction_id } = req.body;
+    if (!entrada_id || !transaction_id) return err(res, 'entrada_id e transaction_id obrigatórios');
+    db.prepare(`UPDATE financeiro_entradas SET pluggy_transaction_id='rejeitado:'||? WHERE id=?`)
+      .run(transaction_id, entrada_id);
+    ok(res, { rejeitado: true });
+  } catch(e) { err(res, e.message); }
 });
 
 // ─── GESTÃO PESSOAL ───────────────────────────────────────────────────────────
