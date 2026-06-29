@@ -89,7 +89,7 @@
     padding: 18px; display: flex; flex-direction: column; gap: 6px; min-width: 0;
   }
   .kpi-label { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; }
-  .kpi-value { font-weight: 700; color: var(--white); white-space: normal; word-break: break-word; font-size: clamp(13px, 1.6vw, 22px); line-height: 1.2; }
+  .kpi-value { font-weight: 700; color: var(--white); white-space: normal; word-break: break-word; overflow-wrap: break-word; font-size: clamp(14px, 2vw, 22px); line-height: 1.2; }
   .kpi-sub { font-size: 12px; color: var(--text2); }
   .kpi-icon { font-size: 22px; margin-bottom: 4px; }
 
@@ -242,7 +242,7 @@
   .kanban-card .kc-move button:hover { background: var(--accent); color: var(--navy); border-color: var(--accent); }
 
   /* ── PAINEL ── */
-  .painel-big { font-size: clamp(24px, 3.5vw, 48px); font-weight: 900; line-height: 1.1; word-break: break-word; overflow-wrap: break-word; }
+  .painel-big { font-size: clamp(18px, 3vw, 48px); font-weight: 900; line-height: 1.1; word-break: break-word; overflow-wrap: break-word; }
   .painel-label { font-size: 13px; color: var(--text2); margin-top: 6px; text-transform: uppercase; letter-spacing: .5px; }
   .painel-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px 20px; text-align: center; min-width: 0; overflow: hidden; }
   .painel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 16px; margin-bottom: 24px; }
@@ -269,6 +269,13 @@
     .espelho-tile .tile-num { font-size: 11px; }
     .espelho-tile .tile-preco { font-size: 9px; }
     .espelho-predio-table { font-size: 11px; min-width: 320px; }
+    .painel-big { font-size: clamp(16px, 5vw, 28px); }
+    .painel-card { padding: 16px 12px; }
+    .painel-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media(max-width: 360px) {
+    .kpi-grid { grid-template-columns: 1fr; }
+    .painel-grid { grid-template-columns: 1fr; }
   }
 
   /* ── RESPONSIVE ── */
@@ -307,11 +314,13 @@
   .gp-tab.active { background: var(--accent); color: var(--navy); border-color: var(--accent); }
   .gp-tab:hover:not(.active) { background: var(--navy3); color: var(--text); }
   .gp-kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 24px; }
-  @media(max-width:900px) { .gp-kpi-grid { grid-template-columns: repeat(2,1fr); } }
-  .gp-kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 16px; }
-  .gp-kpi .kpi-val { font-size: 22px; font-weight: 900; margin: 6px 0 2px; }
+  @media(max-width:900px) { .gp-kpi-grid { grid-template-columns: repeat(2,1fr) !important; } }
+  @media(max-width:480px) { .gp-kpi-grid { grid-template-columns: 1fr 1fr !important; } }
+  @media(max-width:360px) { .gp-kpi-grid { grid-template-columns: 1fr !important; } }
+  .gp-kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 16px; min-width: 0; overflow: hidden; }
+  .gp-kpi .kpi-val { font-size: clamp(13px, 2.5vw, 22px); font-weight: 900; margin: 6px 0 2px; word-break: break-word; overflow-wrap: break-word; line-height: 1.2; }
   .gp-kpi .kpi-lbl { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; }
-  .gp-kpi .kpi-sub { font-size: 11px; color: var(--text2); }
+  .gp-kpi .kpi-sub { font-size: 11px; color: var(--text2); word-break: break-word; }
   .gp-section-title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
   .gp-chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
   @media(max-width:768px) { .gp-chart-row { grid-template-columns: 1fr; } }
