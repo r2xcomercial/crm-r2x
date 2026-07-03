@@ -9257,11 +9257,40 @@ async function gerarLinkPortal(empId, empNome) {
 
 // ─── CALCULADORA DE FINANCIAMENTO ─────────────────────────────────────────────
 
-function renderCalculadora(container) {
+function renderCalculadora(container, _tab) {
+  window._calcTab = _tab || window._calcTab || 'financiamento';
   const wrap = container || document.getElementById('content');
+  const tabBtn = (id, label) => `<button onclick="renderCalculadora(null,'${id}')" style="padding:8px 18px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:${window._calcTab===id?'var(--accent)':'var(--navy3)'};color:${window._calcTab===id?'var(--navy)':'var(--text2)'}">${label}</button>`;
+  const tabsHtml = `<div style="display:flex;gap:8px;margin-bottom:20px">${tabBtn('financiamento','🏠 Financiamento')}${tabBtn('adiantamento','📅 Adiantamento de Parcela')}</div>`;
+
+  if (window._calcTab === 'adiantamento') {
+    const hoje = new Date().toISOString().slice(0,10);
+    wrap.innerHTML = `
+    <div class="mini-card" style="max-width:560px">
+      <h4 style="font-size:15px;font-weight:700;margin-bottom:16px">🧮 Calculadora Financeira</h4>
+      ${tabsHtml}
+      <h5 style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--accent)">📅 Adiantamento de Parcela — Valor Presente</h5>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:16px">Calcula quanto o comprador deve pagar hoje para quitar uma parcela futura com desconto a juros.</p>
+      <div class="form-grid">
+        <div class="form-group"><label>Valor nominal da parcela (R$)</label><input id="adi-valor" type="number" value="10000" min="0" step="100" oninput="calcAdiantamento()"></div>
+        <div class="form-group"><label>Taxa de juros <strong>mensal</strong> (%)</label><input id="adi-taxa" type="number" value="1.0" step="0.01" min="0" oninput="calcAdiantamento()"></div>
+        <div class="form-group"><label>Data de pagamento (hoje)</label><input id="adi-hoje" type="date" value="${hoje}" oninput="calcAdiantamento()"></div>
+        <div class="form-group"><label>Data de vencimento da parcela</label><input id="adi-venc" type="date" oninput="calcAdiantamento()"></div>
+      </div>
+      <div id="adi-resultado" style="margin-top:20px"></div>
+    </div>`;
+    // Auto-set vencimento para 1 mês à frente e calcular
+    const vencDefault = new Date(); vencDefault.setMonth(vencDefault.getMonth()+1);
+    document.getElementById('adi-venc').value = vencDefault.toISOString().slice(0,10);
+    calcAdiantamento();
+    return;
+  }
+
   wrap.innerHTML = `
     <div class="mini-card" style="max-width:620px">
-      <h4 style="font-size:15px;font-weight:700;margin-bottom:16px">🧮 Calculadora de Financiamento</h4>
+      <h4 style="font-size:15px;font-weight:700;margin-bottom:16px">🧮 Calculadora Financeira</h4>
+      ${tabsHtml}
+      <h5 style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--accent)">🏠 Simulação de Financiamento</h5>
       <div class="form-grid">
         <div class="form-group"><label>Valor do Imóvel (R$)</label><input id="calc-valor" type="number" value="300000" min="0" step="1000"></div>
         <div class="form-group"><label>Entrada (R$)</label><input id="calc-entrada" type="number" value="60000" min="0" step="1000"></div>
@@ -9291,6 +9320,73 @@ function renderCalculadora(container) {
       <button onclick="calcFinanciamento()" style="margin-top:16px;background:var(--accent);border:none;color:var(--navy);border-radius:8px;padding:10px 24px;font-weight:700;font-size:14px;cursor:pointer">Calcular</button>
       <div id="calc-resultado" style="margin-top:20px"></div>
     </div>`;
+}
+
+function calcAdiantamento() {
+  const vf      = parseFloat(document.getElementById('adi-valor')?.value) || 0;
+  const taxaMes = parseFloat(document.getElementById('adi-taxa')?.value) || 0;
+  const dataHoje = document.getElementById('adi-hoje')?.value;
+  const dataVenc = document.getElementById('adi-venc')?.value;
+  const el = document.getElementById('adi-resultado');
+  if (!el) return;
+
+  if (!vf || !taxaMes || !dataHoje || !dataVenc) {
+    el.innerHTML = '<p style="color:var(--text2);font-size:13px">Preencha todos os campos.</p>'; return;
+  }
+
+  const hoje = new Date(dataHoje + 'T12:00:00');
+  const venc  = new Date(dataVenc + 'T12:00:00');
+  const dias  = Math.round((venc - hoje) / 86400000);
+
+  if (dias <= 0) {
+    el.innerHTML = '<p style="color:var(--red,#ef4444);font-size:13px">⚠️ A data de vencimento deve ser posterior à data de pagamento.</p>'; return;
+  }
+
+  const i   = taxaMes / 100;
+  // Usa dias corridos convertidos para meses (n = dias/30), juros compostos
+  const n   = dias / 30;
+  const vp  = vf / Math.pow(1 + i, n);
+  const desconto = vf - vp;
+  const pct = (desconto / vf) * 100;
+  const meses = Math.floor(dias / 30);
+  const diasRestantes = dias - meses * 30;
+
+  const fmtR = v => v.toLocaleString('pt-BR', {style:'currency', currency:'BRL', minimumFractionDigits:2});
+
+  el.innerHTML = `
+    <div style="background:rgba(0,196,180,.07);border:1px solid rgba(0,196,180,.2);border-radius:10px;padding:16px 20px;margin-bottom:12px">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:4px">VALOR PRESENTE (pagar hoje)</div>
+      <div style="font-size:28px;font-weight:800;color:var(--accent)">${fmtR(vp)}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:4px">
+        Desconto de <strong style="color:var(--green,#22c55e)">${fmtR(desconto)}</strong> (${pct.toFixed(2)}%) sobre o valor nominal
+      </div>
+    </div>
+    <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:12px">
+      ${kpi('📋', 'Valor Nominal', fmtR(vf), 'valor da parcela no vencimento')}
+      ${kpi('💸', 'Desconto', fmtR(desconto), `${pct.toFixed(2)}% do valor nominal`)}
+      ${kpi('📅', 'Dias antecipados', dias + ' dias', (meses > 0 ? meses + (meses > 1 ? ' meses' : ' mês') : '') + (diasRestantes > 0 ? ' ' + diasRestantes + 'd' : '') || (dias + ' dias'))}
+      ${kpi('📈', 'Taxa usada', `${taxaMes}% a.m.`, `Equivale a ${((Math.pow(1+i,12)-1)*100).toFixed(2)}% a.a.`)}
+    </div>
+    <button onclick="compartilharAdiantamentoWpp()" style="background:#25D366;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px;margin-top:4px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      Enviar pelo WhatsApp
+    </button>`;
+}
+
+function compartilharAdiantamentoWpp() {
+  const vf       = parseFloat(document.getElementById('adi-valor')?.value) || 0;
+  const taxaMes  = parseFloat(document.getElementById('adi-taxa')?.value) || 0;
+  const dataHoje = document.getElementById('adi-hoje')?.value;
+  const dataVenc = document.getElementById('adi-venc')?.value;
+  if (!vf || !taxaMes || !dataHoje || !dataVenc) return;
+  const dias = Math.round((new Date(dataVenc+'T12:00:00') - new Date(dataHoje+'T12:00:00')) / 86400000);
+  if (dias <= 0) return;
+  const i = taxaMes / 100;
+  const vp = vf / Math.pow(1 + i, dias / 30);
+  const desconto = vf - vp;
+  const fmtR = v => v.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+  const txt = `📅 *Adiantamento de Parcela*\n\n💰 Valor nominal: ${fmtR(vf)}\n📆 Vencimento: ${new Date(dataVenc+'T12:00:00').toLocaleDateString('pt-BR')}\n⏩ Pagamento antecipado em: *${dias} dias*\n📈 Taxa: ${taxaMes}% a.m.\n\n✅ *Valor presente: ${fmtR(vp)}*\n💸 Desconto: ${fmtR(desconto)} (${((desconto/vf)*100).toFixed(2)}%)\n\n_Calculado pelo CRM R2X_`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(txt)}`, '_blank');
 }
 
 function toggleBalaoValor() {
