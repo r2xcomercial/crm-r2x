@@ -4064,6 +4064,8 @@ function renderFinTab() {
               <option value="desc" ${fSort==='desc'?'selected':''}>📅 Mais distante primeiro</option>
             </select>
             ${(fMes||fEmp||fInc||fSt)?`<button onclick="window._finFiltroMes='';window._finFiltroEmp='';window._finFiltroInc='';window._finFiltroSt='';renderFinTab()" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:12px;cursor:pointer">✕ Limpar</button>`:''}
+            <button class="btn btn-secondary" onclick="emitirNFLote()" style="padding:5px 12px;font-size:12px">🧾 Emitir NF</button>
+            <button class="btn btn-secondary" onclick="darBaixaNF()" style="padding:5px 12px;font-size:12px">📥 Dar baixa na NF</button>
             <button class="btn btn-primary" onclick="openEntradaModal()" style="padding:5px 12px;font-size:12px">+ Nova Entrada</button>
           </div>
         </div>
@@ -5269,6 +5271,329 @@ function toggleMrParcial(valorStr, total) {
   if (aviso)  aviso.style.display = isParcial ? 'block' : 'none';
   if (isParcial && lbRec)  lbRec.textContent  = fmt(valor);
   if (isParcial && lbRest) lbRest.textContent = fmt(parseFloat((total - valor).toFixed(2)));
+}
+
+// ─── EMITIR NF ────────────────────────────────────────────────────────────────
+// Passo 1: vincula NF às parcelas escolhidas — status continua pendente
+
+function emitirNFLote(abaInicial) {
+  window._nfAba = abaInicial || 'emitir';
+  window._nfArquivoPath = null;
+  _renderModalNF();
+}
+
+function _renderModalNF() {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const emps = _empsComPendentes();
+  const optsEmp = emps.map(e => `<option value="${e.id}">${e.nome}</option>`).join('');
+  const aba = window._nfAba || 'emitir';
+
+  const tabStyle = (t) => `padding:7px 18px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;${aba===t ? 'background:var(--accent);color:#fff;' : 'background:var(--navy3);color:var(--text2);'}`;
+
+  const htmlEmitir = `
+    <div class="form-grid">
+      <div class="form-group span2" style="background:rgba(79,142,247,.08);border:1px solid rgba(79,142,247,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text2);line-height:1.7">
+        Selecione as parcelas que esta NF cobre. Elas continuam <b style="color:var(--warning)">pendentes</b> — o recebimento é registrado depois, quando o pagamento cair no banco.
+      </div>
+      <div class="form-group">
+        <label>Empreendimento *</label>
+        <select id="nf-emp" onchange="atualizarPreviewNF()" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);width:100%">
+          <option value="">— Selecione —</option>
+          ${optsEmp}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Parcelas com vencimento até</label>
+        <input id="nf-ate" type="date" value="${hoje}" onchange="atualizarPreviewNF()" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);width:100%">
+      </div>
+      <div class="form-group span2" id="nf-preview" style="background:var(--navy3);border-radius:8px;padding:12px 16px;text-align:center;font-size:14px;color:var(--text2)">
+        Selecione o empreendimento para ver as parcelas
+      </div>
+      <div class="form-group">
+        <label>Número da NF *</label>
+        <input id="nf-numero" placeholder="Ex: 000042 ou N8" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);width:100%">
+      </div>
+      <div class="form-group">
+        <label>Data de emissão *</label>
+        <input id="nf-data-emissao" type="date" value="${hoje}" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);width:100%">
+      </div>
+    </div>`;
+
+  const htmlImportar = `
+    <div class="form-grid">
+      <div class="form-group span2" style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text2);line-height:1.7">
+        Faça upload da NFS-e emitida pelo seu contador. A IA extrai os dados automaticamente — você só confirma e vincula às parcelas.
+      </div>
+      <div class="form-group span2">
+        <label>Arquivo da NF (PDF) *</label>
+        <label style="display:flex;align-items:center;gap:10px;padding:10px 14px;border:2px dashed var(--border);border-radius:8px;cursor:pointer;background:var(--navy3);">
+          <span style="font-size:22px">📄</span>
+          <span id="nf-imp-label" style="color:var(--text2);font-size:13px">Clique para selecionar o PDF da NF</span>
+          <input type="file" accept=".pdf" style="display:none" onchange="extrairDadosNF(this)">
+        </label>
+      </div>
+      <div id="nf-imp-extraindo" style="display:none" class="form-group span2">
+        <div style="text-align:center;padding:16px;color:var(--text2);font-size:13px">
+          <div style="font-size:24px;margin-bottom:8px">⏳</div>
+          Extraindo dados da NF com IA...
+        </div>
+      </div>
+      <div id="nf-imp-dados" style="display:none" class="form-group span2">
+        <div style="background:var(--navy3);border-radius:8px;padding:12px 16px;">
+          <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-weight:600">DADOS EXTRAÍDOS DA NF</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="nf-imp-resumo"></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Número da NF *</label>
+        <input id="nf-imp-numero" placeholder="Ex: 17" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);width:100%">
+      </div>
+      <div class="form-group">
+        <label>Data de emissão *</label>
+        <input id="nf-imp-data" type="date" value="${hoje}" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);width:100%">
+      </div>
+      <div class="form-group">
+        <label>Empreendimento *</label>
+        <select id="nf-imp-emp" onchange="atualizarPreviewNFImp()" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);width:100%">
+          <option value="">— Selecione —</option>
+          ${optsEmp}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Parcelas com vencimento até</label>
+        <input id="nf-imp-ate" type="date" value="${hoje}" onchange="atualizarPreviewNFImp()" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);width:100%">
+      </div>
+      <div class="form-group span2" id="nf-imp-preview" style="background:var(--navy3);border-radius:8px;padding:12px 16px;text-align:center;font-size:14px;color:var(--text2)">
+        Selecione o empreendimento para ver as parcelas
+      </div>
+    </div>`;
+
+  openModal('🧾 Nota Fiscal', `
+    <div style="display:flex;gap:8px;margin-bottom:16px;background:var(--navy3);padding:6px;border-radius:8px;">
+      <button style="${tabStyle('emitir')}" onclick="window._nfAba='emitir';_renderModalNF()">🧾 Emitir NF</button>
+      <button style="${tabStyle('importar')}" onclick="window._nfAba='importar';_renderModalNF()">📥 Importar do Contador</button>
+    </div>
+    ${aba === 'emitir' ? htmlEmitir : htmlImportar}
+  `, async () => {
+    if (window._nfAba === 'emitir') {
+      const nfNum  = document.getElementById('nf-numero')?.value?.trim();
+      const nfData = document.getElementById('nf-data-emissao')?.value;
+      if (!nfNum)  return toast('Informe o número da NF', 'error');
+      if (!nfData) return toast('Informe a data de emissão', 'error');
+      const ids = window._nfIdsAtuais || [];
+      if (ids.length === 0) return toast('Nenhuma parcela pendente nos filtros selecionados', 'error');
+      const r = await post('/api/financeiro/entradas/emitir-nf', { ids, nf_numero: nfNum, nf_data: nfData });
+      if (!r.ok) return toast(r.error || 'Erro ao emitir NF', 'error');
+      toast(`🧾 NF ${nfNum} emitida — ${r.data?.updated || ids.length} parcelas vinculadas`);
+    } else {
+      const nfNum  = document.getElementById('nf-imp-numero')?.value?.trim();
+      const nfData = document.getElementById('nf-imp-data')?.value;
+      if (!nfNum)  return toast('Informe o número da NF', 'error');
+      if (!nfData) return toast('Informe a data de emissão', 'error');
+      const ids = window._nfIdsImpAtuais || [];
+      if (ids.length === 0) return toast('Nenhuma parcela pendente nos filtros selecionados', 'error');
+      const r = await post('/api/financeiro/entradas/importar-nf-arquivo', {
+        ids, nf_numero: nfNum, nf_data: nfData, nf_arquivo: window._nfArquivoPath || null
+      });
+      if (!r.ok) return toast(r.error || 'Erro ao importar NF', 'error');
+      toast(`📥 NF ${nfNum} importada — ${r.data?.updated || ids.length} parcelas vinculadas`);
+    }
+    closeModal();
+    await renderFinanceiro();
+  }, { saveLabel: aba === 'emitir' ? '🧾 Emitir NF' : '📥 Importar NF' });
+
+  if (aba === 'emitir') setTimeout(atualizarPreviewNF, 50);
+}
+
+async function extrairDadosNF(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  document.getElementById('nf-imp-label').textContent = file.name;
+  document.getElementById('nf-imp-extraindo').style.display = '';
+  document.getElementById('nf-imp-dados').style.display = 'none';
+  const fd = new FormData();
+  fd.append('arquivo', file);
+  try {
+    const r = await fetch('/api/financeiro/entradas/extrair-nf', {
+      method: 'POST',
+      headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' },
+      body: fd
+    });
+    const json = await r.json();
+    document.getElementById('nf-imp-extraindo').style.display = 'none';
+    if (!json.ok) return toast(json.error || 'Erro ao extrair NF', 'error');
+    window._nfArquivoPath = json.data?.arquivo || null;
+    const d = json.data?.dados || {};
+    if (d.nf_numero) document.getElementById('nf-imp-numero').value = d.nf_numero;
+    if (d.nf_data)   document.getElementById('nf-imp-data').value = d.nf_data;
+    if (d.vencimento) {
+      document.getElementById('nf-imp-ate').value = d.vencimento;
+    }
+    // Tenta casar tomador com empreendimento pelo nome
+    if (d.tomador_nome) {
+      const emps = currentData.emp || [];
+      const tomadorNorm = d.tomador_nome.toLowerCase();
+      for (const emp of emps) {
+        if (emp.nome && tomadorNorm.includes(emp.nome.toLowerCase().slice(0, 5))) {
+          document.getElementById('nf-imp-emp').value = emp.id;
+          break;
+        }
+      }
+    }
+    const fmt = v => v != null ? String(v) : '—';
+    const fmtR = v => v != null ? 'R$ ' + parseFloat(v).toLocaleString('pt-BR', {minimumFractionDigits:2}) : '—';
+    document.getElementById('nf-imp-resumo').innerHTML = `
+      <div><span style="font-size:11px;color:var(--text3)">Nº NF</span><div style="font-weight:600">${fmt(d.nf_numero)}</div></div>
+      <div><span style="font-size:11px;color:var(--text3)">Data emissão</span><div style="font-weight:600">${d.nf_data ? d.nf_data.split('-').reverse().join('/') : '—'}</div></div>
+      <div><span style="font-size:11px;color:var(--text3)">Tomador</span><div style="font-weight:600;font-size:12px">${fmt(d.tomador_nome)}</div></div>
+      <div><span style="font-size:11px;color:var(--text3)">Valor serviço</span><div style="font-weight:600;color:var(--success)">${fmtR(d.valor_servico)}</div></div>
+      <div class="span2"><span style="font-size:11px;color:var(--text3)">Descrição</span><div style="font-size:12px;color:var(--text2)">${fmt(d.descricao)}</div></div>
+    `;
+    document.getElementById('nf-imp-dados').style.display = '';
+    atualizarPreviewNFImp();
+    toast('✅ Dados extraídos com sucesso!', 'success');
+  } catch(e) {
+    document.getElementById('nf-imp-extraindo').style.display = 'none';
+    toast('Erro ao processar arquivo', 'error');
+  }
+}
+
+function atualizarPreviewNFImp() {
+  const empId = document.getElementById('nf-imp-emp')?.value;
+  const ate   = document.getElementById('nf-imp-ate')?.value;
+  const pendentes = (currentData.entradas || []).filter(e => {
+    if (e.status !== 'pendente') return false;
+    if (!empId || String(e.empreendimento_id) !== String(empId)) return false;
+    if (ate && e.data_prevista && e.data_prevista > ate) return false;
+    return true;
+  });
+  window._nfIdsImpAtuais = pendentes.map(e => e.id);
+  const total = pendentes.reduce((s, e) => s + (parseFloat(e.valor) || 0), 0);
+  const el = document.getElementById('nf-imp-preview');
+  if (!el) return;
+  if (!empId) {
+    el.innerHTML = `<span style="color:var(--text2)">Selecione o empreendimento para ver as parcelas</span>`;
+  } else if (pendentes.length === 0) {
+    el.innerHTML = `<span style="color:var(--text2)">Nenhuma parcela pendente com esses filtros</span>`;
+  } else {
+    el.innerHTML = `<div style="font-size:13px"><b style="color:var(--success)">${pendentes.length} parcela${pendentes.length>1?'s':''}</b> · Total <b>R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</b></div><div style="margin-top:8px;font-size:11px;color:var(--text3)">${pendentes.map(e=>`${e.descricao||''} — R$ ${parseFloat(e.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}`).join(' | ')}</div>`;
+  }
+}
+
+window._nfIdsAtuais = [];
+
+function _empsComPendentes() {
+  return [...new Map(
+    (currentData.entradas || [])
+      .filter(e => e.status === 'pendente' && e.empreendimento_id)
+      .map(e => [e.empreendimento_id, {
+        id: e.empreendimento_id,
+        nome: (currentData.emp || []).find(ep => ep.id === e.empreendimento_id)?.nome || `EMP ${e.empreendimento_id}`
+      }])
+  ).values()].sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
+function atualizarPreviewNF() {
+  const empId = document.getElementById('nf-emp')?.value;
+  const ate   = document.getElementById('nf-ate')?.value;
+  const pendentes = (currentData.entradas || []).filter(e => {
+    if (e.status !== 'pendente') return false;
+    if (!empId || String(e.empreendimento_id) !== String(empId)) return false;
+    if (ate && e.data_prevista && e.data_prevista > ate) return false;
+    return true;
+  });
+  window._nfIdsAtuais = pendentes.map(e => e.id);
+  const total = pendentes.reduce((s, e) => s + (parseFloat(e.valor) || 0), 0);
+  const el = document.getElementById('nf-preview');
+  if (!el) return;
+  if (!empId) {
+    el.innerHTML = `<span style="color:var(--text2)">Selecione o empreendimento para ver as parcelas</span>`;
+  } else if (pendentes.length === 0) {
+    el.innerHTML = `<span style="color:var(--text2)">Nenhuma parcela pendente com esses filtros</span>`;
+  } else {
+    const nomeEmp = (currentData.emp || []).find(e => String(e.id) === String(empId))?.nome || 'empreendimento';
+    el.innerHTML = `
+      <div style="font-size:22px;font-weight:700;color:var(--accent)">${fmt(total)}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:4px">
+        <b style="color:var(--text1)">${pendentes.length}</b> parcelas pendentes · ${nomeEmp}
+      </div>`;
+  }
+}
+
+// ─── DAR BAIXA NA NF ─────────────────────────────────────────────────────────
+// Passo 2: quando o pagamento chega no banco, marca todas as parcelas da NF como recebidas
+
+function darBaixaNF() {
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  // Agrupa NFs emitidas (pendentes com nf_numero preenchido) por número
+  const nfMap = new Map();
+  (currentData.entradas || []).forEach(e => {
+    if (e.status !== 'pendente' || !e.nf_numero) return;
+    const key = e.nf_numero;
+    if (!nfMap.has(key)) {
+      const emp = (currentData.emp || []).find(ep => ep.id === e.empreendimento_id);
+      nfMap.set(key, { numero: key, nf_data: e.nf_data, total: 0, count: 0, emp: emp?.nome || '—' });
+    }
+    const nf = nfMap.get(key);
+    nf.total += parseFloat(e.valor) || 0;
+    nf.count++;
+  });
+
+  const nfs = [...nfMap.values()].sort((a, b) => a.numero.localeCompare(b.numero));
+
+  if (nfs.length === 0) {
+    return toast('Nenhuma NF emitida aguardando recebimento. Emita uma NF primeiro.', 'error');
+  }
+
+  const optsNF = nfs.map(n =>
+    `<option value="${n.numero}">${n.numero} · ${n.emp} · ${fmt(n.total)} (${n.count} parcelas)</option>`
+  ).join('');
+
+  openModal('📥 Dar Baixa na NF', `
+    <div class="form-grid">
+      <div class="form-group span2" style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text2);line-height:1.7">
+        O pagamento chegou no banco. Selecione a NF correspondente para marcar todas as parcelas como <b style="color:var(--success)">recebidas</b> de uma vez.
+      </div>
+      <div class="form-group span2">
+        <label>NF a receber *</label>
+        <select id="baixa-nf-num" onchange="atualizarPreviewBaixa(this.value)" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);width:100%">
+          <option value="">— Selecione a NF —</option>
+          ${optsNF}
+        </select>
+      </div>
+      <div class="form-group span2" id="baixa-preview" style="display:none;background:var(--navy3);border-radius:8px;padding:12px 16px;text-align:center"></div>
+      <div class="form-group span2">
+        <label>Data de recebimento (extrato bancário) *</label>
+        <input id="baixa-data" type="date" value="${hoje}" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);width:100%">
+      </div>
+    </div>
+  `, async () => {
+    const nfNum   = document.getElementById('baixa-nf-num')?.value;
+    const dataRec = document.getElementById('baixa-data')?.value;
+    if (!nfNum)   return toast('Selecione a NF', 'error');
+    if (!dataRec) return toast('Informe a data de recebimento', 'error');
+    const r = await post('/api/financeiro/entradas/confirmar-lote', { nf_numero_baixa: nfNum, data_recebimento: dataRec });
+    if (!r.ok) return toast(r.error || 'Erro ao dar baixa', 'error');
+    toast(`✅ NF ${nfNum} recebida — ${r.data?.updated || 0} parcelas baixadas`);
+    closeModal();
+    await renderFinanceiro();
+  }, { saveLabel: '📥 Confirmar recebimento' });
+}
+
+function atualizarPreviewBaixa(nfNum) {
+  const el = document.getElementById('baixa-preview');
+  if (!el) return;
+  if (!nfNum) { el.style.display = 'none'; return; }
+  const parcelas = (currentData.entradas || []).filter(e => e.status === 'pendente' && e.nf_numero === nfNum);
+  const total = parcelas.reduce((s, e) => s + (parseFloat(e.valor) || 0), 0);
+  const emp = parcelas[0] ? (currentData.emp || []).find(ep => ep.id === parcelas[0].empreendimento_id)?.nome || '—' : '—';
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="font-size:22px;font-weight:700;color:var(--success)">${fmt(total)}</div>
+    <div style="font-size:12px;color:var(--text2);margin-top:4px">
+      <b style="color:var(--text1)">${parcelas.length}</b> parcelas · ${emp}
+    </div>`;
 }
 
 function emitirRecibo(id) {

@@ -2293,6 +2293,111 @@ app.put("/api/financeiro/entradas/:id", (req, res) => {
   ok(res, {});
 });
 
+// Multer disk storage para arquivos de NF
+const uploadNF = multer({
+  storage: multer.diskStorage({
+    destination: path.join(__dirname, 'public', 'nfs'),
+    filename: (req, file, cb) => {
+      const ts = Date.now();
+      const ext = path.extname(file.originalname) || '.pdf';
+      cb(null, `nf_${ts}${ext}`);
+    }
+  }),
+  limits: { fileSize: 20 * 1024 * 1024 }
+});
+
+// Extrai dados da NF via IA
+app.post('/api/financeiro/entradas/extrair-nf', autenticar, uploadNF.single('arquivo'), async (req, res) => {
+  if (!req.file) return res.json({ ok: false, error: 'Arquivo não enviado' });
+  if (!process.env.ANTHROPIC_API_KEY) return res.json({ ok: false, error: 'ANTHROPIC_API_KEY não configurada' });
+  try {
+    const b64 = req.file.buffer
+      ? req.file.buffer.toString('base64')
+      : require('fs').readFileSync(req.file.path).toString('base64');
+    const resposta = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-8',
+        max_tokens: 512,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+            { type: 'text', text: `Extraia os seguintes campos da NFS-e e retorne SOMENTE um JSON válido sem markdown:
+{
+  "nf_numero": "número da NFS-e",
+  "nf_data": "data de emissão no formato YYYY-MM-DD",
+  "tomador_nome": "nome/razão social do tomador do serviço",
+  "tomador_cnpj": "CNPJ do tomador sem formatação",
+  "valor_servico": valor numérico do serviço,
+  "valor_liquido": valor líquido numérico,
+  "descricao": "descrição do serviço (campo completo)",
+  "vencimento": "data de vencimento no formato YYYY-MM-DD se encontrada na descrição, caso contrário null"
+}` }
+          ]
+        }]
+      })
+    });
+    const json = await resposta.json();
+    const texto = json.content?.[0]?.text || '';
+    const dados = JSON.parse(texto.replace(/```json\n?|\n?```/g, '').trim());
+    ok(res, { dados, arquivo: `/nfs/${path.basename(req.file.path)}` });
+  } catch (e) {
+    console.error('[extrair-nf]', e.message);
+    res.json({ ok: false, error: 'Erro ao extrair dados da NF: ' + e.message });
+  }
+});
+
+// Vincula NF (importada do contador) a entradas + salva caminho do arquivo
+app.post('/api/financeiro/entradas/importar-nf-arquivo', autenticar, (req, res) => {
+  const { ids, nf_numero, nf_data, nf_arquivo } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.json({ ok: false, error: 'Nenhuma parcela selecionada' });
+  if (!nf_numero) return res.json({ ok: false, error: 'Número da NF obrigatório' });
+  const placeholders = ids.map(() => '?').join(',');
+  const info = db.prepare(
+    `UPDATE financeiro_entradas SET nf_numero=?, nf_data=?, tem_nf_propria=1, nf_arquivo=? WHERE id IN (${placeholders})`
+  ).run(nf_numero, nf_data || null, nf_arquivo || null, ...ids);
+  ok(res, { updated: info.changes });
+});
+
+// Vincula NF a entradas sem marcar como recebido
+app.post("/api/financeiro/entradas/emitir-nf", autenticar, (req, res) => {
+  const { ids, nf_numero, nf_data } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.json({ ok: false, error: 'Nenhuma entrada selecionada' });
+  if (!nf_numero) return res.json({ ok: false, error: 'Número da NF obrigatório' });
+  const placeholders = ids.map(() => '?').join(',');
+  const info = db.prepare(
+    `UPDATE financeiro_entradas SET nf_numero=?, nf_data=?, tem_nf_propria=1 WHERE id IN (${placeholders})`
+  ).run(nf_numero, nf_data||null, ...ids);
+  ok(res, { updated: info.changes });
+});
+
+// Dá baixa em todas as entradas de uma NF (ou lote de ids) como recebidas
+app.post("/api/financeiro/entradas/confirmar-lote", autenticar, (req, res) => {
+  const { ids, nf_numero_baixa, data_recebimento } = req.body;
+  if (!data_recebimento) return res.json({ ok: false, error: 'Data de recebimento obrigatória' });
+  let info;
+  if (nf_numero_baixa) {
+    // Baixa por número de NF
+    info = db.prepare(
+      `UPDATE financeiro_entradas SET status='recebido', data_recebimento=? WHERE nf_numero=? AND status='pendente'`
+    ).run(data_recebimento, nf_numero_baixa);
+  } else {
+    if (!Array.isArray(ids) || ids.length === 0) return res.json({ ok: false, error: 'Nenhuma entrada selecionada' });
+    const placeholders = ids.map(() => '?').join(',');
+    info = db.prepare(
+      `UPDATE financeiro_entradas SET status='recebido', data_recebimento=? WHERE id IN (${placeholders}) AND status='pendente'`
+    ).run(data_recebimento, ...ids);
+  }
+  ok(res, { updated: info.changes });
+});
+
 app.delete("/api/financeiro/entradas/:id", (req, res) => {
   db.prepare("DELETE FROM financeiro_entradas WHERE id=?").run(req.params.id);
   ok(res, {});
@@ -3031,6 +3136,7 @@ try { db.exec('ALTER TABLE empreendimentos ADD COLUMN patrimonio_afetacao INTEGE
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN condicao_pagamento_padrao TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN pluggy_transaction_id TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN cliente_id INTEGER'); } catch(_) {}
+try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN nf_arquivo TEXT'); } catch(_) {}
 
 // Tabela de compradores adicionais (cônjuge, sócio, condomínio)
 db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (
