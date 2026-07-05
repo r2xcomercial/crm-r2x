@@ -3995,6 +3995,7 @@ async function renderFinanceiro(filter = '') {
       <button class="fin-tab ${finTab==='fixas'?'active':''}" onclick="setFinTab('fixas')">🔁 Despesas Fixas</button>
       <button class="fin-tab ${finTab==='impostos'?'active':''}" onclick="setFinTab('impostos')">🏛️ Impostos</button>
       <button class="fin-tab ${finTab==='reconciliacao'?'active':''}" onclick="setFinTab('reconciliacao')">🔗 Reconciliação</button>
+      <button class="fin-tab ${finTab==='dre'?'active':''}" onclick="setFinTab('dre')">📊 DRE</button>
     </div>
     <div id="fin-content"></div>
   `;
@@ -4003,7 +4004,7 @@ async function renderFinanceiro(filter = '') {
 
 function setFinTab(tab) {
   finTab = tab;
-  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo', fixas:'Fixas', impostos:'Impost', reconciliacao:'Reconcil' };
+  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo', fixas:'Fixas', impostos:'Impost', reconciliacao:'Reconcil', dre:'DRE' };
   document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(keys[tab]||'')));
   renderFinTab();
 }
@@ -4185,6 +4186,8 @@ function renderFinTab() {
     renderFluxoCaixa(el);
   } else if (finTab === 'reconciliacao') {
     renderReconciliacao(el);
+  } else if (finTab === 'dre') {
+    renderDRE(el);
   } else {
     // resumo por empreendimento
     const rows = (currentData.emp || []);
@@ -4893,6 +4896,156 @@ async function rejeitarReconciliacao(entrada_id, transaction_id) {
   if (!r.ok) { toast('Erro: ' + r.error); return; }
   const el = document.getElementById('fin-content');
   if (el) renderReconciliacao(el);
+}
+
+async function renderDRE(el) {
+  const mesSel = window._dreMes || '';
+  el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text2)">Carregando DRE…</div>`;
+  const r = await get('/api/financeiro/dre' + (mesSel ? `?mes=${mesSel}` : ''));
+  if (!r.ok) { el.innerHTML = `<div style="padding:24px;color:var(--red)">Erro: ${r.error}</div>`; return; }
+  const d = r.data;
+
+  // Nomes amigáveis
+  const tipoLabel = { comissao_venda:'Comissão s/ Vendas', fee_fixo_mensal:'Fee Fixo Mensal', consultoria:'Consultoria', bonus:'Bônus', outro:'Outros' };
+  const catLabel  = { marketing:'Marketing', eventos:'Eventos', software:'Software', escritorio:'Escritório', prolabore:'Pró-labore', imposto:'Impostos', outros:'Outros', pessoal:'Pessoal', juridico:'Jurídico', financeiro:'Financeiro' };
+
+  // ── Totalizações ────────────────────────────────────────────────────────────
+  const recBruta    = d.receitas.reduce((s,r) => s + r.recebido, 0);
+  const recPendente = d.receitas.reduce((s,r) => s + r.pendente, 0);
+  const despPaga    = d.despesas.reduce((s,d) => s + d.pago,     0);
+  const despPend    = d.despesas.reduce((s,d) => s + d.pendente, 0);
+  const despFixa    = d.despesas.filter(d => d.recorrente).reduce((s,d) => s + d.pago, 0);
+  const despVar     = d.despesas.filter(d => !d.recorrente).reduce((s,d) => s + d.pago, 0);
+  const distrib     = d.total_distribuicoes || 0;
+  const lucro       = recBruta - despPaga - distrib;
+  const margem      = recBruta > 0 ? ((lucro / recBruta) * 100).toFixed(1) : '—';
+  const margemColor = lucro >= 0 ? 'var(--green,#22c55e)' : 'var(--red,#ef4444)';
+
+  // Agrupa receitas por empreendimento
+  const empMap = {};
+  for (const row of d.receitas) {
+    if (!empMap[row.empreendimento]) empMap[row.empreendimento] = { recebido: 0, pendente: 0, tipos: [] };
+    empMap[row.empreendimento].recebido  += row.recebido;
+    empMap[row.empreendimento].pendente  += row.pendente;
+    empMap[row.empreendimento].tipos.push({ tipo: row.tipo, recebido: row.recebido, pendente: row.pendente });
+  }
+
+  // Seletor de mês
+  const mesesOpts = ['', ...d.meses_disponiveis].map(m =>
+    `<option value="${m}" ${m === mesSel ? 'selected' : ''}>${m || 'Acumulado do ano'}</option>`
+  ).join('');
+
+  const linha = (label, val, style='', indent=false, sub=false) => {
+    const valFmt = val === null ? '' : (typeof val === 'number' ? fmt(val) : val);
+    return `<tr style="${sub?'font-size:12px;color:var(--text2)':''}">
+      <td style="padding:${sub?'3px':'7px'} 16px;${indent?'padding-left:32px':''}${style}">${label}</td>
+      <td style="padding:${sub?'3px':'7px'} 16px;text-align:right;font-weight:${sub?400:600};${style}">${valFmt}</td>
+    </tr>`;
+  };
+  const separador = (label) =>
+    `<tr style="background:var(--navy3)"><td colspan="2" style="padding:6px 16px;font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--text2);text-transform:uppercase">${label}</td></tr>`;
+  const total = (label, val, color='') =>
+    `<tr style="background:rgba(0,0,0,.15)"><td style="padding:9px 16px;font-weight:700;font-size:14px;${color?'color:'+color:''}">${label}</td>
+     <td style="padding:9px 16px;text-align:right;font-weight:800;font-size:14px;${color?'color:'+color:''}">${fmt(val)}</td></tr>`;
+
+  let rows = '';
+
+  // ── RECEITAS ────────────────────────────────────────────────────────────────
+  rows += separador('Receita Operacional');
+  for (const [emp, v] of Object.entries(empMap)) {
+    rows += linha(emp, v.recebido + v.pendente, '', false);
+    for (const t of v.tipos) {
+      const label = `↳ ${tipoLabel[t.tipo] || t.tipo}${t.pendente > 0 ? ` <span style="color:var(--gold,#f59e0b);font-size:10px">(${fmt(t.pendente)} a receber)</span>` : ''}`;
+      rows += linha(label, t.recebido, '', true, true);
+    }
+  }
+  rows += total('Total Receita Bruta', recBruta);
+  if (recPendente > 0)
+    rows += linha(`+ A receber (pendente) <span style="font-size:11px;color:var(--text2)">— não incluso acima</span>`, recPendente, 'color:var(--gold,#f59e0b)');
+
+  // ── DESPESAS FIXAS ──────────────────────────────────────────────────────────
+  rows += separador('(-) Custos Fixos Mensais');
+  const fixas = d.despesas.filter(d => d.recorrente);
+  if (fixas.length) {
+    for (const dep of fixas) rows += linha(catLabel[dep.categoria] || dep.categoria, dep.pago, '', false, true);
+  } else rows += linha('Nenhuma despesa fixa registrada', null, 'color:var(--text2)', false, true);
+  rows += total('(-) Total Custos Fixos', despFixa);
+
+  // ── DESPESAS VARIÁVEIS ──────────────────────────────────────────────────────
+  rows += separador('(-) Despesas Variáveis');
+  const variaveis = d.despesas.filter(d => !d.recorrente);
+  if (variaveis.length) {
+    for (const dep of variaveis) rows += linha(catLabel[dep.categoria] || dep.categoria, dep.pago, '', false, true);
+  } else rows += linha('Nenhuma despesa variável registrada', null, 'color:var(--text2)', false, true);
+  rows += total('(-) Total Despesas Variáveis', despVar);
+
+  // ── DISTRIBUIÇÕES ───────────────────────────────────────────────────────────
+  rows += separador('(-) Distribuições / Retiradas');
+  rows += linha('Pró-labore e retiradas dos sócios', distrib, '', false, true);
+  rows += total('(-) Total Distribuído', distrib);
+
+  // ── RESULTADO ───────────────────────────────────────────────────────────────
+  rows += separador('Resultado');
+  rows += total(`= Lucro Líquido do Período`, lucro, margemColor);
+  rows += `<tr style="background:rgba(0,0,0,.1)"><td style="padding:6px 16px;font-size:13px;color:var(--text2)">Margem líquida sobre receita recebida</td>
+     <td style="padding:6px 16px;text-align:right;font-weight:700;font-size:15px;color:${margemColor}">${margem}${margem !== '—' ? '%' : ''}</td></tr>`;
+
+  el.innerHTML = `
+    <div class="table-card">
+      <div class="table-header" style="flex-wrap:wrap;gap:12px">
+        <div>
+          <div class="table-title">📊 DRE Gerencial — ${d.periodo}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">Caixa · regime de competência simplificado</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+          <select onchange="window._dreMes=this.value;renderDRE(document.getElementById('fin-content'))"
+            style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px">
+            ${mesesOpts}
+          </select>
+          <button onclick="exportarDRE()" style="padding:7px 14px;border-radius:8px;background:var(--navy3);border:1px solid var(--border);color:var(--text2);font-size:12px;cursor:pointer">⬇️ Exportar</button>
+        </div>
+      </div>
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);gap:10px;padding:16px;border-bottom:1px solid var(--border)">
+        ${kpi('📥','Receita Bruta', fmt(recBruta), 'recebido no período')}
+        ${kpi('📤','Total Despesas', fmt(despPaga + distrib), 'fixas + variáveis + retiradas')}
+        ${kpi('💰','Lucro Líquido', fmt(lucro), lucro >= 0 ? 'resultado positivo' : 'resultado negativo')}
+        ${kpi('📈','Margem', margem !== '—' ? margem + '%' : '—', 'sobre receita recebida')}
+      </div>
+      <table style="width:100%;border-collapse:collapse">
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function exportarDRE() {
+  const mes = window._dreMes || '';
+  const url = '/api/financeiro/dre' + (mes ? `?mes=${mes}` : '');
+  get(url).then(r => {
+    if (!r.ok) { toast('Erro ao exportar'); return; }
+    const d = r.data;
+    const tipoLabel = { comissao_venda:'Comissão s/ Vendas', fee_fixo_mensal:'Fee Fixo Mensal', consultoria:'Consultoria', bonus:'Bônus', outro:'Outros' };
+    const catLabel  = { marketing:'Marketing', eventos:'Eventos', software:'Software', escritorio:'Escritório', prolabore:'Pró-labore', imposto:'Impostos', outros:'Outros' };
+    const recBruta = d.receitas.reduce((s,r) => s + r.recebido, 0);
+    const despPaga = d.despesas.reduce((s,d) => s + d.pago, 0);
+    const distrib  = d.total_distribuicoes || 0;
+    const lucro    = recBruta - despPaga - distrib;
+    const margem   = recBruta > 0 ? ((lucro / recBruta) * 100).toFixed(1) + '%' : '—';
+    const fmtN = v => typeof v === 'number' ? v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : '';
+    let csv = `DRE Gerencial R2X — ${d.periodo}\n\n`;
+    csv += `RECEITA OPERACIONAL\n`;
+    for (const row of d.receitas) csv += `${row.empreendimento};${tipoLabel[row.tipo]||row.tipo};${fmtN(row.recebido)}\n`;
+    csv += `TOTAL RECEITA BRUTA;;${fmtN(recBruta)}\n\n`;
+    csv += `CUSTOS FIXOS\n`;
+    for (const dep of d.despesas.filter(d=>d.recorrente)) csv += `${catLabel[dep.categoria]||dep.categoria};;${fmtN(dep.pago)}\n`;
+    csv += `DESPESAS VARIÁVEIS\n`;
+    for (const dep of d.despesas.filter(d=>!d.recorrente)) csv += `${catLabel[dep.categoria]||dep.categoria};;${fmtN(dep.pago)}\n`;
+    csv += `DISTRIBUIÇÕES;;${fmtN(distrib)}\n`;
+    csv += `\nLUCRO LÍQUIDO;;${fmtN(lucro)}\n`;
+    csv += `MARGEM;;${margem}\n`;
+    const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `DRE_R2X_${d.periodo.replace(/\s/g,'_')}.csv`; a.click();
+  });
 }
 
 const TIPOS_ENTRADA = ['comissao_venda','fee_fixo_mensal','consultoria','bonus','outro'];

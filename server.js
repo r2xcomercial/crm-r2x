@@ -2764,6 +2764,79 @@ app.get("/api/financeiro/resumo", (req, res) => {
   ok(res, { empreendimentos: resumo, total_distribuicoes });
 });
 
+// ─── DRE GERENCIAL ───────────────────────────────────────────────────────────
+
+app.get('/api/financeiro/dre', (req, res) => {
+  try {
+    const { mes } = req.query; // formato: 'YYYY-MM' ou vazio (acumulado do ano corrente)
+    const anoAtual = new Date().getFullYear().toString();
+
+    // Helper de filtro de data
+    const filtroMes   = mes ? `strftime('%Y-%m', ?)` : null;
+    const filtroCampo = (campo) => mes
+      ? `strftime('%Y-%m', ${campo}) = '${mes}'`
+      : `strftime('%Y', ${campo}) = '${anoAtual}'`;
+
+    // ── 1. RECEITAS por empreendimento e tipo ──────────────────────────────────
+    const receitas = db.prepare(`
+      SELECT
+        COALESCE(e.nome, '(sem projeto)') as empreendimento,
+        fe.tipo,
+        COALESCE(SUM(CASE WHEN fe.status='recebido' THEN fe.valor ELSE 0 END), 0) as recebido,
+        COALESCE(SUM(CASE WHEN fe.status='pendente' THEN fe.valor ELSE 0 END), 0) as pendente
+      FROM financeiro_entradas fe
+      LEFT JOIN empreendimentos e ON e.id = fe.empreendimento_id
+      WHERE ${filtroCampo('COALESCE(fe.data_recebimento, fe.data_prevista)')}
+      GROUP BY COALESCE(e.nome,'(sem projeto)'), fe.tipo
+      ORDER BY empreendimento, fe.tipo
+    `).all();
+
+    // ── 2. DESPESAS por categoria ──────────────────────────────────────────────
+    const despesas = db.prepare(`
+      SELECT
+        fs.categoria,
+        fs.recorrente,
+        COALESCE(SUM(CASE WHEN fs.status='pago' THEN fs.valor ELSE 0 END), 0) as pago,
+        COALESCE(SUM(CASE WHEN fs.status='pendente' THEN fs.valor ELSE 0 END), 0) as pendente
+      FROM financeiro_saidas fs
+      WHERE ${filtroCampo('COALESCE(fs.data_pagamento, fs.criado_em)')}
+      GROUP BY fs.categoria, fs.recorrente
+      ORDER BY fs.categoria
+    `).all();
+
+    // ── 3. DISTRIBUIÇÕES (pró-labore / retiradas) ─────────────────────────────
+    const distribuicoes = db.prepare(`
+      SELECT COALESCE(SUM(valor), 0) as total
+      FROM distribuicoes
+      WHERE ${filtroCampo('data')}
+    `).get();
+
+    // ── 4. IMPOSTOS apurados no período ───────────────────────────────────────
+    const impostos = db.prepare(`
+      SELECT COALESCE(SUM(valor + COALESCE(adicional_irpj,0)), 0) as total
+      FROM imposto_apuracao
+      WHERE ${filtroCampo('periodo')}
+    `).get();
+
+    // ── 5. Meses disponíveis para o seletor ───────────────────────────────────
+    const mesesDisp = db.prepare(`
+      SELECT DISTINCT strftime('%Y-%m', COALESCE(data_recebimento, data_prevista)) as mes
+      FROM financeiro_entradas
+      WHERE COALESCE(data_recebimento, data_prevista) IS NOT NULL
+      ORDER BY mes DESC
+    `).all().map(r => r.mes);
+
+    ok(res, {
+      periodo: mes || `${anoAtual} (acumulado)`,
+      receitas,
+      despesas,
+      total_distribuicoes: distribuicoes?.total || 0,
+      total_impostos: impostos?.total || 0,
+      meses_disponiveis: mesesDisp,
+    });
+  } catch(e) { err(res, e.message); }
+});
+
 // ─── COMISSÕES DE CORRETORES ─────────────────────────────────────────────────
 
 app.get("/api/corretores/comissoes", (req, res) => {
