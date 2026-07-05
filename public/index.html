@@ -1673,7 +1673,14 @@ async function renderKanban(filter = '') {
         const nc = KANBAN_COLS.find(c => c.status === ns);
         return `<button onclick="moverLead(${l.id},'${ns}')" title="Mover para ${nc?.label}">${nc?.label}</button>`;
       }).join('');
-      return `<div class="kanban-card" onclick="editLead(${l.id})" style="${l.tipo==='corretor'?'border-color:rgba(96,165,250,.4);background:rgba(96,165,250,.04)':''}">
+      return `<div class="kanban-card"
+        draggable="true"
+        data-lead-id="${l.id}"
+        data-lead-status="${l.status}"
+        onclick="editLead(${l.id})"
+        ondragstart="kanbanDragStart(event,${l.id},'${l.status}')"
+        ondragend="kanbanDragEnd(event)"
+        style="${l.tipo==='corretor'?'border-color:rgba(96,165,250,.4);background:rgba(96,165,250,.04)':''}">
         <div class="kc-nome">
           ${l.nome||'—'}${esquecido ? ` <span class="kc-dias">⚠️${dias}d</span>` : ''}
           ${l.tipo==='corretor' ? `<span style="font-size:9px;font-weight:700;background:rgba(96,165,250,.15);color:#60a5fa;border:1px solid rgba(96,165,250,.3);border-radius:3px;padding:1px 4px;margin-left:4px">🏷️ CORRETOR</span>` : ''}
@@ -1688,22 +1695,98 @@ async function renderKanban(filter = '') {
       </div>`;
     }).join('');
 
-    return `<div class="kanban-col">
+    return `<div class="kanban-col"
+      data-col-status="${col.status}"
+      ondragover="kanbanDragOver(event)"
+      ondragleave="kanbanDragLeave(event)"
+      ondrop="kanbanDrop(event,'${col.status}')">
       <div class="kanban-col-head" style="border-top:3px solid ${col.color}">
         <span style="color:${col.color}">${col.label}</span>
         <span style="background:${col.color}22;color:${col.color};padding:2px 8px;border-radius:10px;font-size:11px">${colLeads.length}</span>
       </div>
-      <div class="kanban-col-body">${cards || '<div style="color:var(--text2);font-size:12px;text-align:center;padding:20px 0">Vazio</div>'}</div>
+      <div class="kanban-col-body" data-col-status="${col.status}"
+        ondragover="kanbanDragOver(event)"
+        ondragleave="kanbanDragLeave(event)"
+        ondrop="kanbanDrop(event,'${col.status}')">${cards || '<div class="kanban-drop-hint" style="color:var(--text2);font-size:12px;text-align:center;padding:20px 0">Vazio</div>'}</div>
     </div>`;
   }).join('');
 
   document.getElementById('content').innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-      <div style="font-size:13px;color:var(--text2)">${leads.length} leads • Clique no card para editar • Use os botões para avançar status</div>
+      <div style="font-size:13px;color:var(--text2)">${leads.length} leads • Arraste ou use os botões para mover entre etapas</div>
       <button onclick="navigate('leads')" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;margin-left:auto">📋 Ver tabela</button>
     </div>
     <div class="kanban-board">${colsHtml}</div>
   `;
+}
+
+// ── Drag & Drop do Kanban ────────────────────────────────────────────────────
+let _dragLeadId = null;
+let _dragLeadStatus = null;
+
+function kanbanDragStart(e, leadId, leadStatus) {
+  _dragLeadId = leadId;
+  _dragLeadStatus = leadStatus;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', leadId);
+  // Feedback visual no card sendo arrastado
+  setTimeout(() => { if (e.target) e.target.style.opacity = '0.4'; }, 0);
+}
+
+function kanbanDragEnd(e) {
+  if (e.target) e.target.style.opacity = '';
+  // Limpa todos os highlights
+  document.querySelectorAll('.kanban-col-body').forEach(el => {
+    el.style.background = '';
+    el.style.borderColor = '';
+    el.style.outline = '';
+  });
+  _dragLeadId = null;
+  _dragLeadStatus = null;
+}
+
+function kanbanDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  // Destaca a coluna de destino
+  const body = e.currentTarget.classList.contains('kanban-col-body')
+    ? e.currentTarget
+    : e.currentTarget.querySelector('.kanban-col-body');
+  if (body) {
+    const targetStatus = body.dataset.colStatus || e.currentTarget.dataset.colStatus;
+    const col = KANBAN_COLS.find(c => c.status === targetStatus);
+    if (col) body.style.outline = `2px dashed ${col.color}`;
+  }
+}
+
+function kanbanDragLeave(e) {
+  const body = e.currentTarget.classList.contains('kanban-col-body')
+    ? e.currentTarget
+    : e.currentTarget.querySelector('.kanban-col-body');
+  if (body) body.style.outline = '';
+}
+
+async function kanbanDrop(e, targetStatus) {
+  e.preventDefault();
+  const body = e.currentTarget.classList.contains('kanban-col-body')
+    ? e.currentTarget
+    : e.currentTarget.querySelector('.kanban-col-body');
+  if (body) body.style.outline = '';
+
+  const leadId = _dragLeadId;
+  if (!leadId || targetStatus === _dragLeadStatus) return;
+
+  // Valida movimento: só permite destinos configurados em KANBAN_NEXT
+  const fromCol = KANBAN_COLS.find(c => c.status === _dragLeadStatus || (c.extra||[]).includes(_dragLeadStatus));
+  const nexts = fromCol ? (KANBAN_NEXT[fromCol.status] || []) : [];
+  if (!nexts.includes(targetStatus)) {
+    const fromLabel = fromCol?.label || _dragLeadStatus;
+    const toCol = KANBAN_COLS.find(c => c.status === targetStatus);
+    toast(`Não é possível mover de "${fromLabel}" para "${toCol?.label || targetStatus}" diretamente`, 'error');
+    return;
+  }
+
+  await moverLead(leadId, targetStatus);
 }
 
 async function moverLead(id, novoStatus) {
