@@ -1198,17 +1198,19 @@ app.put("/api/leads/:id", (req, res) => {
   const b = req.body;
   // Merge: usa valor do body se explicitamente enviado, senão mantém o valor atual
   const val = (key, fallback) => key in b ? b[key] : (lead[key] !== undefined ? lead[key] : fallback);
-  // Auto-move para com_corretor quando corretor é atribuído (exceto vendido/sem_venda)
+  // Auto-move para com_corretor quando corretor é atribuído e ainda está em 'novo' ou 'qualificado'
   const corretor_id = val('corretor_id', null);
   let novoStatus = val('status', lead.status);
-  if (corretor_id && !['vendido','sem_venda'].includes(lead.status) && lead.status !== 'com_corretor') {
-    novoStatus = 'com_corretor';
-  }
+  const statusFunil = ['novo','qualificado','com_corretor','visitou','proposta','reserva','vendido','sem_venda','perdido'];
+  if (!statusFunil.includes(novoStatus)) novoStatus = lead.status;
+  if (corretor_id && ['novo','qualificado'].includes(novoStatus)) novoStatus = 'com_corretor';
+  // Registra quando corretor foi atribuído pela primeira vez
+  const atribuido_em = (corretor_id && !lead.corretor_id) ? new Date().toISOString() : val('atribuido_em', lead.atribuido_em || null);
   // Regra de score: vendido = 100, não-vendido = máximo 90
   let novoScore = val('score', lead.score);
   if (novoStatus === 'vendido') novoScore = 100;
   else if (novoScore >= 100) novoScore = 90;
-  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,score=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,cpf=?,rg=?,estado_civil=?,profissao=?,nome_pai=?,nome_mae=?,endereco=?,numero=?,complemento=?,bairro=?,cep=?,estado=?,pessoa_juridica=?,cnpj=?,razao_social=?,nome_fantasia=?,inscricao_estadual=?,inscricao_municipal=?,representante_nome=?,representante_cpf=?,representante_rg=?,representante_cargo=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(
+  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,score=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,cpf=?,rg=?,estado_civil=?,profissao=?,nome_pai=?,nome_mae=?,endereco=?,numero=?,complemento=?,bairro=?,cep=?,estado=?,pessoa_juridica=?,cnpj=?,razao_social=?,nome_fantasia=?,inscricao_estadual=?,inscricao_municipal=?,representante_nome=?,representante_cpf=?,representante_rg=?,representante_cargo=?,motivo_perda=?,motivo_perda_outro=?,atribuido_em=?,origem=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(
     val('nome', null), val('telefone', null), val('email', null), val('cidade', null),
     val('objetivo', null), val('faixa_investimento', null), val('prazo', null),
     'empreendimento_id' in b && b.empreendimento_id ? null : val('empreendimento_interesse', null), val('empreendimento_id', null),
@@ -1222,6 +1224,8 @@ app.put("/api/leads/:id", (req, res) => {
     val('inscricao_estadual', null), val('inscricao_municipal', null),
     val('representante_nome', null), val('representante_cpf', null),
     val('representante_rg', null), val('representante_cargo', null),
+    val('motivo_perda', null), val('motivo_perda_outro', null), atribuido_em,
+    val('origem', lead.origem || 'manual'),
     req.params.id
   );
   ok(res, {});
@@ -3137,6 +3141,9 @@ try { db.exec('ALTER TABLE empreendimentos ADD COLUMN condicao_pagamento_padrao 
 try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN pluggy_transaction_id TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN cliente_id INTEGER'); } catch(_) {}
 try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN nf_arquivo TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN motivo_perda TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN motivo_perda_outro TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN atribuido_em DATETIME'); } catch(_) {}
 
 // Tabela de compradores adicionais (cônjuge, sócio, condomínio)
 db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (

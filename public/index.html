@@ -116,6 +116,7 @@
   .badge-gray { background: rgba(148,163,184,.12); color: var(--text2); }
   .badge-accent { background: rgba(0,196,180,.15); color: var(--accent); }
   .badge-orange { background: rgba(251,146,60,.15); color: #fb923c; }
+  .badge-purple { background: rgba(167,139,250,.15); color: #a78bfa; }
   .modal-wide { max-width: 860px !important; }
 
   /* ── ACTION BUTTONS ── */
@@ -465,6 +466,10 @@
     <div id="page-title">Dashboard</div>
     <input class="topbar-search" type="text" id="search-box" placeholder="🔍  Buscar..." oninput="handleSearch(this.value)">
     <button class="topbar-btn" id="add-btn" onclick="handleAdd()" style="display:none">+ Novo</button>
+    <button onclick="abrirLeadRapido()" title="Cadastrar novo lead"
+      style="background:var(--accent);color:var(--navy);border:none;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:6px;white-space:nowrap">
+      ➕ Lead
+    </button>
     <button id="btn-privacy" onclick="togglePrivacyMode()"
       title="Ocultar valores"
       style="background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:17px;color:var(--text2);transition:all .15s;flex-shrink:0"
@@ -643,8 +648,8 @@ async function renderDashboard() {
 
   document.getElementById('badge-leads').textContent = kpis.leads_novos;
 
-  const statusLabel = { novo:'Lead novo', com_corretor:'Com corretor', vendido:'Vendido', sem_venda:'Sem venda', qualificado:'Com corretor', visitou:'Com corretor', proposta:'Com corretor', perdido:'Sem venda' };
-  const statusColors = { novo:'#00C4B4', com_corretor:'#60A5FA', qualificado:'#60A5FA', visitou:'#60A5FA', proposta:'#60A5FA', vendido:'#22C55E', sem_venda:'#EF4444', perdido:'#EF4444' };
+  const statusLabel = { novo:'Captado', qualificado:'Qualificado', com_corretor:'Distribuído', visitou:'Atend./Visita', proposta:'Proposta', reserva:'Reserva', vendido:'Venda', sem_venda:'Sem venda', perdido:'Sem venda' };
+  const statusColors = { novo:'#00C4B4', qualificado:'#38BDF8', com_corretor:'#60A5FA', visitou:'#A78BFA', proposta:'#FBBF24', reserva:'#F97316', vendido:'#22C55E', sem_venda:'#EF4444', perdido:'#EF4444' };
 
   // Agrupa vendas por mês (últimos 6 meses)
   const vendas = vendasR.data || [];
@@ -865,7 +870,7 @@ async function renderLeads(filter = '') {
   const leads = filter ? leadsData.filter(l => (l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter) || (l.cidade||'').toLowerCase().includes(filter)) : leadsData;
   document.getElementById('badge-leads').textContent = leadsData.filter(l => l.status==='novo').length;
 
-  const statusColors = { novo:'badge-accent', com_corretor:'badge-blue', qualificado:'badge-blue', visitou:'badge-blue', proposta:'badge-blue', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
+  const statusColors = { novo:'badge-accent', qualificado:'badge-blue', com_corretor:'badge-blue', visitou:'badge-purple', proposta:'badge-yellow', reserva:'badge-orange', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
 
   document.getElementById('content').innerHTML = `
     <div class="table-card">
@@ -909,7 +914,7 @@ function filterLeadStatus(status) {
 }
 
 function renderLeadsFiltered(leads) {
-  const statusColors = { novo:'badge-accent', com_corretor:'badge-blue', qualificado:'badge-blue', visitou:'badge-blue', proposta:'badge-blue', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
+  const statusColors = { novo:'badge-accent', qualificado:'badge-blue', com_corretor:'badge-blue', visitou:'badge-purple', proposta:'badge-yellow', reserva:'badge-orange', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
   document.querySelector('#content tbody').innerHTML = leads.length
     ? leads.map(l => renderLeadRow(l, statusColors)).join('')
     : '<tr class="empty-row"><td colspan="11">Nenhum lead</td></tr>';
@@ -936,7 +941,7 @@ function scoreChip(score) {
 }
 
 function renderLeadRow(l, statusColors) {
-  const sc = statusColors || { novo:'badge-accent', qualificado:'badge-blue', visitou:'badge-yellow', proposta:'badge-yellow', vendido:'badge-green', perdido:'badge-red' };
+  const sc = statusColors || { novo:'badge-accent', qualificado:'badge-blue', com_corretor:'badge-blue', visitou:'badge-purple', proposta:'badge-yellow', reserva:'badge-orange', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
   const dias = l.atualizado_em ? Math.floor((Date.now() - new Date(l.atualizado_em.replace(' ','T'))) / 86400000) : 999;
   const esquecido = dias >= 3 && !['vendido','perdido'].includes(l.status);
   const nomeTitle = l.resumo ? ` title="${l.resumo.replace(/"/g,'&quot;')}"` : '';
@@ -978,7 +983,7 @@ function renderLeadRow(l, statusColors) {
         ${(empData||[]).map(e=>`<option value="${e.id}" ${e.id==l.empreendimento_id?'selected':''}>${e.nome}</option>`).join('')}
       </select>
     </td>
-    <td><span class="badge ${l.origem==='whatsapp'?'badge-green':'badge-gray'}">${l.origem}</span></td>
+    <td><span class="badge ${{'meta_ads':'badge-blue','google':'badge-accent','instagram':'badge-purple','whatsapp':'badge-green','indicacao_corretor':'badge-yellow','plantao':'badge-orange','portal':'badge-gray','manual':'badge-gray'}[l.origem]||'badge-gray'}" style="font-size:10px">${({'meta_ads':'Meta Ads','google':'Google','instagram':'Instagram','whatsapp':'WhatsApp','indicacao_corretor':'Indicação','plantao':'Plantão','portal':'Portal','manual':'Manual','importado':'Importado','outro':'Outro'}[l.origem]||l.origem||'—')}</span></td>
     <td style="white-space:nowrap">
       ${l.origem==='whatsapp' && l.telefone ? `<button class="btn-icon" title="Ver conversa na Débora" onclick="abrirDeboraParaLead('${l.telefone}')">🤖</button>` : ''}
       <button class="btn-icon" title="Follow-up" onclick='openFollowupModal(${JSON.stringify({id:l.id,nome:l.nome})})'>📞</button>
@@ -1004,7 +1009,8 @@ function openLeadModal(lead = {}, onSave = null) {
     </div>` : ''}
     <div class="form-grid">
       <div class="form-group"><label>Nome</label><input id="f-nome" value="${lead.nome||''}" placeholder="Nome do lead"></div>
-      <div class="form-group"><label>Telefone</label><input id="f-tel" value="${lead.telefone||''}" placeholder="48999999999"></div>
+      <div class="form-group"><label>Telefone</label><input id="f-tel" value="${lead.telefone||''}" placeholder="48999999999" oninput="verificarDuplicidadeLead(this.value)"></div>
+      <div id="aviso-dup-tel" class="form-group span2" style="display:none;padding:8px 12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:8px;font-size:12px;color:var(--warning)"></div>
       <div class="form-group"><label>Email</label><input id="f-email" type="email" value="${lead.email||''}"></div>
       <div class="form-group"><label>Cidade</label><input id="f-cidade" value="${lead.cidade||''}"></div>
       <div class="form-group"><label>Tipo de Lead</label>
@@ -1014,10 +1020,34 @@ function openLeadModal(lead = {}, onSave = null) {
           <option value="investidor" ${lead.tipo==='investidor'?'selected':''}>💼 Investidor</option>
         </select>
       </div>
-      <div class="form-group"><label>Status</label>
-        <select id="f-status">
-          ${[['novo','Lead novo'],['com_corretor','Lead com corretor'],['vendido','Lead vendido'],['sem_venda','Lead sem venda']].map(([v,l]) => `<option value="${v}" ${lead.status===v||(v==='com_corretor'&&['qualificado','visitou','proposta'].includes(lead.status))||(v==='sem_venda'&&lead.status==='perdido')?'selected':''}>${l}</option>`).join('')}
+      <div class="form-group"><label>Origem *</label>
+        <select id="f-origem">
+          <option value="meta_ads"         ${(lead.origem||'manual')==='meta_ads'?'selected':''}>📘 Meta Ads</option>
+          <option value="google"            ${lead.origem==='google'?'selected':''}>🔍 Google</option>
+          <option value="instagram"         ${lead.origem==='instagram'?'selected':''}>📸 Instagram orgânico</option>
+          <option value="whatsapp"          ${lead.origem==='whatsapp'?'selected':''}>💬 WhatsApp</option>
+          <option value="indicacao_corretor" ${lead.origem==='indicacao_corretor'?'selected':''}>🤝 Indicação corretor</option>
+          <option value="plantao"           ${lead.origem==='plantao'?'selected':''}>🏠 Plantão</option>
+          <option value="portal"            ${lead.origem==='portal'?'selected':''}>🌐 Portal</option>
+          <option value="manual"            ${(!lead.origem||lead.origem==='manual'||lead.origem==='importado')?'selected':''}>✍️ Outro / Manual</option>
         </select>
+      </div>
+      <div class="form-group"><label>Status</label>
+        <select id="f-status" onchange="onStatusChange(this.value)">
+          ${[['novo','📥 Captado'],['qualificado','✅ Qualificado'],['com_corretor','👤 Distribuído'],['visitou','🏠 Atend./Visita'],['proposta','📋 Proposta'],['reserva','🔒 Reserva'],['vendido','🏆 Venda'],['sem_venda','❌ Sem venda']].map(([v,l]) => `<option value="${v}" ${(lead.status===v||(v==='sem_venda'&&lead.status==='perdido'))?'selected':''}>${l}</option>`).join('')}
+        </select>
+      </div>
+      <div id="bloco-motivo-perda" style="display:${['sem_venda','perdido'].includes(lead.status)?'contents':'none'}">
+        <div class="form-group"><label>Motivo da perda</label>
+          <select id="f-motivo-perda" onchange="document.getElementById('bloco-outro-motivo').style.display=this.value==='outro'?'block':'none'">
+            <option value="">— Selecione —</option>
+            ${['preço','prazo','financiamento','concorrente','sem_resposta','outro'].map(m=>`<option value="${m}" ${lead.motivo_perda===m?'selected':''}>${{preço:'💰 Preço',prazo:'📅 Prazo',financiamento:'🏦 Financiamento',concorrente:'🏁 Concorrente',sem_resposta:'📵 Sem resposta',outro:'✏️ Outro'}[m]}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group" id="bloco-outro-motivo" style="display:${lead.motivo_perda==='outro'?'block':'none'}">
+          <label>Descreva o motivo</label>
+          <input id="f-motivo-outro" value="${lead.motivo_perda_outro||''}" placeholder="Descreva o motivo da perda">
+        </div>
       </div>
 
       <div id="campos-corretor" style="display:${isCorretor?'contents':'none'}">
@@ -1197,8 +1227,11 @@ function openLeadModal(lead = {}, onSave = null) {
       nome: v('f-nome'), telefone: v('f-tel'), email: v('f-email'),
       cidade: cidadeEnd || v('f-cidade'),
       objetivo: v('f-obj'), faixa_investimento: v('f-faixa'), prazo: v('f-prazo'),
+      origem: v('f-origem') || 'manual',
       status: statusFinal, corretor_id: corretorId, empreendimento_id: v('f-emp')||null,
       aniversario: v('f-aniv')||null, observacoes: v('f-obs'), tipo: tipoLead,
+      motivo_perda: ['sem_venda','perdido'].includes(statusFinal) ? (v('f-motivo-perda')||null) : null,
+      motivo_perda_outro: ['sem_venda','perdido'].includes(statusFinal) && v('f-motivo-perda')==='outro' ? (v('f-motivo-outro')||null) : null,
       creci: tipoLead==='corretor' ? (v('f-creci')||null) : null,
       imobiliaria: tipoLead==='corretor' ? (v('f-imob')||null) : null,
       cpf: v('f-cpf')||null, rg: v('f-rg')||null,
@@ -1600,21 +1633,25 @@ async function importarLeads(input) {
 // ─── KANBAN DE LEADS ─────────────────────────────────────────────────────────
 
 const KANBAN_COLS = [
-  { status: 'novo',         label: 'Lead novo',          color: '#00C4B4', badge: 'badge-accent',  // inclui também leads sem status mapeado
-    extra: [] },
-  { status: 'com_corretor', label: 'Lead com corretor',  color: '#60A5FA', badge: 'badge-blue',
-    extra: ['qualificado','visitou','proposta'] },  // legado
-  { status: 'vendido',      label: 'Lead vendido',       color: '#22C55E', badge: 'badge-green',
-    extra: [] },
-  { status: 'sem_venda',    label: 'Lead sem venda',     color: '#EF4444', badge: 'badge-red',
-    extra: ['perdido'] },  // legado
+  { status: 'novo',         label: '📥 Captado',          color: '#00C4B4', badge: 'badge-accent', extra: [] },
+  { status: 'qualificado',  label: '✅ Qualificado',       color: '#38BDF8', badge: 'badge-blue',   extra: [] },
+  { status: 'com_corretor', label: '👤 Distribuído',       color: '#60A5FA', badge: 'badge-blue',   extra: [] },
+  { status: 'visitou',      label: '🏠 Atend./Visita',     color: '#A78BFA', badge: 'badge-purple', extra: [] },
+  { status: 'proposta',     label: '📋 Proposta',          color: '#FBBF24', badge: 'badge-yellow', extra: [] },
+  { status: 'reserva',      label: '🔒 Reserva',           color: '#F97316', badge: 'badge-orange', extra: [] },
+  { status: 'vendido',      label: '🏆 Venda',             color: '#22C55E', badge: 'badge-green',  extra: [] },
+  { status: 'sem_venda',    label: '❌ Sem venda',          color: '#EF4444', badge: 'badge-red',    extra: ['perdido'] },
 ];
 // Movimentos manuais permitidos por coluna
 const KANBAN_NEXT = {
-  novo:         ['com_corretor', 'sem_venda'],
-  com_corretor: ['sem_venda'],          // vendido é automático via venda
-  vendido:      [],                     // só via exclusão de venda
-  sem_venda:    ['novo', 'com_corretor'],
+  novo:         ['qualificado', 'sem_venda'],
+  qualificado:  ['com_corretor', 'sem_venda'],
+  com_corretor: ['visitou', 'sem_venda'],
+  visitou:      ['proposta', 'sem_venda'],
+  proposta:     ['reserva', 'sem_venda'],
+  reserva:      ['vendido', 'sem_venda'],
+  vendido:      [],
+  sem_venda:    ['novo'],
 };
 
 async function renderKanban(filter = '') {
@@ -1672,11 +1709,139 @@ async function renderKanban(filter = '') {
 async function moverLead(id, novoStatus) {
   const lead = leadsData.find(l => l.id === id);
   if (!lead) return;
+  // Motivo obrigatório ao encerrar sem venda
+  if (novoStatus === 'sem_venda') {
+    const colLabel = KANBAN_COLS.find(c => c.status === novoStatus)?.label || 'Sem venda';
+    const motivos = ['preço','prazo','financiamento','concorrente','sem_resposta','outro'];
+    const mLabels = {'preço':'💰 Preço','prazo':'📅 Prazo','financiamento':'🏦 Financiamento','concorrente':'🏁 Concorrente','sem_resposta':'📵 Sem resposta','outro':'✏️ Outro'};
+    const optsHtml = motivos.map(m => `<option value="${m}">${mLabels[m]}</option>`).join('');
+    openModal(`❌ Encerrar lead — ${lead.nome||''}`, `
+      <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--text2)">
+        Informe o motivo para registrar no histórico e melhorar o funil.
+      </div>
+      <div class="form-grid">
+        <div class="form-group span2"><label>Motivo da perda *</label>
+          <select id="mv-motivo" onchange="document.getElementById('mv-outro-wrap').style.display=this.value==='outro'?'block':'none'">
+            <option value="">— Selecione —</option>${optsHtml}
+          </select>
+        </div>
+        <div class="form-group span2" id="mv-outro-wrap" style="display:none">
+          <label>Descreva o motivo</label>
+          <input id="mv-outro" placeholder="Ex: comprou em outro empreendimento...">
+        </div>
+      </div>
+    `, async () => {
+      const motivo = document.getElementById('mv-motivo')?.value;
+      if (!motivo) return toast('Selecione o motivo da perda', 'error');
+      const outro = document.getElementById('mv-outro')?.value || null;
+      const body = { ...lead, status: 'sem_venda', motivo_perda: motivo, motivo_perda_outro: motivo==='outro'?outro:null, corretor_id: lead.corretor_id||null, empreendimento_id: lead.empreendimento_id||null };
+      const r = await put(`/api/leads/${id}`, body);
+      if (!r.ok) return toast(r.error, 'error');
+      toast('Lead encerrado e motivo registrado ✅');
+      closeModal();
+      renderKanban();
+    }, { saveLabel: '❌ Confirmar encerramento' });
+    return;
+  }
+  const col = KANBAN_COLS.find(c => c.status === novoStatus);
   const body = { ...lead, status: novoStatus, corretor_id: lead.corretor_id||null, empreendimento_id: lead.empreendimento_id||null };
   const r = await put(`/api/leads/${id}`, body);
   if (!r.ok) return toast(r.error, 'error');
-  toast(`Lead movido para ${novoStatus}! ✅`);
+  toast(`Lead movido para ${col?.label || novoStatus} ✅`);
   renderKanban();
+}
+
+// Funções de suporte para o formulário de lead
+function onStatusChange(val) {
+  const bloco = document.getElementById('bloco-motivo-perda');
+  if (bloco) bloco.style.display = ['sem_venda','perdido'].includes(val) ? 'contents' : 'none';
+}
+
+async function verificarDuplicidadeLead(tel) {
+  if (!tel || tel.length < 8) return;
+  const digits = tel.replace(/\D/g,'');
+  if (digits.length < 8) return;
+  const dup = (leadsData||[]).find(l => l.telefone && l.telefone.replace(/\D/g,'').endsWith(digits.slice(-8)));
+  const el = document.getElementById('aviso-dup-tel');
+  if (!el) return;
+  if (dup) {
+    el.innerHTML = `⚠️ Telefone já cadastrado: <b>${dup.nome||'Lead #'+dup.id}</b> (${dup.status}) — <a href="#" onclick="event.preventDefault();closeModal();setTimeout(()=>editLead(${dup.id}),100)" style="color:var(--accent)">ver lead</a>`;
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+// Modal de lead rápido — acessível de qualquer tela
+function abrirLeadRapido() {
+  const emps = (empData||[]);
+  const cors = (corretoresData||[]);
+  const origensOpts = [
+    ['meta_ads','📘 Meta Ads'],['google','🔍 Google'],['instagram','📸 Instagram orgânico'],
+    ['whatsapp','💬 WhatsApp'],['indicacao_corretor','🤝 Indicação corretor'],
+    ['plantao','🏠 Plantão'],['portal','🌐 Portal'],['manual','✍️ Outro / Manual']
+  ].map(([v,l]) => `<option value="${v}">${l}</option>`).join('');
+  openModal('➕ Cadastro Rápido de Lead', `
+    <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Campos essenciais — você pode completar depois editando o lead.</div>
+    <div class="form-grid">
+      <div class="form-group span2">
+        <label>Nome *</label>
+        <input id="ql-nome" placeholder="Nome do lead" autofocus>
+      </div>
+      <div class="form-group">
+        <label>Telefone *</label>
+        <input id="ql-tel" placeholder="48999999999" oninput="verificarDuplicidadeLeadRapido(this.value)">
+      </div>
+      <div class="form-group">
+        <label>Origem *</label>
+        <select id="ql-origem">${origensOpts}</select>
+      </div>
+      <div id="aviso-dup-ql" style="display:none" class="form-group span2" style="padding:8px 12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:8px;font-size:12px;color:var(--warning)"></div>
+      <div class="form-group">
+        <label>Projeto de interesse</label>
+        <select id="ql-emp">
+          <option value="">— Não definido —</option>
+          ${emps.map(e=>`<option value="${e.id}">${e.nome}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Corretor responsável</label>
+        <select id="ql-corretor">
+          <option value="">— Sem corretor —</option>
+          ${cors.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+  `, async () => {
+    const nome = document.getElementById('ql-nome')?.value?.trim();
+    const tel  = document.getElementById('ql-tel')?.value?.trim();
+    const orig = document.getElementById('ql-origem')?.value || 'manual';
+    const emp  = document.getElementById('ql-emp')?.value || null;
+    const cor  = document.getElementById('ql-corretor')?.value || null;
+    if (!nome) return toast('Informe o nome do lead', 'error');
+    if (!tel)  return toast('Informe o telefone', 'error');
+    const r = await post('/api/leads', { nome, telefone: tel, origem: orig, empreendimento_id: emp||null, corretor_id: cor||null, status: cor ? 'com_corretor' : 'novo' });
+    if (!r.ok) return toast(r.error || 'Erro ao criar lead', 'error');
+    toast(`✅ Lead "${nome}" cadastrado!`);
+    closeModal();
+    if (window.leadsData !== undefined) { const lr = await get('/api/leads'); leadsData = lr.data || []; }
+    if (currentPage === 'leads') renderLeads();
+    if (currentPage === 'kanban') renderKanban();
+  }, { saveLabel: '➕ Salvar Lead' });
+}
+
+async function verificarDuplicidadeLeadRapido(tel) {
+  if (!tel || tel.replace(/\D/g,'').length < 8) return;
+  const digits = tel.replace(/\D/g,'');
+  const dup = (leadsData||[]).find(l => l.telefone && l.telefone.replace(/\D/g,'').endsWith(digits.slice(-8)));
+  const el = document.getElementById('aviso-dup-ql');
+  if (!el) return;
+  if (dup) {
+    el.innerHTML = `⚠️ Telefone já cadastrado: <b>${dup.nome||'Lead #'+dup.id}</b> (${dup.status}) — <a href="#" onclick="event.preventDefault();closeModal();setTimeout(()=>editLead(${dup.id}),100)" style="color:var(--accent)">ver lead existente</a>`;
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
 }
 
 // ─── PAINEL DE LANÇAMENTO ─────────────────────────────────────────────────────
@@ -7687,7 +7852,7 @@ async function gerarRelatorioCorretor(corretorId) {
 
   // Funil de leads
   const statusOrder = ['novo','qualificado','visitou','proposta','vendido','perdido'];
-  const statusLabel = { novo:'Novo', qualificado:'Qualificado', visitou:'Visitou', proposta:'Proposta', vendido:'Vendido', perdido:'Perdido' };
+  const statusLabel = { novo:'Captado', qualificado:'Qualificado', com_corretor:'Distribuído', visitou:'Atend./Visita', proposta:'Proposta', reserva:'Reserva', vendido:'Venda', sem_venda:'Sem venda', perdido:'Sem venda' };
   const funil = statusOrder.map(s => ({ status: s, n: leads.filter(l => l.status === s).length }));
 
   // Evolução mensal — últimos 6 meses
