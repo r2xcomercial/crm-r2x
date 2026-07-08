@@ -7488,12 +7488,19 @@ function filtrarEspelho() {
 function abrirExportarTabela(empId) {
   const emp = (currentData.emp||[]).find(e => e.id === empId) || {};
   const hoje = new Date().toLocaleDateString('pt-BR');
-  const obs = [
+
+  // Carrega última condição salva (por empreendimento)
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(`tabela_params_${empId}`) || '{}'); } catch(_) {}
+
+  const obsDefault = [
     emp.inicio_obra_previsto ? `Início de obra: ${new Date(emp.inicio_obra_previsto).toLocaleDateString('pt-BR')}` : '',
     emp.prazo_entrega_meses  ? `Prazo de obra: ${emp.prazo_entrega_meses} meses` : '',
     'Parcelas atualizadas pelo CUB',
     'Permutas sob análise',
   ].filter(Boolean).join('\n');
+
+  const v = (key, def) => saved[key] !== undefined ? saved[key] : def;
 
   openModal('📄 Exportar Tabela de Vendas', `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
@@ -7507,34 +7514,34 @@ function abrirExportarTabela(empId) {
       </div>
       <div class="form-group">
         <label>Título da condição</label>
-        <input id="et-titulo" value="Tabela Lançamento" placeholder="Ex: Tabela Lançamento 60 dias">
+        <input id="et-titulo" value="${v('titulo','Tabela Lançamento').replace(/"/g,'&quot;')}" placeholder="Ex: Tabela Lançamento 60 dias">
       </div>
       <div class="form-group">
         <label>Entrada (%)</label>
-        <input id="et-entrada" type="number" value="15" min="0" max="100" step="0.5">
+        <input id="et-entrada" type="number" value="${v('entrada',15)}" min="0" max="100" step="0.5">
       </div>
       <div class="form-group">
         <label>Nº de Reforços Anuais</label>
-        <input id="et-nreforcos" type="number" value="6" min="0" max="12" step="1">
+        <input id="et-nreforcos" type="number" value="${v('nRef',6)}" min="0" max="12" step="1">
       </div>
       <div class="form-group">
         <label>% do saldo em Reforços (total, dividido pelos balões)</label>
-        <input id="et-preforco" type="number" value="20" min="0" max="100" step="0.5">
+        <input id="et-preforco" type="number" value="${v('pRef',20)}" min="0" max="100" step="0.5">
       </div>
       <div class="form-group">
         <label>Nº de Parcelas Mensais</label>
-        <input id="et-parcelas" type="number" value="72" min="1" max="360" step="1">
+        <input id="et-parcelas" type="number" value="${v('nParc',72)}" min="1" max="360" step="1">
       </div>
       <div class="form-group span2">
         <label>Exibir apenas</label>
         <select id="et-filtro">
-          <option value="todos">Todas as unidades</option>
-          <option value="disponivel">Apenas Disponíveis</option>
+          <option value="todos" ${v('filtro','todos')==='todos'?'selected':''}>Todas as unidades</option>
+          <option value="disponivel" ${v('filtro','todos')==='disponivel'?'selected':''}>Apenas Disponíveis</option>
         </select>
       </div>
       <div class="form-group span2">
         <label>Observações (uma por linha)</label>
-        <textarea id="et-obs" rows="4" style="resize:vertical">${obs}</textarea>
+        <textarea id="et-obs" rows="4" style="resize:vertical">${v('obs', obsDefault).replace(/</g,'&lt;')}</textarea>
       </div>
     </div>
   `, async () => {
@@ -7550,6 +7557,14 @@ function abrirExportarTabela(empId) {
       obs:      document.getElementById('et-obs').value.trim(),
       logo:     emp.logo_base64 || null,
     };
+    // Persiste condição para próxima vez
+    try {
+      localStorage.setItem(`tabela_params_${empId}`, JSON.stringify({
+        titulo: params.titulo, entrada: params.entrada * 100,
+        nRef: params.nRef, pRef: params.pRef * 100,
+        nParc: params.nParc, filtro: params.filtro, obs: params.obs,
+      }));
+    } catch(_) {}
     await gerarTabelaVendas(empId, params);
   }, 'Gerar & Imprimir');
 }
