@@ -7844,6 +7844,38 @@ async function abrirUnidade(unidadeId, empId) {
     document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
   } else {
     document.getElementById('modal-body').innerHTML = infoCards + `
+      <!-- Editar Unidade -->
+      <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">✏️ Editar Unidade</div>
+          <button onclick="toggleEditUnidade()" id="btn-toggle-edit"
+            style="background:none;border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:12px">Expandir</button>
+        </div>
+        <div id="edit-unidade-form" style="display:none;flex-direction:column;gap:8px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div>
+              <div style="font-size:11px;color:var(--text2);margin-bottom:3px">${lblA}</div>
+              <input id="eu-quadra" value="${(u.quadra||'').replace(/"/g,'&quot;')}" placeholder="${lblA}..." style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text2);margin-bottom:3px">${lblB} / Descrição</div>
+              <input id="eu-lote" value="${(u.lote||'').replace(/"/g,'&quot;')}" placeholder="${lblB}..." style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Área m²</div>
+              <input id="eu-area" type="number" step="0.01" min="0" value="${u.area_m2||''}" placeholder="0.00" style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Preço (R$)</div>
+              <input id="eu-preco" type="number" step="0.01" min="0" value="${u.preco||''}" placeholder="0.00" style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+            </div>
+          </div>
+          <button onclick="salvarEdicaoUnidade(${u.id},${empId})"
+            style="padding:9px;border-radius:8px;border:none;background:linear-gradient(135deg,var(--accent),#0090a8);color:#fff;font-size:13px;font-weight:700;cursor:pointer;width:100%">
+            💾 Salvar alterações
+          </button>
+        </div>
+      </div>
       <!-- Vagas de Garagem -->
       <div style="border-top:1px solid var(--border);padding-top:16px;margin-bottom:16px">
         <div style="font-size:11px;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">🅿️ Vagas de Garagem</div>
@@ -7866,6 +7898,35 @@ async function abrirUnidade(unidadeId, empId) {
       <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
   }
   document.getElementById('modal-overlay').classList.add('open');
+}
+
+function toggleEditUnidade() {
+  const form = document.getElementById('edit-unidade-form');
+  const btn  = document.getElementById('btn-toggle-edit');
+  if (!form) return;
+  const open = form.style.display !== 'none';
+  form.style.display = open ? 'none' : 'flex';
+  btn.textContent = open ? 'Expandir' : 'Recolher';
+}
+
+async function salvarEdicaoUnidade(unidadeId, empId) {
+  const quadra = document.getElementById('eu-quadra')?.value?.trim();
+  const lote   = document.getElementById('eu-lote')?.value?.trim();
+  const area   = document.getElementById('eu-area')?.value;
+  const preco  = document.getElementById('eu-preco')?.value;
+  if (!lote) return toast('O campo de descrição/lote não pode ficar vazio', 'error');
+  const btn = document.querySelector('#edit-unidade-form button[onclick*="salvarEdicaoUnidade"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  try {
+    const r = await put(`/api/unidades/${unidadeId}`, { quadra, lote, area_m2: area ? parseFloat(area) : null, preco: preco ? parseFloat(preco) : null });
+    if (!r.ok) throw new Error(r.erro || 'Erro ao salvar');
+    toast('Unidade atualizada com sucesso', 'success');
+    closeModal();
+    verEspelho(empId);
+  } catch(e) {
+    toast(e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar alterações'; }
+  }
 }
 
 async function reservarDoEspelho(unidadeId, empId) {
