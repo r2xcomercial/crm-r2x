@@ -7396,7 +7396,7 @@ function renderEspelhoPredio(grupoKeys, grupos, empId) {
       r: units.filter(u => u.status === 'reservado').length,
       v: units.filter(u => u.status === 'vendido').length
     };
-    const andLabel = _flo(g) === 0 ? 'Tér' : !isNaN(parseFloat(g)) ? `${parseFloat(g)}º` : g;
+    const _gl = g.toLowerCase(); const andLabel = (_gl.includes('térr')||_gl.includes('terr')) ? 'Tér' : !isNaN(parseFloat(g)) ? `${parseFloat(g)}º` : g;
 
     const cells = positions.map(i => {
       const u = units[i]; // posição dentro do andar (não lookup por nome)
