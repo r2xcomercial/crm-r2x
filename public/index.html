@@ -3036,8 +3036,35 @@ async function renderEmpreendimentos(filter = '') {
 }
 
 function openEmpModal(e = {}) {
+  window._empLogoEdit = e.logo_base64 || null;
   openModal(e.id ? 'Editar Empreendimento' : 'Novo Empreendimento', `
     <div class="form-grid">
+      <!-- Logo do Empreendimento -->
+      <div class="form-group span2">
+        <label>Logo do Empreendimento</label>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <div id="logo-preview" style="width:120px;height:64px;border:2px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--navy2);flex-shrink:0">
+            ${e.logo_base64 ? `<img src="${e.logo_base64}" style="max-width:116px;max-height:60px;object-fit:contain">` : `<span style="font-size:11px;color:var(--text2);text-align:center;padding:4px">Sem logo</span>`}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label class="btn btn-secondary" style="font-size:12px;padding:6px 12px;cursor:pointer;margin:0">
+              📁 Escolher imagem
+              <input type="file" accept="image/*" style="display:none" onchange="(function(f){
+                if(!f.files[0]) return;
+                const reader = new FileReader();
+                reader.onload = function(ev) {
+                  window._empLogoEdit = ev.target.result;
+                  const prev = document.getElementById('logo-preview');
+                  prev.innerHTML = '<img src=\\''+ev.target.result+'\\' style=\\'max-width:116px;max-height:60px;object-fit:contain\\'>';
+                };
+                reader.readAsDataURL(f.files[0]);
+              })(this)">
+            </label>
+            ${e.logo_base64 ? `<button type="button" onclick="window._empLogoEdit=null;document.getElementById('logo-preview').innerHTML='<span style=\\'font-size:11px;color:var(--text2);text-align:center;padding:4px\\'>Sem logo</span>'" class="btn btn-secondary" style="font-size:12px;padding:5px 12px;color:#f87171;border-color:rgba(248,113,113,.4)">🗑 Remover logo</button>` : ''}
+          </div>
+          <div style="font-size:11px;color:var(--text2);line-height:1.5">Será exibida no painel do espelho<br>e nas tabelas impressas.<br>Recomendado: fundo transparente (PNG).</div>
+        </div>
+      </div>
       <div class="form-group span2"><label>Nome *</label><input id="f-nome" value="${e.nome||''}"></div>
       <div class="form-group"><label>Incorporador (Loteador)</label>
         <select id="f-cliente"><option value="">—</option>${(currentData.clientes||[]).map(c => `<option value="${c.id}" ${e.cliente_id==c.id?'selected':''}>${c.razao_social}</option>`).join('')}</select>
@@ -3210,6 +3237,7 @@ function openEmpModal(e = {}) {
       inicio_obra_previsto: v('f-inicio-obra')||null,
       valor_cub: parseFloat(v('f-valor-cub'))||null,
       patrimonio_afetacao: document.getElementById('f-patrimonio-afetacao')?.checked ? 1 : 0,
+      logo_base64: window._empLogoEdit !== undefined ? window._empLogoEdit : null,
       condicao_pagamento_padrao: [...document.querySelectorAll('#emp-cp-list .ecp-condicao')].map(cond => ({
         nome: cond.querySelector('.ecp-nome')?.value?.trim() || '',
         parcelas: [...cond.querySelectorAll('.emp-cp-row')].map(row => ({
@@ -7232,6 +7260,7 @@ async function verEspelho(empId) {
     ${isCorretor ? `
     <!-- ── CABEÇALHO CORRETOR (simplificado para mobile/estande) ── -->
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      ${emp.logo_base64 ? `<img src="${emp.logo_base64}" style="height:48px;max-width:120px;object-fit:contain;flex-shrink:0" alt="Logo">` : ''}
       <div style="flex:1;min-width:0">
         <div style="font-size:18px;font-weight:800;line-height:1.2">${emp.nome}</div>
         <div style="font-size:12px;color:var(--text2);margin-top:2px">${emp.cidade||''}${emp.estado?'/'+emp.estado:''}</div>
@@ -7250,6 +7279,7 @@ async function verEspelho(empId) {
     <!-- ── CABEÇALHO ADMIN (completo) ── -->
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
       <button class="btn btn-secondary" onclick="navigate('empreendimentos')" style="font-size:12px;padding:6px 12px">← Voltar</button>
+      ${emp.logo_base64 ? `<img src="${emp.logo_base64}" style="height:44px;max-width:110px;object-fit:contain;flex-shrink:0" alt="Logo">` : ''}
       <div style="flex:1;min-width:0">
         <div style="font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${emp.nome}</div>
         <div style="font-size:12px;color:var(--text2)">${emp.cidade||''}${emp.estado?'/'+emp.estado:''} · ${total} unidades</div>
@@ -7518,6 +7548,7 @@ function abrirExportarTabela(empId) {
       nParc:    parseInt(document.getElementById('et-parcelas').value),
       filtro:   document.getElementById('et-filtro').value,
       obs:      document.getElementById('et-obs').value.trim(),
+      logo:     emp.logo_base64 || null,
     };
     await gerarTabelaVendas(empId, params);
   }, 'Gerar & Imprimir');
@@ -7657,9 +7688,12 @@ async function gerarTabelaVendas(empId, params) {
 </head><body>
 
 <div class="header">
-  <div class="header-left">
-    <h1>${params.nome}</h1>
-    <p>${params.titulo ? params.titulo.toUpperCase() : 'TABELA DE LANÇAMENTO'} &nbsp;·&nbsp; ATUALIZADA EM ${params.data}</p>
+  <div class="header-left" style="display:flex;align-items:center;gap:16px">
+    ${params.logo ? `<img src="${params.logo}" style="height:56px;max-width:140px;object-fit:contain;flex-shrink:0" alt="Logo">` : ''}
+    <div>
+      <h1>${params.nome}</h1>
+      <p>${params.titulo ? params.titulo.toUpperCase() : 'TABELA DE LANÇAMENTO'} &nbsp;·&nbsp; ATUALIZADA EM ${params.data}</p>
+    </div>
   </div>
   <div class="header-right">
     <div class="titulo">Data de referência</div>

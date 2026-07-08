@@ -377,7 +377,7 @@ app.post("/api/empreendimentos", (req, res) => {
     comarca, matricula_registro, incorporacao_protocolo,
     vendedora_nome, vendedora_qualificacao,
     prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao,
-    condicao_pagamento_padrao } = req.body;
+    condicao_pagamento_padrao, logo_base64 } = req.body;
   if (!nome) return err(res, "Nome obrigatório");
   const cpPadrao = condicao_pagamento_padrao && Array.isArray(condicao_pagamento_padrao) && condicao_pagamento_padrao.length > 0
     ? JSON.stringify(condicao_pagamento_padrao) : null;
@@ -386,14 +386,14 @@ app.post("/api/empreendimentos", (req, res) => {
      data_lancamento,data_inicio_vendas,observacoes,percentual_r2x,
      comarca,matricula_registro,incorporacao_protocolo,
      vendedora_nome,vendedora_qualificacao,prazo_entrega_meses,inicio_obra_previsto,valor_cub,
-     patrimonio_afetacao,condicao_pagamento_padrao)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+     patrimonio_afetacao,condicao_pagamento_padrao,logo_base64)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
       status||'prospecto', data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
       comarca||null, matricula_registro||null, incorporacao_protocolo||null,
       vendedora_nome||null, vendedora_qualificacao||null,
       prazo_entrega_meses||null, inicio_obra_previsto||null, valor_cub||null,
-      patrimonio_afetacao ? 1 : 0, cpPadrao);
+      patrimonio_afetacao ? 1 : 0, cpPadrao, logo_base64||null);
   ok(res, { id: r.lastInsertRowid });
 });
 
@@ -403,7 +403,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     comarca, matricula_registro, incorporacao_protocolo,
     vendedora_nome, vendedora_qualificacao,
     prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao,
-    condicao_pagamento_padrao } = req.body;
+    condicao_pagamento_padrao, logo_base64 } = req.body;
   const cpPadrao = condicao_pagamento_padrao && Array.isArray(condicao_pagamento_padrao) && condicao_pagamento_padrao.length > 0
     ? JSON.stringify(condicao_pagamento_padrao) : null;
   db.prepare(`UPDATE empreendimentos SET
@@ -412,14 +412,14 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     comarca=?,matricula_registro=?,incorporacao_protocolo=?,
     vendedora_nome=?,vendedora_qualificacao=?,
     prazo_entrega_meses=?,inicio_obra_previsto=?,valor_cub=?,
-    patrimonio_afetacao=?,condicao_pagamento_padrao=?
+    patrimonio_afetacao=?,condicao_pagamento_padrao=?,logo_base64=?
     WHERE id=?`).run(
     cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
     status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
     comarca||null, matricula_registro||null, incorporacao_protocolo||null,
     vendedora_nome||null, vendedora_qualificacao||null,
     prazo_entrega_meses||null, inicio_obra_previsto||null, valor_cub||null,
-    patrimonio_afetacao ? 1 : 0, cpPadrao,
+    patrimonio_afetacao ? 1 : 0, cpPadrao, logo_base64||null,
     req.params.id);
   ok(res, {});
 });
@@ -3138,6 +3138,7 @@ try { db.exec('ALTER TABLE empreendimentos ADD COLUMN vendedora_qualificacao TEX
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN valor_cub REAL'); } catch(_) {}
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN patrimonio_afetacao INTEGER DEFAULT 0'); } catch(_) {}
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN condicao_pagamento_padrao TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE empreendimentos ADD COLUMN logo_base64 TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN pluggy_transaction_id TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN cliente_id INTEGER'); } catch(_) {}
 try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN nf_arquivo TEXT'); } catch(_) {}
