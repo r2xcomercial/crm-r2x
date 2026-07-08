@@ -7213,10 +7213,9 @@ async function verEspelho(empId) {
     if (!grupos[g]) grupos[g] = [];
     grupos[g].push(u);
   });
+  const _flo = g => { const n = parseFloat(g); if (!isNaN(n)) return n; const gl = g.toLowerCase(); if (gl.includes('térr')||gl.includes('terr')) return 0; return Infinity; };
   const grupoKeys = Object.keys(grupos).sort((a,b) => {
-    const na = parseFloat(a), nb = parseFloat(b);
-    if (!isNaN(na) && !isNaN(nb)) return isPredio ? nb-na : na-nb;
-    return a.localeCompare(b,'pt-BR',{numeric:true});
+    return isPredio ? _flo(b) - _flo(a) : _flo(a) - _flo(b);
   });
   grupoKeys.forEach(g => grupos[g].sort((a,b) => {
     const na = parseFloat(a.lote), nb = parseFloat(b.lote);
@@ -7397,7 +7396,7 @@ function renderEspelhoPredio(grupoKeys, grupos, empId) {
       r: units.filter(u => u.status === 'reservado').length,
       v: units.filter(u => u.status === 'vendido').length
     };
-    const andLabel = !isNaN(parseFloat(g)) ? `${parseFloat(g)}º` : g;
+    const andLabel = _flo(g) === 0 ? 'Tér' : !isNaN(parseFloat(g)) ? `${parseFloat(g)}º` : g;
 
     const cells = positions.map(i => {
       const u = units[i]; // posição dentro do andar (não lookup por nome)
@@ -7526,10 +7525,19 @@ function abrirExportarTabela(empId) {
 
 async function gerarTabelaVendas(empId, params) {
   const r = await get(`/api/empreendimentos/${empId}/unidades`);
+
+  // Térreo = andar 0, ordena antes do 1º andar
+  const floorOrder = q => {
+    const n = parseFloat(q);
+    if (!isNaN(n)) return n;
+    const ql = String(q).toLowerCase();
+    if (ql.includes('térr') || ql.includes('terr')) return 0;
+    return Infinity;
+  };
+
   const unidades = (r.data || []).sort((a, b) => {
     const qa = String(a.quadra||''), qb = String(b.quadra||'');
-    const na = parseFloat(qa), nb = parseFloat(qb);
-    const qcmp = (!isNaN(na) && !isNaN(nb)) ? na - nb : qa.localeCompare(qb, 'pt-BR', {numeric:true});
+    const qcmp = floorOrder(qa) - floorOrder(qb);
     if (qcmp !== 0) return qcmp;
     const la = parseFloat(a.lote||'0'), lb = parseFloat(b.lote||'0');
     return (!isNaN(la) && !isNaN(lb)) ? la - lb : String(a.lote||'').localeCompare(String(b.lote||''), 'pt-BR', {numeric:true});
@@ -7542,90 +7550,108 @@ async function gerarTabelaVendas(empId, params) {
   const extractNum = lote => { const m = String(lote).match(/\b(\d{2,4}[A-Za-z]?)\b/); return m ? m[1] : String(lote).split(/[\s\-]/)[0]; };
   const extractTip = lote => { const parts = String(lote).split(/\s*-\s*/); return parts.length > 1 ? parts.slice(1).filter(p => /[a-zA-ZÀ-ú]/.test(p)).join(' - ') : ''; };
 
-  const statusLabel = { disponivel: 'Disponível', reservado: 'Reservado', vendido: 'Vendido' };
-  const statusColor = { disponivel: '#166534', reservado: '#92400e', vendido: '#991b1b' };
-  const statusBg    = { disponivel: '#dcfce7',  reservado: '#fef3c7',  vendido: '#fee2e2'  };
-  const rowBg       = { disponivel: '#ffffff',   reservado: '#fffbeb',  vendido: '#fff1f2'  };
-
-  const obsLines = params.obs.split('\n').filter(Boolean);
-
-  // Cabeçalhos das colunas de pagamento
-  const entradaPct  = (params.entrada * 100).toFixed(0);
-  const refPct      = (params.pRef * 100).toFixed(0);
-  const nRef        = params.nRef;
-  const nParc       = params.nParc;
+  const entradaPct = (params.entrada * 100).toFixed(0);
+  const refPct     = (params.pRef * 100).toFixed(0);
+  const nRef       = params.nRef;
+  const nParc      = params.nParc;
+  const obsLines   = params.obs.split('\n').filter(Boolean);
 
   const rows = lista.map(u => {
     const lote = String(u.lote || '');
     const num  = extractNum(lote);
     const tip  = u.tipologia || extractTip(lote);
-    const andar = u.quadra ? String(u.quadra) : '—';
-    const andarLabel = !isNaN(parseFloat(andar)) ? `${parseFloat(andar)}º andar` : andar;
+    const q    = u.quadra != null ? String(u.quadra) : '—';
+    const fo   = floorOrder(q);
+    const andarLabel = fo === 0 ? 'Térreo' : !isNaN(fo) ? `${fo}º andar` : q;
     const P    = u.preco;
-    let entrada = '', reforco = '', parcela = '';
+    let entrada = '', reforco = '', parcela = '', totalSim = '';
     if (P) {
-      const saldo1  = P * (1 - params.entrada);
-      const refVal  = saldo1 * params.pRef;
-      const saldo2  = saldo1 - nRef * refVal;
-      entrada = fmt2(P * params.entrada);
-      reforco = fmt2(refVal);
-      parcela = fmt2(saldo2 > 0 ? saldo2 / nParc : 0);
+      const saldo1 = P * (1 - params.entrada);
+      const refVal = saldo1 * params.pRef;
+      const saldo2 = saldo1 - nRef * refVal;
+      const entV   = P * params.entrada;
+      const parcV  = saldo2 > 0 ? saldo2 / nParc : 0;
+      entrada  = fmt2(entV);
+      reforco  = fmt2(refVal);
+      parcela  = fmt2(parcV);
+      // verificação: entrada + nRef*reforço + nParc*parcela deve = P
+      const total = entV + nRef * refVal + nParc * parcV;
+      const ok = Math.abs(total - P) < 0.10;
+      totalSim = `<span title="Conferência: ${fmt2(entV)} + ${nRef}×${fmt2(refVal)} + ${nParc}×${fmt2(parcV)} = ${fmt2(total)}" style="font-size:10px;color:${ok?'#166534':'#991b1b'};font-weight:700">${ok?'✓':'⚠'}</span>`;
     }
-    const st    = u.status || 'disponivel';
-    const rowStyle = `background:${rowBg[st]||'#fff'};border-bottom:1px solid #e5e7eb`;
-    const badgeStyle = `display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;background:${statusBg[st]};color:${statusColor[st]}`;
-    return `<tr style="${rowStyle}">
-      <td style="padding:7px 10px;font-size:12px;color:#374151;white-space:nowrap">${andarLabel}</td>
-      <td style="padding:7px 10px;font-size:12px;font-weight:600;color:#111827;white-space:nowrap">${num}</td>
-      <td style="padding:7px 10px;font-size:11px;color:#6b7280">${tip}</td>
-      <td style="padding:7px 10px;font-size:12px;text-align:right;color:#374151;white-space:nowrap">${fmtN(u.area_m2)}</td>
-      <td style="padding:7px 10px;font-size:12px;font-weight:700;text-align:right;color:#111827;white-space:nowrap">${fmt2(P)}</td>
-      <td style="padding:7px 10px;font-size:12px;text-align:right;color:#374151;white-space:nowrap">${entrada}</td>
-      <td style="padding:7px 10px;font-size:12px;text-align:right;color:#374151;white-space:nowrap">${reforco}</td>
-      <td style="padding:7px 10px;font-size:12px;text-align:right;color:#374151;white-space:nowrap">${parcela}</td>
-      <td style="padding:7px 10px;text-align:center"><span style="${badgeStyle}">${statusLabel[st]||st}</span></td>
+    const st = u.status || 'disponivel';
+
+    // Estilo da linha por status
+    const rowBg    = st === 'vendido'   ? '#fde8e8' : st === 'reservado' ? '#fef9e7' : '#ffffff';
+    const rowBdr   = st === 'vendido'   ? '#fca5a5' : st === 'reservado' ? '#fde68a' : '#e5e7eb';
+    const textDeco = st === 'vendido'   ? 'text-decoration:line-through;opacity:.55' : '';
+
+    const badgeBg  = st === 'vendido'   ? '#dc2626' : st === 'reservado' ? '#d97706' : '#16a34a';
+    const badgeTxt = st === 'vendido'   ? 'VENDIDO'  : st === 'reservado' ? 'RESERVADO' : 'DISPONÍVEL';
+    const badge = `<span style="display:inline-block;padding:3px 9px;border-radius:99px;font-size:10px;font-weight:800;background:${badgeBg};color:#fff;letter-spacing:.3px">${badgeTxt}</span>`;
+
+    return `<tr style="background:${rowBg};border-bottom:2px solid ${rowBdr}">
+      <td style="padding:7px 10px;font-size:12px;color:#374151;white-space:nowrap;${textDeco}">${andarLabel}</td>
+      <td style="padding:7px 10px;font-size:12px;font-weight:700;color:#111827;white-space:nowrap;${textDeco}">${num}</td>
+      <td style="padding:7px 10px;font-size:11px;color:#6b7280;${textDeco}">${tip}</td>
+      <td style="padding:7px 10px;font-size:12px;text-align:right;color:#374151;white-space:nowrap;${textDeco}">${fmtN(u.area_m2)}</td>
+      <td style="padding:7px 10px;font-size:12px;font-weight:700;text-align:right;color:#111827;white-space:nowrap;${textDeco}">${fmt2(P)}</td>
+      <td style="padding:7px 10px;font-size:12px;text-align:right;color:#374151;white-space:nowrap;${textDeco}">${entrada}</td>
+      <td style="padding:7px 10px;font-size:12px;text-align:right;color:#374151;white-space:nowrap;${textDeco}">${reforco}</td>
+      <td style="padding:7px 10px;font-size:12px;text-align:right;color:#374151;white-space:nowrap;${textDeco}">${parcela} ${totalSim}</td>
+      <td style="padding:7px 10px;text-align:center">${badge}</td>
     </tr>`;
   }).join('');
+
+  const nDisp = unidades.filter(u=>u.status==='disponivel').length;
+  const nRes  = unidades.filter(u=>u.status==='reservado').length;
+  const nVend = unidades.filter(u=>u.status==='vendido').length;
+  const total = unidades.length;
 
   const html = `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8">
 <title>Tabela de Vendas — ${params.nome}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, Helvetica, sans-serif; background: #fff; color: #111; }
+  body { font-family: Arial, Helvetica, sans-serif; background: #fff; color: #111; padding: 0; }
   @page { size: A4 landscape; margin: 14mm 12mm; }
-  @media print { .no-print { display: none !important; } body { font-size: 11px; } }
+  @media print { .no-print { display: none !important; } }
 
-  .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 3px solid #111; }
-  .header-left h1 { font-size: 22px; font-weight: 900; letter-spacing: -.5px; }
-  .header-left p  { font-size: 12px; color: #6b7280; margin-top: 3px; }
+  .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 3px solid #111; }
+  .header-left h1 { font-size: 20px; font-weight: 900; letter-spacing: -.5px; }
+  .header-left p  { font-size: 11px; color: #6b7280; margin-top: 3px; }
   .header-right   { text-align: right; }
-  .header-right .data { font-size: 20px; font-weight: 900; color: #111; }
-  .header-right .titulo { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
+  .header-right .data  { font-size: 18px; font-weight: 900; color: #111; }
+  .header-right .titulo { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
 
   table { width: 100%; border-collapse: collapse; font-size: 11px; }
   thead th { background: #111827; color: #fff; padding: 9px 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
-  thead th.right { text-align: right; }
+  thead th.right  { text-align: right; }
   thead th.center { text-align: center; }
-  thead .subhead { background: #374151; }
-  tbody tr:hover { filter: brightness(.97); }
+  thead .subhead  { background: #1f2937; }
 
-  .resumo { display: flex; gap: 12px; margin-top: 18px; }
-  .resumo-card { flex: 1; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; }
-  .resumo-card .val { font-size: 20px; font-weight: 900; }
-  .resumo-card .lbl { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
-  .resumo-card.green { border-color: #bbf7d0; background: #f0fdf4; }
-  .resumo-card.green .val { color: #166534; }
+  .resumo { display: flex; gap: 10px; margin-top: 14px; }
+  .resumo-card { flex: 1; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; text-align: center; }
+  .resumo-card .val { font-size: 18px; font-weight: 900; }
+  .resumo-card .lbl { font-size: 9px; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-top: 1px; }
+  .resumo-card.green  { border-color: #bbf7d0; background: #f0fdf4; }
+  .resumo-card.green .val  { color: #166534; }
   .resumo-card.yellow { border-color: #fde68a; background: #fefce8; }
   .resumo-card.yellow .val { color: #92400e; }
-  .resumo-card.red { border-color: #fecaca; background: #fff1f2; }
-  .resumo-card.red .val { color: #991b1b; }
-  .resumo-card.blue { border-color: #bfdbfe; background: #eff6ff; }
-  .resumo-card.blue .val { color: #1e40af; }
+  .resumo-card.red    { border-color: #fca5a5; background: #fef2f2; }
+  .resumo-card.red .val    { color: #991b1b; }
+  .resumo-card.gray   { border-color: #d1d5db; background: #f9fafb; }
+  .resumo-card.gray .val   { color: #374151; }
 
-  .obs { margin-top: 14px; padding-top: 10px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #6b7280; line-height: 1.8; }
+  .obs-box { margin-top: 14px; background: #f8fafc; border: 2px solid #111827; border-radius: 8px; padding: 12px 16px; }
+  .obs-box h3 { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #111827; margin-bottom: 8px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; }
+  .obs-box ul { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 24px; }
+  .obs-box ul li { font-size: 10.5px; color: #374151; line-height: 1.6; }
+  .obs-box ul li::before { content: "• "; font-weight: 700; color: #111827; }
 
-  .btn-print { position: fixed; bottom: 24px; right: 24px; background: #111827; color: #fff; border: none; border-radius: 10px; padding: 12px 24px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+  .formula-note { margin-top: 8px; font-size: 9.5px; color: #6b7280; text-align: right; }
+
+  .btn-print { position: fixed; bottom: 24px; right: 24px; background: #111827; color: #fff; border: none; border-radius: 10px; padding: 12px 24px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.3); z-index: 99; }
   .btn-print:hover { background: #374151; }
 </style>
 </head><body>
@@ -7633,10 +7659,10 @@ async function gerarTabelaVendas(empId, params) {
 <div class="header">
   <div class="header-left">
     <h1>${params.nome}</h1>
-    <p>ATUALIZADA ${params.data}</p>
+    <p>${params.titulo ? params.titulo.toUpperCase() : 'TABELA DE LANÇAMENTO'} &nbsp;·&nbsp; ATUALIZADA EM ${params.data}</p>
   </div>
   <div class="header-right">
-    <div class="titulo">${params.titulo || 'Tabela de Lançamento'}</div>
+    <div class="titulo">Data de referência</div>
     <div class="data">${params.data}</div>
   </div>
 </div>
@@ -7647,42 +7673,47 @@ async function gerarTabelaVendas(empId, params) {
       <th rowspan="2">Andar</th>
       <th rowspan="2">Unidade</th>
       <th rowspan="2">Tipologia</th>
-      <th rowspan="2" class="right">M²</th>
-      <th rowspan="2" class="right">Valor Lançamento</th>
+      <th rowspan="2" class="right">Área</th>
+      <th rowspan="2" class="right">Valor de Lançamento</th>
       <th class="right">Entrada</th>
-      <th class="right">Reforços Anuais (${nRef}x)</th>
+      <th class="right">Reforços Anuais</th>
       <th class="right">Parcelas Mensais</th>
-      <th rowspan="2" class="center">Disponibilidade</th>
+      <th rowspan="2" class="center">Status</th>
     </tr>
     <tr class="subhead">
-      <th class="right">${entradaPct}%</th>
-      <th class="right">${refPct}% do saldo</th>
-      <th class="right">${nParc}x</th>
+      <th class="right">${entradaPct}% · à vista</th>
+      <th class="right">${nRef}x · ${refPct}% do saldo</th>
+      <th class="right">${nParc}x mensais</th>
     </tr>
   </thead>
   <tbody>${rows}</tbody>
 </table>
 
 <div class="resumo">
+  <div class="resumo-card gray">
+    <div class="val">${total}</div>
+    <div class="lbl">Total</div>
+  </div>
   <div class="resumo-card green">
-    <div class="val">${unidades.filter(u=>u.status==='disponivel').length}</div>
+    <div class="val">${nDisp}</div>
     <div class="lbl">Disponíveis</div>
   </div>
   <div class="resumo-card yellow">
-    <div class="val">${unidades.filter(u=>u.status==='reservado').length}</div>
+    <div class="val">${nRes}</div>
     <div class="lbl">Reservados</div>
   </div>
   <div class="resumo-card red">
-    <div class="val">${unidades.filter(u=>u.status==='vendido').length}</div>
+    <div class="val">${nVend}</div>
     <div class="lbl">Vendidos</div>
-  </div>
-  <div class="resumo-card blue">
-    <div class="val">${fmt2(unidades.filter(u=>u.status==='disponivel').reduce((s,u)=>s+(u.preco||0),0))}</div>
-    <div class="lbl">VGV Disponível</div>
   </div>
 </div>
 
-${obsLines.length ? `<div class="obs">${obsLines.map(l=>`• ${l}`).join('&nbsp;&nbsp;&nbsp;')}</div>` : ''}
+<div class="formula-note">Simulação de pagamento: Entrada ${entradaPct}% + ${nRef} reforço(s) anual(is) de ${refPct}% do saldo + ${nParc} parcelas mensais do saldo restante · ✓ = conferência automática (entrada + reforços + parcelas = valor total)</div>
+
+${obsLines.length ? `<div class="obs-box">
+  <h3>Informações e Condições</h3>
+  <ul>${obsLines.map(l=>`<li>${l}</li>`).join('')}</ul>
+</div>` : ''}
 
 <button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
 
