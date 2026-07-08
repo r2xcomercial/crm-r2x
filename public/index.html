@@ -7258,6 +7258,7 @@ async function verEspelho(empId) {
       <select id="espelho-filtro" onchange="filtrarEspelho()" style="font-size:12px;padding:6px 10px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px">${filtros}</select>
       <button class="btn btn-secondary" onclick="verEspelho(${empId})" style="font-size:12px;padding:6px 12px">🔄</button>
       <button class="btn btn-secondary" onclick="verUnidades(${empId})" style="font-size:12px;padding:6px 12px">📋 Lista</button>
+      <button class="btn btn-secondary" onclick="abrirExportarTabela(${empId})" style="font-size:12px;padding:6px 12px;color:#4ade80;border-color:rgba(74,222,128,.4)" title="Gerar tabela de vendas com simulação de pagamento">📄 Exportar Tabela</button>
       <label class="btn btn-secondary" style="font-size:12px;padding:6px 12px;cursor:pointer" title="Envie o PDF ou imagem da planta urbanística para importar lotes automaticamente">
         📐 Importar da Planta
         <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" style="display:none" onchange="analisarPlanta(this,${empId},'${(emp.nome||'').replace(/'/g,"\\'")}')">
@@ -7444,6 +7445,245 @@ function filtrarEspelho() {
       sec.style.display = (!val || sec.dataset.grupo === val) ? '' : 'none';
     });
   }
+}
+
+// ─── EXPORTAR TABELA DE VENDAS ────────────────────────────────────────────────
+function abrirExportarTabela(empId) {
+  const emp = (currentData.emp||[]).find(e => e.id === empId) || {};
+  const hoje = new Date().toLocaleDateString('pt-BR');
+  const obs = [
+    emp.inicio_obra_previsto ? `Início de obra: ${new Date(emp.inicio_obra_previsto).toLocaleDateString('pt-BR')}` : '',
+    emp.prazo_entrega_meses  ? `Prazo de obra: ${emp.prazo_entrega_meses} meses` : '',
+    'Parcelas atualizadas pelo CUB',
+    'Permutas sob análise',
+  ].filter(Boolean).join('\n');
+
+  openModal('📄 Exportar Tabela de Vendas', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="form-group span2">
+        <label>Empreendimento</label>
+        <input id="et-nome" value="${(emp.nome||'').replace(/"/g,'&quot;')}" style="font-weight:700">
+      </div>
+      <div class="form-group">
+        <label>Data de atualização</label>
+        <input id="et-data" value="${hoje}">
+      </div>
+      <div class="form-group">
+        <label>Título da condição</label>
+        <input id="et-titulo" value="Tabela Lançamento" placeholder="Ex: Tabela Lançamento 60 dias">
+      </div>
+      <div class="form-group">
+        <label>Entrada (%)</label>
+        <input id="et-entrada" type="number" value="15" min="0" max="100" step="0.5">
+      </div>
+      <div class="form-group">
+        <label>Nº de Reforços Anuais</label>
+        <input id="et-nreforcos" type="number" value="6" min="0" max="12" step="1">
+      </div>
+      <div class="form-group">
+        <label>% do saldo por Reforço</label>
+        <input id="et-preforco" type="number" value="4" min="0" max="50" step="0.5">
+      </div>
+      <div class="form-group">
+        <label>Nº de Parcelas Mensais</label>
+        <input id="et-parcelas" type="number" value="72" min="1" max="360" step="1">
+      </div>
+      <div class="form-group span2">
+        <label>Exibir apenas</label>
+        <select id="et-filtro">
+          <option value="todos">Todas as unidades</option>
+          <option value="disponivel">Apenas Disponíveis</option>
+        </select>
+      </div>
+      <div class="form-group span2">
+        <label>Observações (uma por linha)</label>
+        <textarea id="et-obs" rows="4" style="resize:vertical">${obs}</textarea>
+      </div>
+    </div>
+  `, async () => {
+    const params = {
+      nome:     document.getElementById('et-nome').value.trim(),
+      data:     document.getElementById('et-data').value.trim(),
+      titulo:   document.getElementById('et-titulo').value.trim(),
+      entrada:  parseFloat(document.getElementById('et-entrada').value) / 100,
+      nRef:     parseInt(document.getElementById('et-nreforcos').value),
+      pRef:     parseFloat(document.getElementById('et-preforco').value) / 100,
+      nParc:    parseInt(document.getElementById('et-parcelas').value),
+      filtro:   document.getElementById('et-filtro').value,
+      obs:      document.getElementById('et-obs').value.trim(),
+    };
+    await gerarTabelaVendas(empId, params);
+  }, 'Gerar & Imprimir');
+}
+
+async function gerarTabelaVendas(empId, params) {
+  const r = await get(`/api/empreendimentos/${empId}/unidades`);
+  const unidades = (r.data || []).sort((a, b) => {
+    const qa = String(a.quadra||''), qb = String(b.quadra||'');
+    const na = parseFloat(qa), nb = parseFloat(qb);
+    const qcmp = (!isNaN(na) && !isNaN(nb)) ? na - nb : qa.localeCompare(qb, 'pt-BR', {numeric:true});
+    if (qcmp !== 0) return qcmp;
+    const la = parseFloat(a.lote||'0'), lb = parseFloat(b.lote||'0');
+    return (!isNaN(la) && !isNaN(lb)) ? la - lb : String(a.lote||'').localeCompare(String(b.lote||''), 'pt-BR', {numeric:true});
+  });
+
+  const lista = params.filtro === 'disponivel' ? unidades.filter(u => u.status === 'disponivel') : unidades;
+  const fmt2 = n => n == null ? '—' : 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtN = n => n == null ? '—' : n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' m²';
+
+  const extractNum = lote => { const m = String(lote).match(/\b(\d{2,4}[A-Za-z]?)\b/); return m ? m[1] : String(lote).split(/[\s\-]/)[0]; };
+  const extractTip = lote => { const parts = String(lote).split(/\s*-\s*/); return parts.length > 1 ? parts.slice(1).filter(p => /[a-zA-ZÀ-ú]/.test(p)).join(' - ') : ''; };
+
+  const statusLabel = { disponivel: 'Disponível', reservado: 'Reservado', vendido: 'Vendido' };
+  const statusColor = { disponivel: '#166534', reservado: '#92400e', vendido: '#991b1b' };
+  const statusBg    = { disponivel: '#dcfce7',  reservado: '#fef3c7',  vendido: '#fee2e2'  };
+  const rowBg       = { disponivel: '#ffffff',   reservado: '#fffbeb',  vendido: '#fff1f2'  };
+
+  const obsLines = params.obs.split('\n').filter(Boolean);
+
+  // Cabeçalhos das colunas de pagamento
+  const entradaPct  = (params.entrada * 100).toFixed(0);
+  const refPct      = (params.pRef * 100).toFixed(0);
+  const nRef        = params.nRef;
+  const nParc       = params.nParc;
+
+  const rows = lista.map(u => {
+    const lote = String(u.lote || '');
+    const num  = extractNum(lote);
+    const tip  = u.tipologia || extractTip(lote);
+    const andar = u.quadra ? String(u.quadra) : '—';
+    const andarLabel = !isNaN(parseFloat(andar)) ? `${parseFloat(andar)}º andar` : andar;
+    const P    = u.preco;
+    let entrada = '', reforco = '', parcela = '';
+    if (P) {
+      const saldo1  = P * (1 - params.entrada);
+      const refVal  = saldo1 * params.pRef;
+      const saldo2  = saldo1 - nRef * refVal;
+      entrada = fmt2(P * params.entrada);
+      reforco = fmt2(refVal);
+      parcela = fmt2(saldo2 > 0 ? saldo2 / nParc : 0);
+    }
+    const st    = u.status || 'disponivel';
+    const rowStyle = `background:${rowBg[st]||'#fff'};border-bottom:1px solid #e5e7eb`;
+    const badgeStyle = `display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;background:${statusBg[st]};color:${statusColor[st]}`;
+    return `<tr style="${rowStyle}">
+      <td style="padding:7px 10px;font-size:12px;color:#374151;white-space:nowrap">${andarLabel}</td>
+      <td style="padding:7px 10px;font-size:12px;font-weight:600;color:#111827;white-space:nowrap">${num}</td>
+      <td style="padding:7px 10px;font-size:11px;color:#6b7280">${tip}</td>
+      <td style="padding:7px 10px;font-size:12px;text-align:right;color:#374151;white-space:nowrap">${fmtN(u.area_m2)}</td>
+      <td style="padding:7px 10px;font-size:12px;font-weight:700;text-align:right;color:#111827;white-space:nowrap">${fmt2(P)}</td>
+      <td style="padding:7px 10px;font-size:12px;text-align:right;color:#374151;white-space:nowrap">${entrada}</td>
+      <td style="padding:7px 10px;font-size:12px;text-align:right;color:#374151;white-space:nowrap">${reforco}</td>
+      <td style="padding:7px 10px;font-size:12px;text-align:right;color:#374151;white-space:nowrap">${parcela}</td>
+      <td style="padding:7px 10px;text-align:center"><span style="${badgeStyle}">${statusLabel[st]||st}</span></td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8">
+<title>Tabela de Vendas — ${params.nome}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; background: #fff; color: #111; }
+  @page { size: A4 landscape; margin: 14mm 12mm; }
+  @media print { .no-print { display: none !important; } body { font-size: 11px; } }
+
+  .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 3px solid #111; }
+  .header-left h1 { font-size: 22px; font-weight: 900; letter-spacing: -.5px; }
+  .header-left p  { font-size: 12px; color: #6b7280; margin-top: 3px; }
+  .header-right   { text-align: right; }
+  .header-right .data { font-size: 20px; font-weight: 900; color: #111; }
+  .header-right .titulo { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  thead th { background: #111827; color: #fff; padding: 9px 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+  thead th.right { text-align: right; }
+  thead th.center { text-align: center; }
+  thead .subhead { background: #374151; }
+  tbody tr:hover { filter: brightness(.97); }
+
+  .resumo { display: flex; gap: 12px; margin-top: 18px; }
+  .resumo-card { flex: 1; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; }
+  .resumo-card .val { font-size: 20px; font-weight: 900; }
+  .resumo-card .lbl { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
+  .resumo-card.green { border-color: #bbf7d0; background: #f0fdf4; }
+  .resumo-card.green .val { color: #166534; }
+  .resumo-card.yellow { border-color: #fde68a; background: #fefce8; }
+  .resumo-card.yellow .val { color: #92400e; }
+  .resumo-card.red { border-color: #fecaca; background: #fff1f2; }
+  .resumo-card.red .val { color: #991b1b; }
+  .resumo-card.blue { border-color: #bfdbfe; background: #eff6ff; }
+  .resumo-card.blue .val { color: #1e40af; }
+
+  .obs { margin-top: 14px; padding-top: 10px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #6b7280; line-height: 1.8; }
+
+  .btn-print { position: fixed; bottom: 24px; right: 24px; background: #111827; color: #fff; border: none; border-radius: 10px; padding: 12px 24px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+  .btn-print:hover { background: #374151; }
+</style>
+</head><body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>${params.nome}</h1>
+    <p>ATUALIZADA ${params.data}</p>
+  </div>
+  <div class="header-right">
+    <div class="titulo">${params.titulo || 'Tabela de Lançamento'}</div>
+    <div class="data">${params.data}</div>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2">Andar</th>
+      <th rowspan="2">Unidade</th>
+      <th rowspan="2">Tipologia</th>
+      <th rowspan="2" class="right">M²</th>
+      <th rowspan="2" class="right">Valor Lançamento</th>
+      <th class="right">Entrada</th>
+      <th class="right">Reforços Anuais (${nRef}x)</th>
+      <th class="right">Parcelas Mensais</th>
+      <th rowspan="2" class="center">Disponibilidade</th>
+    </tr>
+    <tr class="subhead">
+      <th class="right">${entradaPct}%</th>
+      <th class="right">${refPct}% do saldo</th>
+      <th class="right">${nParc}x</th>
+    </tr>
+  </thead>
+  <tbody>${rows}</tbody>
+</table>
+
+<div class="resumo">
+  <div class="resumo-card green">
+    <div class="val">${unidades.filter(u=>u.status==='disponivel').length}</div>
+    <div class="lbl">Disponíveis</div>
+  </div>
+  <div class="resumo-card yellow">
+    <div class="val">${unidades.filter(u=>u.status==='reservado').length}</div>
+    <div class="lbl">Reservados</div>
+  </div>
+  <div class="resumo-card red">
+    <div class="val">${unidades.filter(u=>u.status==='vendido').length}</div>
+    <div class="lbl">Vendidos</div>
+  </div>
+  <div class="resumo-card blue">
+    <div class="val">${fmt2(unidades.filter(u=>u.status==='disponivel').reduce((s,u)=>s+(u.preco||0),0))}</div>
+    <div class="lbl">VGV Disponível</div>
+  </div>
+</div>
+
+${obsLines.length ? `<div class="obs">${obsLines.map(l=>`• ${l}`).join('&nbsp;&nbsp;&nbsp;')}</div>` : ''}
+
+<button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if (!w) { toast('Permita pop-ups para gerar a tabela', 'error'); return; }
+  w.document.write(html);
+  w.document.close();
 }
 
 async function abrirUnidade(unidadeId, empId) {
