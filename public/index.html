@@ -7488,8 +7488,8 @@ function abrirExportarTabela(empId) {
         <input id="et-nreforcos" type="number" value="6" min="0" max="12" step="1">
       </div>
       <div class="form-group">
-        <label>% do saldo por Reforço</label>
-        <input id="et-preforco" type="number" value="4" min="0" max="50" step="0.5">
+        <label>% do saldo em Reforços (total, dividido pelos balões)</label>
+        <input id="et-preforco" type="number" value="20" min="0" max="100" step="0.5">
       </div>
       <div class="form-group">
         <label>Nº de Parcelas Mensais</label>
@@ -7566,18 +7566,19 @@ async function gerarTabelaVendas(empId, params) {
     const P    = u.preco;
     let entrada = '', reforco = '', parcela = '', totalSim = '';
     if (P) {
-      const saldo1 = P * (1 - params.entrada);
-      const refVal = saldo1 * params.pRef;
-      const saldo2 = saldo1 - nRef * refVal;
-      const entV   = P * params.entrada;
-      const parcV  = saldo2 > 0 ? saldo2 / nParc : 0;
-      entrada  = fmt2(entV);
-      reforco  = fmt2(refVal);
-      parcela  = fmt2(parcV);
-      // verificação: entrada + nRef*reforço + nParc*parcela deve = P
-      const total = entV + nRef * refVal + nParc * parcV;
-      const ok = Math.abs(total - P) < 0.10;
-      totalSim = `<span title="Conferência: ${fmt2(entV)} + ${nRef}×${fmt2(refVal)} + ${nParc}×${fmt2(parcV)} = ${fmt2(total)}" style="font-size:10px;color:${ok?'#166534':'#991b1b'};font-weight:700">${ok?'✓':'⚠'}</span>`;
+      const entV     = P * params.entrada;
+      const saldo1   = P - entV;                          // saldo após entrada
+      const totalRef = saldo1 * params.pRef;              // TOTAL de todos os reforços
+      const refVal   = nRef > 0 ? totalRef / nRef : 0;   // valor de CADA reforço individual
+      const saldo2   = saldo1 - totalRef;                 // saldo restante para parcelas
+      const parcV    = saldo2 > 0 ? saldo2 / nParc : 0;
+      entrada = fmt2(entV);
+      reforco = fmt2(refVal);   // cada balão individualmente
+      parcela = fmt2(parcV);
+      // conferência: entrada + (nRef × refVal) + (nParc × parcela) = preço
+      const conf = entV + totalRef + nParc * parcV;
+      const ok   = Math.abs(conf - P) < 0.10;
+      totalSim = `<span title="Conferência: Entrada ${fmt2(entV)} + ${nRef} balões de ${fmt2(refVal)} + ${nParc}×${fmt2(parcV)} = ${fmt2(conf)}" style="font-size:10px;color:${ok?'#166534':'#991b1b'};font-weight:700">${ok?'✓':'⚠'}</span>`;
     }
     const st = u.status || 'disponivel';
 
@@ -7682,7 +7683,7 @@ async function gerarTabelaVendas(empId, params) {
     </tr>
     <tr class="subhead">
       <th class="right">${entradaPct}% · à vista</th>
-      <th class="right">${nRef}x · ${refPct}% do saldo</th>
+      <th class="right">${nRef}x balões · cada ${refPct}%÷${nRef} do saldo</th>
       <th class="right">${nParc}x mensais</th>
     </tr>
   </thead>
@@ -7708,7 +7709,7 @@ async function gerarTabelaVendas(empId, params) {
   </div>
 </div>
 
-<div class="formula-note">Simulação de pagamento: Entrada ${entradaPct}% + ${nRef} reforço(s) anual(is) de ${refPct}% do saldo + ${nParc} parcelas mensais do saldo restante · ✓ = conferência automática (entrada + reforços + parcelas = valor total)</div>
+<div class="formula-note">Simulação: Entrada ${entradaPct}% + ${nRef} balões anuais (${refPct}% do saldo ÷ ${nRef} cada) + ${nParc} parcelas mensais do saldo restante &nbsp;·&nbsp; ✓ = total confere com o preço de lançamento</div>
 
 ${obsLines.length ? `<div class="obs-box">
   <h3>Informações e Condições</h3>
