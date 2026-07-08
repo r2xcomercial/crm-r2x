@@ -7341,58 +7341,66 @@ function renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId) {
 function renderEspelhoPredio(grupoKeys, grupos, empId) {
   if (!grupoKeys.length) return '<div style="color:var(--text2);padding:32px;text-align:center">Nenhuma unidade importada para este empreendimento</div>';
 
-  // Extrai só o número do apto da string completa (ex: "APARTAMENTO 901 - 2 Suítes" → "901")
   const extractNum = lote => {
     const m = String(lote).match(/\b(\d{2,4}[A-Za-z]?)\b/);
     return m ? m[1] : String(lote).split(/[\s\-]/)[0].trim();
   };
-  // Extrai tipologia resumida (tudo após o primeiro " - ")
   const extractTip = lote => {
     const parts = String(lote).split(/\s*-\s*/);
     if (parts.length < 2) return '';
-    // pega a parte com letras reais (descarta partes que são só número)
     const tip = parts.slice(1).find(p => /[a-zA-ZÀ-ú]/.test(p)) || '';
-    // trunca em 12 chars para caber no tile
     return tip.length > 14 ? tip.slice(0, 13) + '…' : tip;
   };
 
-  // Todos os aptos únicos para alinhar colunas
-  const aptoSet = new Set();
-  grupoKeys.forEach(g => grupos[g].forEach(u => aptoSet.add(u.lote)));
-  const aptoCols = [...aptoSet].sort((a, b) => {
-    const na = parseFloat(extractNum(a)), nb = parseFloat(extractNum(b));
-    return (!isNaN(na) && !isNaN(nb)) ? na - nb : String(a).localeCompare(String(b), 'pt-BR', {numeric:true});
+  // Ordena unidades de cada andar pelo número do lote
+  grupoKeys.forEach(g => {
+    grupos[g].sort((a, b) => {
+      const na = parseFloat(extractNum(a.lote)), nb = parseFloat(extractNum(b.lote));
+      return (!isNaN(na) && !isNaN(nb)) ? na - nb : String(a.lote).localeCompare(String(b.lote), 'pt-BR', {numeric:true});
+    });
+  });
+
+  // Colunas = posição dentro do andar (não o número exato da unidade).
+  // Assim 201/301/401 ficam todos na coluna 0, 202/302/402 na coluna 1, etc.
+  const maxCols = Math.max(...grupoKeys.map(g => grupos[g].length));
+  const positions = Array.from({length: maxCols}, (_, i) => i);
+
+  // Label da coluna = número da unidade do primeiro andar que tem essa posição
+  const colLabels = positions.map(i => {
+    for (const g of grupoKeys) { if (grupos[g][i]) return extractNum(grupos[g][i].lote); }
+    return String(i + 1).padStart(2, '0');
+  });
+  const colTips = positions.map(i => {
+    for (const g of grupoKeys) {
+      if (grupos[g][i]) { const u = grupos[g][i]; return u.tipologia || extractTip(u.lote); }
+    }
+    return '';
   });
 
   const stClr = { disponivel:'#4ade80', reservado:'#fbbf24', vendido:'#f87171' };
-  const stBg  = { disponivel:'rgba(34,197,94,.11)', reservado:'rgba(245,158,11,.12)', vendido:'rgba(239,68,68,.12)' };
-  const stBdr = { disponivel:'rgba(34,197,94,.5)',  reservado:'rgba(245,158,11,.55)', vendido:'rgba(239,68,68,.55)' };
 
-  // Cabeçalho: número curto do apto + tipologia abreviada
   const thead = `<tr>
     <th style="padding:0 12px 10px 0;min-width:72px"></th>
-    ${aptoCols.map(lbl => {
-      const num = extractNum(lbl);
-      const tip = extractTip(lbl);
+    ${positions.map(i => {
+      const tip = colTips[i];
       return `<th style="padding:0 3px 10px;text-align:center;min-width:68px;max-width:68px">
-        <div style="font-size:11px;font-weight:700;color:var(--text)">${num}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text)">${colLabels[i]}</div>
         ${tip ? `<div style="font-size:8px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64px">${tip}</div>` : ''}
       </th>`;
     }).join('')}
   </tr>`;
 
   const rows = grupoKeys.map(g => {
-    const byLote = {};
-    grupos[g].forEach(u => { byLote[u.lote] = u; });
+    const units = grupos[g]; // já ordenado
     const cntG = {
-      d: grupos[g].filter(u => u.status === 'disponivel').length,
-      r: grupos[g].filter(u => u.status === 'reservado').length,
-      v: grupos[g].filter(u => u.status === 'vendido').length
+      d: units.filter(u => u.status === 'disponivel').length,
+      r: units.filter(u => u.status === 'reservado').length,
+      v: units.filter(u => u.status === 'vendido').length
     };
     const andLabel = !isNaN(parseFloat(g)) ? `${parseFloat(g)}º` : g;
 
-    const cells = aptoCols.map(lbl => {
-      const u = byLote[lbl];
+    const cells = positions.map(i => {
+      const u = units[i]; // posição dentro do andar (não lookup por nome)
       if (!u) return `<td style="padding:2px 3px"><div style="width:64px;height:56px"></div></td>`;
       const num = extractNum(u.lote);
       const tip = u.tipologia || extractTip(u.lote);
