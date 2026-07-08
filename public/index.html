@@ -189,24 +189,25 @@
 
   /* ── ESPELHO DE VENDAS ── */
   .espelho-tile {
-    width: 90px; min-height: 76px; border-radius: 8px; border: 2px solid;
+    width: 64px; min-height: 58px; border-radius: 7px; border: 1.5px solid;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    cursor: pointer; padding: 6px 4px; text-align: center; overflow: hidden;
-    transition: transform .12s, box-shadow .12s;
+    cursor: pointer; padding: 5px 3px; text-align: center; overflow: hidden;
+    transition: transform .12s, box-shadow .12s, filter .12s;
   }
-  .espelho-tile:hover { transform: scale(1.12); box-shadow: 0 6px 20px rgba(0,0,0,.4); z-index: 2; position: relative; }
-  .espelho-tile.disponivel { background: rgba(34,197,94,.1);  border-color: rgba(34,197,94,.45); }
-  .espelho-tile.reservado  { background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.45); }
-  .espelho-tile.vendido    { background: rgba(239,68,68,.1);  border-color: rgba(239,68,68,.45); }
-  .espelho-tile .tile-num  { font-size: 12px; font-weight: 900; line-height: 1.25; word-break: break-word; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; }
-  .espelho-tile .tile-area { font-size: 9px; opacity: .65; margin-top: 2px; white-space: nowrap; }
-  .espelho-tile .tile-preco { font-size: 9px; opacity: .8; margin-top: 2px; white-space: nowrap; overflow: hidden; max-width: 100%; text-overflow: ellipsis; }
+  .espelho-tile:hover { transform: scale(1.1); box-shadow: 0 4px 16px rgba(0,0,0,.45); z-index: 2; position: relative; filter: brightness(1.18); }
+  .espelho-tile.disponivel { background: rgba(34,197,94,.1);  border-color: rgba(34,197,94,.5); }
+  .espelho-tile.reservado  { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.55); }
+  .espelho-tile.vendido    { background: rgba(239,68,68,.12);  border-color: rgba(239,68,68,.55); }
+  .espelho-tile .tile-num  { font-size: 15px; font-weight: 900; line-height: 1; letter-spacing: -.3px; }
+  .espelho-tile .tile-tip  { font-size: 7.5px; opacity: .7; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px; }
+  .espelho-tile .tile-area { font-size: 7.5px; opacity: .6; margin-top: 1px; white-space: nowrap; }
+  .espelho-tile .tile-preco { font-size: 8px; opacity: .85; margin-top: 1px; white-space: nowrap; font-weight: 600; }
   .espelho-tile.disponivel .tile-num  { color: #4ade80; }
   .espelho-tile.reservado  .tile-num  { color: #fbbf24; }
   .espelho-tile.vendido    .tile-num  { color: #f87171; }
-  .espelho-tile.disponivel .tile-preco { color: rgba(74,222,128,.7); }
-  .espelho-tile.reservado  .tile-preco { color: rgba(251,191,36,.7); }
-  .espelho-tile.vendido    .tile-preco { color: rgba(248,113,113,.7); }
+  .espelho-tile.disponivel .tile-preco { color: rgba(74,222,128,.85); }
+  .espelho-tile.reservado  .tile-preco { color: rgba(251,191,36,.85); }
+  .espelho-tile.vendido    .tile-preco { color: rgba(248,113,113,.85); }
   .espelho-secao { margin-bottom: 24px; }
   .espelho-secao-header {
     font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
@@ -7339,54 +7340,81 @@ function renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId) {
 function renderEspelhoPredio(grupoKeys, grupos, empId) {
   if (!grupoKeys.length) return '<div style="color:var(--text2);padding:32px;text-align:center">Nenhuma unidade importada para este empreendimento</div>';
 
-  // Todos os apartamentos únicos (para alinhar colunas entre andares)
+  // Extrai só o número do apto da string completa (ex: "APARTAMENTO 901 - 2 Suítes" → "901")
+  const extractNum = lote => {
+    const m = String(lote).match(/\b(\d{2,4}[A-Za-z]?)\b/);
+    return m ? m[1] : String(lote).split(/[\s\-]/)[0].trim();
+  };
+  // Extrai tipologia resumida (tudo após o primeiro " - ")
+  const extractTip = lote => {
+    const parts = String(lote).split(/\s*-\s*/);
+    if (parts.length < 2) return '';
+    // pega a parte com letras reais (descarta partes que são só número)
+    const tip = parts.slice(1).find(p => /[a-zA-ZÀ-ú]/.test(p)) || '';
+    // trunca em 12 chars para caber no tile
+    return tip.length > 14 ? tip.slice(0, 13) + '…' : tip;
+  };
+
+  // Todos os aptos únicos para alinhar colunas
   const aptoSet = new Set();
   grupoKeys.forEach(g => grupos[g].forEach(u => aptoSet.add(u.lote)));
   const aptoCols = [...aptoSet].sort((a, b) => {
-    const na = parseFloat(a), nb = parseFloat(b);
-    return (!isNaN(na) && !isNaN(nb)) ? na - nb : (a||'').localeCompare(b||'', 'pt-BR', {numeric:true});
+    const na = parseFloat(extractNum(a)), nb = parseFloat(extractNum(b));
+    return (!isNaN(na) && !isNaN(nb)) ? na - nb : String(a).localeCompare(String(b), 'pt-BR', {numeric:true});
   });
 
-  const stBg  = { disponivel:'rgba(34,197,94,.13)',  reservado:'rgba(245,158,11,.13)',  vendido:'rgba(239,68,68,.13)'  };
-  const stBdr = { disponivel:'rgba(34,197,94,.5)',   reservado:'rgba(245,158,11,.5)',   vendido:'rgba(239,68,68,.5)'   };
-  const stClr = { disponivel:'#4ade80',              reservado:'#fbbf24',               vendido:'#f87171'              };
+  const stClr = { disponivel:'#4ade80', reservado:'#fbbf24', vendido:'#f87171' };
+  const stBg  = { disponivel:'rgba(34,197,94,.11)', reservado:'rgba(245,158,11,.12)', vendido:'rgba(239,68,68,.12)' };
+  const stBdr = { disponivel:'rgba(34,197,94,.5)',  reservado:'rgba(245,158,11,.55)', vendido:'rgba(239,68,68,.55)' };
 
+  // Cabeçalho: número curto do apto + tipologia abreviada
   const thead = `<tr>
-    <th style="min-width:96px;padding:0 14px 8px 0"></th>
-    ${aptoCols.map(lbl => `<th style="font-size:10px;font-weight:600;color:var(--text2);padding:0 4px 8px;text-align:center;min-width:76px">${lbl}</th>`).join('')}
+    <th style="padding:0 12px 10px 0;min-width:72px"></th>
+    ${aptoCols.map(lbl => {
+      const num = extractNum(lbl);
+      const tip = extractTip(lbl);
+      return `<th style="padding:0 3px 10px;text-align:center;min-width:68px;max-width:68px">
+        <div style="font-size:11px;font-weight:700;color:var(--text)">${num}</div>
+        ${tip ? `<div style="font-size:8px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64px">${tip}</div>` : ''}
+      </th>`;
+    }).join('')}
   </tr>`;
 
   const rows = grupoKeys.map(g => {
     const byLote = {};
     grupos[g].forEach(u => { byLote[u.lote] = u; });
-    const cntG = { d: grupos[g].filter(u=>u.status==='disponivel').length, r: grupos[g].filter(u=>u.status==='reservado').length, v: grupos[g].filter(u=>u.status==='vendido').length };
+    const cntG = {
+      d: grupos[g].filter(u => u.status === 'disponivel').length,
+      r: grupos[g].filter(u => u.status === 'reservado').length,
+      v: grupos[g].filter(u => u.status === 'vendido').length
+    };
     const andLabel = !isNaN(parseFloat(g)) ? `${parseFloat(g)}º` : g;
 
     const cells = aptoCols.map(lbl => {
       const u = byLote[lbl];
-      if (!u) return `<td style="padding:3px 4px"><div style="min-width:76px;height:56px"></div></td>`;
-      return `<td style="padding:3px 4px">
-        <div onclick="abrirUnidade(${u.id},${empId})"
-          onmouseover="this.style.filter='brightness(1.2)'" onmouseout="this.style.filter=''"
-          title="Apto ${u.lote}${u.area_m2?' · '+u.area_m2+'m²':''}${u.preco?' · '+fmtPlain(u.preco):''}${u.tipologia?' · '+u.tipologia:''}"
-          style="cursor:pointer;border-radius:7px;padding:8px 4px;text-align:center;min-width:76px;
-            background:${stBg[u.status]||'rgba(148,163,184,.1)'};
-            border:1.5px solid ${stBdr[u.status]||'rgba(148,163,184,.3)'};
-            transition:filter .15s">
-          <div style="font-size:13px;font-weight:800;color:${stClr[u.status]||'var(--text2)'};line-height:1">${u.lote}</div>
-          ${u.tipologia?`<div style="font-size:8px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70px">${u.tipologia}</div>`:''}
-          ${u.area_m2 ?`<div style="font-size:9px;color:var(--text2);margin-top:2px">${u.area_m2}m²</div>`:''}
-          ${u.preco   ?`<div style="font-size:9px;color:var(--text2);margin-top:1px">${fmtK(u.preco)}</div>`:''}
+      if (!u) return `<td style="padding:2px 3px"><div style="width:64px;height:56px"></div></td>`;
+      const num = extractNum(u.lote);
+      const tip = u.tipologia || extractTip(u.lote);
+      const clr = stClr[u.status] || 'var(--text2)';
+      const tooltipTip = tip ? ` · ${tip}` : '';
+      const tooltip = `${andLabel} andar · Apto ${num}${tooltipTip}${u.area_m2 ? ' · ' + u.area_m2 + 'm²' : ''}${u.preco ? ' · ' + fmtPlain(u.preco) : ''}`;
+      return `<td style="padding:2px 3px">
+        <div onclick="abrirUnidade(${u.id},${empId})" title="${tooltip}"
+          class="espelho-tile ${u.status || 'disponivel'}">
+          <div class="tile-num" style="color:${clr}">${num}</div>
+          ${tip ? `<div class="tile-tip">${tip}</div>` : ''}
+          ${u.area_m2 ? `<div class="tile-area">${u.area_m2}m²</div>` : ''}
+          ${u.preco   ? `<div class="tile-preco">${fmtK(u.preco)}</div>` : ''}
         </div>
       </td>`;
     }).join('');
 
     return `<tr data-grupo="${g}">
-      <td style="padding:3px 14px 3px 0;vertical-align:middle;border-right:2px solid var(--border)">
-        <div style="text-align:right;white-space:nowrap">
-          <div style="font-size:13px;font-weight:700">${andLabel} andar</div>
-          <div style="font-size:10px;color:var(--text2);margin-top:2px">
-            <span style="color:#4ade80">${cntG.d}d</span> · <span style="color:#fbbf24">${cntG.r}r</span> · <span style="color:#f87171">${cntG.v}v</span>
+      <td style="padding:2px 12px 2px 0;vertical-align:middle;border-right:2px solid var(--border)">
+        <div style="text-align:right;white-space:nowrap;padding-right:6px">
+          <div style="font-size:12px;font-weight:700;color:var(--text)">${andLabel}</div>
+          <div style="font-size:9px;color:var(--text2);margin-top:2px;line-height:1.4">
+            <span style="color:#4ade80">${cntG.d}&#9632;</span> <span style="color:#fbbf24">${cntG.r}&#9632;</span> <span style="color:#f87171">${cntG.v}&#9632;</span>
           </div>
         </div>
       </td>
@@ -7394,8 +7422,8 @@ function renderEspelhoPredio(grupoKeys, grupos, empId) {
     </tr>`;
   }).join('');
 
-  return `<div style="overflow-x:auto">
-    <table style="border-collapse:separate;border-spacing:0;min-width:max-content">
+  return `<div style="overflow-x:auto;padding-bottom:8px">
+    <table class="espelho-predio-table" style="border-collapse:separate;border-spacing:0 2px;min-width:max-content">
       <thead>${thead}</thead>
       <tbody>${rows}</tbody>
     </table>
