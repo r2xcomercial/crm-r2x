@@ -7567,18 +7567,17 @@ async function gerarTabelaVendas(empId, params) {
     let entrada = '', reforco = '', parcela = '', totalSim = '';
     if (P) {
       const entV     = P * params.entrada;
-      const saldo1   = P - entV;                          // saldo após entrada
-      const totalRef = saldo1 * params.pRef;              // TOTAL de todos os reforços
-      const refVal   = nRef > 0 ? totalRef / nRef : 0;   // valor de CADA reforço individual
+      const saldo1   = P - entV;
+      const totalRef = P * params.pRef;                   // % do VALOR TOTAL da unidade
+      const refVal   = nRef > 0 ? totalRef / nRef : 0;   // cada balão individualmente
       const saldo2   = saldo1 - totalRef;                 // saldo restante para parcelas
       const parcV    = saldo2 > 0 ? saldo2 / nParc : 0;
       entrada = fmt2(entV);
-      reforco = fmt2(refVal);   // cada balão individualmente
+      reforco = fmt2(refVal);
       parcela = fmt2(parcV);
-      // conferência: entrada + (nRef × refVal) + (nParc × parcela) = preço
       const conf = entV + totalRef + nParc * parcV;
       const ok   = Math.abs(conf - P) < 0.10;
-      totalSim = `<span title="Conferência: Entrada ${fmt2(entV)} + ${nRef} balões de ${fmt2(refVal)} + ${nParc}×${fmt2(parcV)} = ${fmt2(conf)}" style="font-size:10px;color:${ok?'#166534':'#991b1b'};font-weight:700">${ok?'✓':'⚠'}</span>`;
+      totalSim = `<span title="Conferência: Entrada ${fmt2(entV)} + ${nRef}×${fmt2(refVal)} + ${nParc}×${fmt2(parcV)} = ${fmt2(conf)}" style="font-size:10px;color:${ok?'#166534':'#991b1b'};font-weight:700">${ok?'✓':'⚠'}</span>`;
     }
     const st = u.status || 'disponivel';
 
@@ -7626,10 +7625,10 @@ async function gerarTabelaVendas(empId, params) {
   .header-right .titulo { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
 
   table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  thead th { background: #111827; color: #fff; padding: 9px 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+  thead th { background: #111827; color: #fff; padding: 10px 10px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; vertical-align: bottom; }
+  thead th .sub { display: block; font-size: 9px; font-weight: 400; opacity: .65; text-transform: none; letter-spacing: 0; margin-top: 3px; }
   thead th.right  { text-align: right; }
   thead th.center { text-align: center; }
-  thead .subhead  { background: #1f2937; }
 
   .resumo { display: flex; gap: 10px; margin-top: 14px; }
   .resumo-card { flex: 1; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px 12px; text-align: center; }
@@ -7671,20 +7670,15 @@ async function gerarTabelaVendas(empId, params) {
 <table>
   <thead>
     <tr>
-      <th rowspan="2">Andar</th>
-      <th rowspan="2">Unidade</th>
-      <th rowspan="2">Tipologia</th>
-      <th rowspan="2" class="right">Área</th>
-      <th rowspan="2" class="right">Valor de Lançamento</th>
-      <th class="right">Entrada</th>
-      <th class="right">Reforços Anuais</th>
-      <th class="right">Parcelas Mensais</th>
-      <th rowspan="2" class="center">Status</th>
-    </tr>
-    <tr class="subhead">
-      <th class="right">${entradaPct}% · à vista</th>
-      <th class="right">${nRef}x balões · cada ${refPct}%÷${nRef} do saldo</th>
-      <th class="right">${nParc}x mensais</th>
+      <th>Andar</th>
+      <th>Unidade</th>
+      <th>Tipologia</th>
+      <th class="right">Área</th>
+      <th class="right">Valor<span class="sub">de lançamento</span></th>
+      <th class="right">Entrada<span class="sub">${entradaPct}% · à vista</span></th>
+      <th class="right">Balões &nbsp;${nRef}<span class="sub">${refPct}% do valor · cada</span></th>
+      <th class="right">Parcelas<span class="sub">${nParc}x mensais</span></th>
+      <th class="center">Status</th>
     </tr>
   </thead>
   <tbody>${rows}</tbody>
@@ -7709,7 +7703,7 @@ async function gerarTabelaVendas(empId, params) {
   </div>
 </div>
 
-<div class="formula-note">Simulação: Entrada ${entradaPct}% + ${nRef} balões anuais (${refPct}% do saldo ÷ ${nRef} cada) + ${nParc} parcelas mensais do saldo restante &nbsp;·&nbsp; ✓ = total confere com o preço de lançamento</div>
+<div class="formula-note">Simulação: Entrada ${entradaPct}% + ${nRef} balões anuais (${refPct}% do valor total ÷ ${nRef} cada) + ${nParc} parcelas mensais do saldo restante &nbsp;·&nbsp; ✓ = total confere com o preço de lançamento</div>
 
 ${obsLines.length ? `<div class="obs-box">
   <h3>Informações e Condições</h3>
