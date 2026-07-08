@@ -7684,6 +7684,10 @@ async function gerarTabelaVendas(empId, params) {
 
   .btn-print { position: fixed; bottom: 24px; right: 24px; background: #111827; color: #fff; border: none; border-radius: 10px; padding: 12px 24px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.3); z-index: 99; }
   .btn-print:hover { background: #374151; }
+
+  .r2x-footer { margin-top: 18px; padding-top: 10px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; font-size: 9px; color: #9ca3af; letter-spacing: .2px; }
+  .r2x-footer strong { color: #6b7280; }
+  @media print { .no-print { display: none !important; } .r2x-footer { margin-top: 14px; } }
 </style>
 </head><body>
 
@@ -7695,9 +7699,10 @@ async function gerarTabelaVendas(empId, params) {
       <p>${params.titulo ? params.titulo.toUpperCase() : 'TABELA DE LANÇAMENTO'} &nbsp;·&nbsp; ATUALIZADA EM ${params.data}</p>
     </div>
   </div>
-  <div class="header-right">
+  <div class="header-right" style="text-align:right">
     <div class="titulo">Data de referência</div>
     <div class="data">${params.data}</div>
+    <div style="margin-top:6px;font-size:9px;color:#9ca3af;letter-spacing:.3px">R2X <strong style="color:#6b7280">Lançamentos Imobiliários</strong></div>
   </div>
 </div>
 
@@ -7743,6 +7748,11 @@ ${obsLines.length ? `<div class="obs-box">
   <h3>Informações e Condições</h3>
   <ul>${obsLines.map(l=>`<li>${l}</li>`).join('')}</ul>
 </div>` : ''}
+
+<div class="r2x-footer">
+  <span>Tabela emitida pelo sistema de gestão comercial próprio da <strong>R2X Lançamentos Imobiliários</strong></span>
+  <span>${params.data}</span>
+</div>
 
 <button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
 
