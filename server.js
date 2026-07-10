@@ -85,6 +85,21 @@ const PORT = process.env.PORT || 4000;
 function ok(res, data) { res.json({ ok: true, data }); }
 function err(res, msg, code = 400) { res.status(code).json({ ok: false, error: msg }); }
 
+// Health check sem autenticação — para diagnóstico
+app.get('/api/health', (req, res) => {
+  const checks = {};
+  const tables = ['usuarios','sessoes','leads','empreendimentos','unidades','vendas','financeiro_entradas','lancamentos_calendario','followups'];
+  for (const t of tables) {
+    try { checks[t] = db.prepare(`SELECT COUNT(*) as n FROM ${t}`).get().n; }
+    catch(e) { checks[t] = 'ERRO: ' + e.message; }
+  }
+  try {
+    const u = db.prepare("SELECT id, nome, email, perfil, corretor_id, cliente_id FROM usuarios LIMIT 1").get();
+    checks._auth_query = u ? 'ok' : 'sem usuários';
+  } catch(e) { checks._auth_query = 'ERRO: ' + e.message; }
+  res.json({ ok: true, checks });
+});
+
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 
 app.post('/api/auth/login', (req, res) => {
