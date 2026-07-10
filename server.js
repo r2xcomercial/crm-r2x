@@ -33,11 +33,17 @@ function autenticar(req, res, next) {
   if (APIs_PUBLICAS.some(p => req.path.startsWith(p))) return next();
   const token = req.headers["x-crm-token"] || req.query.token;
   if (!token) return res.status(401).json({ ok: false, error: "Não autorizado" });
-  const sessao = db.prepare(`
-    SELECT s.token, u.id, u.nome, u.email, u.perfil, u.corretor_id, u.cliente_id
-    FROM sessoes s JOIN usuarios u ON u.id = s.usuario_id
-    WHERE s.token=? AND s.expira_em > datetime('now') AND u.ativo=1
-  `).get(token);
+  let sessao;
+  try {
+    sessao = db.prepare(`
+      SELECT s.token, u.id, u.nome, u.email, u.perfil, u.corretor_id, u.cliente_id
+      FROM sessoes s JOIN usuarios u ON u.id = s.usuario_id
+      WHERE s.token=? AND s.expira_em > datetime('now') AND u.ativo=1
+    `).get(token);
+  } catch(e) {
+    console.error('[autenticar]', e.message);
+    return res.status(500).json({ ok: false, error: 'Erro interno de autenticação: ' + e.message });
+  }
   if (!sessao) return res.status(401).json({ ok: false, error: "Sessão inválida ou expirada" });
   req.usuario = { id: sessao.id, nome: sessao.nome, email: sessao.email, perfil: sessao.perfil, corretor_id: sessao.corretor_id, cliente_id: sessao.cliente_id };
   next();

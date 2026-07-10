@@ -262,6 +262,7 @@ db.exec(`
     salt TEXT NOT NULL,
     perfil TEXT DEFAULT 'corretor',
     corretor_id INTEGER REFERENCES corretores(id),
+    cliente_id INTEGER,
     ativo INTEGER DEFAULT 1,
     criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
   );
