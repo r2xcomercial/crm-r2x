@@ -168,6 +168,7 @@ app.delete('/api/usuarios/:id', soAdmin, (req, res) => {
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 
 app.get("/api/dashboard", (req, res) => {
+  try {
   const leads_total = db.prepare("SELECT COUNT(*) as n FROM leads").get().n;
   const leads_novos = db.prepare("SELECT COUNT(*) as n FROM leads WHERE status='novo' OR (status NOT IN ('com_corretor','vendido','sem_venda','qualificado','visitou','proposta','perdido'))").get().n;
   const vendas_mes = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM vendas WHERE strftime('%Y-%m', data_venda) = strftime('%Y-%m','now')`).get().total;
@@ -297,6 +298,10 @@ app.get("/api/dashboard", (req, res) => {
     followups_vencidos,
     followups_hoje,
   });
+  } catch(e) {
+    console.error('[dashboard]', e.message);
+    err(res, 'Dashboard: ' + e.message);
+  }
 });
 
 // ─── CLIENTES ────────────────────────────────────────────────────────────────
