@@ -466,7 +466,7 @@ app.get("/api/vendas/ranking", (req, res) => {
 // ─── FINANCEIRO ENTRADAS ──────────────────────────────────────────────────────
 
 app.get("/api/financeiro/entradas", (req, res) => {
-  const rows = db.prepare(`SELECT f.*, e.nome as empreendimento_nome FROM financeiro_entradas f LEFT JOIN empreendimentos e ON e.id = f.empreendimento_id ORDER BY f.data_prevista DESC`).all();
+  const rows = db.prepare(`SELECT f.*, e.nome as empreendimento_nome, n.numero as nota_fiscal_numero FROM financeiro_entradas f LEFT JOIN empreendimentos e ON e.id = f.empreendimento_id LEFT JOIN notas_fiscais n ON n.id = f.nota_fiscal_id ORDER BY f.data_prevista DESC`).all();
   ok(res, rows);
 });
 
@@ -511,6 +511,147 @@ app.put("/api/financeiro/saidas/:id", (req, res) => {
 app.delete("/api/financeiro/saidas/:id", (req, res) => {
   db.prepare("DELETE FROM financeiro_saidas WHERE id=?").run(req.params.id);
   ok(res, {});
+});
+
+// ─── NOTAS FISCAIS ────────────────────────────────────────────────────────────
+// Vincula o recebimento de uma NF emitida pelo contador aos lançamentos de
+// contas a receber (financeiro_entradas) já criados quando as vendas foram lançadas.
+
+function listarEntradasVinculadas(notaId) {
+  return db.prepare(`SELECT id, descricao, valor, data_prevista, status, empreendimento_id FROM financeiro_entradas WHERE nota_fiscal_id=? ORDER BY data_prevista`).all(notaId);
+}
+
+function parseEntradaIds(raw) {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.map(Number).filter(n => Number.isInteger(n) && n > 0) : [];
+  } catch (_) { return []; }
+}
+
+app.get("/api/financeiro/notas-fiscais", (req, res) => {
+  const rows = db.prepare(`
+    SELECT n.id, n.numero, n.serie, n.empreendimento_id, n.cliente_id, n.valor, n.data_emissao, n.data_recebimento, n.status, n.observacoes, n.criado_em,
+           n.arquivo_nome, (n.arquivo_dados IS NOT NULL) as tem_arquivo,
+           e.nome as empreendimento_nome, c.razao_social as cliente_nome,
+           COALESCE((SELECT SUM(valor) FROM financeiro_entradas WHERE nota_fiscal_id=n.id),0) as valor_vinculado,
+           (SELECT COUNT(*) FROM financeiro_entradas WHERE nota_fiscal_id=n.id) as qtd_entradas
+    FROM notas_fiscais n
+    LEFT JOIN empreendimentos e ON e.id = n.empreendimento_id
+    LEFT JOIN clientes c ON c.id = n.cliente_id
+    ORDER BY n.data_emissao DESC, n.id DESC
+  `).all();
+  ok(res, rows);
+});
+
+app.get("/api/financeiro/notas-fiscais/:id", (req, res) => {
+  const nf = db.prepare(`
+    SELECT n.id, n.numero, n.serie, n.empreendimento_id, n.cliente_id, n.valor, n.data_emissao, n.data_recebimento, n.status, n.observacoes, n.criado_em,
+           n.arquivo_nome, (n.arquivo_dados IS NOT NULL) as tem_arquivo,
+           e.nome as empreendimento_nome, c.razao_social as cliente_nome
+    FROM notas_fiscais n
+    LEFT JOIN empreendimentos e ON e.id = n.empreendimento_id
+    LEFT JOIN clientes c ON c.id = n.cliente_id
+    WHERE n.id = ?
+  `).get(req.params.id);
+  if (!nf) return err(res, "Nota fiscal não encontrada", 404);
+  nf.entradas = listarEntradasVinculadas(nf.id);
+  ok(res, nf);
+});
+
+app.post("/api/financeiro/notas-fiscais", upload.single("arquivo"), (req, res) => {
+  const { numero, serie, empreendimento_id, cliente_id, valor, data_emissao, observacoes } = req.body;
+  if (!numero || !valor || !data_emissao) return err(res, "Número, valor e data de emissão são obrigatórios");
+  const entradaIds = parseEntradaIds(req.body.entrada_ids);
+  if (entradaIds.length) {
+    const jaVinculadas = db.prepare(`SELECT id FROM financeiro_entradas WHERE id IN (${entradaIds.map(() => '?').join(',')}) AND nota_fiscal_id IS NOT NULL`).all(...entradaIds);
+    if (jaVinculadas.length) return err(res, "Uma ou mais contas a receber selecionadas já estão vinculadas a outra nota fiscal");
+  }
+  const r = db.prepare(`INSERT INTO notas_fiscais (numero,serie,empreendimento_id,cliente_id,valor,data_emissao,observacoes,arquivo_nome,arquivo_mime,arquivo_dados) VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+    numero, serie || null, empreendimento_id || null, cliente_id || null, parseFloat(valor), data_emissao, observacoes || null,
+    req.file?.originalname || null, req.file?.mimetype || null, req.file?.buffer || null
+  );
+  const notaId = r.lastInsertRowid;
+  if (entradaIds.length) {
+    const upd = db.prepare("UPDATE financeiro_entradas SET nota_fiscal_id=? WHERE id=?");
+    db.transaction(() => entradaIds.forEach(id => upd.run(notaId, id)))();
+  }
+  ok(res, { id: notaId });
+});
+
+app.put("/api/financeiro/notas-fiscais/:id", upload.single("arquivo"), (req, res) => {
+  const notaId = req.params.id;
+  const nfExiste = db.prepare("SELECT id FROM notas_fiscais WHERE id=?").get(notaId);
+  if (!nfExiste) return err(res, "Nota fiscal não encontrada", 404);
+  const { numero, serie, empreendimento_id, cliente_id, valor, data_emissao, observacoes } = req.body;
+  if (!numero || !valor || !data_emissao) return err(res, "Número, valor e data de emissão são obrigatórios");
+  const entradaIds = parseEntradaIds(req.body.entrada_ids);
+  if (entradaIds.length) {
+    const jaVinculadas = db.prepare(`SELECT id FROM financeiro_entradas WHERE id IN (${entradaIds.map(() => '?').join(',')}) AND nota_fiscal_id IS NOT NULL AND nota_fiscal_id != ?`).all(...entradaIds, notaId);
+    if (jaVinculadas.length) return err(res, "Uma ou mais contas a receber selecionadas já estão vinculadas a outra nota fiscal");
+  }
+  if (req.file) {
+    db.prepare(`UPDATE notas_fiscais SET numero=?,serie=?,empreendimento_id=?,cliente_id=?,valor=?,data_emissao=?,observacoes=?,arquivo_nome=?,arquivo_mime=?,arquivo_dados=? WHERE id=?`)
+      .run(numero, serie || null, empreendimento_id || null, cliente_id || null, parseFloat(valor), data_emissao, observacoes || null, req.file.originalname, req.file.mimetype, req.file.buffer, notaId);
+  } else {
+    db.prepare(`UPDATE notas_fiscais SET numero=?,serie=?,empreendimento_id=?,cliente_id=?,valor=?,data_emissao=?,observacoes=? WHERE id=?`)
+      .run(numero, serie || null, empreendimento_id || null, cliente_id || null, parseFloat(valor), data_emissao, observacoes || null, notaId);
+  }
+  db.transaction(() => {
+    const nfAtual = db.prepare("SELECT status, data_recebimento FROM notas_fiscais WHERE id=?").get(notaId);
+    // desvincula e reverte para pendente as contas que saíram da seleção (evita deixar "recebido" órfão sem NF)
+    const antigos = db.prepare("SELECT id FROM financeiro_entradas WHERE nota_fiscal_id=?").all(notaId).map(r => r.id);
+    const removidos = antigos.filter(id => !entradaIds.includes(id));
+    if (removidos.length) {
+      db.prepare(`UPDATE financeiro_entradas SET nota_fiscal_id=NULL, status='pendente', data_recebimento=NULL WHERE id IN (${removidos.map(() => '?').join(',')})`).run(...removidos);
+    }
+    const upd = db.prepare("UPDATE financeiro_entradas SET nota_fiscal_id=? WHERE id=?");
+    entradaIds.forEach(id => upd.run(notaId, id));
+    // se a NF já estava recebida, propaga o status para as contas que permanecem/entraram vinculadas
+    if (nfAtual?.status === 'recebida' && entradaIds.length) {
+      db.prepare("UPDATE financeiro_entradas SET status='recebido', data_recebimento=? WHERE nota_fiscal_id=?").run(nfAtual.data_recebimento, notaId);
+    }
+  })();
+  ok(res, {});
+});
+
+app.post("/api/financeiro/notas-fiscais/:id/receber", (req, res) => {
+  const notaId = req.params.id;
+  const nf = db.prepare("SELECT id FROM notas_fiscais WHERE id=?").get(notaId);
+  if (!nf) return err(res, "Nota fiscal não encontrada", 404);
+  const data = req.body.data_recebimento || new Date().toISOString().slice(0, 10);
+  db.transaction(() => {
+    db.prepare("UPDATE notas_fiscais SET status='recebida', data_recebimento=? WHERE id=?").run(data, notaId);
+    db.prepare("UPDATE financeiro_entradas SET status='recebido', data_recebimento=? WHERE nota_fiscal_id=?").run(data, notaId);
+  })();
+  ok(res, {});
+});
+
+app.post("/api/financeiro/notas-fiscais/:id/estornar", (req, res) => {
+  const notaId = req.params.id;
+  const nf = db.prepare("SELECT id FROM notas_fiscais WHERE id=?").get(notaId);
+  if (!nf) return err(res, "Nota fiscal não encontrada", 404);
+  db.transaction(() => {
+    db.prepare("UPDATE notas_fiscais SET status='pendente', data_recebimento=NULL WHERE id=?").run(notaId);
+    db.prepare("UPDATE financeiro_entradas SET status='pendente', data_recebimento=NULL WHERE nota_fiscal_id=?").run(notaId);
+  })();
+  ok(res, {});
+});
+
+app.delete("/api/financeiro/notas-fiscais/:id", (req, res) => {
+  db.transaction(() => {
+    db.prepare("UPDATE financeiro_entradas SET nota_fiscal_id=NULL WHERE nota_fiscal_id=?").run(req.params.id);
+    db.prepare("DELETE FROM notas_fiscais WHERE id=?").run(req.params.id);
+  })();
+  ok(res, {});
+});
+
+app.get("/api/financeiro/notas-fiscais/:id/arquivo", (req, res) => {
+  const nf = db.prepare("SELECT arquivo_nome, arquivo_mime, arquivo_dados FROM notas_fiscais WHERE id=?").get(req.params.id);
+  if (!nf || !nf.arquivo_dados) return err(res, "Arquivo não encontrado", 404);
+  res.setHeader("Content-Type", nf.arquivo_mime || "application/octet-stream");
+  res.setHeader("Content-Disposition", `inline; filename="${(nf.arquivo_nome || "nota-fiscal").replace(/"/g, "")}"`);
+  res.send(nf.arquivo_dados);
 });
 
 // ─── DISTRIBUIÇÕES ────────────────────────────────────────────────────────────

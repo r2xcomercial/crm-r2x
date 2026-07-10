@@ -1190,8 +1190,8 @@ function copyLink(link) { navigator.clipboard.writeText(link); toast('Link copia
 let finTab = 'entradas';
 
 async function renderFinanceiro(filter = '') {
-  const [er, sr, dr, empr, resr] = await Promise.all([get('/api/financeiro/entradas'), get('/api/financeiro/saidas'), get('/api/financeiro/distribuicoes'), get('/api/empreendimentos'), get('/api/financeiro/resumo')]);
-  currentData.entradas = er.data; currentData.saidas = sr.data; currentData.distribuicoes = dr.data; currentData.emp = empr.data;
+  const [er, sr, dr, empr, resr, nfr, clr] = await Promise.all([get('/api/financeiro/entradas'), get('/api/financeiro/saidas'), get('/api/financeiro/distribuicoes'), get('/api/empreendimentos'), get('/api/financeiro/resumo'), get('/api/financeiro/notas-fiscais'), get('/api/clientes')]);
+  currentData.entradas = er.data; currentData.saidas = sr.data; currentData.distribuicoes = dr.data; currentData.emp = empr.data; currentData.notasFiscais = nfr.data; currentData.clientes = clr.data;
   const resumo = resr.data;
 
   const totalEntradas = er.data.filter(e => e.status==='recebido').reduce((s,e) => s+e.valor, 0);
@@ -1212,6 +1212,7 @@ async function renderFinanceiro(filter = '') {
       <button class="fin-tab ${finTab==='entradas'?'active':''}" onclick="setFinTab('entradas')">📥 Entradas</button>
       <button class="fin-tab ${finTab==='saidas'?'active':''}" onclick="setFinTab('saidas')">📤 Saídas</button>
       <button class="fin-tab ${finTab==='distribuicoes'?'active':''}" onclick="setFinTab('distribuicoes')">💸 Distribuição</button>
+      <button class="fin-tab ${finTab==='notas-fiscais'?'active':''}" onclick="setFinTab('notas-fiscais')">🧾 Notas Fiscais</button>
       <button class="fin-tab ${finTab==='resumo'?'active':''}" onclick="setFinTab('resumo')">📊 Por Empreendimento</button>
     </div>
     <div id="fin-content"></div>
@@ -1219,9 +1220,10 @@ async function renderFinanceiro(filter = '') {
   renderFinTab();
 }
 
+const FIN_TAB_LABELS = { entradas: 'Entrada', saidas: 'Saída', distribuicoes: 'Distrib', 'notas-fiscais': 'Nota', resumo: 'Empreend' };
 function setFinTab(tab) {
   finTab = tab;
-  document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(tab==='entradas'?'Entrada':tab==='saidas'?'Saída':tab==='distribuicoes'?'Distrib':'Empreend')));
+  document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(FIN_TAB_LABELS[tab])));
   renderFinTab();
 }
 
@@ -1238,7 +1240,7 @@ function renderFinTab() {
           <tbody>
             ${rows.length ? rows.map(e => `
               <tr>
-                <td>${e.descricao}${e.parcela_num?` <span style="font-size:11px;color:var(--text2)">(${e.parcela_num}/${e.parcela_total})</span>`:''}</td>
+                <td>${e.descricao}${e.parcela_num?` <span style="font-size:11px;color:var(--text2)">(${e.parcela_num}/${e.parcela_total})</span>`:''}${e.nota_fiscal_numero?` <span title="Vinculada à NF ${e.nota_fiscal_numero}" style="font-size:11px;color:var(--accent)">🧾 NF ${e.nota_fiscal_numero}</span>`:''}</td>
                 <td>${e.tipo||'—'}</td>
                 <td>${e.empreendimento_nome||'Institucional'}</td>
                 <td style="color:var(--success);font-weight:600">${fmt(e.valor)}</td>
@@ -1295,6 +1297,37 @@ function renderFinTab() {
                 <td><button class="btn-icon btn-delete" onclick="deleteDist(${d.id})">🗑️</button></td>
               </tr>
             `).join('') : '<tr class="empty-row"><td colspan="5">Nenhuma distribuição</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+  } else if (finTab === 'notas-fiscais') {
+    const rows = currentData.notasFiscais || [];
+    el.innerHTML = `
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">🧾 Notas Fiscais (${rows.length})</div><button class="btn btn-primary" onclick="openNotaFiscalModal()">+ Nova Nota Fiscal</button></div>
+        <table>
+          <thead><tr><th>Número</th><th>Empreendimento</th><th>Cliente</th><th>Valor NF</th><th>Vinculado</th><th>Emissão</th><th>Recebimento</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${rows.length ? rows.map(n => {
+              const divergente = Math.abs((n.valor_vinculado||0) - n.valor) > 0.01;
+              return `
+              <tr>
+                <td>${n.numero}${n.serie?`/${n.serie}`:''}</td>
+                <td>${n.empreendimento_nome||'—'}</td>
+                <td>${n.cliente_nome||'—'}</td>
+                <td style="font-weight:600">${fmt(n.valor)}</td>
+                <td style="color:${divergente?'var(--warning)':'var(--text2)'}">${fmt(n.valor_vinculado)} (${n.qtd_entradas} conta${n.qtd_entradas===1?'':'s'})${divergente?' ⚠️':''}</td>
+                <td>${fmtDate(n.data_emissao)}</td>
+                <td>${n.data_recebimento?fmtDate(n.data_recebimento):'—'}</td>
+                <td><span class="badge ${n.status==='recebida'?'badge-green':'badge-yellow'}">${n.status}</span></td>
+                <td style="display:flex;gap:4px;flex-wrap:wrap">
+                  ${n.tem_arquivo?`<button class="btn-icon" title="Ver arquivo" onclick="verArquivoNF(${n.id})">📎</button>`:''}
+                  ${n.status!=='recebida'?`<button class="btn-icon" title="Marcar recebida" onclick="receberNF(${n.id})">✅</button>`:`<button class="btn-icon" title="Estornar recebimento" onclick="estornarNF(${n.id})">↩️</button>`}
+                  <button class="btn-icon btn-edit" onclick="editNotaFiscal(${n.id})">✏️</button>
+                  <button class="btn-icon btn-delete" onclick="deleteNotaFiscal(${n.id})">🗑️</button>
+                </td>
+              </tr>`;
+            }).join('') : '<tr class="empty-row"><td colspan="9">Nenhuma nota fiscal</td></tr>'}
           </tbody>
         </table>
       </div>`;
@@ -1451,6 +1484,104 @@ function emitirRecibo(id) {
 
 async function editEntrada(id) { openEntradaModal(currentData.entradas.find(e => e.id === id)); }
 async function deleteEntrada(id) { if(!confirm('Excluir?')) return; await del(`/api/financeiro/entradas/${id}`); toast('Excluído'); renderFinanceiro(); }
+
+// ─── NOTAS FISCAIS ──────────────────────────────────────────────────────────
+// Vincula o recebimento da NF emitida pelo contador aos lançamentos de
+// contas a receber já criados quando as vendas foram lançadas (financeiro_entradas).
+
+function openNotaFiscalModal(n = {}) {
+  const linkedIds = new Set((n.entradas||[]).map(e => e.id));
+  const candidatas = (currentData.entradas||[])
+    .filter(e => linkedIds.has(e.id) || (e.status === 'pendente' && !e.nota_fiscal_id))
+    .sort((a,b) => (a.empreendimento_nome||'').localeCompare(b.empreendimento_nome||'') || (a.data_prevista||'').localeCompare(b.data_prevista||''));
+
+  openModal(n.id ? 'Editar Nota Fiscal' : 'Nova Nota Fiscal', `
+    <div class="form-grid">
+      <div class="form-group"><label>Número *</label><input id="f-numero" value="${n.numero||''}" placeholder="Ex: 1234"></div>
+      <div class="form-group"><label>Série</label><input id="f-serie" value="${n.serie||''}" placeholder="Ex: 1"></div>
+      <div class="form-group"><label>Empreendimento</label>
+        <select id="f-emp"><option value="">Institucional</option>${(currentData.emp||[]).map(ep => `<option value="${ep.id}" ${n.empreendimento_id==ep.id?'selected':''}>${ep.nome}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Cliente / Incorporador</label>
+        <select id="f-cliente"><option value="">—</option>${(currentData.clientes||[]).map(c => `<option value="${c.id}" ${n.cliente_id==c.id?'selected':''}>${c.razao_social}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Valor da NF (R$) *</label><input id="f-valor" type="number" step="0.01" value="${n.valor||''}" oninput="atualizarTotalVinculadoNF()"></div>
+      <div class="form-group"><label>Data de Emissão *</label><input id="f-emissao" type="date" value="${n.data_emissao||''}"></div>
+      <div class="form-group span2"><label>Arquivo da NF (PDF/XML)</label><input id="f-arquivo" type="file" accept=".pdf,.xml,.jpg,.jpeg,.png">${n.arquivo_nome?`<div style="font-size:12px;color:var(--text2);margin-top:4px">Atual: ${n.arquivo_nome} (envie outro arquivo para substituir)</div>`:''}</div>
+      <div class="form-group span2" style="background:var(--navy3);border-radius:8px;padding:12px">
+        <label style="margin-bottom:8px;display:block">🔗 Vincular ao recebimento de contas a receber (lançamentos das vendas)</label>
+        <div id="nf-entradas-list" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+          ${candidatas.length ? candidatas.map(e => `
+            <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:6px 8px;background:var(--navy2);border-radius:6px;cursor:pointer">
+              <input type="checkbox" class="nf-entrada-chk" value="${e.id}" data-valor="${e.valor}" ${linkedIds.has(e.id)?'checked':''} onchange="atualizarTotalVinculadoNF()" style="width:16px;height:16px;margin-top:2px;flex-shrink:0">
+              <span style="flex:1">${e.descricao}${e.empreendimento_nome && e.descricao.includes(e.empreendimento_nome) ? '' : ` <span style="color:var(--text2)">— ${e.empreendimento_nome||'Institucional'}</span>`}${e.status==='recebido'?' <span style="color:var(--success)">(já recebida)</span>':''}</span>
+              <span style="font-weight:600;color:var(--success);white-space:nowrap;flex-shrink:0">${fmt(e.valor)}</span>
+            </label>
+          `).join('') : `<div style="color:var(--text2);font-size:13px">Nenhuma conta a receber pendente disponível para vincular</div>`}
+        </div>
+        <div id="nf-total-vinculado" style="margin-top:10px;font-size:13px;font-weight:600"></div>
+      </div>
+      <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${n.observacoes||''}</textarea></div>
+    </div>
+  `, async () => {
+    const numero = v('f-numero'), valor = parseFloat(v('f-valor')), data_emissao = v('f-emissao');
+    if (!numero || !valor || !data_emissao) return toast('Número, valor e data de emissão são obrigatórios', 'error');
+    const entradaIds = [...document.querySelectorAll('.nf-entrada-chk:checked')].map(c => c.value);
+    const fd = new FormData();
+    fd.append('numero', numero); fd.append('serie', v('f-serie')); fd.append('empreendimento_id', v('f-emp'));
+    fd.append('cliente_id', v('f-cliente')); fd.append('valor', valor); fd.append('data_emissao', data_emissao);
+    fd.append('observacoes', v('f-obs')); fd.append('entrada_ids', JSON.stringify(entradaIds));
+    const file = document.getElementById('f-arquivo').files[0];
+    if (file) fd.append('arquivo', file);
+    const res = await fetch(API + (n.id ? `/api/financeiro/notas-fiscais/${n.id}` : '/api/financeiro/notas-fiscais'), {
+      method: n.id ? 'PUT' : 'POST', headers: { 'x-crm-token': TOKEN }, body: fd
+    });
+    const r = await res.json();
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Nota fiscal salva!'); closeModal(); renderFinanceiro();
+  });
+  atualizarTotalVinculadoNF();
+}
+
+function atualizarTotalVinculadoNF() {
+  const el = document.getElementById('nf-total-vinculado');
+  if (!el) return;
+  const checks = [...document.querySelectorAll('.nf-entrada-chk:checked')];
+  const total = checks.reduce((s,c) => s + parseFloat(c.dataset.valor||0), 0);
+  const valorNF = parseFloat(v('f-valor')) || 0;
+  const diff = valorNF - total;
+  el.innerHTML = `Total vinculado: <span style="color:var(--accent)">${fmt(total)}</span> em ${checks.length} conta(s)` +
+    (valorNF ? ` — <span style="color:${Math.abs(diff)<0.01?'var(--success)':'var(--warning)'}">${Math.abs(diff)<0.01?'✓ confere com o valor da NF':'diferença de '+fmt(Math.abs(diff))}</span>` : '');
+}
+
+async function editNotaFiscal(id) {
+  const r = await get(`/api/financeiro/notas-fiscais/${id}`);
+  if (r.ok) openNotaFiscalModal(r.data);
+}
+
+async function receberNF(id) {
+  const data = prompt('Data de recebimento (AAAA-MM-DD):', today());
+  if (!data) return;
+  const r = await post(`/api/financeiro/notas-fiscais/${id}/receber`, { data_recebimento: data });
+  if (r.ok) { toast('Nota fiscal recebida — contas a receber vinculadas atualizadas! ✅'); renderFinanceiro(); }
+  else toast(r.error, 'error');
+}
+
+async function estornarNF(id) {
+  if (!confirm('Estornar recebimento? As contas a receber vinculadas voltarão para pendente.')) return;
+  const r = await post(`/api/financeiro/notas-fiscais/${id}/estornar`, {});
+  if (r.ok) { toast('Recebimento estornado'); renderFinanceiro(); }
+}
+
+async function deleteNotaFiscal(id) {
+  if (!confirm('Excluir nota fiscal? As contas a receber vinculadas serão desvinculadas (não excluídas).')) return;
+  await del(`/api/financeiro/notas-fiscais/${id}`);
+  toast('Excluída'); renderFinanceiro();
+}
+
+function verArquivoNF(id) {
+  window.open(`${API}/api/financeiro/notas-fiscais/${id}/arquivo?token=${encodeURIComponent(TOKEN)}`, '_blank');
+}
 
 function openSaidaModal(e = {}) {
   openModal(e.id ? 'Editar Saída' : 'Nova Saída', `

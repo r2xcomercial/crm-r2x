@@ -116,6 +116,23 @@ db.exec(`
     criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS notas_fiscais (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    numero TEXT NOT NULL,
+    serie TEXT,
+    empreendimento_id INTEGER REFERENCES empreendimentos(id),
+    cliente_id INTEGER REFERENCES clientes(id),
+    valor REAL NOT NULL,
+    data_emissao TEXT NOT NULL,
+    data_recebimento TEXT,
+    status TEXT DEFAULT 'pendente',
+    arquivo_nome TEXT,
+    arquivo_mime TEXT,
+    arquivo_dados BLOB,
+    observacoes TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS distribuicoes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     descricao TEXT NOT NULL,
@@ -160,6 +177,7 @@ const migrations = [
   "ALTER TABLE vendas ADD COLUMN comissao_r2x REAL",
   "ALTER TABLE financeiro_entradas ADD COLUMN parcela_num INTEGER",
   "ALTER TABLE financeiro_entradas ADD COLUMN parcela_total INTEGER",
+  "ALTER TABLE financeiro_entradas ADD COLUMN nota_fiscal_id INTEGER REFERENCES notas_fiscais(id)",
 ];
 for (const sql of migrations) {
   try { db.exec(sql); } catch (_) { /* coluna já existe */ }
