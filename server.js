@@ -1054,6 +1054,125 @@ app.get("/api/vendas/:id/contrato-vertical", autenticar, (req, res) => {
   }
 });
 
+// ─── CONTRATO GOLDEN NORTH ──────────────────────────────────────────────────
+
+function gerarContratoGoldenNorthBuf(vendaId, extra = {}) {
+  const venda = db.prepare(`
+    SELECT v.*, v.valor as valor_total,
+      l.nome as lead_nome, l.cpf as lead_cpf, l.rg as lead_rg,
+      l.estado_civil, l.profissao,
+      l.endereco as lead_endereco, l.numero as lead_numero,
+      l.bairro as lead_bairro, l.cep as lead_cep,
+      l.cidade as lead_cidade, l.estado as lead_estado,
+      l.pessoa_juridica, l.cnpj, l.razao_social, l.representante_nome, l.representante_cpf, l.representante_cargo,
+      c.nome as corretor_nome, c.creci as corretor_creci,
+      u.lote as unidade_lote, u.quadra as unidade_quadra, u.area_m2 as unidade_area,
+      e.nome as emp_nome
+    FROM vendas v
+    LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN corretores c ON c.id = v.corretor_id
+    LEFT JOIN unidades u ON u.id = v.unidade_id
+    LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
+    WHERE v.id=?`).get(parseInt(vendaId));
+
+  if (!venda) throw new Error('Venda não encontrada');
+
+  const isPJ = !!venda.pessoa_juridica;
+  let compradorQual = '';
+  if (isPJ) {
+    compradorQual = `${venda.razao_social || '___'}, pessoa jurídica, CNPJ nº ${venda.cnpj || '___'}`;
+    if (venda.representante_nome) compradorQual += `, representada por ${venda.representante_nome}${venda.representante_cargo ? ', ' + venda.representante_cargo : ''}, CPF ${venda.representante_cpf || '___'}`;
+  } else {
+    compradorQual = `${venda.lead_nome || '___'}`;
+    if (venda.estado_civil) compradorQual += `, ${venda.estado_civil}`;
+    if (venda.profissao) compradorQual += `, ${venda.profissao}`;
+    compradorQual += `, inscrito(a) no CPF sob o n. ${venda.lead_cpf || '___'}, RG n. ${venda.lead_rg || '___'}`;
+    const endParts = [venda.lead_endereco, venda.lead_numero, venda.lead_bairro, venda.lead_cidade, venda.lead_estado].filter(Boolean);
+    if (endParts.length) compradorQual += `, residente e domiciliado(a) em ${endParts.join(', ')}`;
+  }
+
+  const valor = venda.valor_total || 0;
+  const precoTotal = `R$ ${fmtMoeda(valor)} (${numExtenso(valor)})`;
+
+  // Payment info from saldo_parcelas
+  let parcelas = [];
+  try { parcelas = venda.saldo_parcelas ? JSON.parse(venda.saldo_parcelas) : []; } catch(_) {}
+
+  const entradaPct = extra.entrada_percentual || (parcelas[0] ? '___' : '___');
+  const entradaValorNum = extra.entrada_valor_num || (parcelas[0] && parcelas[0].valor ? parcelas[0].valor : 0);
+  const entradaValorStr = extra.entrada_valor || (entradaValorNum ? `R$ ${fmtMoeda(entradaValorNum)} (${numExtenso(entradaValorNum)})` : '___');
+
+  const formaEntrada = extra.forma_entrada || (parcelas[0] ? `À vista` : '___');
+  const formaPagamento = extra.forma_pagamento || (parcelas.length
+    ? parcelas.map(p => `${p.titulo || 'Parcela'}: ${p.qtd || 1}x de R$ ${fmtMoeda(p.valor)} – venc. ${p.vencimento || '___'}`).join('; ')
+    : '___');
+
+  const jurosInfo = extra.juros_info || 'Não haverá a aplicação de juros, salvo nos casos das penalidades previstas neste instrumento';
+  const sistemaAmortizacao = extra.sistema_amortizacao || 'Não se aplica';
+
+  let corretorBeneficiario = '___________________';
+  if (venda.corretor_nome) {
+    corretorBeneficiario = venda.corretor_nome;
+    if (venda.corretor_creci) corretorBeneficiario += `, CRECI ${venda.corretor_creci}`;
+  }
+
+  const unidadeDescricao = extra.unidade_descricao || [
+    venda.unidade_lote || '___',
+    venda.unidade_quadra ? `Quadra ${venda.unidade_quadra}` : null,
+    venda.unidade_area ? `área privativa de ${venda.unidade_area}m²` : null
+  ].filter(Boolean).join(', ');
+
+  const hoje = new Date();
+  const dataContrato = extra.data_contrato || hoje.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+  const veiculo = extra.veiculo_entrega || '___/___/______';
+
+  const comprador1Nome = venda.lead_nome || venda.razao_social || '___________________';
+  const comprador1Cpf = `${isPJ ? 'CNPJ' : 'CPF'} n. ${venda.lead_cpf || venda.cnpj || '___'}`;
+
+  const templatePath = path.join(__dirname, 'templates', 'contrato_golden_north_template.docx');
+  const content = fs.readFileSync(templatePath, 'binary');
+  const zip = new PizZip(content);
+  const doct = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+
+  doct.render({
+    comprador_qualificacao: compradorQual,
+    unidade_descricao: unidadeDescricao,
+    preco_total: precoTotal,
+    entrada_valor: entradaValorStr,
+    entrada_percentual: String(entradaPct),
+    forma_entrada: formaEntrada,
+    forma_pagamento: formaPagamento,
+    juros_info: jurosInfo,
+    sistema_amortizacao: sistemaAmortizacao,
+    corretor_beneficiario: corretorBeneficiario,
+    veiculo_entrega: veiculo,
+    data_contrato: dataContrato,
+    comprador1_nome: comprador1Nome,
+    comprador1_cpf: comprador1Cpf,
+    comprador2_nome: extra.comprador2_nome || '___________________',
+    comprador2_cpf: extra.comprador2_cpf || '___________________',
+    comprador3_nome: extra.comprador3_nome || '___________________',
+    comprador3_cpf: extra.comprador3_cpf || '___________________',
+  });
+
+  const buf = doct.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+  const nomeArq = (comprador1Nome).replace(/[^a-zA-Z0-9À-ɏ ]/g, '').replace(/\s+/g, '-').toLowerCase();
+  const filename = `contrato-golden-north-${nomeArq}.docx`;
+  return { buf, filename };
+}
+
+app.post("/api/vendas/:id/contrato-golden-north", autenticar, (req, res) => {
+  try {
+    const { buf, filename } = gerarContratoGoldenNorthBuf(req.params.id, req.body || {});
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(buf);
+  } catch(e) {
+    console.error('[contrato-golden-north]', e);
+    err(res, 'Erro ao gerar contrato: ' + e.message);
+  }
+});
+
 // Atualiza status de uma unidade (disponivel / reservado / vendido)
 app.put("/api/unidades/:id/status", (req, res) => {
   const { status } = req.body;

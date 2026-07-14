@@ -2532,6 +2532,9 @@ function openVendaModal(venda = {}) {
       <button type="button" onclick="gerarContratoVertical(${venda.id})" style="padding:8px 18px;background:#2E5F8A;color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px">
         🏢 Contrato Vertical
       </button>
+      <button type="button" onclick="abrirModalContratoGoldenNorth(${venda.id})" style="padding:8px 18px;background:linear-gradient(135deg,#b45309,#92400e);color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px">
+        🏛️ Contrato Golden North
+      </button>
       <button type="button" onclick="enviarAssinatura(${venda.id})" style="padding:8px 18px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;border-radius:7px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px">
         ✍️ Assinar digitalmente
       </button>
@@ -3851,6 +3854,106 @@ async function gerarContratoVerticalFinal(vendaId) {
     link.click();
     URL.revokeObjectURL(link.href);
     toast('Contrato gerado! 🏢');
+  } catch(e) {
+    toast('Falha ao gerar contrato', 'error');
+  }
+}
+
+function abrirModalContratoGoldenNorth(vendaId) {
+  openModal('🏛️ Gerar Contrato – Edifício Golden North', `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div style="background:rgba(180,83,9,.1);border:1px solid rgba(180,83,9,.3);border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e">
+        Os dados do comprador, unidade e corretor são preenchidos automaticamente a partir do cadastro da venda. Preencha abaixo as condições de pagamento específicas deste contrato.
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label>Unidade (descrição no contrato)</label>
+          <input id="gn-unidade" type="text" placeholder="Ex: Sala 301, 3º pavimento, 28,00m², fração ideal 0,02">
+        </div>
+        <div class="form-group">
+          <label>Data do contrato</label>
+          <input id="gn-data" type="text" placeholder="Ex: 14 de julho de 2026" value="${new Date().toLocaleDateString('pt-BR', {day:'numeric',month:'long',year:'numeric'})}">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label>Entrada – valor (R$ e por extenso)</label>
+          <input id="gn-entrada-valor" type="text" placeholder="Ex: R$ 50.000,00 (cinquenta mil reais)">
+        </div>
+        <div class="form-group">
+          <label>Entrada – percentual (%)</label>
+          <input id="gn-entrada-pct" type="text" placeholder="Ex: 20">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Forma de pagamento da entrada</label>
+        <input id="gn-forma-entrada" type="text" placeholder="Ex: À vista na assinatura do contrato">
+      </div>
+      <div class="form-group">
+        <label>Identificação completa da forma de pagamento</label>
+        <textarea id="gn-forma-pagamento" rows="3" placeholder="Ex: Entrada de R$ 50.000,00 à vista + 48 parcelas mensais de R$ 2.000,00 corrigidas pelo CUB/SC, com primeiro vencimento em 10/08/2026"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label>Juros</label>
+          <input id="gn-juros" type="text" value="Não haverá a aplicação de juros, salvo nos casos das penalidades previstas neste instrumento">
+        </div>
+        <div class="form-group">
+          <label>Sistema de amortização</label>
+          <input id="gn-amortizacao" type="text" value="Não se aplica">
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:10px">
+        <div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">2º e 3º Comprador (opcional)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group"><label>2º Comprador – Nome</label><input id="gn-c2-nome" type="text" placeholder="Nome completo"></div>
+          <div class="form-group"><label>2º Comprador – CPF/CNPJ</label><input id="gn-c2-cpf" type="text" placeholder="CPF/CNPJ n. 000.000.000-00"></div>
+          <div class="form-group"><label>3º Comprador – Nome</label><input id="gn-c3-nome" type="text" placeholder="Nome completo"></div>
+          <div class="form-group"><label>3º Comprador – CPF/CNPJ</label><input id="gn-c3-cpf" type="text" placeholder="CPF/CNPJ n. 000.000.000-00"></div>
+        </div>
+      </div>
+    </div>
+  `, async () => {
+    const body = {
+      unidade_descricao: document.getElementById('gn-unidade')?.value.trim() || '',
+      data_contrato: document.getElementById('gn-data')?.value.trim() || '',
+      entrada_valor: document.getElementById('gn-entrada-valor')?.value.trim() || '',
+      entrada_percentual: document.getElementById('gn-entrada-pct')?.value.trim() || '___',
+      forma_entrada: document.getElementById('gn-forma-entrada')?.value.trim() || '',
+      forma_pagamento: document.getElementById('gn-forma-pagamento')?.value.trim() || '',
+      juros_info: document.getElementById('gn-juros')?.value.trim() || '',
+      sistema_amortizacao: document.getElementById('gn-amortizacao')?.value.trim() || '',
+      comprador2_nome: document.getElementById('gn-c2-nome')?.value.trim() || '',
+      comprador2_cpf: document.getElementById('gn-c2-cpf')?.value.trim() || '',
+      comprador3_nome: document.getElementById('gn-c3-nome')?.value.trim() || '',
+      comprador3_cpf: document.getElementById('gn-c3-cpf')?.value.trim() || '',
+    };
+    await gerarContratoGoldenNorthFinal(vendaId, body);
+  }, 'Gerar Contrato (.docx)');
+}
+
+async function gerarContratoGoldenNorthFinal(vendaId, body) {
+  try {
+    toast('Gerando contrato Golden North...', 'info');
+    const res = await fetch(`/api/vendas/${vendaId}/contrato-golden-north`, {
+      method: 'POST',
+      headers: { 'x-crm-token': localStorage.getItem('crm_token') || '', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return toast('Erro: ' + (data.error || 'falha ao gerar'), 'error');
+    }
+    const blob = await res.blob();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    const cd = res.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename\*=UTF-8''(.+)/i) || cd.match(/filename="(.+)"/i);
+    link.download = m ? decodeURIComponent(m[1]) : 'contrato-golden-north.docx';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast('Contrato Golden North gerado! 🏛️');
+    fecharModal();
   } catch(e) {
     toast('Falha ao gerar contrato', 'error');
   }
