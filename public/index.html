@@ -2329,7 +2329,7 @@ async function carregarUnidadesVenda(empId, unidadeIdsSelecionadas = []) {
   const empTipo = (currentData.emp||[]).find(e => e.id == empId)?.tipo || 'loteamento';
   const isPredio = empTipo === 'predio';
   const lblA = isPredio ? 'Andar' : 'Qd';
-  const lblB = isPredio ? 'Apto' : 'Lote';
+  const lblB = isPredio ? 'Unidade' : 'Lote';
   _unidadesDisponiveis = units.map(u => ({
     id: u.id, preco: u.preco, status: u.status,
     label: `${u.quadra ? lblA+' '+u.quadra+' ' : ''}${lblB} ${u.lote}${u.area_m2 ? ' ('+u.area_m2+'m²)' : ''}`
@@ -3657,7 +3657,7 @@ async function carregarUnidadesRR(empId) {
   const emp = (currentData.emp||[]).find(e => e.id == empId);
   const isPredio = emp?.tipo === 'predio';
   const lblA = isPredio ? 'Andar' : 'Qd';
-  const lblB = isPredio ? 'Apto' : 'Lote';
+  const lblB = isPredio ? 'Unidade' : 'Lote';
   sel.innerHTML = '<option value="">— Selecione —</option>' + disponiveis.map(u => {
     const label = `${u.quadra ? lblA+' '+u.quadra+' ' : ''}${lblB} ${u.lote}${u.area_m2?' ('+u.area_m2+'m²)':''}`;
     const preco = u.preco ? ` — R$ ${Number(u.preco).toLocaleString('pt-BR')}` : '';
@@ -6988,7 +6988,7 @@ async function verEspelhoImagem(empId, emp, mapaData) {
   const { imagem, units } = mapaData;
   const isPredio = emp.tipo === 'predio';
   const lblA = isPredio ? 'Andar' : 'Qd';
-  const lblB = isPredio ? 'Apto'  : 'Lote';
+  const lblB = isPredio ? 'Unidade'  : 'Lote';
 
   _mapaUnits   = {};
   _posicoes    = {};
@@ -7384,7 +7384,7 @@ async function verEspelho(empId) {
 
   const isPredio = emp.tipo === 'predio';
   const lblA = isPredio ? 'Andar' : 'Quadra';
-  const lblB = isPredio ? 'Apto' : 'Lote';
+  const lblB = isPredio ? 'Unidade' : 'Lote';
 
   // Contagens
   const cnt = { disponivel:0, reservado:0, vendido:0 };
@@ -7963,7 +7963,7 @@ async function abrirUnidade(unidadeId, empId) {
 
   const isPredio = emp.tipo === 'predio';
   const lblA = isPredio ? 'Andar' : 'Quadra';
-  const lblB = isPredio ? 'Apto'  : 'Lote';
+  const lblB = isPredio ? 'Unidade'  : 'Lote';
 
   const statusInfo = {
     disponivel: { label:'✅ Disponível', color:'var(--success)' },
