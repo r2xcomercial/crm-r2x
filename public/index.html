@@ -6859,7 +6859,7 @@ async function verUnidades(empId) {
   const units = r.data || [];
   const isPredio = emp.tipo === 'predio';
   const lblA = isPredio ? 'Andar' : 'Qd';
-  const lblB = isPredio ? 'Apto' : 'Lote';
+  const lblB = isPredio ? 'Unidade' : 'Lote';
 
   const cnt = { disponivel:0, reservado:0, vendido:0 };
   units.forEach(u => { cnt[u.status] = (cnt[u.status]||0) + 1; });
