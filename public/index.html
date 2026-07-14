@@ -2606,9 +2606,9 @@ function openVendaModal(venda = {}) {
       valor: parseFloat(row.querySelector('.pm-valor')?.value) || 0
     })).filter(p => p.descricao || p.valor > 0);
 
-    // Coleta todas as unidades selecionadas
-    const unidadeIds = [...document.querySelectorAll('.venda-unidade-sel')]
-      .map(s => s.value).filter(Boolean).map(Number);
+    // Coleta todas as unidades selecionadas (deduplica para evitar inserções duplas)
+    const unidadeIds = [...new Set([...document.querySelectorAll('.venda-unidade-sel')]
+      .map(s => s.value).filter(Boolean).map(Number))];
 
     const pctR2xCustom = parseFloat(document.getElementById('f-pct-r2x')?.value) || null;
     const body = {

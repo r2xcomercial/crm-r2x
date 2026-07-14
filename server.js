@@ -2474,9 +2474,11 @@ app.post("/api/vendas", (req, res) => {
   if (!valor || !data_venda) return err(res, "Valor e data obrigatórios");
 
   // Suporte a múltiplas unidades: unidade_ids tem prioridade, fallback para unidade_id único
-  const idsArray = Array.isArray(unidade_ids) && unidade_ids.length > 0
-    ? unidade_ids.map(Number).filter(Boolean)
-    : (unidade_id ? [Number(unidade_id)] : []);
+  const idsArray = [...new Set(
+    Array.isArray(unidade_ids) && unidade_ids.length > 0
+      ? unidade_ids.map(Number).filter(Boolean)
+      : (unidade_id ? [Number(unidade_id)] : [])
+  )];
   const primeiraUnidade = idsArray[0] || null;
 
   // Serializa parcelas como JSON
@@ -2525,9 +2527,11 @@ app.put("/api/vendas/:id", (req, res) => {
   const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, unidade_ids, vaga_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, saldo_parcelas, percentual_r2x_override, permuta } = req.body;
   const vendaAntiga = db.prepare("SELECT unidade_id, vaga_id, status FROM vendas WHERE id=?").get(req.params.id);
 
-  const idsArray = Array.isArray(unidade_ids) && unidade_ids.length > 0
-    ? unidade_ids.map(Number).filter(Boolean)
-    : (unidade_id ? [Number(unidade_id)] : []);
+  const idsArray = [...new Set(
+    Array.isArray(unidade_ids) && unidade_ids.length > 0
+      ? unidade_ids.map(Number).filter(Boolean)
+      : (unidade_id ? [Number(unidade_id)] : [])
+  )];
   const primeiraUnidade = idsArray[0] || null;
 
   // Serializa parcelas como JSON
@@ -3421,6 +3425,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS venda_unidades (
 // Migra unidade_id existentes para a junction table (ignora se já existir)
 db.exec(`INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id)
   SELECT id, unidade_id FROM vendas WHERE unidade_id IS NOT NULL`);
+// Remove duplicatas e garante unicidade (venda_id, unidade_id)
+db.exec(`DELETE FROM venda_unidades WHERE id NOT IN (
+  SELECT MIN(id) FROM venda_unidades GROUP BY venda_id, unidade_id
+)`);
+try { db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vu_unique ON venda_unidades(venda_id, unidade_id)`); } catch(_) {}
 
 // Sincroniza leads com vendas ativas: score=100, corretor e empreendimento quando ausentes
 db.exec(`UPDATE leads SET score=100, status='vendido'
