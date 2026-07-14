@@ -2286,7 +2286,7 @@ app.get("/api/vendas/:id/validar-contrato", autenticar, (req, res) => {
 });
 
 app.post("/api/vendas", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, unidade_ids, vaga_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, saldo_parcelas, percentual_r2x_override } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, unidade_ids, vaga_id, valor, data_venda, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, saldo_parcelas, percentual_r2x_override, permuta } = req.body;
   if (!valor || !data_venda) return err(res, "Valor e data obrigatórios");
 
   // Suporte a múltiplas unidades: unidade_ids tem prioridade, fallback para unidade_id único
@@ -2300,15 +2300,17 @@ app.post("/api/vendas", (req, res) => {
     ? JSON.stringify(entrada_parcelas) : null;
   const saldoParcelasJson = saldo_parcelas && Array.isArray(saldo_parcelas) && saldo_parcelas.length > 0
     ? JSON.stringify(saldo_parcelas) : null;
+  const permutaJson = permuta && Array.isArray(permuta) && permuta.length > 0
+    ? JSON.stringify(permuta) : null;
 
   const r = db.prepare(`INSERT INTO vendas
     (lead_id,empreendimento_id,corretor_id,cliente_id,imovel,unidade_id,vaga_id,valor,data_venda,observacoes,status,
-     comissao_corretor_pct,comissao_corretor_valor,comissao_corretor_status,valor_entrada,entrada_parcelas,saldo_parcelas,percentual_r2x_override)
-    VALUES (?,?,?,?,?,?,?,?,?,?,'ativo',?,?,?,?,?,?,?)`)
+     comissao_corretor_pct,comissao_corretor_valor,comissao_corretor_status,valor_entrada,entrada_parcelas,saldo_parcelas,percentual_r2x_override,permuta)
+    VALUES (?,?,?,?,?,?,?,?,?,?,'ativo',?,?,?,?,?,?,?,?)`)
     .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, primeiraUnidade, vaga_id || null,
          valor, data_venda, observacoes,
          comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente',
-         valor_entrada||null, parcelasJson, saldoParcelasJson, percentual_r2x_override||null);
+         valor_entrada||null, parcelasJson, saldoParcelasJson, percentual_r2x_override||null, permutaJson);
 
   const vendaId = r.lastInsertRowid;
   if (lead_id) {
@@ -2336,7 +2338,7 @@ app.post("/api/vendas", (req, res) => {
 });
 
 app.put("/api/vendas/:id", (req, res) => {
-  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, unidade_ids, vaga_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, saldo_parcelas, percentual_r2x_override } = req.body;
+  const { lead_id, empreendimento_id, corretor_id, cliente_id, imovel, unidade_id, unidade_ids, vaga_id, valor, data_venda, status, observacoes, comissao_corretor_pct, comissao_corretor_valor, comissao_corretor_status, valor_entrada, entrada_parcelas, saldo_parcelas, percentual_r2x_override, permuta } = req.body;
   const vendaAntiga = db.prepare("SELECT unidade_id, vaga_id, status FROM vendas WHERE id=?").get(req.params.id);
 
   const idsArray = Array.isArray(unidade_ids) && unidade_ids.length > 0
@@ -2349,16 +2351,18 @@ app.put("/api/vendas/:id", (req, res) => {
     ? JSON.stringify(entrada_parcelas) : null;
   const saldoParcelasJson = saldo_parcelas && Array.isArray(saldo_parcelas) && saldo_parcelas.length > 0
     ? JSON.stringify(saldo_parcelas) : null;
+  const permutaJson = permuta && Array.isArray(permuta) && permuta.length > 0
+    ? JSON.stringify(permuta) : null;
 
   db.prepare(`UPDATE vendas SET
     lead_id=?,empreendimento_id=?,corretor_id=?,cliente_id=?,imovel=?,unidade_id=?,vaga_id=?,valor=?,data_venda=?,
     status=?,observacoes=?,comissao_corretor_pct=?,comissao_corretor_valor=?,comissao_corretor_status=?,
-    valor_entrada=?,entrada_parcelas=?,saldo_parcelas=?,percentual_r2x_override=?
+    valor_entrada=?,entrada_parcelas=?,saldo_parcelas=?,percentual_r2x_override=?,permuta=?
     WHERE id=?`)
     .run(lead_id, empreendimento_id, corretor_id, cliente_id, imovel, primeiraUnidade, vaga_id || null,
          valor, data_venda, status, observacoes,
          comissao_corretor_pct||null, comissao_corretor_valor||null, comissao_corretor_status||'pendente',
-         valor_entrada||null, parcelasJson, saldoParcelasJson, percentual_r2x_override||null,
+         valor_entrada||null, parcelasJson, saldoParcelasJson, percentual_r2x_override||null, permutaJson,
          req.params.id);
 
   // Libera todas as unidades antigas e atualiza para as novas
@@ -3306,6 +3310,7 @@ try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN nf_arquivo TEXT'); } c
 try { db.exec('ALTER TABLE leads ADD COLUMN motivo_perda TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN motivo_perda_outro TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN atribuido_em DATETIME'); } catch(_) {}
+try { db.exec('ALTER TABLE vendas ADD COLUMN permuta TEXT'); } catch(_) {}
 
 // Tabela de compradores adicionais (cônjuge, sócio, condomínio)
 db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (

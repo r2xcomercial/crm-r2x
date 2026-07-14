@@ -2493,6 +2493,34 @@ function openVendaModal(venda = {}) {
         </div>
       </div>
 
+      <!-- Seção de Permuta -->
+      <div class="form-group span2" style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div style="font-size:13px;font-weight:600;color:#F59E0B">🔄 Permuta</div>
+          <button type="button" onclick="addPermuta()" style="background:#92400e;color:#fef3c7;border:none;border-radius:7px;padding:6px 13px;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap">+ Adicionar item</button>
+        </div>
+        <div id="permuta-list" style="display:flex;flex-direction:column;gap:8px">
+          ${(() => {
+            let itens = [];
+            try { itens = venda.permuta ? JSON.parse(venda.permuta) : []; } catch(_) {}
+            return itens.map((p, i) => `
+              <div class="pm-row" style="border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:8px 10px;display:grid;grid-template-columns:130px 1fr 140px 28px;gap:6px;align-items:center;background:rgba(0,0,0,.15)">
+                <select class="pm-tipo" style="padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px">
+                  <option value="Imóvel" ${p.tipo==='Imóvel'?'selected':''}>🏠 Imóvel</option>
+                  <option value="Veículo" ${p.tipo==='Veículo'?'selected':''}>🚗 Veículo</option>
+                  <option value="Outros" ${p.tipo==='Outros'?'selected':''}>📦 Outros</option>
+                </select>
+                <input type="text" class="pm-descricao" placeholder="Descrição (endereço, placa, etc.)" value="${p.descricao||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                <input type="number" class="pm-valor" step="0.01" placeholder="Valor R$" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                <button type="button" onclick="removePermuta(this)" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
+              </div>`).join('');
+          })()}
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:8px">
+          Itens dados como parte do pagamento: imóveis, veículos ou outros bens.
+        </div>
+      </div>
+
       <div class="form-group" style="position:relative">
         <label>Lead</label>
         <input id="f-lead-search" type="text" autocomplete="off"
@@ -2566,6 +2594,13 @@ function openVendaModal(venda = {}) {
       forma_pagamento: row.querySelector('.sp-forma')?.value || 'PIX'
     })).filter(p => p.titulo || p.valor > 0);
 
+    const pmRows = [...document.querySelectorAll('#permuta-list .pm-row')];
+    const permuta = pmRows.map(row => ({
+      tipo: row.querySelector('.pm-tipo')?.value || 'Imóvel',
+      descricao: row.querySelector('.pm-descricao')?.value?.trim() || '',
+      valor: parseFloat(row.querySelector('.pm-valor')?.value) || 0
+    })).filter(p => p.descricao || p.valor > 0);
+
     // Coleta todas as unidades selecionadas
     const unidadeIds = [...document.querySelectorAll('.venda-unidade-sel')]
       .map(s => s.value).filter(Boolean).map(Number);
@@ -2581,7 +2616,8 @@ function openVendaModal(venda = {}) {
       valor_entrada: valorEntrada,
       entrada_parcelas: entradaParcelas.length > 0 ? entradaParcelas : null,
       saldo_parcelas: saldoParcelas.length > 0 ? saldoParcelas : null,
-      percentual_r2x_override: pctR2xCustom
+      percentual_r2x_override: pctR2xCustom,
+      permuta: permuta.length > 0 ? permuta : null
     };
     if (!body.valor || !body.data_venda) return toast('Valor e data são obrigatórios', 'error');
     const r = venda.id ? await put(`/api/vendas/${venda.id}`, body) : await post('/api/vendas', body);
@@ -3804,6 +3840,29 @@ function addSaldoParcela(titulo = '', vencimento = '', qtd = 1, valor = '', corr
 
 function removeSaldoParcela(btn) {
   btn.closest('.sp-row')?.remove();
+}
+
+function addPermuta(tipo = 'Imóvel', descricao = '', valor = '') {
+  const list = document.getElementById('permuta-list');
+  if (!list) return;
+  const row = document.createElement('div');
+  row.className = 'pm-row';
+  row.style.cssText = 'border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:8px 10px;display:grid;grid-template-columns:130px 1fr 140px 28px;gap:6px;align-items:center;background:rgba(0,0,0,.15)';
+  row.innerHTML = `
+    <select class="pm-tipo" style="padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px">
+      <option value="Imóvel" ${tipo==='Imóvel'?'selected':''}>🏠 Imóvel</option>
+      <option value="Veículo" ${tipo==='Veículo'?'selected':''}>🚗 Veículo</option>
+      <option value="Outros" ${tipo==='Outros'?'selected':''}>📦 Outros</option>
+    </select>
+    <input type="text" class="pm-descricao" placeholder="Descrição (endereço, placa, etc.)" value="${descricao}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+    <input type="number" class="pm-valor" step="0.01" placeholder="Valor R$" value="${valor}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+    <button type="button" onclick="removePermuta(this)" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
+  `;
+  list.appendChild(row);
+}
+
+function removePermuta(btn) {
+  btn.closest('.pm-row')?.remove();
 }
 
 async function importarContratoCondicoes(input) {
