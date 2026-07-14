@@ -4059,9 +4059,16 @@ function abrirModalContratoGoldenNorth(vendaId) {
       const partes = [];
       if (valorEntrada > 0) partes.push(`Entrada de ${_fmtBR(valorEntrada)}`);
       if (sparcelas.length > 0) {
-        const primeira = new Date(sparcelas[0].data + 'T12:00:00').toLocaleDateString('pt-BR');
         const saldoVal = valorTotal > 0 ? valorTotal - valorEntrada : 0;
-        partes.push(`Saldo de ${_fmtBR(saldoVal)} em ${sparcelas.length} parcela(s), 1º vencimento em ${primeira}`);
+        // Safe date parse — skip if blank or invalid
+        const rawData = sparcelas.find(p => p.data)?.data;
+        let dataPrimeira = '';
+        if (rawData) {
+          const d = new Date(rawData + 'T12:00:00');
+          dataPrimeira = isNaN(d.getTime()) ? rawData : d.toLocaleDateString('pt-BR');
+        }
+        const sufixo = dataPrimeira ? `, 1º vencimento em ${dataPrimeira}` : '';
+        partes.push(`Saldo de ${_fmtBR(saldoVal)} em ${sparcelas.length} parcela(s)${sufixo}`);
       }
       _set('gn-forma-pagamento', partes.join(' + '));
     }
