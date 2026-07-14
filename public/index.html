@@ -2504,12 +2504,16 @@ function openVendaModal(venda = {}) {
             let itens = [];
             try { itens = venda.permuta ? JSON.parse(venda.permuta) : []; } catch(_) {}
             return itens.map((p, i) => `
-              <div class="pm-row" style="border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:8px 10px;display:grid;grid-template-columns:130px 1fr 140px 28px;gap:6px;align-items:center;background:rgba(0,0,0,.15)">
+              <div class="pm-row" style="border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:8px 10px;display:grid;grid-template-columns:130px 28px 1fr 140px 28px;gap:6px;align-items:center;background:rgba(0,0,0,.15)">
                 <select class="pm-tipo" style="padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px">
                   <option value="Imóvel" ${p.tipo==='Imóvel'?'selected':''}>🏠 Imóvel</option>
                   <option value="Veículo" ${p.tipo==='Veículo'?'selected':''}>🚗 Veículo</option>
                   <option value="Outros" ${p.tipo==='Outros'?'selected':''}>📦 Outros</option>
                 </select>
+                <div style="position:relative">
+                  <button type="button" onclick="this.parentNode.querySelector('.pm-arquivo').click()" title="Importar documento (PDF ou imagem)" style="background:rgba(245,158,11,.15);color:#F59E0B;border:1px solid rgba(245,158,11,.3);border-radius:5px;padding:4px 5px;cursor:pointer;font-size:13px;line-height:1;width:28px;height:28px;display:flex;align-items:center;justify-content:center">📎</button>
+                  <input type="file" class="pm-arquivo" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="importarDocumentoPermuta(this)">
+                </div>
                 <input type="text" class="pm-descricao" placeholder="Descrição (endereço, placa, etc.)" value="${p.descricao||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
                 <input type="number" class="pm-valor" step="0.01" placeholder="Valor R$" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
                 <button type="button" onclick="removePermuta(this)" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
@@ -3847,13 +3851,17 @@ function addPermuta(tipo = 'Imóvel', descricao = '', valor = '') {
   if (!list) return;
   const row = document.createElement('div');
   row.className = 'pm-row';
-  row.style.cssText = 'border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:8px 10px;display:grid;grid-template-columns:130px 1fr 140px 28px;gap:6px;align-items:center;background:rgba(0,0,0,.15)';
+  row.style.cssText = 'border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:8px 10px;display:grid;grid-template-columns:130px 28px 1fr 140px 28px;gap:6px;align-items:center;background:rgba(0,0,0,.15)';
   row.innerHTML = `
     <select class="pm-tipo" style="padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px">
       <option value="Imóvel" ${tipo==='Imóvel'?'selected':''}>🏠 Imóvel</option>
       <option value="Veículo" ${tipo==='Veículo'?'selected':''}>🚗 Veículo</option>
       <option value="Outros" ${tipo==='Outros'?'selected':''}>📦 Outros</option>
     </select>
+    <div style="position:relative">
+      <button type="button" onclick="this.parentNode.querySelector('.pm-arquivo').click()" title="Importar documento (PDF ou imagem)" style="background:rgba(245,158,11,.15);color:#F59E0B;border:1px solid rgba(245,158,11,.3);border-radius:5px;padding:4px 5px;cursor:pointer;font-size:13px;line-height:1;width:28px;height:28px;display:flex;align-items:center;justify-content:center">📎</button>
+      <input type="file" class="pm-arquivo" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="importarDocumentoPermuta(this)">
+    </div>
     <input type="text" class="pm-descricao" placeholder="Descrição (endereço, placa, etc.)" value="${descricao}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
     <input type="number" class="pm-valor" step="0.01" placeholder="Valor R$" value="${valor}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
     <button type="button" onclick="removePermuta(this)" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
@@ -3863,6 +3871,33 @@ function addPermuta(tipo = 'Imóvel', descricao = '', valor = '') {
 
 function removePermuta(btn) {
   btn.closest('.pm-row')?.remove();
+}
+
+async function importarDocumentoPermuta(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  input.value = '';
+  const row = input.closest('.pm-row');
+  const tipo = row?.querySelector('.pm-tipo')?.value || 'Imóvel';
+  const descricaoInput = row?.querySelector('.pm-descricao');
+  if (tipo === 'Outros') { toast('Importação disponível apenas para Imóvel ou Veículo', 'error'); return; }
+  toast('Extraindo informações com IA...', 'info');
+  const form = new FormData();
+  form.append('arquivo', file);
+  form.append('tipo', tipo === 'Imóvel' ? 'imovel' : 'veiculo');
+  try {
+    const res = await fetch('/api/permuta/extrair-documento', {
+      method: 'POST',
+      headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' },
+      body: form
+    });
+    const data = await res.json();
+    if (!data.ok) { toast(data.error || 'Erro ao extrair documento', 'error'); return; }
+    if (descricaoInput && data.data?.descricao) descricaoInput.value = data.data.descricao;
+    toast('Informações extraídas com sucesso!', 'success');
+  } catch(e) {
+    toast('Erro ao processar documento', 'error');
+  }
 }
 
 async function importarContratoCondicoes(input) {

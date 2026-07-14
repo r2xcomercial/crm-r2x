@@ -1513,6 +1513,102 @@ Regras:
   }
 });
 
+// ─── EXTRAÇÃO DE DOCUMENTO DE PERMUTA (IA) ──────────────────────────────────
+
+app.post('/api/permuta/extrair-documento', autenticar, upload.single('arquivo'), async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) return err(res, 'ANTHROPIC_API_KEY não configurada');
+  if (!req.file) return err(res, 'Nenhum arquivo enviado');
+
+  const tipo = (req.body.tipo || 'imovel').toLowerCase();
+  const mime = req.file.mimetype;
+  const nome = req.file.originalname.toLowerCase();
+  const ehImagem = mime.startsWith('image/') || ['.jpg','.jpeg','.png','.webp','.heic','.heif'].some(e => nome.endsWith(e));
+  const ehPdf = mime === 'application/pdf' || nome.endsWith('.pdf');
+  if (!ehImagem && !ehPdf) return err(res, 'Envie PDF ou imagem (JPG, PNG, WEBP)');
+
+  const promptImovel = `Analise este documento de imóvel (matrícula, escritura ou certidão) e extraia as informações.
+Retorne APENAS um JSON válido:
+{
+  "descricao": "endereço completo do imóvel, número de matrícula, área e proprietário(s) — em uma linha descritiva",
+  "matricula": "número da matrícula ou registro",
+  "endereco": "endereço completo do imóvel",
+  "area": "área total em m² (somente número, ex: 250.00)",
+  "proprietario": "nome(s) do(s) proprietário(s)"
+}
+Se algum campo não for encontrado, use null. Retorne APENAS o JSON, sem texto adicional.`;
+
+  const promptVeiculo = `Analise este documento de veículo (CRLV, DUT, nota fiscal ou documento de transferência) e extraia as informações.
+Retorne APENAS um JSON válido:
+{
+  "descricao": "marca, modelo, ano, cor e placa em uma linha descritiva",
+  "marca": "marca do veículo",
+  "modelo": "modelo do veículo",
+  "ano_fabricacao": "ano de fabricação",
+  "ano_modelo": "ano do modelo",
+  "placa": "placa no formato ABC-1234 ou ABC1D23",
+  "renavam": "número do RENAVAM",
+  "chassi": "número do chassi/VIN",
+  "cor": "cor do veículo",
+  "proprietario": "nome do proprietário"
+}
+Se algum campo não for encontrado, use null. Retorne APENAS o JSON, sem texto adicional.`;
+
+  const prompt = tipo === 'veiculo' ? promptVeiculo : promptImovel;
+  const b64 = req.file.buffer.toString('base64');
+
+  try {
+    let content;
+    if (ehPdf) {
+      content = [
+        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+        { type: 'text', text: prompt }
+      ];
+    } else {
+      const mimeReal = mime.startsWith('image/') ? mime : 'image/jpeg';
+      content = [
+        { type: 'image', source: { type: 'base64', media_type: mimeReal, data: b64 } },
+        { type: 'text', text: prompt }
+      ];
+    }
+
+    const resposta = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 800,
+        messages: [{ role: 'user', content }]
+      })
+    });
+
+    const json = await resposta.json();
+    if (!resposta.ok) return err(res, json.error?.message || 'Erro na API Claude');
+    const texto = json.content?.[0]?.text || '{}';
+    const dados = JSON.parse(texto.trim().replace(/^```json\n?|```$/g, ''));
+
+    // Monta descricao automática se não veio preenchida
+    if (!dados.descricao) {
+      if (tipo === 'veiculo') {
+        const partes = [dados.marca, dados.modelo, dados.ano_modelo || dados.ano_fabricacao, dados.cor, dados.placa ? `placa ${dados.placa}` : null].filter(Boolean);
+        dados.descricao = partes.join(' ') || 'Veículo sem dados identificados';
+      } else {
+        const partes = [dados.endereco, dados.matricula ? `Matr. ${dados.matricula}` : null, dados.area ? `${dados.area}m²` : null].filter(Boolean);
+        dados.descricao = partes.join(', ') || 'Imóvel sem dados identificados';
+      }
+    }
+
+    ok(res, dados);
+  } catch(e) {
+    console.error('[permuta/extrair-documento]', e.message);
+    err(res, 'Erro ao processar documento: ' + e.message);
+  }
+});
+
 // Compradores adicionais (cônjuge, sócio, condomínio)
 app.get("/api/leads/:id/compradores", autenticar, (req, res) => {
   ok(res, db.prepare("SELECT * FROM lead_compradores WHERE lead_id=? ORDER BY id").all(req.params.id));
