@@ -2377,6 +2377,7 @@ async function carregarUnidadesVenda(empId, unidadeIdsSelecionadas = []) {
 }
 
 function openVendaModal(venda = {}) {
+  if (venda.id) { window._vendaCache = window._vendaCache || {}; window._vendaCache[venda.id] = venda; }
   const { vendas, corretores, emp, leads, clientes } = currentData;
   openModal(venda.id ? 'Editar Venda' : 'Nova Venda', `
     ${!venda.id ? `
@@ -3954,6 +3955,7 @@ async function gerarContratoVerticalFinal(vendaId) {
 }
 
 function abrirModalContratoGoldenNorth(vendaId) {
+  const _vd = (window._vendaCache || {})[vendaId] || {};
   openModal('🏛️ Gerar Contrato – Edifício Golden North', `
     <div style="display:flex;flex-direction:column;gap:14px">
       <div style="background:rgba(180,83,9,.1);border:1px solid rgba(180,83,9,.3);border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e">
@@ -4023,7 +4025,47 @@ function abrirModalContratoGoldenNorth(vendaId) {
       comprador3_cpf: document.getElementById('gn-c3-cpf')?.value.trim() || '',
     };
     await gerarContratoGoldenNorthFinal(vendaId, body);
-  }, 'Gerar Contrato (.docx)');
+  }, {saveLabel: 'Gerar Contrato (.docx)'});
+
+  // Pré-preenchimento com dados da venda
+  const _fmtBR = n => (parseFloat(n)||0).toLocaleString('pt-BR', {style:'currency', currency:'BRL', minimumFractionDigits:2});
+  const _set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+
+  if (_vd.imovel) _set('gn-unidade', _vd.imovel);
+
+  const valorTotal = parseFloat(_vd.valor) || 0;
+  const valorEntrada = parseFloat(_vd.valor_entrada) || 0;
+
+  if (valorEntrada > 0) {
+    _set('gn-entrada-valor', _fmtBR(valorEntrada));
+    if (valorTotal > 0) _set('gn-entrada-pct', Math.round(valorEntrada / valorTotal * 100));
+  }
+
+  // Forma de pagamento da entrada
+  try {
+    const eparcelas = _vd.entrada_parcelas ? JSON.parse(_vd.entrada_parcelas) : [];
+    if (eparcelas.length > 0) {
+      const desc = eparcelas.map(p => `${_fmtBR(p.valor)} em ${new Date(p.data + 'T12:00:00').toLocaleDateString('pt-BR')}`).join(' + ');
+      _set('gn-forma-entrada', desc);
+    } else if (valorEntrada > 0) {
+      _set('gn-forma-entrada', 'À vista na assinatura do contrato');
+    }
+  } catch(_) {}
+
+  // Identificação completa da forma de pagamento
+  try {
+    const sparcelas = _vd.saldo_parcelas ? JSON.parse(_vd.saldo_parcelas) : [];
+    if (sparcelas.length > 0 || valorEntrada > 0) {
+      const partes = [];
+      if (valorEntrada > 0) partes.push(`Entrada de ${_fmtBR(valorEntrada)}`);
+      if (sparcelas.length > 0) {
+        const primeira = new Date(sparcelas[0].data + 'T12:00:00').toLocaleDateString('pt-BR');
+        const saldoVal = valorTotal > 0 ? valorTotal - valorEntrada : 0;
+        partes.push(`Saldo de ${_fmtBR(saldoVal)} em ${sparcelas.length} parcela(s), 1º vencimento em ${primeira}`);
+      }
+      _set('gn-forma-pagamento', partes.join(' + '));
+    }
+  } catch(_) {}
 }
 
 async function gerarContratoGoldenNorthFinal(vendaId, body) {
