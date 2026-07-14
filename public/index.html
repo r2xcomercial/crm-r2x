@@ -4052,27 +4052,30 @@ function abrirModalContratoGoldenNorth(vendaId) {
     }
   } catch(_) {}
 
-  // Identificação completa da forma de pagamento
-  try {
-    const sparcelas = _vd.saldo_parcelas ? JSON.parse(_vd.saldo_parcelas) : [];
-    if (sparcelas.length > 0 || valorEntrada > 0) {
-      const partes = [];
-      if (valorEntrada > 0) partes.push(`Entrada de ${_fmtBR(valorEntrada)}`);
-      if (sparcelas.length > 0) {
-        const saldoVal = valorTotal > 0 ? valorTotal - valorEntrada : 0;
-        // Safe date parse — skip if blank or invalid
-        const rawData = sparcelas.find(p => p.data)?.data;
-        let dataPrimeira = '';
-        if (rawData) {
-          const d = new Date(rawData + 'T12:00:00');
-          dataPrimeira = isNaN(d.getTime()) ? rawData : d.toLocaleDateString('pt-BR');
-        }
-        const sufixo = dataPrimeira ? `, 1º vencimento em ${dataPrimeira}` : '';
-        partes.push(`Saldo de ${_fmtBR(saldoVal)} em ${sparcelas.length} parcela(s)${sufixo}`);
+  // Identificação completa — gerada por IA
+  const elFormaPag = document.getElementById('gn-forma-pagamento');
+  if (elFormaPag && vendaId) {
+    elFormaPag.value = '⏳ Gerando com IA...';
+    elFormaPag.disabled = true;
+    fetch(`/api/vendas/${vendaId}/gerar-forma-pagamento`, {
+      method: 'POST',
+      headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' }
+    })
+    .then(r => r.json())
+    .then(d => {
+      elFormaPag.disabled = false;
+      if (d.ok && d.data?.texto) {
+        elFormaPag.value = d.data.texto;
+      } else {
+        elFormaPag.value = '';
+        toast(d.error || 'Não foi possível gerar o texto da forma de pagamento', 'error');
       }
-      _set('gn-forma-pagamento', partes.join(' + '));
-    }
-  } catch(_) {}
+    })
+    .catch(() => {
+      elFormaPag.disabled = false;
+      elFormaPag.value = '';
+    });
+  }
 }
 
 async function gerarContratoGoldenNorthFinal(vendaId, body) {

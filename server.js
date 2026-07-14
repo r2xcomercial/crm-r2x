@@ -1173,6 +1173,94 @@ app.post("/api/vendas/:id/contrato-golden-north", autenticar, (req, res) => {
   }
 });
 
+// Gera texto descritivo da forma de pagamento via IA
+app.post("/api/vendas/:id/gerar-forma-pagamento", autenticar, async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) return err(res, 'ANTHROPIC_API_KEY não configurada');
+  const venda = db.prepare(`
+    SELECT v.*, l.nome as lead_nome, e.nome as emp_nome
+    FROM vendas v
+    LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
+    WHERE v.id=?
+  `).get(req.params.id);
+  if (!venda) return err(res, 'Venda não encontrada');
+
+  const fmtVal = n => Number(n||0).toLocaleString('pt-BR', {style:'currency', currency:'BRL', minimumFractionDigits:2});
+
+  // Monta contexto financeiro
+  let ctx = `Empreendimento: ${venda.emp_nome || 'não informado'}\n`;
+  ctx += `Imóvel: ${venda.imovel || 'não informado'}\n`;
+  ctx += `Valor total: ${fmtVal(venda.valor)}\n`;
+
+  if (venda.valor_entrada) {
+    const pct = venda.valor ? ((venda.valor_entrada / venda.valor) * 100).toFixed(1) : '';
+    ctx += `Entrada: ${fmtVal(venda.valor_entrada)}${pct ? ` (${pct}%)` : ''}\n`;
+  }
+
+  let entradaParcelas = [];
+  try { entradaParcelas = venda.entrada_parcelas ? JSON.parse(venda.entrada_parcelas) : []; } catch(_) {}
+  if (entradaParcelas.length > 0) {
+    ctx += `Parcelas da entrada:\n`;
+    entradaParcelas.forEach((p, i) => {
+      const dt = p.data ? new Date(p.data + 'T12:00:00').toLocaleDateString('pt-BR') : 'sem data';
+      ctx += `  ${i+1}ª: ${fmtVal(p.valor)} em ${dt}\n`;
+    });
+  }
+
+  let saldoParcelas = [];
+  try { saldoParcelas = venda.saldo_parcelas ? JSON.parse(venda.saldo_parcelas) : []; } catch(_) {}
+  if (saldoParcelas.length > 0) {
+    const saldoTotal = (venda.valor || 0) - (venda.valor_entrada || 0);
+    ctx += `Saldo financiado: ${fmtVal(saldoTotal)} em ${saldoParcelas.length} parcela(s):\n`;
+    saldoParcelas.slice(0, 10).forEach((p, i) => {
+      const dt = p.data ? new Date(p.data + 'T12:00:00').toLocaleDateString('pt-BR') : (p.vencimento || 'sem data');
+      const titulo = p.titulo || p.descricao || `Parcela ${i+1}`;
+      const qtd = p.qtd && p.qtd > 1 ? `${p.qtd}x ` : '';
+      ctx += `  - ${titulo}: ${qtd}${fmtVal(p.valor)}${dt !== 'sem data' ? `, venc. ${dt}` : ''}${p.forma_pagamento ? `, ${p.forma_pagamento}` : ''}\n`;
+    });
+    if (saldoParcelas.length > 10) ctx += `  (... mais ${saldoParcelas.length - 10} parcelas)\n`;
+  }
+
+  let permuta = [];
+  try { permuta = venda.permuta ? JSON.parse(venda.permuta) : []; } catch(_) {}
+  if (permuta.length > 0) {
+    ctx += `Permuta (bens dados como parte do pagamento):\n`;
+    permuta.forEach(p => {
+      ctx += `  - ${p.tipo}: ${p.descricao || ''}${p.valor ? ` — avaliado em ${fmtVal(p.valor)}` : ''}\n`;
+    });
+  }
+
+  const prompt = `Você é assistente jurídico imobiliário brasileiro. Com base nas informações financeiras abaixo, redija um parágrafo único, claro e objetivo, descrevendo a forma de pagamento para um contrato de compra e venda. Use linguagem formal mas direta. Não use títulos, bullets nem markdown — apenas texto corrido adequado para inserção em cláusula contratual. Não mencione o empreendimento pelo nome nem o imóvel — apenas as condições de pagamento.
+
+Dados da negociação:
+${ctx}
+
+Redija apenas o texto da cláusula de pagamento, sem introdução nem rodapé.`;
+
+  try {
+    const resposta = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 600,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const json = await resposta.json();
+    if (!resposta.ok) return err(res, json.error?.message || 'Erro na API Claude');
+    const texto = json.content?.[0]?.text?.trim() || '';
+    ok(res, { texto });
+  } catch(e) {
+    console.error('[gerar-forma-pagamento]', e.message);
+    err(res, 'Erro ao gerar texto: ' + e.message);
+  }
+});
+
 // Atualiza status de uma unidade (disponivel / reservado / vendido)
 app.put("/api/unidades/:id/status", (req, res) => {
   const { status } = req.body;
