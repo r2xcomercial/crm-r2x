@@ -3953,7 +3953,7 @@ async function gerarContratoGoldenNorthFinal(vendaId, body) {
     link.click();
     URL.revokeObjectURL(link.href);
     toast('Contrato Golden North gerado! 🏛️');
-    fecharModal();
+    closeModal();
   } catch(e) {
     toast('Falha ao gerar contrato', 'error');
   }
