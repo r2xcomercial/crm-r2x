@@ -117,7 +117,7 @@
   .badge-accent { background: rgba(0,196,180,.15); color: var(--accent); }
   .badge-orange { background: rgba(251,146,60,.15); color: #fb923c; }
   .badge-purple { background: rgba(167,139,250,.15); color: #a78bfa; }
-  .modal-wide { max-width: 860px !important; }
+  .modal-wide { max-width: 920px !important; }
 
   /* ── ACTION BUTTONS ── */
   .btn-icon { background: none; border: none; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 15px; transition: background .15s; }
@@ -2379,6 +2379,7 @@ async function carregarUnidadesVenda(empId, unidadeIdsSelecionadas = []) {
 function openVendaModal(venda = {}) {
   if (venda.id) { window._vendaCache = window._vendaCache || {}; window._vendaCache[venda.id] = venda; }
   const { vendas, corretores, emp, leads, clientes } = currentData;
+  document.getElementById('modal')?.classList.add('modal-wide');
   openModal(venda.id ? 'Editar Venda' : 'Nova Venda', `
     ${!venda.id ? `
     <div style="background:rgba(0,196,180,.07);border:1px solid rgba(0,196,180,.25);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
