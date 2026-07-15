@@ -2467,7 +2467,14 @@ function openVendaModal(venda = {}) {
           </div>
         </div>
         <div id="ecp-selector-wrapper" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px"></div>
-        <div id="saldo-parcelas-list" style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+        <div style="display:grid;grid-template-columns:2fr 1.3fr 70px 1.2fr 28px;gap:6px;margin-top:8px;margin-bottom:2px;padding:0 2px">
+          <span style="font-size:10px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.4px">Descrição</span>
+          <span style="font-size:10px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.4px">Vencimento</span>
+          <span style="font-size:10px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.4px;text-align:center">Qtd</span>
+          <span style="font-size:10px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.4px">Valor (R$)</span>
+          <span></span>
+        </div>
+        <div id="saldo-parcelas-list" style="display:flex;flex-direction:column;gap:8px">
           ${(() => {
             let parcelas = [];
             try { parcelas = venda.saldo_parcelas ? JSON.parse(venda.saldo_parcelas) : []; } catch(_) {}
@@ -2478,7 +2485,7 @@ function openVendaModal(venda = {}) {
                   <input type="text" class="sp-titulo" placeholder="ex: Parcela Mensal" value="${p.titulo||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
                   <input type="date" class="sp-vencimento" value="${p.vencimento||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
                   <input type="number" class="sp-qtd" min="1" placeholder="1" value="${p.qtd||1}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
-                  <input type="number" class="sp-valor" step="0.01" placeholder="0.00" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                  <input type="number" class="sp-valor" step="0.01" placeholder="R$ valor" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
                   <button type="button" onclick="removeSaldoParcela(this)" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
@@ -3832,7 +3839,7 @@ function addSaldoParcela(titulo = '', vencimento = '', qtd = 1, valor = '', corr
       <input type="text" class="sp-titulo" placeholder="ex: Parcela Mensal" value="${titulo}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
       <input type="date" class="sp-vencimento" value="${vencimento}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
       <input type="number" class="sp-qtd" min="1" placeholder="1" value="${qtd}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
-      <input type="number" class="sp-valor" step="0.01" placeholder="0.00" value="${valor}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+      <input type="number" class="sp-valor" step="0.01" placeholder="R$ valor" value="${valor}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
       <button type="button" onclick="removeSaldoParcela(this)" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
