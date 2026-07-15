@@ -2555,21 +2555,61 @@ function openVendaModal(venda = {}) {
       <div class="form-group"><label>Incorporador (Loteador)</label>
         <select id="f-cliente"><option value="">—</option>${(clientes||[]).map(c => `<option value="${c.id}" ${venda.cliente_id==c.id?'selected':''}>${c.razao_social}</option>`).join('')}</select>
       </div>
-      <div class="form-group span2" style="padding-bottom:0">
-        <label style="margin-bottom:6px;display:block">Modalidade de Comissão Corretor</label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button type="button" onclick="setModalidadeComissao(5)" style="padding:6px 14px;border-radius:7px;border:1px solid rgba(0,196,180,.4);background:rgba(0,196,180,.1);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">💰 Só dinheiro — 5%</button>
-          <button type="button" onclick="setModalidadeComissao(1.5)" style="padding:6px 14px;border-radius:7px;border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.1);color:#F59E0B;font-size:12px;font-weight:600;cursor:pointer">🔄 Com permuta — 1,5%</button>
-          <button type="button" onclick="setModalidadeComissao(null)" style="padding:6px 14px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer">✏️ Digitar %</button>
+      <div class="form-group span2" style="background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:14px 16px">
+        <div style="font-size:13px;font-weight:600;color:#818cf8;margin-bottom:12px">💼 Comissão Corretor</div>
+        ${(() => {
+          let det = { din_base:'', din_pct:5, per_base:'', per_pct:1.5 };
+          try { if (venda.comissao_corretor_detalhes) Object.assign(det, JSON.parse(venda.comissao_corretor_detalhes)); } catch(_) {}
+          // fallback: se não há detalhes mas há valor/pct antigo, coloca tudo na linha dinheiro
+          if (!venda.comissao_corretor_detalhes && venda.comissao_corretor_pct) {
+            det.din_pct = venda.comissao_corretor_pct;
+          }
+          return `
+        <div style="display:grid;grid-template-columns:28px 1fr 90px 1fr;gap:8px;align-items:center;margin-bottom:8px">
+          <span style="font-size:16px">💰</span>
+          <div>
+            <div style="font-size:10px;color:var(--text2);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px">Base dinheiro (R$)</div>
+            <input id="f-com-base-din" type="number" step="0.01" placeholder="0,00" value="${det.din_base||''}" oninput="calcComissaoSplit()" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text2);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px">% taxa</div>
+            <input id="f-com-pct-din" type="number" step="0.1" min="0" placeholder="5" value="${det.din_pct||5}" oninput="calcComissaoSplit()" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text2);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px">= Comissão (R$)</div>
+            <input id="f-com-val-din" type="number" step="0.01" placeholder="0,00" readonly style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(0,0,0,.2);color:var(--text1);font-size:13px;box-sizing:border-box;opacity:.75">
+          </div>
         </div>
-      </div>
-      <div class="form-group"><label>% Comissão Corretor</label><input id="f-com-pct" type="number" step="0.1" min="0" max="100" value="${venda.comissao_corretor_pct||''}" placeholder="ex: 1.0" oninput="calcComissaoCorretor()"></div>
-      <div class="form-group"><label>Valor Comissão Corretor (R$)</label><input id="f-com-valor" type="number" step="0.01" value="${venda.comissao_corretor_valor||''}" style="opacity:.75" placeholder="Calculado automaticamente"></div>
-      <div class="form-group"><label>Status Comissão Corretor</label>
-        <select id="f-com-status">
-          <option value="pendente" ${(!venda.comissao_corretor_status||venda.comissao_corretor_status==='pendente')?'selected':''}>⏳ Pendente</option>
-          <option value="pago" ${venda.comissao_corretor_status==='pago'?'selected':''}>✅ Pago</option>
-        </select>
+        <div style="display:grid;grid-template-columns:28px 1fr 90px 1fr;gap:8px;align-items:center;margin-bottom:12px">
+          <span style="font-size:16px">🔄</span>
+          <div>
+            <div style="font-size:10px;color:var(--text2);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px">Base permuta (R$)</div>
+            <input id="f-com-base-per" type="number" step="0.01" placeholder="0,00" value="${det.per_base||''}" oninput="calcComissaoSplit()" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text2);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px">% taxa</div>
+            <input id="f-com-pct-per" type="number" step="0.1" min="0" placeholder="1.5" value="${det.per_pct||1.5}" oninput="calcComissaoSplit()" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text2);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px">= Comissão (R$)</div>
+            <input id="f-com-val-per" type="number" step="0.01" placeholder="0,00" readonly style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(0,0,0,.2);color:var(--text1);font-size:13px;box-sizing:border-box;opacity:.75">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid rgba(99,102,241,.2);padding-top:10px;gap:12px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:12px;color:var(--text2);font-weight:600">TOTAL COMISSÃO</span>
+            <input id="f-com-valor" type="number" step="0.01" readonly value="${venda.comissao_corretor_valor||''}" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,.4);background:rgba(99,102,241,.1);color:#818cf8;font-size:14px;font-weight:700;width:160px;box-sizing:border-box">
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label style="font-size:12px;color:var(--text2)">Status:</label>
+            <select id="f-com-status" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px">
+              <option value="pendente" ${(!venda.comissao_corretor_status||venda.comissao_corretor_status==='pendente')?'selected':''}>⏳ Pendente</option>
+              <option value="pago" ${venda.comissao_corretor_status==='pago'?'selected':''}>✅ Pago</option>
+            </select>
+          </div>
+        </div>`;
+        })()}
+        <input type="hidden" id="f-com-pct" value="${venda.comissao_corretor_pct||''}">
       </div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${venda.observacoes||''}</textarea></div>
     </div>
@@ -2595,6 +2635,12 @@ function openVendaModal(venda = {}) {
 
     const comPct = parseFloat(v('f-com-pct'))||null;
     const comValor = parseFloat(v('f-com-valor'))||null;
+    const comDetalhes = {
+      din_base: parseFloat(document.getElementById('f-com-base-din')?.value)||0,
+      din_pct:  parseFloat(document.getElementById('f-com-pct-din')?.value)||5,
+      per_base: parseFloat(document.getElementById('f-com-base-per')?.value)||0,
+      per_pct:  parseFloat(document.getElementById('f-com-pct-per')?.value)||1.5
+    };
 
     // Lê parcelas de entrada da UI
     const valorEntrada = parseFloat(v('f-valor-entrada')) || null;
@@ -2633,7 +2679,8 @@ function openVendaModal(venda = {}) {
       empreendimento_id: v('f-emp')||null, cliente_id: v('f-cliente')||null,
       unidade_ids: unidadeIds, vaga_id: v('f-vaga')||null, observacoes: v('f-obs'),
       comissao_corretor_pct: comPct, comissao_corretor_valor: comValor,
-      comissao_corretor_status: comPct ? (v('f-com-status')||'pendente') : null,
+      comissao_corretor_status: comValor ? (v('f-com-status')||'pendente') : null,
+      comissao_corretor_detalhes: (comDetalhes.din_base || comDetalhes.per_base) ? comDetalhes : null,
       valor_entrada: valorEntrada,
       entrada_parcelas: entradaParcelas.length > 0 ? entradaParcelas : null,
       saldo_parcelas: saldoParcelas.length > 0 ? saldoParcelas : null,
@@ -8444,20 +8491,32 @@ async function confirmarImportacaoPlanta(empId) {
 
 // ─── COMISSÃO CORRETOR ────────────────────────────────────────────────────────
 
-function calcComissaoCorretor() {
-  const pct   = parseFloat(document.getElementById('f-com-pct')?.value) || 0;
-  const valor = parseFloat(document.getElementById('f-valor')?.value)   || 0;
-  const dest  = document.getElementById('f-com-valor');
-  if (dest) dest.value = (pct && valor) ? (valor * pct / 100).toFixed(2) : '';
+function calcComissaoCorretor() { calcComissaoSplit(); }
+
+function calcComissaoSplit() {
+  const baseDin = parseFloat(document.getElementById('f-com-base-din')?.value) || 0;
+  const pctDin  = parseFloat(document.getElementById('f-com-pct-din')?.value)  || 0;
+  const basePer = parseFloat(document.getElementById('f-com-base-per')?.value) || 0;
+  const pctPer  = parseFloat(document.getElementById('f-com-pct-per')?.value)  || 0;
+
+  const valDin = baseDin && pctDin ? parseFloat((baseDin * pctDin / 100).toFixed(2)) : 0;
+  const valPer = basePer && pctPer ? parseFloat((basePer * pctPer / 100).toFixed(2)) : 0;
+  const total  = valDin + valPer;
+
+  const elVD = document.getElementById('f-com-val-din');
+  const elVP = document.getElementById('f-com-val-per');
+  const elTot = document.getElementById('f-com-valor');
+  if (elVD) elVD.value = valDin ? valDin.toFixed(2) : '';
+  if (elVP) elVP.value = valPer ? valPer.toFixed(2) : '';
+  if (elTot) elTot.value = total ? total.toFixed(2) : '';
+
+  // Armazena % efetivo no campo oculto
+  const valorVenda = parseFloat(document.getElementById('f-valor')?.value) || 0;
+  const elPct = document.getElementById('f-com-pct');
+  if (elPct && valorVenda) elPct.value = total ? (total / valorVenda * 100).toFixed(2) : '';
 }
 
-function setModalidadeComissao(pct) {
-  const campo = document.getElementById('f-com-pct');
-  if (!campo) return;
-  if (pct === null) { campo.focus(); return; }
-  campo.value = pct;
-  calcComissaoCorretor();
-}
+function setModalidadeComissao() {} // removido — não é mais necessário
 
 async function pagarComissaoCorretor(vendaId) {
   if (!confirm('Marcar comissão deste corretor como paga?')) return;
