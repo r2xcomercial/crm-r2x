@@ -2554,6 +2554,14 @@ function openVendaModal(venda = {}) {
       <div class="form-group"><label>Incorporador (Loteador)</label>
         <select id="f-cliente"><option value="">—</option>${(clientes||[]).map(c => `<option value="${c.id}" ${venda.cliente_id==c.id?'selected':''}>${c.razao_social}</option>`).join('')}</select>
       </div>
+      <div class="form-group span2" style="padding-bottom:0">
+        <label style="margin-bottom:6px;display:block">Modalidade de Comissão Corretor</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" onclick="setModalidadeComissao(5)" style="padding:6px 14px;border-radius:7px;border:1px solid rgba(0,196,180,.4);background:rgba(0,196,180,.1);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer">💰 Só dinheiro — 5%</button>
+          <button type="button" onclick="setModalidadeComissao(1.5)" style="padding:6px 14px;border-radius:7px;border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.1);color:#F59E0B;font-size:12px;font-weight:600;cursor:pointer">🔄 Com permuta — 1,5%</button>
+          <button type="button" onclick="setModalidadeComissao(null)" style="padding:6px 14px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer">✏️ Digitar %</button>
+        </div>
+      </div>
       <div class="form-group"><label>% Comissão Corretor</label><input id="f-com-pct" type="number" step="0.1" min="0" max="100" value="${venda.comissao_corretor_pct||''}" placeholder="ex: 1.0" oninput="calcComissaoCorretor()"></div>
       <div class="form-group"><label>Valor Comissão Corretor (R$)</label><input id="f-com-valor" type="number" step="0.01" value="${venda.comissao_corretor_valor||''}" style="opacity:.75" placeholder="Calculado automaticamente"></div>
       <div class="form-group"><label>Status Comissão Corretor</label>
@@ -8440,6 +8448,14 @@ function calcComissaoCorretor() {
   const valor = parseFloat(document.getElementById('f-valor')?.value)   || 0;
   const dest  = document.getElementById('f-com-valor');
   if (dest) dest.value = (pct && valor) ? (valor * pct / 100).toFixed(2) : '';
+}
+
+function setModalidadeComissao(pct) {
+  const campo = document.getElementById('f-com-pct');
+  if (!campo) return;
+  if (pct === null) { campo.focus(); return; }
+  campo.value = pct;
+  calcComissaoCorretor();
 }
 
 async function pagarComissaoCorretor(vendaId) {
