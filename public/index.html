@@ -2148,7 +2148,7 @@ let _leadsParaVenda = [];
 function abrirLeadVendaDD() {
   const dd = document.getElementById('lead-venda-dd');
   if (!dd) return;
-  _leadsParaVenda = leadsData || [];
+  _leadsParaVenda = (currentData.leads?.length ? currentData.leads : null) || leadsData || [];
   renderLeadVendaDD('');
   dd.style.display = 'block';
   // Fecha ao clicar fora
