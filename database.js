@@ -599,4 +599,12 @@ for (const sql of pluggyMigrations) {
   try { db.exec(sql); } catch(_) {}
 }
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS configuracoes (
+    chave TEXT PRIMARY KEY,
+    valor TEXT,
+    atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 module.exports = db;

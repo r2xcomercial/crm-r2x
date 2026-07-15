@@ -2395,6 +2395,11 @@ async function carregarUnidadesVenda(empId, unidadeIdsSelecionadas = []) {
   else { const sv = document.getElementById('f-vaga'); if(sv) sv.innerHTML = '<option value="">— Sem vaga —</option>'; }
 
   const emp = (currentData.emp||[]).find(e => e.id == empId);
+
+  // Atualiza referência de CUB para cálculo automático nas parcelas
+  window._vendaCubValor = emp?.valor_cub ? parseFloat(emp.valor_cub) : null;
+  atualizarTodosCubLabels();
+
   const pctInput = document.getElementById('f-pct-r2x');
   if (emp?.percentual_r2x) {
     if (infoComissao) { infoComissao.textContent = `Padrão do empreendimento: ${emp.percentual_r2x}%. Edite o campo ao lado para negociar um % diferente nesta venda.`; infoComissao.style.color = 'var(--text2)'; }
@@ -2427,6 +2432,7 @@ async function carregarUnidadesVenda(empId, unidadeIdsSelecionadas = []) {
 
 function openVendaModal(venda = {}) {
   if (venda.id) { window._vendaCache = window._vendaCache || {}; window._vendaCache[venda.id] = venda; }
+  window._vendaCubValor = null; // será preenchido por carregarUnidadesVenda
   const { vendas, corretores, emp, leads, clientes } = currentData;
   document.getElementById('modal')?.classList.add('modal-wide');
   openModal(venda.id ? 'Editar Venda' : 'Nova Venda', `
@@ -2507,7 +2513,10 @@ function openVendaModal(venda = {}) {
       <!-- Seção de Saldo Devedor -->
       <div class="form-group span2" style="background:rgba(46,95,138,.1);border:1px solid rgba(46,95,138,.3);border-radius:10px;padding:14px 16px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-          <div style="font-size:13px;font-weight:600;color:#7EB8E0">🏦 Saldo Devedor / Financiamento</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:13px;font-weight:600;color:#7EB8E0">🏦 Saldo Devedor / Financiamento</span>
+            <span id="cub-ref-badge" style="display:none;font-size:11px;color:#F59E0B;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3);border-radius:5px;padding:2px 8px;font-weight:600"></span>
+          </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <button type="button" onclick="addSaldoParcela()" style="background:#2E5F8A;color:#fff;border:none;border-radius:7px;padding:6px 13px;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap">+ Tipo de parcela</button>
             <label style="background:rgba(46,95,138,.3);color:#7EB8E0;border:1px solid rgba(46,95,138,.5);border-radius:7px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap" title="Importar tabela de pagamentos do contrato PDF automaticamente">
@@ -2534,15 +2543,16 @@ function openVendaModal(venda = {}) {
                 <div style="display:grid;grid-template-columns:2fr 1.3fr 70px 1.2fr 28px;gap:6px;align-items:center">
                   <input type="text" class="sp-titulo" placeholder="ex: Parcela Mensal" value="${p.titulo||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
                   <input type="date" class="sp-vencimento" value="${p.vencimento||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-                  <input type="number" class="sp-qtd" min="1" placeholder="1" value="${p.qtd||1}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
-                  <input type="number" class="sp-valor" step="0.01" placeholder="R$ valor" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
+                  <input type="number" class="sp-qtd" min="1" placeholder="1" value="${p.qtd||1}" oninput="atualizarCubLabel(this.closest('.sp-row'))" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
+                  <input type="number" class="sp-valor" step="0.01" placeholder="R$ valor" value="${p.valor||''}" oninput="atualizarCubLabel(this.closest('.sp-row'))" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
                   <button type="button" onclick="removeSaldoParcela(this)" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;font-size:12px;line-height:1">✕</button>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
-                  ${selOpts('sp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], p.correcao)}
+                  <select class="sp-correcao" onchange="atualizarCubLabel(this.closest('.sp-row'))" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">${['Sem Correção','CUB/SC','IGPM','IPCA'].map(o => `<option value="${o}" ${o===(p.correcao||'Sem Correção')?'selected':''}>${o}</option>`).join('')}</select>
                   <input type="text" class="sp-juros" placeholder="ex: 0,75% a.m." value="${p.juros||''}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">
                   ${selOpts('sp-forma', ['PIX','Boleto','Espécie','Cheque','Financiamento Bancário'], p.forma_pagamento)}
                 </div>
+                <div class="sp-cub-label" style="display:none;font-size:11px;color:#F59E0B;font-weight:600;text-align:right;padding:2px 0"></div>
               </div>`).join('');
           })()}
         </div>
@@ -3963,12 +3973,61 @@ function addSaldoParcela(titulo = '', vencimento = '', qtd = 1, valor = '', corr
       ${sel('sp-correcao', ['Sem Correção','CUB/SC','IGPM','IPCA'], correcao || 'Sem Correção')}
       <input type="text" class="sp-juros" placeholder="ex: 0,75% a.m." value="${(juros||'').replace(/"/g,'&quot;')}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">
       ${sel('sp-forma', ['PIX','Boleto','Espécie','Cheque','Financiamento Bancário'], forma_pagamento || 'PIX')}
-    </div>`;
+    </div>
+    <div class="sp-cub-label" style="display:none;font-size:11px;color:#F59E0B;font-weight:600;text-align:right;padding:2px 0"></div>`;
   list.appendChild(row);
+  const upd = () => atualizarCubLabel(row);
+  row.querySelector('.sp-valor').addEventListener('input', upd);
+  row.querySelector('.sp-qtd').addEventListener('input', upd);
+  row.querySelector('.sp-correcao').addEventListener('change', upd);
+  atualizarCubLabel(row);
 }
 
 function removeSaldoParcela(btn) {
   btn.closest('.sp-row')?.remove();
+}
+
+function atualizarCubLabel(row) {
+  const label = row?.querySelector('.sp-cub-label');
+  if (!label) return;
+  const corr = row.querySelector('.sp-correcao')?.value;
+  const valor = parseFloat(row.querySelector('.sp-valor')?.value) || 0;
+  const qtd = parseInt(row.querySelector('.sp-qtd')?.value) || 1;
+  const cubVal = window._vendaCubValor;
+  if (corr === 'CUB/SC' && valor > 0) {
+    if (!cubVal) {
+      label.style.display = 'block';
+      label.style.color = 'var(--warning)';
+      label.textContent = '⚠ CUB/SC não cadastrado no empreendimento (configure em Empreendimentos → Valor CUB referência)';
+      return;
+    }
+    label.style.color = '#F59E0B';
+    const cubUnit = parseFloat((valor / cubVal).toFixed(4));
+    const cubUnitFmt = cubUnit.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:4});
+    const refFmt = cubVal.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    let txt = `≈ ${cubUnitFmt} CUB/SC por parcela  (ref.: R$ ${refFmt}/CUB)`;
+    if (qtd > 1) {
+      const totalCub = parseFloat((valor * qtd / cubVal).toFixed(4));
+      txt += `  |  total ${qtd}x: ${totalCub.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:4})} CUB`;
+    }
+    label.style.display = 'block';
+    label.textContent = txt;
+  } else {
+    label.style.display = 'none';
+  }
+}
+
+function atualizarTodosCubLabels() {
+  document.querySelectorAll('#saldo-parcelas-list .sp-row').forEach(r => atualizarCubLabel(r));
+  const badge = document.getElementById('cub-ref-badge');
+  if (!badge) return;
+  const cubVal = window._vendaCubValor;
+  if (cubVal) {
+    badge.style.display = 'inline';
+    badge.textContent = `CUB/SC ref.: R$ ${cubVal.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+  } else {
+    badge.style.display = 'none';
+  }
 }
 
 function addPermuta(tipo = 'Imóvel', descricao = '', valor = '') {

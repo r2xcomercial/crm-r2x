@@ -1173,6 +1173,22 @@ app.post("/api/vendas/:id/contrato-golden-north", autenticar, (req, res) => {
   }
 });
 
+// ─── CUB/SC CONFIGURAÇÃO ────────────────────────────────────────────────────
+
+app.get("/api/config/cub-sc", autenticar, (req, res) => {
+  const row = db.prepare("SELECT valor, atualizado_em FROM configuracoes WHERE chave = 'cub_sc'").get();
+  ok(res, { valor: row ? parseFloat(row.valor) : null, atualizado_em: row?.atualizado_em || null });
+});
+
+app.put("/api/config/cub-sc", autenticar, (req, res) => {
+  const { valor } = req.body;
+  const v = parseFloat(valor);
+  if (!v || isNaN(v) || v <= 0) return err(res, 'Valor CUB inválido');
+  const agora = new Date().toISOString();
+  db.prepare("INSERT OR REPLACE INTO configuracoes (chave, valor, atualizado_em) VALUES ('cub_sc', ?, ?)").run(String(v), agora);
+  ok(res, { valor: v, atualizado_em: agora });
+});
+
 // Gera texto descritivo da forma de pagamento via IA
 app.post("/api/vendas/:id/gerar-forma-pagamento", autenticar, async (req, res) => {
   if (!process.env.ANTHROPIC_API_KEY) return err(res, 'ANTHROPIC_API_KEY não configurada');
