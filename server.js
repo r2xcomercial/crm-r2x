@@ -1173,6 +1173,104 @@ app.post("/api/vendas/:id/contrato-golden-north", autenticar, (req, res) => {
   }
 });
 
+// ─── UTILITÁRIOS POR EXTENSO – PORTUGUÊS BR ──────────────────────────────────
+
+const _PEX_UN = ['zero','um','dois','três','quatro','cinco','seis','sete','oito','nove',
+  'dez','onze','doze','treze','quatorze','quinze','dezesseis','dezessete','dezoito','dezenove'];
+const _PEX_DZ = ['','','vinte','trinta','quarenta','cinquenta','sessenta','setenta','oitenta','noventa'];
+const _PEX_CT = ['','cem','duzentos','trezentos','quatrocentos','quinhentos','seiscentos',
+  'setecentos','oitocentos','novecentos'];
+
+function _numExt(n) {
+  n = Math.abs(Math.floor(n));
+  if (n === 0) return 'zero';
+  let r = '';
+  if (n >= 1000000) {
+    const m = Math.floor(n / 1000000); n %= 1000000;
+    r += _numExt(m) + (m === 1 ? ' milhão' : ' milhões') + (n > 0 ? ' e ' : '');
+  }
+  if (n >= 1000) {
+    const k = Math.floor(n / 1000); n %= 1000;
+    r += _numExt(k) + ' mil' + (n > 0 ? ', ' : '');
+  }
+  if (n >= 100) {
+    const c = Math.floor(n / 100); n %= 100;
+    // "cem" só quando exatamente 100; senão "cento", "duzentos", etc.
+    r += (n === 0 && c === 1 ? 'cem' : c === 1 ? 'cento' : _PEX_CT[c]) + (n > 0 ? ' e ' : '');
+  }
+  if (n >= 20) { const d = Math.floor(n / 10); n %= 10; r += _PEX_DZ[d] + (n > 0 ? ' e ' : ''); }
+  if (n > 0) r += _PEX_UN[n];
+  return r;
+}
+
+function _realExt(v) {
+  const tot = Math.round(Math.abs(v) * 100);
+  const reais = Math.floor(tot / 100);
+  const cts = tot % 100;
+  let r = _numExt(reais) + (reais === 1 ? ' real' : ' reais');
+  if (cts > 0) r += ' e ' + _numExt(cts) + (cts === 1 ? ' centavo' : ' centavos');
+  return r;
+}
+
+function _cubExt(v, dec = 4) {
+  const ip = Math.floor(v);
+  const dp = Math.round((v - ip) * Math.pow(10, dec));
+  return _numExt(ip) + ' vírgula ' + _numExt(dp);
+}
+
+const _MESES_PT = ['janeiro','fevereiro','março','abril','maio','junho',
+  'julho','agosto','setembro','outubro','novembro','dezembro'];
+
+function _dataExt(iso) {
+  if (!iso) return '___';
+  const d = new Date(iso + 'T12:00:00');
+  return `${d.getDate()} de ${_MESES_PT[d.getMonth()]} de ${d.getFullYear()}`;
+}
+
+function _mesAnoAtual() {
+  const n = new Date();
+  return `${_MESES_PT[n.getMonth()]} de ${n.getFullYear()}`;
+}
+
+function _fBRL(v) {
+  return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function _fCub(v, dec = 4) {
+  return Number(v).toLocaleString('pt-BR', {minimumFractionDigits:dec, maximumFractionDigits:dec});
+}
+
+function _gerarTextoParcela(p, cubRef, mesRef, etiqueta) {
+  const qtd = parseInt(p.qtd) || 1;
+  const valUnit = parseFloat(p.valor) || 0;
+  if (!valUnit) return null;
+  const valTotal = valUnit * qtd;
+  const forma = (p.forma_pagamento || 'boleto bancário').toLowerCase();
+  const prefix = etiqueta ? etiqueta + ' ' : '';
+
+  if (cubRef && p.correcao === 'CUB/SC') {
+    const cubTotal = valTotal / cubRef;
+    const cubUnit  = valUnit  / cubRef;
+    const cubTotalFmt = _fCub(cubTotal);
+    const cubUnitFmt  = _fCub(cubUnit);
+
+    if (qtd === 1) {
+      return `${prefix}${_fBRL(valUnit)} (${_realExt(valUnit)}), equivalente a ${cubUnitFmt} (${_cubExt(cubUnit)}) CUBs/SC, conforme o Custo Unitário Básico da Construção Civil de Santa Catarina – padrão residencial médio – divulgado pelo SINDUSCON/SC, referente ao mês de ${mesRef}, no valor de ${_fBRL(cubRef)} (${_realExt(cubRef)}) por metro quadrado${p.vencimento ? `, com vencimento em ${_dataExt(p.vencimento)}` : ''}, através de ${forma}, a ser reajustado pela variação do CUB/SC (padrão residencial médio), divulgado pelo SINDUSCON/SC, tomando-se como índice-base o do mês de ${mesRef}.`;
+    } else {
+      return `${prefix}${_fBRL(valTotal)} (${_realExt(valTotal)}), equivalente a ${cubTotalFmt} (${_cubExt(cubTotal)}) CUBs/SC, conforme o Custo Unitário Básico da Construção Civil de Santa Catarina – padrão residencial médio – divulgado pelo SINDUSCON/SC, referente ao mês de ${mesRef}, no valor de ${_fBRL(cubRef)} (${_realExt(cubRef)}) por metro quadrado, parcelado em ${qtd} (${_numExt(qtd)}) parcelas mensais e sucessivas, no valor de ${_fBRL(valUnit)} (${_realExt(valUnit)}) cada uma, equivalente a ${cubUnitFmt} (${_cubExt(cubUnit)}) CUBs/SC, com vencimento a partir de ${p.vencimento ? _dataExt(p.vencimento) : '___'}, através de ${forma}, sendo a primeira parcela devida no prazo estabelecido nesta cláusula e as demais no mesmo dia de cada mês subsequente, até a quitação total da obrigação. As parcelas serão reajustadas mensalmente pela variação do CUB/SC (padrão residencial médio), divulgado pelo SINDUSCON/SC, tomando-se como índice-base o do mês de ${mesRef}, de modo que o valor de cada parcela corresponderá, na data do respectivo vencimento, à quantidade de CUBs acima estabelecida.`;
+    }
+  } else {
+    // parcela sem CUB: texto simples
+    const dataStr = p.vencimento ? `, com vencimento em ${_dataExt(p.vencimento)}` : '';
+    const corrStr = p.correcao && p.correcao !== 'Sem Correção' ? `, corrigido pelo ${p.correcao}` : '';
+    if (qtd === 1) {
+      return `${prefix}${_fBRL(valUnit)} (${_realExt(valUnit)})${dataStr}, através de ${forma}${corrStr}.`;
+    } else {
+      return `${prefix}${_fBRL(valTotal)} (${_realExt(valTotal)}), dividido em ${qtd} (${_numExt(qtd)}) parcelas de ${_fBRL(valUnit)} (${_realExt(valUnit)}) cada uma${dataStr}, através de ${forma}${corrStr}.`;
+    }
+  }
+}
+
 // ─── CUB/SC CONFIGURAÇÃO ────────────────────────────────────────────────────
 
 app.get("/api/config/cub-sc", autenticar, (req, res) => {
@@ -1190,107 +1288,45 @@ app.put("/api/config/cub-sc", autenticar, (req, res) => {
 });
 
 // Gera texto descritivo da forma de pagamento via IA
-app.post("/api/vendas/:id/gerar-forma-pagamento", autenticar, async (req, res) => {
-  if (!process.env.ANTHROPIC_API_KEY) return err(res, 'ANTHROPIC_API_KEY não configurada');
+app.post("/api/vendas/:id/gerar-forma-pagamento", autenticar, (req, res) => {
   const venda = db.prepare(`
-    SELECT v.*, l.nome as lead_nome, e.nome as emp_nome, e.valor_cub
+    SELECT v.*, e.valor_cub
     FROM vendas v
-    LEFT JOIN leads l ON l.id = v.lead_id
     LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
     WHERE v.id=?
   `).get(req.params.id);
   if (!venda) return err(res, 'Venda não encontrada');
 
-  const fmtVal = n => Number(n||0).toLocaleString('pt-BR', {style:'currency', currency:'BRL', minimumFractionDigits:2});
   const cubRef = venda.valor_cub ? parseFloat(venda.valor_cub) : null;
-  const fmtCub = v => cubRef ? (v / cubRef).toFixed(2).replace('.', ',') + ' CUB/SC' : null;
-
-  // Monta contexto financeiro
-  let ctx = `Empreendimento: ${venda.emp_nome || 'não informado'}\n`;
-  ctx += `Imóvel: ${venda.imovel || 'não informado'}\n`;
-  ctx += `Valor total: ${fmtVal(venda.valor)}\n`;
-  if (cubRef) ctx += `Valor de referência CUB/SC: R$ ${cubRef.toLocaleString('pt-BR', {minimumFractionDigits:2})} por CUB\n`;
-
-  if (venda.valor_entrada) {
-    const pct = venda.valor ? ((venda.valor_entrada / venda.valor) * 100).toFixed(1) : '';
-    ctx += `Entrada: ${fmtVal(venda.valor_entrada)}${pct ? ` (${pct}%)` : ''}\n`;
-  }
-
-  let entradaParcelas = [];
-  try { entradaParcelas = venda.entrada_parcelas ? JSON.parse(venda.entrada_parcelas) : []; } catch(_) {}
-  if (entradaParcelas.length > 0) {
-    ctx += `Parcelas da entrada:\n`;
-    entradaParcelas.forEach((p, i) => {
-      const dt = p.data ? new Date(p.data + 'T12:00:00').toLocaleDateString('pt-BR') : 'sem data';
-      ctx += `  ${i+1}ª: ${fmtVal(p.valor)} em ${dt}\n`;
-    });
-  }
+  const mesRef = _mesAnoAtual();
 
   let saldoParcelas = [];
   try { saldoParcelas = venda.saldo_parcelas ? JSON.parse(venda.saldo_parcelas) : []; } catch(_) {}
-  if (saldoParcelas.length > 0) {
-    const saldoTotal = (venda.valor || 0) - (venda.valor_entrada || 0);
-    ctx += `Saldo financiado: ${fmtVal(saldoTotal)} em ${saldoParcelas.length} parcela(s):\n`;
-    saldoParcelas.slice(0, 10).forEach((p, i) => {
-      const dt = p.data ? new Date(p.data + 'T12:00:00').toLocaleDateString('pt-BR') : (p.vencimento || 'sem data');
-      const titulo = p.titulo || p.descricao || `Parcela ${i+1}`;
-      const qtd = qtdNum > 1 ? `${qtdNum}x ` : '';
-      const cubEquiv = p.correcao === 'CUB/SC' && p.valor ? fmtCub(p.valor) : null;
-      const qtdNum = parseInt(p.qtd) || 1;
-      const cubTotalEquiv = p.correcao === 'CUB/SC' && p.valor && qtdNum > 1 ? fmtCub(p.valor * qtdNum) : null;
-      let linha = `  - ${titulo}: ${qtd}${fmtVal(p.valor)}`;
-      if (cubEquiv) linha += ` (equivalente a ${cubEquiv}${cubTotalEquiv ? `, total ${cubTotalEquiv}` : ''})`;
-      if (dt !== 'sem data') linha += `, venc. ${dt}`;
-      if (p.forma_pagamento) linha += `, ${p.forma_pagamento}`;
-      if (p.correcao && p.correcao !== 'Sem Correção') linha += `, corrigido pelo ${p.correcao}`;
-      if (p.juros) linha += `, juros ${p.juros}`;
-      ctx += linha + '\n';
-    });
-    if (saldoParcelas.length > 10) ctx += `  (... mais ${saldoParcelas.length - 10} parcelas)\n`;
-  }
 
   let permuta = [];
   try { permuta = venda.permuta ? JSON.parse(venda.permuta) : []; } catch(_) {}
-  if (permuta.length > 0) {
-    ctx += `Permuta (bens dados como parte do pagamento):\n`;
-    permuta.forEach(p => {
-      ctx += `  - ${p.tipo}: ${p.descricao || ''}${p.valor ? ` — avaliado em ${fmtVal(p.valor)}` : ''}\n`;
-    });
-  }
 
-  const cubInstrucao = cubRef
-    ? `Quando uma parcela for corrigida pelo CUB/SC, mencione o equivalente em CUB após o valor em reais, no formato: "R$ X.XXX,XX (equivalente a Y,YY CUB/SC)". Use sempre vírgula como separador decimal nos valores CUB. `
-    : '';
+  const itens = [];
+  const letras = ['a','b','c','d','e','f','g','h','i','j','k','l','m'];
+  const total = saldoParcelas.filter(p => parseFloat(p.valor) > 0).length + permuta.length;
 
-  const prompt = `Você é assistente jurídico imobiliário brasileiro. Com base nas informações financeiras abaixo, redija um parágrafo único, claro e objetivo, descrevendo a forma de pagamento para um contrato de compra e venda. Use linguagem formal mas direta. Não use títulos, bullets nem markdown — apenas texto corrido adequado para inserção em cláusula contratual. Não mencione o empreendimento pelo nome nem o imóvel — apenas as condições de pagamento. ${cubInstrucao}
+  saldoParcelas.forEach((p, i) => {
+    if (!parseFloat(p.valor)) return;
+    const etiqueta = total > 1 ? letras[itens.length] + ')' : '';
+    const texto = _gerarTextoParcela(p, cubRef, mesRef, etiqueta);
+    if (texto) itens.push(texto);
+  });
 
-Dados da negociação:
-${ctx}
+  permuta.forEach(pm => {
+    if (!pm.descricao && !pm.valor) return;
+    const etiqueta = total > 1 ? letras[itens.length] + ')' : '';
+    const valStr = pm.valor ? ` — avaliado em ${_fBRL(pm.valor)} (${_realExt(parseFloat(pm.valor))})` : '';
+    itens.push(`${etiqueta ? etiqueta + ' ' : ''}${pm.tipo}: ${pm.descricao || ''}${valStr}, dado em dação em pagamento como parte integrante da composição do preço ajustado.`);
+  });
 
-Redija apenas o texto da cláusula de pagamento, sem introdução nem rodapé.`;
+  if (itens.length === 0) return err(res, 'Nenhuma parcela com valor cadastrada nesta venda');
 
-  try {
-    const resposta = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 600,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    const json = await resposta.json();
-    if (!resposta.ok) return err(res, json.error?.message || 'Erro na API Claude');
-    const texto = json.content?.[0]?.text?.trim() || '';
-    ok(res, { texto });
-  } catch(e) {
-    console.error('[gerar-forma-pagamento]', e.message);
-    err(res, 'Erro ao gerar texto: ' + e.message);
-  }
+  ok(res, { texto: itens.join('\n\n') });
 });
 
 // Atualiza status de uma unidade (disponivel / reservado / vendido)
