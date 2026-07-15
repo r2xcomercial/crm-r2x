@@ -2198,6 +2198,55 @@ function selecionarLeadVenda(id, nome) {
   if (dd) dd.style.display = 'none';
 }
 
+// ── Dropdown de busca de corretor no modal de venda ───────────────────────────
+function abrirCorretorVendaDD() {
+  const dd = document.getElementById('corretor-venda-dd');
+  if (!dd) return;
+  renderCorretorVendaDD('');
+  dd.style.display = 'block';
+  setTimeout(() => {
+    const fechar = (e) => {
+      if (!dd.contains(e.target) && e.target.id !== 'f-corretor-search') {
+        dd.style.display = 'none';
+        document.removeEventListener('mousedown', fechar);
+      }
+    };
+    document.addEventListener('mousedown', fechar);
+  }, 50);
+}
+
+function filtrarCorretorVendaDD(q) {
+  renderCorretorVendaDD(q);
+  const dd = document.getElementById('corretor-venda-dd');
+  if (dd) dd.style.display = 'block';
+}
+
+function renderCorretorVendaDD(q) {
+  const lista = document.getElementById('corretor-venda-dd-lista');
+  if (!lista) return;
+  const termo = (q || '').toLowerCase();
+  const todos = currentData?.corretores || [];
+  const filtrados = todos.filter(c => (c.nome||'').toLowerCase().includes(termo)).slice(0, 40);
+  lista.innerHTML = filtrados.map(c =>
+    `<div onclick="selecionarCorretorVenda('${c.id}','${(c.nome||'').replace(/'/g,"\\'")}')\"
+      style="padding:8px 12px;cursor:pointer;font-size:13px;border-top:1px solid rgba(255,255,255,.04)"
+      onmouseover="this.style.background='var(--navy3)'" onmouseout="this.style.background=''">
+      <span style="font-weight:600">${c.nome}</span>
+      ${c.creci ? `<span style="color:var(--text2);font-size:11px;margin-left:6px">CRECI ${c.creci}</span>` : ''}
+    </div>`
+  ).join('');
+}
+
+function selecionarCorretorVenda(id, nome) {
+  const hidden = document.getElementById('f-corretor');
+  const search = document.getElementById('f-corretor-search');
+  const dd = document.getElementById('corretor-venda-dd');
+  if (hidden) hidden.value = id;
+  if (search) search.value = nome;
+  if (dd) dd.style.display = 'none';
+  calcComissaoSplit();
+}
+
 // ── Cadastrar novo lead a partir do modal de venda ────────────────────────────
 let _vendaPendente = null;
 
@@ -2550,7 +2599,19 @@ function openVendaModal(venda = {}) {
         </div>
       </div>
       <div class="form-group"><label>Corretor</label>
-        <select id="f-corretor"><option value="">—</option>${(corretores||[]).map(c => `<option value="${c.id}" ${venda.corretor_id==c.id?'selected':''}>${c.nome}</option>`).join('')}</select>
+        <div style="position:relative">
+          <input id="f-corretor-search" type="text" autocomplete="off"
+            placeholder="Buscar corretor pelo nome..."
+            value="${venda.corretor_id ? ((corretores||[]).find(c=>c.id==venda.corretor_id)?.nome || '') : ''}"
+            oninput="filtrarCorretorVendaDD(this.value)"
+            onfocus="abrirCorretorVendaDD()"
+            style="width:100%;box-sizing:border-box">
+          <input id="f-corretor" type="hidden" value="${venda.corretor_id||''}">
+          <div id="corretor-venda-dd" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:200;background:var(--navy2);border:1px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)">
+            <div onclick="selecionarCorretorVenda('','')" style="padding:8px 12px;cursor:pointer;font-size:13px;color:var(--text2)" onmouseover="this.style.background='var(--navy3)'" onmouseout="this.style.background=''">— Sem corretor —</div>
+            <div id="corretor-venda-dd-lista"></div>
+          </div>
+        </div>
       </div>
       <div class="form-group"><label>Incorporador (Loteador)</label>
         <select id="f-cliente"><option value="">—</option>${(clientes||[]).map(c => `<option value="${c.id}" ${venda.cliente_id==c.id?'selected':''}>${c.razao_social}</option>`).join('')}</select>
