@@ -1193,7 +1193,7 @@ app.put("/api/config/cub-sc", autenticar, (req, res) => {
 app.post("/api/vendas/:id/gerar-forma-pagamento", autenticar, async (req, res) => {
   if (!process.env.ANTHROPIC_API_KEY) return err(res, 'ANTHROPIC_API_KEY não configurada');
   const venda = db.prepare(`
-    SELECT v.*, l.nome as lead_nome, e.nome as emp_nome
+    SELECT v.*, l.nome as lead_nome, e.nome as emp_nome, e.valor_cub
     FROM vendas v
     LEFT JOIN leads l ON l.id = v.lead_id
     LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
@@ -1202,11 +1202,14 @@ app.post("/api/vendas/:id/gerar-forma-pagamento", autenticar, async (req, res) =
   if (!venda) return err(res, 'Venda não encontrada');
 
   const fmtVal = n => Number(n||0).toLocaleString('pt-BR', {style:'currency', currency:'BRL', minimumFractionDigits:2});
+  const cubRef = venda.valor_cub ? parseFloat(venda.valor_cub) : null;
+  const fmtCub = v => cubRef ? (v / cubRef).toFixed(2).replace('.', ',') + ' CUB/SC' : null;
 
   // Monta contexto financeiro
   let ctx = `Empreendimento: ${venda.emp_nome || 'não informado'}\n`;
   ctx += `Imóvel: ${venda.imovel || 'não informado'}\n`;
   ctx += `Valor total: ${fmtVal(venda.valor)}\n`;
+  if (cubRef) ctx += `Valor de referência CUB/SC: R$ ${cubRef.toLocaleString('pt-BR', {minimumFractionDigits:2})} por CUB\n`;
 
   if (venda.valor_entrada) {
     const pct = venda.valor ? ((venda.valor_entrada / venda.valor) * 100).toFixed(1) : '';
@@ -1231,8 +1234,17 @@ app.post("/api/vendas/:id/gerar-forma-pagamento", autenticar, async (req, res) =
     saldoParcelas.slice(0, 10).forEach((p, i) => {
       const dt = p.data ? new Date(p.data + 'T12:00:00').toLocaleDateString('pt-BR') : (p.vencimento || 'sem data');
       const titulo = p.titulo || p.descricao || `Parcela ${i+1}`;
-      const qtd = p.qtd && p.qtd > 1 ? `${p.qtd}x ` : '';
-      ctx += `  - ${titulo}: ${qtd}${fmtVal(p.valor)}${dt !== 'sem data' ? `, venc. ${dt}` : ''}${p.forma_pagamento ? `, ${p.forma_pagamento}` : ''}\n`;
+      const qtd = qtdNum > 1 ? `${qtdNum}x ` : '';
+      const cubEquiv = p.correcao === 'CUB/SC' && p.valor ? fmtCub(p.valor) : null;
+      const qtdNum = parseInt(p.qtd) || 1;
+      const cubTotalEquiv = p.correcao === 'CUB/SC' && p.valor && qtdNum > 1 ? fmtCub(p.valor * qtdNum) : null;
+      let linha = `  - ${titulo}: ${qtd}${fmtVal(p.valor)}`;
+      if (cubEquiv) linha += ` (equivalente a ${cubEquiv}${cubTotalEquiv ? `, total ${cubTotalEquiv}` : ''})`;
+      if (dt !== 'sem data') linha += `, venc. ${dt}`;
+      if (p.forma_pagamento) linha += `, ${p.forma_pagamento}`;
+      if (p.correcao && p.correcao !== 'Sem Correção') linha += `, corrigido pelo ${p.correcao}`;
+      if (p.juros) linha += `, juros ${p.juros}`;
+      ctx += linha + '\n';
     });
     if (saldoParcelas.length > 10) ctx += `  (... mais ${saldoParcelas.length - 10} parcelas)\n`;
   }
@@ -1246,7 +1258,11 @@ app.post("/api/vendas/:id/gerar-forma-pagamento", autenticar, async (req, res) =
     });
   }
 
-  const prompt = `Você é assistente jurídico imobiliário brasileiro. Com base nas informações financeiras abaixo, redija um parágrafo único, claro e objetivo, descrevendo a forma de pagamento para um contrato de compra e venda. Use linguagem formal mas direta. Não use títulos, bullets nem markdown — apenas texto corrido adequado para inserção em cláusula contratual. Não mencione o empreendimento pelo nome nem o imóvel — apenas as condições de pagamento.
+  const cubInstrucao = cubRef
+    ? `Quando uma parcela for corrigida pelo CUB/SC, mencione o equivalente em CUB após o valor em reais, no formato: "R$ X.XXX,XX (equivalente a Y,YY CUB/SC)". Use sempre vírgula como separador decimal nos valores CUB. `
+    : '';
+
+  const prompt = `Você é assistente jurídico imobiliário brasileiro. Com base nas informações financeiras abaixo, redija um parágrafo único, claro e objetivo, descrevendo a forma de pagamento para um contrato de compra e venda. Use linguagem formal mas direta. Não use títulos, bullets nem markdown — apenas texto corrido adequado para inserção em cláusula contratual. Não mencione o empreendimento pelo nome nem o imóvel — apenas as condições de pagamento. ${cubInstrucao}
 
 Dados da negociação:
 ${ctx}
