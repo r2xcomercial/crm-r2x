@@ -869,18 +869,32 @@ function gerarContratoVerticalBuf(vendaId) {
     const isPJ = !!lead.pessoa_juridica;
 
     // Qualificação do comprador
+    const _endVertical = (end, num, comp, bairro, cidade, estado, cep) => {
+      const p = [end];
+      if (num) p.push('nº ' + num);
+      if (comp) p.push(comp);
+      if (bairro) p.push(bairro);
+      p.push((cidade || '') + '/' + (estado || 'SC'));
+      if (cep) p.push('CEP ' + cep);
+      return p.filter(Boolean).join(', ');
+    };
     let compradorQual = '';
     if (isPJ) {
-      compradorQual = `${lead.razao_social}, pessoa jurídica de direito privado, inscrita no CNPJ sob nº ${lead.cnpj || '___'}, com sede na ${lead.lead_endereco || '___'}, ${lead.lead_cidade || '___'}/${lead.lead_estado || 'SC'}`;
+      const sedePJ = _endVertical(lead.lead_endereco, lead.lead_numero, lead.lead_complemento, lead.lead_bairro, lead.lead_cidade, lead.lead_estado, lead.lead_cep);
+      compradorQual = `${lead.razao_social || '___'}, pessoa jurídica de direito privado, inscrita no CNPJ sob nº ${lead.cnpj || '___'}`;
+      if (lead.inscricao_estadual) compradorQual += `, Inscrição Estadual ${lead.inscricao_estadual}`;
+      compradorQual += `, com sede na ${sedePJ || '___'}`;
       if (lead.representante_nome) {
-        compradorQual += `, neste ato representada por ${lead.representante_nome}, ${lead.representante_cargo || 'representante legal'}, CPF ${lead.representante_cpf || '___'}`;
+        compradorQual += `, neste ato representada pelo seu ${lead.representante_cargo || 'representante legal'} ${lead.representante_nome}`;
+        compradorQual += `, portador(a) do RG nº ${lead.representante_rg || '___'}, inscrito(a) no CPF nº ${lead.representante_cpf || '___'}`;
       }
     } else {
       compradorQual = `${lead.lead_nome || '___'}`;
       if (lead.estado_civil) compradorQual += `, ${lead.estado_civil}`;
       if (lead.profissao) compradorQual += `, ${lead.profissao}`;
       compradorQual += `, portador(a) do CPF nº ${lead.cpf || '___'}, RG nº ${lead.rg || '___'}`;
-      if (lead.lead_endereco) compradorQual += `, residente e domiciliado(a) na ${lead.lead_endereco}${lead.lead_numero ? ', nº '+lead.lead_numero : ''}${lead.lead_bairro ? ', '+lead.lead_bairro : ''}, ${lead.lead_cidade || ''}/${lead.lead_estado || 'SC'}`;
+      if (lead.nome_pai || lead.nome_mae) compradorQual += `, filho(a) de ${lead.nome_pai || '___'}${lead.nome_mae ? ' e ' + lead.nome_mae : ''}`;
+      if (lead.lead_endereco) compradorQual += `, residente e domiciliado(a) na ${_endVertical(lead.lead_endereco, lead.lead_numero, lead.lead_complemento, lead.lead_bairro, lead.lead_cidade, lead.lead_estado, lead.lead_cep)}`;
     }
 
     // Vagas de garagem
@@ -1060,11 +1074,12 @@ function gerarContratoGoldenNorthBuf(vendaId, extra = {}) {
   const venda = db.prepare(`
     SELECT v.*, v.valor as valor_total,
       l.nome as lead_nome, l.cpf as lead_cpf, l.rg as lead_rg,
-      l.estado_civil, l.profissao,
+      l.estado_civil, l.profissao, l.nome_pai, l.nome_mae,
       l.endereco as lead_endereco, l.numero as lead_numero,
-      l.bairro as lead_bairro, l.cep as lead_cep,
+      l.complemento as lead_complemento, l.bairro as lead_bairro, l.cep as lead_cep,
       l.cidade as lead_cidade, l.estado as lead_estado,
-      l.pessoa_juridica, l.cnpj, l.razao_social, l.representante_nome, l.representante_cpf, l.representante_cargo,
+      l.pessoa_juridica, l.cnpj, l.razao_social, l.inscricao_estadual,
+      l.representante_nome, l.representante_cpf, l.representante_rg, l.representante_cargo,
       c.nome as corretor_nome, c.creci as corretor_creci,
       u.lote as unidade_lote, u.quadra as unidade_quadra, u.area_m2 as unidade_area,
       e.nome as emp_nome
@@ -1080,14 +1095,21 @@ function gerarContratoGoldenNorthBuf(vendaId, extra = {}) {
   const isPJ = !!venda.pessoa_juridica;
   let compradorQual = '';
   if (isPJ) {
-    compradorQual = `${venda.razao_social || '___'}, pessoa jurídica, CNPJ nº ${venda.cnpj || '___'}`;
-    if (venda.representante_nome) compradorQual += `, representada por ${venda.representante_nome}${venda.representante_cargo ? ', ' + venda.representante_cargo : ''}, CPF ${venda.representante_cpf || '___'}`;
+    const sedeGN = [venda.lead_endereco, venda.lead_numero, venda.lead_complemento, venda.lead_bairro, venda.lead_cidade, venda.lead_estado].filter(Boolean).join(', ');
+    compradorQual = `${venda.razao_social || '___'}, pessoa jurídica de direito privado, CNPJ nº ${venda.cnpj || '___'}`;
+    if (venda.inscricao_estadual) compradorQual += `, Inscrição Estadual ${venda.inscricao_estadual}`;
+    if (sedeGN) compradorQual += `, com sede na ${sedeGN}`;
+    if (venda.representante_nome) {
+      compradorQual += `, representada pelo seu ${venda.representante_cargo || 'representante legal'} ${venda.representante_nome}`;
+      compradorQual += `, RG nº ${venda.representante_rg || '___'}, CPF nº ${venda.representante_cpf || '___'}`;
+    }
   } else {
     compradorQual = `${venda.lead_nome || '___'}`;
     if (venda.estado_civil) compradorQual += `, ${venda.estado_civil}`;
     if (venda.profissao) compradorQual += `, ${venda.profissao}`;
     compradorQual += `, inscrito(a) no CPF sob o n. ${venda.lead_cpf || '___'}, RG n. ${venda.lead_rg || '___'}`;
-    const endParts = [venda.lead_endereco, venda.lead_numero, venda.lead_bairro, venda.lead_cidade, venda.lead_estado].filter(Boolean);
+    if (venda.nome_pai || venda.nome_mae) compradorQual += `, filho(a) de ${venda.nome_pai || '___'}${venda.nome_mae ? ' e ' + venda.nome_mae : ''}`;
+    const endParts = [venda.lead_endereco, venda.lead_numero, venda.lead_complemento, venda.lead_bairro, venda.lead_cidade, venda.lead_estado].filter(Boolean);
     if (endParts.length) compradorQual += `, residente e domiciliado(a) em ${endParts.join(', ')}`;
   }
 
