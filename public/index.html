@@ -4702,7 +4702,6 @@ async function renderFinanceiro(filter = '') {
       <button class="fin-tab ${finTab==='comissoes'?'active':''}" onclick="setFinTab('comissoes')">💳 Comissões Corretores</button>
       <button class="fin-tab ${finTab==='fluxo'?'active':''}" onclick="setFinTab('fluxo')">📅 Fluxo de Caixa</button>
       <button class="fin-tab ${finTab==='fixas'?'active':''}" onclick="setFinTab('fixas')">🔁 Despesas Fixas</button>
-      <button class="fin-tab ${finTab==='impostos'?'active':''}" onclick="setFinTab('impostos')">🏛️ Impostos</button>
       <button class="fin-tab ${finTab==='reconciliacao'?'active':''}" onclick="setFinTab('reconciliacao')">🔗 Reconciliação</button>
       <button class="fin-tab ${finTab==='saldo-inc'?'active':''}" onclick="setFinTab('saldo-inc')">🏦 Saldo Incorporadoras</button>
       <button class="fin-tab ${finTab==='dre'?'active':''}" onclick="setFinTab('dre')">📊 DRE</button>
@@ -4714,7 +4713,7 @@ async function renderFinanceiro(filter = '') {
 
 function setFinTab(tab) {
   finTab = tab;
-  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo', fixas:'Fixas', impostos:'Impost', reconciliacao:'Reconcil', 'saldo-inc':'Saldo Incorpor', dre:'DRE' };
+  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo', fixas:'Fixas', reconciliacao:'Reconcil', 'saldo-inc':'Saldo Incorpor', dre:'DRE' };
   document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(keys[tab]||'')));
   renderFinTab();
 }
@@ -4890,8 +4889,6 @@ function renderFinTab() {
           </table>
         </div>`;
     });
-  } else if (finTab === 'impostos') {
-    renderImpostos(el);
   } else if (finTab === 'fixas') {
     renderDespesasFixas(el);
   } else if (finTab === 'fluxo') {
@@ -4930,7 +4927,8 @@ function renderFinTab() {
   }
 }
 
-async function renderImpostos(el) {
+// [módulo impostos removido — lançar imposto como saída financeira com categoria "imposto"]
+async function renderImpostos_REMOVIDO(el) {
   el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text2)">Carregando...</div>';
   const [cfgR, apurR] = await Promise.all([get('/api/impostos/config'), get('/api/impostos/apuracoes')]);
   const cfg = cfgR.data || {};
@@ -5081,7 +5079,7 @@ async function renderImpostos(el) {
   `;
 }
 
-async function salvarConfigImpostos() {
+async function salvarConfigImpostos_REMOVIDO() {
   const body = {
     iss_pct: parseFloat(document.getElementById('cfg-iss').value)||3,
     pis_pct: parseFloat(document.getElementById('cfg-pis').value)||0.65,
@@ -5095,7 +5093,7 @@ async function salvarConfigImpostos() {
   else toast(r.error, 'error');
 }
 
-async function apurarImpostos(tipo) {
+async function apurarImpostos_REMOVIDO(tipo) {
   let periodo;
   let incluir = [];
   if (tipo === 'mensal') {
@@ -5121,7 +5119,7 @@ async function apurarImpostos(tipo) {
   setFinTab('impostos');
 }
 
-async function pagarImposto(id) {
+async function pagarImposto_REMOVIDO(id) {
   const data = prompt('Data do pagamento (YYYY-MM-DD):', new Date().toISOString().slice(0,10));
   if (!data) return;
   const r = await post(`/api/impostos/apuracoes/${id}/pagar`, { data_pagamento: data });
@@ -5130,7 +5128,7 @@ async function pagarImposto(id) {
   setFinTab('impostos');
 }
 
-async function deleteApuracao(id) {
+async function deleteApuracao_REMOVIDO(id) {
   if (!confirm('Excluir esta apuração?')) return;
   await del(`/api/impostos/apuracoes/${id}`);
   toast('Apuração excluída');
@@ -6176,8 +6174,8 @@ function exportarDRE() {
 
 const TIPOS_ENTRADA = ['comissao_venda','fee_fixo_mensal','consultoria','bonus','outro'];
 const TIPOS_ENTRADA_LABEL = { comissao_venda:'Comissão Venda', fee_fixo_mensal:'Fee Fixo Mensal', consultoria:'Consultoria', bonus:'Bônus', outro:'Outro' };
-const CATEGORIAS_SAIDA = ['marketing','operacional','pessoal','evento','tecnologia','juridico','contabilidade','imposto','outro'];
-const CATEGORIAS_SAIDA_LABEL = { marketing:'Marketing', operacional:'Operacional', pessoal:'Pessoal', evento:'Evento', tecnologia:'Tecnologia', juridico:'Jurídico', contabilidade:'Contabilidade', imposto:'Imposto', outro:'Outro' };
+const CATEGORIAS_SAIDA = ['imposto','marketing','operacional','pessoal','evento','tecnologia','juridico','contabilidade','outro'];
+const CATEGORIAS_SAIDA_LABEL = { imposto:'🏛️ Impostos / Tributos', marketing:'Marketing', operacional:'Operacional', pessoal:'Pessoal', evento:'Evento', tecnologia:'Tecnologia', juridico:'Jurídico', contabilidade:'Contabilidade', outro:'Outro' };
 
 function openEntradaModal(e = {}) {
   const isNew = !e.id;
@@ -7157,7 +7155,7 @@ function openSaidaModal(e = {}) {
     <div class="form-grid">
       <div class="form-group span2"><label>Descrição *</label><input id="f-desc" value="${e.descricao||''}" placeholder="Ex: Tráfego pago Google Ads"></div>
       <div class="form-group"><label>Categoria</label>
-        <select id="f-cat">${['marketing','pessoal','operacional','evento','tecnologia','outro'].map(t => `<option ${e.categoria===t?'selected':''}>${t}</option>`).join('')}</select>
+        <select id="f-cat">${CATEGORIAS_SAIDA.map(c => `<option value="${c}" ${e.categoria===c?'selected':''}>${CATEGORIAS_SAIDA_LABEL[c]||c}</option>`).join('')}</select>
       </div>
       <div class="form-group"><label>Empreendimento</label>
         <select id="f-emp"><option value="">Institucional</option>${(currentData.emp||[]).map(ep => `<option value="${ep.id}" ${e.empreendimento_id==ep.id?'selected':''}>${ep.nome}</option>`).join('')}</select>
