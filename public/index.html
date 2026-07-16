@@ -4796,7 +4796,7 @@ function renderFinTab() {
                 <td style="padding:5px 12px;white-space:nowrap">${e.data_recebimento?fmtDate(e.data_recebimento):'—'}</td>
                 <td style="padding:5px 12px"><span class="badge ${e.status==='recebido'?'badge-green':'badge-yellow'}" style="font-size:10px;padding:2px 6px">${e.status}</span></td>
                 <td style="padding:4px 8px;white-space:nowrap">
-                  ${e.status!=='recebido'?`<button class="btn-icon" title="Marcar recebido" onclick="marcarRecebido(${e.id})">✅</button>`:''}
+                  ${e.status!=='recebido'?`<button class="btn-icon" title="Marcar recebido" onclick="marcarRecebido(${e.id})">✅</button>`:`<button class="btn-icon" title="Reverter para pendente" onclick="reverterEntrada(${e.id})" style="opacity:.7">↩️</button>`}
                   <button class="btn-icon" title="Emitir recibo" onclick="emitirRecibo(${e.id})">🧾</button>
                   <button class="btn-icon btn-edit" onclick="editEntrada(${e.id})">✏️</button>
                   <button class="btn-icon btn-delete" onclick="deleteEntrada(${e.id})">🗑️</button>
@@ -6775,6 +6775,13 @@ function emitirRecibo(id) {
 
 async function editEntrada(id) { openEntradaModal(currentData.entradas.find(e => e.id === id)); }
 async function deleteEntrada(id) { if(!confirm('Excluir?')) return; await del(`/api/financeiro/entradas/${id}`); toast('Excluído'); renderFinanceiro(); }
+async function reverterEntrada(id) {
+  if (!confirm('Reverter este lançamento para PENDENTE?\n\nSe ele foi dividido por uma baixa parcial, o saldo será reconstituído automaticamente.')) return;
+  const r = await post(`/api/financeiro/entradas/${id}/reverter`, {});
+  if (!r.ok) return toast(r.error || 'Erro ao reverter', 'error');
+  toast('Lançamento revertido para pendente');
+  renderFinanceiro();
+}
 
 // ─── IMPORTAÇÃO DE FATURA DE CARTÃO ──────────────────────────────────────────
 

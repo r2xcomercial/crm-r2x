@@ -2912,6 +2912,29 @@ app.delete("/api/financeiro/entradas/:id", (req, res) => {
   ok(res, {});
 });
 
+// Reverte uma entrada recebida para pendente (manual, para casos sem vínculo de avulso)
+app.post("/api/financeiro/entradas/:id/reverter", autenticar, (req, res) => {
+  const id = parseInt(req.params.id);
+  const rev = db.transaction(() => {
+    const e = db.prepare('SELECT * FROM financeiro_entradas WHERE id=?').get(id);
+    if (!e) return { ok: false, error: 'Entrada não encontrada' };
+    if (e.status !== 'recebido') return { ok: false, error: 'Entrada não está como recebida' };
+    // Verifica se foi dividida — reconstitui o valor original
+    const split = db.prepare('SELECT * FROM financeiro_entradas WHERE split_origem_id=?').get(id);
+    if (split) {
+      const valorOriginal = parseFloat((e.valor + split.valor).toFixed(2));
+      db.prepare('UPDATE financeiro_entradas SET status=\'pendente\', data_recebimento=NULL, valor=?, baixa_avulso_id=NULL WHERE id=?').run(valorOriginal, id);
+      db.prepare('DELETE FROM financeiro_entradas WHERE id=?').run(split.id);
+    } else {
+      db.prepare('UPDATE financeiro_entradas SET status=\'pendente\', data_recebimento=NULL, baixa_avulso_id=NULL WHERE id=?').run(id);
+    }
+    return { ok: true };
+  });
+  const r = rev();
+  if (!r.ok) return err(res, r.error);
+  ok(res, {});
+});
+
 // ─── FINANCEIRO SAÍDAS ────────────────────────────────────────────────────────
 
 app.get("/api/financeiro/saidas", (req, res) => {
@@ -5788,6 +5811,10 @@ try { db.exec('ALTER TABLE pagamentos_avulsos_incorporadora ADD COLUMN imposto_r
 try { db.exec('ALTER TABLE pagamentos_avulsos_incorporadora ADD COLUMN nf_numero TEXT'); } catch(e) {}
 try { db.exec('ALTER TABLE pagamentos_avulsos_incorporadora ADD COLUMN nf_data TEXT'); } catch(e) {}
 try { db.exec('ALTER TABLE pagamentos_avulsos_incorporadora ADD COLUMN saida_imposto_id INTEGER'); } catch(e) {}
+// Rastreamento de vínculo: qual avulso fez a baixa de cada entrada
+try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN baixa_avulso_id INTEGER'); } catch(e) {}
+// Para entradas criadas como saldo após baixa parcial: qual entrada original foi dividida
+try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN split_origem_id INTEGER'); } catch(e) {}
 
 app.get('/api/financeiro/pagamentos-avulsos', autenticar, (req, res) => {
   const rows = db.prepare(`
@@ -5843,7 +5870,7 @@ app.post('/api/financeiro/pagamentos-avulsos', autenticar, (req, res) => {
 
     // 3. Aplica baixa automática nos lançamentos mais antigos usando o valor bruto
     const baixaResult = _aplicarBaixaIncorporadora(
-      cliente_id, valorParaBaixa, data_recebimento, obsNfBaixa
+      cliente_id, valorParaBaixa, data_recebimento, obsNfBaixa, r.lastInsertRowid
     );
 
     return { id: r.lastInsertRowid, ...baixaResult };
@@ -5905,12 +5932,35 @@ app.put('/api/financeiro/pagamentos-avulsos/:id', autenticar, (req, res) => {
 });
 
 app.delete('/api/financeiro/pagamentos-avulsos/:id', autenticar, (req, res) => {
+  const avulsoId = parseInt(req.params.id);
   const del = db.transaction(() => {
-    const existing = db.prepare('SELECT saida_imposto_id FROM pagamentos_avulsos_incorporadora WHERE id=?').get(req.params.id);
-    if (existing?.saida_imposto_id) {
+    const existing = db.prepare('SELECT * FROM pagamentos_avulsos_incorporadora WHERE id=?').get(avulsoId);
+    if (!existing) return;
+
+    // 1. Exclui saída de imposto vinculada
+    if (existing.saida_imposto_id) {
       db.prepare('DELETE FROM financeiro_saidas WHERE id=?').run(existing.saida_imposto_id);
     }
-    db.prepare('DELETE FROM pagamentos_avulsos_incorporadora WHERE id=?').run(req.params.id);
+
+    // 2. Reverte entradas baixadas por este avulso
+    const baixadas = db.prepare(`SELECT * FROM financeiro_entradas WHERE baixa_avulso_id=?`).all(avulsoId);
+    for (const e of baixadas) {
+      // Verifica se foi uma entrada dividida (tem um saldo pendente criado)
+      const split = db.prepare(`SELECT * FROM financeiro_entradas WHERE split_origem_id=?`).get(e.id);
+      if (split) {
+        // Restaura valor original = baixa + saldo pendente, apaga o split
+        const valorOriginal = parseFloat((e.valor + split.valor).toFixed(2));
+        db.prepare(`UPDATE financeiro_entradas SET status='pendente', data_recebimento=NULL, valor=?, baixa_avulso_id=NULL WHERE id=?`)
+          .run(valorOriginal, e.id);
+        db.prepare(`DELETE FROM financeiro_entradas WHERE id=?`).run(split.id);
+      } else {
+        db.prepare(`UPDATE financeiro_entradas SET status='pendente', data_recebimento=NULL, baixa_avulso_id=NULL WHERE id=?`)
+          .run(e.id);
+      }
+    }
+
+    // 3. Exclui o pagamento avulso
+    db.prepare('DELETE FROM pagamentos_avulsos_incorporadora WHERE id=?').run(avulsoId);
   });
   del();
   ok(res, {});
@@ -6038,7 +6088,7 @@ app.get('/api/financeiro/preview-baixa/:clienteId', autenticar, (req, res) => {
 });
 
 // Função reutilizável de baixa — usada pelo endpoint manual e pelo registro automático de NF
-function _aplicarBaixaIncorporadora(clienteId, valor, dataRec, obsNf) {
+function _aplicarBaixaIncorporadora(clienteId, valor, dataRec, obsNf, avulsoId = null) {
   const entries = db.prepare(`
     SELECT fe.*
     FROM financeiro_entradas fe
@@ -6062,21 +6112,23 @@ function _aplicarBaixaIncorporadora(clienteId, valor, dataRec, obsNf) {
   for (const e of entries) {
     if (restante <= 0.005) break;
     if (e.valor <= restante + 0.005) {
-      db.prepare(`UPDATE financeiro_entradas SET status='recebido', data_recebimento=?, observacoes=? WHERE id=?`)
-        .run(dataRec, _obs(e.observacoes, null), e.id);
+      db.prepare(`UPDATE financeiro_entradas SET status='recebido', data_recebimento=?, observacoes=?, baixa_avulso_id=? WHERE id=?`)
+        .run(dataRec, _obs(e.observacoes, null), avulsoId, e.id);
       restante -= e.valor;
       baixados++;
     } else {
       const valorBaixa = parseFloat(restante.toFixed(2));
       const valorSobra = parseFloat((e.valor - valorBaixa).toFixed(2));
-      db.prepare(`UPDATE financeiro_entradas SET valor=?, status='recebido', data_recebimento=?, observacoes=? WHERE id=?`)
-        .run(valorBaixa, dataRec, _obs(e.observacoes, null), e.id);
+      // Guarda o valor original para poder reverter depois
+      db.prepare(`UPDATE financeiro_entradas SET valor=?, status='recebido', data_recebimento=?, observacoes=?, baixa_avulso_id=? WHERE id=?`)
+        .run(valorBaixa, dataRec, _obs(e.observacoes, null), avulsoId, e.id);
+      // Entrada de saldo — marcada com split_origem_id para reversão
       db.prepare(`INSERT INTO financeiro_entradas
-        (empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, status, observacoes, parcela_num, parcela_total, tem_nf_propria)
-        VALUES (?,?,?,?,?,?,'pendente',?,?,?,?)`).run(
+        (empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, status, observacoes, parcela_num, parcela_total, tem_nf_propria, split_origem_id)
+        VALUES (?,?,?,?,?,?,'pendente',?,?,?,?,?)`).run(
         e.empreendimento_id, e.venda_id, e.descricao, e.tipo, valorSobra, e.data_prevista,
         _obs(e.observacoes, '[saldo após baixa parcial]'),
-        e.parcela_num || null, e.parcela_total || null, e.tem_nf_propria || 1
+        e.parcela_num || null, e.parcela_total || null, e.tem_nf_propria || 1, e.id
       );
       restante = 0;
       divididos++;
