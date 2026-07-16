@@ -5810,25 +5810,28 @@ app.post('/api/financeiro/pagamentos-avulsos', autenticar, (req, res) => {
   // valor = líquido (o que a R2X efetivamente recebe)
   const valorLiquido = parseFloat(valor);
 
+  const valorParaBaixa = bruto || valorLiquido; // usa bruto para abater a dívida
+  const nfRef = nf_numero ? ` - NF ${nf_numero}` : '';
+  const obsNfBaixa = nf_numero
+    ? `NF ${nf_numero}${nf_data ? ' (' + nf_data + ')' : ''}`
+    : (descricao || null);
+
   const insert = db.transaction(() => {
+    // 1. Saída de imposto retido
     let saida_id = null;
     if (retido && retido > 0) {
       const empId = empreendimento_id ? parseInt(empreendimento_id) : null;
-      const nfRef = nf_numero ? ` - NF ${nf_numero}` : '';
       const sr = db.prepare(`INSERT INTO financeiro_saidas
         (empreendimento_id, descricao, categoria, valor, data_pagamento, status, recorrente, observacoes)
         VALUES (?,?,?,?,?,?,?,?)`).run(
-        empId,
-        `RETENÇÕES FEDERAIS${nfRef}`,
-        'imposto',
-        retido,
-        data_recebimento,
-        'pago',
-        0,
+        empId, `RETENÇÕES FEDERAIS${nfRef}`, 'imposto', retido,
+        data_recebimento, 'pago', 0,
         `Imposto retido pelo incorporador na NF${nfRef}. Pago por conta da R2X.`
       );
       saida_id = sr.lastInsertRowid;
     }
+
+    // 2. Registra o pagamento avulso
     const r = db.prepare(`INSERT INTO pagamentos_avulsos_incorporadora
       (cliente_id, empreendimento_id, valor, data_recebimento, descricao, observacoes,
        valor_bruto_nf, imposto_retido, nf_numero, nf_data, saida_imposto_id)
@@ -5837,11 +5840,17 @@ app.post('/api/financeiro/pagamentos-avulsos', autenticar, (req, res) => {
       valorLiquido, data_recebimento, descricao || null, observacoes || null,
       bruto, retido || null, nf_numero || null, nf_data || null, saida_id
     );
-    return r.lastInsertRowid;
+
+    // 3. Aplica baixa automática nos lançamentos mais antigos usando o valor bruto
+    const baixaResult = _aplicarBaixaIncorporadora(
+      cliente_id, valorParaBaixa, data_recebimento, obsNfBaixa
+    );
+
+    return { id: r.lastInsertRowid, ...baixaResult };
   });
 
-  const newId = insert();
-  ok(res, { id: newId });
+  const result = insert();
+  ok(res, result);
 });
 
 app.put('/api/financeiro/pagamentos-avulsos/:id', autenticar, (req, res) => {
@@ -6028,65 +6037,61 @@ app.get('/api/financeiro/preview-baixa/:clienteId', autenticar, (req, res) => {
   ok(res, { a_baixar: aBaixar, pendentes_restantes: entries.length - aBaixar.length, total_baixa: valor - Math.max(0, restante) });
 });
 
-app.post('/api/financeiro/aplicar-baixa-incorporadora', autenticar, (req, res) => {
-  const { cliente_id, valor, data_recebimento, observacao_nf } = req.body;
-  if (!cliente_id || !valor || valor <= 0) return err(res, 'Parâmetros inválidos');
-
-  const dataRec = data_recebimento || new Date().toISOString().slice(0, 10);
-  const obsNf = observacao_nf ? observacao_nf.trim() : null;
-
+// Função reutilizável de baixa — usada pelo endpoint manual e pelo registro automático de NF
+function _aplicarBaixaIncorporadora(clienteId, valor, dataRec, obsNf) {
   const entries = db.prepare(`
     SELECT fe.*
     FROM financeiro_entradas fe
     JOIN empreendimentos e ON e.id = fe.empreendimento_id
     WHERE e.cliente_id = ? AND fe.status = 'pendente' AND fe.valor > 0
     ORDER BY COALESCE(fe.data_prevista, fe.criado_em) ASC, fe.id ASC
-  `).all(parseInt(cliente_id));
+  `).all(parseInt(clienteId));
 
   let restante = parseFloat(valor);
   let baixados = 0;
   let divididos = 0;
 
-  const _obsEntry = (obsAtual, sufixo) => {
-    const partes = [];
-    if (obsAtual) partes.push(obsAtual);
-    if (obsNf) partes.push(obsNf);
-    if (sufixo) partes.push(sufixo);
-    return partes.join(' | ') || null;
+  const _obs = (obs, sufixo) => {
+    const p = [];
+    if (obs) p.push(obs);
+    if (obsNf) p.push(obsNf);
+    if (sufixo) p.push(sufixo);
+    return p.join(' | ') || null;
   };
 
-  const aplicar = db.transaction(() => {
-    for (const e of entries) {
-      if (restante <= 0.005) break;
-      if (e.valor <= restante + 0.005) {
-        // Baixa total
-        db.prepare(`UPDATE financeiro_entradas SET status='recebido', data_recebimento=?, observacoes=? WHERE id=?`)
-          .run(dataRec, _obsEntry(e.observacoes, null), e.id);
-        restante -= e.valor;
-        baixados++;
-      } else {
-        // Divide: cria nova entrada para o restante pendente
-        const valorBaixa = parseFloat(restante.toFixed(2));
-        const valorSobra = parseFloat((e.valor - valorBaixa).toFixed(2));
-        db.prepare(`UPDATE financeiro_entradas SET valor=?, status='recebido', data_recebimento=?, observacoes=? WHERE id=?`)
-          .run(valorBaixa, dataRec, _obsEntry(e.observacoes, null), e.id);
-        db.prepare(`INSERT INTO financeiro_entradas
-          (empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, status, observacoes, parcela_num, parcela_total, tem_nf_propria)
-          VALUES (?,?,?,?,?,?,'pendente',?,?,?,?)`).run(
-          e.empreendimento_id, e.venda_id,
-          e.descricao, e.tipo, valorSobra,
-          e.data_prevista,
-          _obsEntry(e.observacoes, '[saldo após baixa parcial]'),
-          e.parcela_num || null, e.parcela_total || null, e.tem_nf_propria || 1
-        );
-        restante = 0;
-        divididos++;
-      }
+  for (const e of entries) {
+    if (restante <= 0.005) break;
+    if (e.valor <= restante + 0.005) {
+      db.prepare(`UPDATE financeiro_entradas SET status='recebido', data_recebimento=?, observacoes=? WHERE id=?`)
+        .run(dataRec, _obs(e.observacoes, null), e.id);
+      restante -= e.valor;
+      baixados++;
+    } else {
+      const valorBaixa = parseFloat(restante.toFixed(2));
+      const valorSobra = parseFloat((e.valor - valorBaixa).toFixed(2));
+      db.prepare(`UPDATE financeiro_entradas SET valor=?, status='recebido', data_recebimento=?, observacoes=? WHERE id=?`)
+        .run(valorBaixa, dataRec, _obs(e.observacoes, null), e.id);
+      db.prepare(`INSERT INTO financeiro_entradas
+        (empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, status, observacoes, parcela_num, parcela_total, tem_nf_propria)
+        VALUES (?,?,?,?,?,?,'pendente',?,?,?,?)`).run(
+        e.empreendimento_id, e.venda_id, e.descricao, e.tipo, valorSobra, e.data_prevista,
+        _obs(e.observacoes, '[saldo após baixa parcial]'),
+        e.parcela_num || null, e.parcela_total || null, e.tem_nf_propria || 1
+      );
+      restante = 0;
+      divididos++;
     }
-  });
+  }
 
-  aplicar();
-  ok(res, { baixados, divididos, aplicado: parseFloat((parseFloat(valor) - Math.max(0, restante)).toFixed(2)) });
+  return { baixados, divididos, aplicado: parseFloat((parseFloat(valor) - Math.max(0, restante)).toFixed(2)) };
+}
+
+app.post('/api/financeiro/aplicar-baixa-incorporadora', autenticar, (req, res) => {
+  const { cliente_id, valor, data_recebimento, observacao_nf } = req.body;
+  if (!cliente_id || !valor || valor <= 0) return err(res, 'Parâmetros inválidos');
+  const dataRec = data_recebimento || new Date().toISOString().slice(0, 10);
+  const result = db.transaction(() => _aplicarBaixaIncorporadora(cliente_id, valor, dataRec, observacao_nf?.trim() || null))();
+  ok(res, result);
 });
 
 // ─── START ────────────────────────────────────────────────────────────────────

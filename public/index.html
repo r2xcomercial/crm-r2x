@@ -5921,7 +5921,12 @@ async function abrirModalPagtoAvulso(clienteIdPresel, nomePresel) {
     if (!body.data_recebimento) return toast('Informe a data', 'error');
     const r = await post('/api/financeiro/pagamentos-avulsos', body);
     if (!r.ok) return toast(r.error, 'error');
-    toast('Pagamento registrado!');
+    const fmtV = v => 'R$ ' + Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const { baixados, divididos, aplicado } = r.data || {};
+    let msg = 'Pagamento registrado!';
+    if (baixados > 0) msg += ` • ${baixados} lançamento(s) baixado(s) — ${fmtV(aplicado)} aplicado${divididos ? ` · ${divididos} dividido(s)` : ''}`;
+    if (body.imposto_retido) msg += ` • Saída RETENÇÕES FEDERAIS criada`;
+    toast(msg);
     closeModal();
     renderFinanceiro();
   });
