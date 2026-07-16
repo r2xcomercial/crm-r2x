@@ -2912,6 +2912,39 @@ app.delete("/api/financeiro/entradas/:id", (req, res) => {
   ok(res, {});
 });
 
+// Reverte TODAS as entradas recebidas de um empreendimento (por nome ou id)
+app.post("/api/financeiro/entradas/reverter-empreendimento", autenticar, (req, res) => {
+  const { empreendimento_id, nome } = req.body;
+  let empId = empreendimento_id ? parseInt(empreendimento_id) : null;
+  if (!empId && nome) {
+    const emp = db.prepare("SELECT id FROM empreendimentos WHERE nome LIKE ?").get(`%${nome}%`);
+    if (!emp) return err(res, `Empreendimento "${nome}" não encontrado`);
+    empId = emp.id;
+  }
+  if (!empId) return err(res, 'Informe empreendimento_id ou nome');
+
+  const rev = db.transaction(() => {
+    const entradas = db.prepare(`SELECT * FROM financeiro_entradas WHERE empreendimento_id=? AND status='recebido'`).all(empId);
+    let revertidas = 0;
+    for (const e of entradas) {
+      // Se tem saldo split pendente, reconstitui o valor
+      const split = db.prepare(`SELECT * FROM financeiro_entradas WHERE split_origem_id=?`).get(e.id);
+      if (split) {
+        const valorOriginal = parseFloat((e.valor + split.valor).toFixed(2));
+        db.prepare(`UPDATE financeiro_entradas SET status='pendente', data_recebimento=NULL, valor=?, baixa_avulso_id=NULL WHERE id=?`).run(valorOriginal, e.id);
+        db.prepare(`DELETE FROM financeiro_entradas WHERE id=?`).run(split.id);
+      } else {
+        db.prepare(`UPDATE financeiro_entradas SET status='pendente', data_recebimento=NULL, baixa_avulso_id=NULL WHERE id=?`).run(e.id);
+      }
+      revertidas++;
+    }
+    return revertidas;
+  });
+
+  const total = rev();
+  ok(res, { revertidas: total, empreendimento_id: empId });
+});
+
 // Reverte uma entrada recebida para pendente (manual, para casos sem vínculo de avulso)
 app.post("/api/financeiro/entradas/:id/reverter", autenticar, (req, res) => {
   const id = parseInt(req.params.id);
