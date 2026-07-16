@@ -867,60 +867,167 @@ function kpi(icon, label, value, sub) {
 
 let leadsData = [], corretoresData = [], empData = [];
 
+window._leadsFiltros = window._leadsFiltros || { status:'', corretor_id:'', empreendimento_id:'' };
+
 async function renderLeads(filter = '') {
   const [lr, cr, er] = await Promise.all([get('/api/leads'), get('/api/corretores'), get('/api/empreendimentos')]);
   leadsData = lr.data; corretoresData = cr.data; empData = er.data;
-  const leads = filter ? leadsData.filter(l => (l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter) || (l.cidade||'').toLowerCase().includes(filter)) : leadsData;
   document.getElementById('badge-leads').textContent = leadsData.filter(l => l.status==='novo').length;
 
+  const fl = window._leadsFiltros;
   const statusColors = { novo:'badge-accent', qualificado:'badge-blue', com_corretor:'badge-blue', visitou:'badge-purple', proposta:'badge-yellow', reserva:'badge-orange', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
 
+  const corOpts = `<option value="">Todos os corretores</option>` +
+    (corretoresData||[]).map(c => `<option value="${c.id}" ${fl.corretor_id==c.id?'selected':''}>${c.nome}</option>`).join('');
+  const empOpts = `<option value="">Todos os empreendimentos</option>` +
+    (empData||[]).map(e => `<option value="${e.id}" ${fl.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('');
+
+  const leads = _filtrarLeads(filter);
+  const temFiltro = fl.status || fl.corretor_id || fl.empreendimento_id;
+
   document.getElementById('content').innerHTML = `
+    <div style="background:var(--navy2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:12px;color:var(--text2);font-weight:600;white-space:nowrap">🔍 Filtrar:</span>
+      <select onchange="window._leadsFiltros.status=this.value;aplicarFiltrosLead()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">
+        <option value="" ${!fl.status?'selected':''}>Todos os status</option>
+        <option value="novo" ${fl.status==='novo'?'selected':''}>📥 Novo</option>
+        <option value="qualificado" ${fl.status==='qualificado'?'selected':''}>✅ Qualificado</option>
+        <option value="com_corretor" ${fl.status==='com_corretor'?'selected':''}>👤 Distribuído</option>
+        <option value="visitou" ${fl.status==='visitou'?'selected':''}>🏠 Visitou</option>
+        <option value="proposta" ${fl.status==='proposta'?'selected':''}>📋 Proposta</option>
+        <option value="reserva" ${fl.status==='reserva'?'selected':''}>🔒 Reserva</option>
+        <option value="vendido" ${fl.status==='vendido'?'selected':''}>🏆 Vendido</option>
+        <option value="sem_venda" ${fl.status==='sem_venda'?'selected':''}>❌ Sem venda</option>
+      </select>
+      <select onchange="window._leadsFiltros.corretor_id=this.value;aplicarFiltrosLead()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${corOpts}</select>
+      <select onchange="window._leadsFiltros.empreendimento_id=this.value;aplicarFiltrosLead()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${empOpts}</select>
+      ${temFiltro ? `<button onclick="window._leadsFiltros={status:'',corretor_id:'',empreendimento_id:''};renderLeads()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
+      <div style="flex:1"></div>
+      <button onclick="navigate('kanban')" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">📋 Kanban</button>
+      <label style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">
+        📥 Importar XLSX<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importarLeads(this)">
+      </label>
+      <button onclick="exportarLeads()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">📊 Excel</button>
+      <button onclick="exportarLeadsPDF()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">🖨️ PDF</button>
+    </div>
     <div class="table-card">
-      <div class="table-header">
-        <div class="table-title">🎯 Leads (${leads.length})</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <select onchange="filterLeadStatus(this.value)" style="font-size:12px;padding:6px 10px">
-            <option value="">Todos os status</option>
-            <option value="novo">Novo</option>
-            <option value="qualificado">Qualificado</option>
-            <option value="visitou">Visitou</option>
-            <option value="proposta">Proposta</option>
-            <option value="vendido">Vendido</option>
-            <option value="perdido">Perdido</option>
-          </select>
-          <button onclick="navigate('kanban')" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">📋 Kanban</button>
-          <label style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">
-            📥 Importar XLSX<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importarLeads(this)">
-          </label>
-          <button onclick="exportarLeads()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">📊 Exportar Excel</button>
-        </div>
-      </div>
+      <div class="table-header"><div class="table-title">🎯 Leads (<span id="leads-count">${leads.length}</span>)</div></div>
       <table>
         <thead><tr>
           <th>Nome</th><th>Telefone</th><th>Cidade</th>
           <th>Status</th><th style="width:64px;text-align:center">Score</th>
           <th>Corretor</th><th>Empreendimento</th><th>Origem</th><th></th>
         </tr></thead>
-        <tbody>
-          ${leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="10">Nenhum lead encontrado</td></tr>'}
+        <tbody id="leads-tbody">
+          ${leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="9">Nenhum lead encontrado</td></tr>'}
         </tbody>
       </table>
     </div>
   `;
 }
 
+function _filtrarLeads(textFilter = '') {
+  const fl = window._leadsFiltros;
+  return leadsData.filter(l => {
+    if (textFilter && !((l.nome||'').toLowerCase().includes(textFilter) || (l.telefone||'').includes(textFilter) || (l.cidade||'').toLowerCase().includes(textFilter))) return false;
+    if (fl.status && l.status !== fl.status && !(fl.status==='sem_venda' && l.status==='perdido')) return false;
+    if (fl.corretor_id && String(l.corretor_id) !== String(fl.corretor_id)) return false;
+    if (fl.empreendimento_id && String(l.empreendimento_id) !== String(fl.empreendimento_id)) return false;
+    return true;
+  });
+}
+
+function aplicarFiltrosLead() {
+  const leads = _filtrarLeads();
+  const statusColors = { novo:'badge-accent', qualificado:'badge-blue', com_corretor:'badge-blue', visitou:'badge-purple', proposta:'badge-yellow', reserva:'badge-orange', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
+  const tbody = document.getElementById('leads-tbody');
+  const count = document.getElementById('leads-count');
+  if (tbody) tbody.innerHTML = leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="9">Nenhum lead encontrado</td></tr>';
+  if (count) count.textContent = leads.length;
+}
+
 function filterLeadStatus(status) {
-  const leads = status ? leadsData.filter(l => l.status === status) : leadsData;
-  // re-render with filtered
-  renderLeadsFiltered(leads);
+  window._leadsFiltros.status = status;
+  aplicarFiltrosLead();
 }
 
 function renderLeadsFiltered(leads) {
   const statusColors = { novo:'badge-accent', qualificado:'badge-blue', com_corretor:'badge-blue', visitou:'badge-purple', proposta:'badge-yellow', reserva:'badge-orange', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
-  document.querySelector('#content tbody').innerHTML = leads.length
-    ? leads.map(l => renderLeadRow(l, statusColors)).join('')
-    : '<tr class="empty-row"><td colspan="11">Nenhum lead</td></tr>';
+  const tbody = document.getElementById('leads-tbody') || document.querySelector('#content tbody');
+  if (tbody) tbody.innerHTML = leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="9">Nenhum lead</td></tr>';
+}
+
+function exportarLeadsPDF() {
+  const leads = _filtrarLeads();
+  const STATUS_LABEL = { novo:'Captado', qualificado:'Qualificado', com_corretor:'Distribuído', visitou:'Atend./Visita', proposta:'Proposta', reserva:'Reserva', vendido:'Venda', sem_venda:'Sem venda', perdido:'Sem venda' };
+  const fl = window._leadsFiltros;
+  const filtroDesc = [
+    fl.status ? STATUS_LABEL[fl.status]||fl.status : '',
+    fl.corretor_id ? (corretoresData||[]).find(c=>c.id==fl.corretor_id)?.nome||'' : '',
+    fl.empreendimento_id ? (empData||[]).find(e=>e.id==fl.empreendimento_id)?.nome||'' : '',
+  ].filter(Boolean).join(' · ') || 'Todos';
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><title>Leads — R2X</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0 }
+  body { font-family:Arial,sans-serif; padding:16px; color:#111; font-size:12px }
+  @page { size:A4 landscape; margin:10mm }
+  @media print { .no-print{display:none} }
+  h1 { font-size:18px; font-weight:900 }
+  .sub { font-size:11px; color:#6b7280; margin-top:2px }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; padding-bottom:10px; border-bottom:2px solid #111 }
+  .stats { display:flex; gap:12px; margin-bottom:12px }
+  .stat { border:1px solid #e5e7eb; border-radius:6px; padding:6px 14px; text-align:center }
+  .stat .n { font-size:18px; font-weight:900 }
+  .stat .l { font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:.5px }
+  table { width:100%; border-collapse:collapse }
+  th { background:#111827; color:#fff; padding:6px 8px; font-size:10px; font-weight:700; text-align:left; text-transform:uppercase; letter-spacing:.5px }
+  td { padding:5px 8px; font-size:11px; border-bottom:1px solid #e5e7eb }
+  tr:nth-child(even) td { background:#f9fafb }
+  .badge { display:inline-block; padding:2px 8px; border-radius:99px; font-size:9px; font-weight:700; color:#fff }
+  .btn-print { position:fixed; bottom:20px; right:20px; background:#111827; color:#fff; border:none; border-radius:8px; padding:10px 20px; font-size:13px; font-weight:700; cursor:pointer }
+</style></head><body>
+<div class="header">
+  <div>
+    <h1>🎯 Leads — R2X Aceleradora de Vendas</h1>
+    <div class="sub">Filtros: ${filtroDesc} · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:22px;font-weight:900">${leads.length}</div>
+    <div style="font-size:10px;color:#6b7280">leads</div>
+  </div>
+</div>
+<div class="stats">
+  ${Object.entries(leads.reduce((a,l)=>{a[STATUS_LABEL[l.status]||l.status]=(a[STATUS_LABEL[l.status]||l.status]||0)+1;return a},{})).sort((a,b)=>b[1]-a[1]).map(([s,n])=>`<div class="stat"><div class="n">${n}</div><div class="l">${s}</div></div>`).join('')}
+</div>
+<table>
+  <thead><tr><th>#</th><th>Nome</th><th>Telefone</th><th>Cidade</th><th>Status</th><th>Corretor</th><th>Empreendimento</th><th>Origem</th><th>Cadastro</th></tr></thead>
+  <tbody>
+    ${leads.map((l,i)=>{
+      const st = STATUS_LABEL[l.status]||l.status;
+      const bg = l.status==='vendido'?'#16a34a':l.status==='reserva'?'#d97706':l.status==='proposta'?'#ca8a04':l.status==='sem_venda'||l.status==='perdido'?'#dc2626':'#3b82f6';
+      return `<tr>
+        <td style="color:#6b7280">${i+1}</td>
+        <td><strong>${l.nome||'—'}</strong></td>
+        <td>${l.telefone||'—'}</td>
+        <td>${l.cidade||'—'}</td>
+        <td><span class="badge" style="background:${bg}">${st}</span></td>
+        <td>${l.corretor_nome||'—'}</td>
+        <td>${l.empreendimento_nome||'—'}</td>
+        <td>${l.origem||'—'}</td>
+        <td style="white-space:nowrap">${l.criado_em?l.criado_em.slice(0,10):'—'}</td>
+      </tr>`;
+    }).join('')}
+  </tbody>
+</table>
+<button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+${'<sc'+'ript>window.onload=()=>{}<'+'/sc'+'ript>'}
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
 }
 
 // ─── Renderização de linha de lead (shared) ───────────────────────────────────
@@ -2050,7 +2157,7 @@ async function loadPainelData() {
 // ─── VENDAS ───────────────────────────────────────────────────────────────────
 
 // Estado persistente dos filtros de vendas
-window._vendasFiltros = window._vendasFiltros || { mes: '', emp: '', incorporador: '' };
+window._vendasFiltros = window._vendasFiltros || { mes: '', emp: '', incorporador: '', corretor: '' };
 
 async function renderVendas(filter = '') {
   const [vr, cr, er, lr, clr] = await Promise.all([get('/api/vendas'), get('/api/corretores'), get('/api/empreendimentos'), get('/api/leads'), get('/api/clientes')]);
@@ -2063,6 +2170,7 @@ async function renderVendas(filter = '') {
   if (f.mes)         vendas = vendas.filter(v => v.data_venda && v.data_venda.slice(0,7) === f.mes);
   if (f.emp)         vendas = vendas.filter(v => String(v.empreendimento_id) === f.emp);
   if (f.incorporador) vendas = vendas.filter(v => String(v.cliente_id) === f.incorporador);
+  if (f.corretor)    vendas = vendas.filter(v => String(v.corretor_id) === f.corretor);
 
   // Opções de mês (baseado em todas as vendas, não filtradas)
   const meses = [...new Set((vr.data||[]).map(v => v.data_venda?.slice(0,7)).filter(Boolean))].sort().reverse();
@@ -2078,7 +2186,10 @@ async function renderVendas(filter = '') {
   const incOpts = `<option value="">Todos os incorporadores</option>` +
     (clr.data||[]).map(c => `<option value="${c.id}" ${f.incorporador===String(c.id)?'selected':''}>${c.razao_social}</option>`).join('');
 
-  const temFiltro = f.mes || f.emp || f.incorporador;
+  const corOpts2 = `<option value="">Todos os corretores</option>` +
+    (cr.data||[]).map(c => `<option value="${c.id}" ${f.corretor===String(c.id)?'selected':''}>${c.nome}</option>`).join('');
+
+  const temFiltro = f.mes || f.emp || f.incorporador || f.corretor;
 
   const totalVGV = vendas.filter(v => v.status==='ativo').reduce((s, v) => s + v.valor, 0);
   const totalR2X = vendas.filter(v => v.status==='ativo').reduce((s, v) => s + (v.comissao_r2x || 0), 0);
@@ -2092,17 +2203,19 @@ async function renderVendas(filter = '') {
     <!-- Filtros -->
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;background:var(--navy2);border:1px solid var(--border);border-radius:10px;padding:12px 16px">
       <span style="font-size:12px;color:var(--text2);font-weight:600;white-space:nowrap">🔍 Filtrar:</span>
-      <select onchange="window._vendasFiltros.mes=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer">${mesOpts}</select>
-      <select onchange="window._vendasFiltros.emp=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer">${empOpts}</select>
-      <select onchange="window._vendasFiltros.incorporador=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer">${incOpts}</select>
-      ${temFiltro ? `<button onclick="window._vendasFiltros={mes:'',emp:'',incorporador:''};renderVendas()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
+      <select onchange="window._vendasFiltros.mes=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;width:auto">${mesOpts}</select>
+      <select onchange="window._vendasFiltros.emp=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;width:auto">${empOpts}</select>
+      <select onchange="window._vendasFiltros.incorporador=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;width:auto">${incOpts}</select>
+      <select onchange="window._vendasFiltros.corretor=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;width:auto">${corOpts2}</select>
+      ${temFiltro ? `<button onclick="window._vendasFiltros={mes:'',emp:'',incorporador:'',corretor:''};renderVendas()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
     </div>
 
     <div class="table-card">
       <div class="table-header">
         <div class="table-title">🏆 Vendas (${vendas.length})</div>
         <div style="display:flex;gap:8px">
-          <button onclick="exportarVendas()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">📊 Exportar Excel</button>
+          <button onclick="exportarVendas()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">📊 Excel</button>
+          <button onclick="exportarVendasPDF()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">🖨️ PDF</button>
           <button onclick="renderComissoes()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">💰 Rel. Comissões</button>
         </div>
       </div>
@@ -11318,6 +11431,93 @@ function exportarVendas() {
   if (f.mes)         params.set('mes', f.mes);
   if (f.incorporador) params.set('incorporador', f.incorporador);
   window.open(`/api/exportar/vendas?${params.toString()}`, '_blank');
+}
+
+function exportarVendasPDF() {
+  const vendas = (currentData.vendas||[]).filter(v => {
+    const f = window._vendasFiltros || {};
+    if (f.mes && (!v.data_venda || v.data_venda.slice(0,7) !== f.mes)) return false;
+    if (f.emp && String(v.empreendimento_id) !== f.emp) return false;
+    if (f.incorporador && String(v.cliente_id) !== f.incorporador) return false;
+    if (f.corretor && String(v.corretor_id) !== f.corretor) return false;
+    return true;
+  });
+
+  const ativas  = vendas.filter(v => v.status === 'ativo');
+  const vgvTotal = ativas.reduce((s,v) => s+v.valor, 0);
+  const comR2X  = ativas.reduce((s,v) => s+(v.comissao_r2x||0), 0);
+  const comCor  = ativas.reduce((s,v) => s+(v.comissao_corretor_valor||0), 0);
+
+  const f = window._vendasFiltros || {};
+  const filtroDesc = [
+    f.mes ? (() => { const [y,m]=f.mes.split('-'); return new Date(+y,+m-1).toLocaleString('pt-BR',{month:'long',year:'numeric'}); })() : '',
+    f.emp ? (currentData.emp||[]).find(e=>String(e.id)===f.emp)?.nome||'' : '',
+    f.corretor ? (currentData.corretores||[]).find(c=>String(c.id)===f.corretor)?.nome||'' : '',
+  ].filter(Boolean).join(' · ') || 'Todos';
+
+  const fmtV = v => 'R$ ' + Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><title>Vendas — R2X</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0 }
+  body { font-family:Arial,sans-serif; padding:16px; color:#111; font-size:11px }
+  @page { size:A4 landscape; margin:10mm }
+  @media print { .no-print{display:none} }
+  h1 { font-size:17px; font-weight:900 }
+  .sub { font-size:10px; color:#6b7280; margin-top:2px }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; padding-bottom:10px; border-bottom:2px solid #111 }
+  .stats { display:flex; gap:10px; margin-bottom:12px }
+  .stat { border:1px solid #e5e7eb; border-radius:6px; padding:6px 14px; text-align:center; flex:1 }
+  .stat .n { font-size:16px; font-weight:900 }
+  .stat .l { font-size:9px; color:#6b7280; text-transform:uppercase; letter-spacing:.5px; margin-top:1px }
+  table { width:100%; border-collapse:collapse }
+  th { background:#111827; color:#fff; padding:5px 7px; font-size:9px; font-weight:700; text-align:left; text-transform:uppercase; letter-spacing:.5px }
+  td { padding:5px 7px; font-size:10px; border-bottom:1px solid #e5e7eb; vertical-align:middle }
+  tr:nth-child(even) td { background:#f9fafb }
+  tr.distrato td { opacity:.55 }
+  .badge { display:inline-block; padding:1px 7px; border-radius:99px; font-size:8px; font-weight:700; color:#fff }
+  .btn-print { position:fixed; bottom:20px; right:20px; background:#111827; color:#fff; border:none; border-radius:8px; padding:10px 20px; font-size:13px; font-weight:700; cursor:pointer }
+</style></head><body>
+<div class="header">
+  <div>
+    <h1>🏆 Vendas — R2X Aceleradora de Vendas</h1>
+    <div class="sub">Filtros: ${filtroDesc} · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+  </div>
+</div>
+<div class="stats">
+  <div class="stat"><div class="n">${ativas.length}</div><div class="l">Vendas ativas</div></div>
+  <div class="stat"><div class="n" style="color:#16a34a">${fmtV(vgvTotal)}</div><div class="l">VGV Total</div></div>
+  <div class="stat"><div class="n">${ativas.length?fmtV(vgvTotal/ativas.length):'—'}</div><div class="l">Ticket Médio</div></div>
+  <div class="stat"><div class="n" style="color:#16a34a">${fmtV(comR2X)}</div><div class="l">Comissão R2X</div></div>
+  <div class="stat"><div class="n">${fmtV(comCor)}</div><div class="l">Comissão Corretor</div></div>
+</div>
+<table>
+  <thead><tr><th>#</th><th>Data</th><th>Lead/Cliente</th><th>Imóvel</th><th>Empreendimento</th><th>Corretor</th><th>Status</th><th>Valor</th><th>Com. R2X</th><th>Com. Corretor</th></tr></thead>
+  <tbody>
+    ${vendas.map((v,i) => {
+      const bg = v.status==='ativo'?'#16a34a':v.status==='reserva'?'#d97706':'#dc2626';
+      return `<tr class="${v.status==='distrato'?'distrato':''}">
+        <td style="color:#6b7280">${i+1}</td>
+        <td style="white-space:nowrap">${v.data_venda?v.data_venda.slice(0,10):'—'}</td>
+        <td>${v.lead_nome||'—'}</td>
+        <td>${v.imovel||'—'}</td>
+        <td>${v.empreendimento_nome||'—'}</td>
+        <td>${v.corretor_nome||'—'}</td>
+        <td><span class="badge" style="background:${bg}">${v.status}</span></td>
+        <td style="font-weight:700;white-space:nowrap">${fmtV(v.valor)}</td>
+        <td style="white-space:nowrap">${v.comissao_r2x?fmtV(v.comissao_r2x):'—'}</td>
+        <td style="white-space:nowrap">${v.comissao_corretor_valor?fmtV(v.comissao_corretor_valor):'—'}</td>
+      </tr>`;
+    }).join('')}
+  </tbody>
+</table>
+<button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
 }
 
 // ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
