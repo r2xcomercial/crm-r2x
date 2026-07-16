@@ -8533,18 +8533,18 @@ async function gerarTabelaVendas(empId, params) {
 
     const rowBg    = isVend ? '#fde8e8' : isRes ? '#fef3c7' : '#ffffff';
     const rowStyle = isVend
-      ? 'background:#fde8e8;border-bottom:1px solid #fca5a5;border-left:4px solid #dc2626'
+      ? 'background:#fde68a;border-bottom:1px solid #fbbf24;border-left:4px solid #92400e'
       : isRes
         ? 'background:#fef3c7;border-bottom:1px solid #fcd34d;border-left:4px solid #f59e0b'
         : 'background:#ffffff;border-bottom:1px solid #e5e7eb;border-left:4px solid transparent';
 
-    const textDeco  = isVend ? 'text-decoration:line-through;opacity:.5'  : '';
-    const textColor = isRes  ? 'color:#92400e' : isVend ? 'color:#991b1b;' : 'color:#374151';
-    const fwBold    = isRes  ? 'font-weight:700' : '';
+    const textDeco  = isVend ? 'text-decoration:line-through' : '';
+    const textColor = isRes  ? 'color:#92400e' : isVend ? 'color:#78350f' : 'color:#374151';
+    const fwBold    = (isRes || isVend) ? 'font-weight:700' : '';
 
-    const badgeBg  = isVend ? '#dc2626' : isRes ? '#d97706' : '#16a34a';
+    const badgeBg  = isVend ? '#92400e' : isRes ? '#d97706' : '#16a34a';
     const badgeTxt = isVend ? 'VENDIDO' : isRes ? 'RESERVADO' : 'DISPONÍVEL';
-    const badgeExtra = isRes ? 'box-shadow:0 0 0 2px #f59e0b' : '';
+    const badgeExtra = isRes ? 'box-shadow:0 0 0 2px #f59e0b' : isVend ? 'box-shadow:0 0 0 2px #92400e' : '';
     const badge = `<span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:9px;font-weight:800;background:${badgeBg};color:#fff;letter-spacing:.3px;${badgeExtra}">${badgeTxt}</span>`;
 
     return `<tr style="${rowStyle}">
@@ -8552,7 +8552,7 @@ async function gerarTabelaVendas(empId, params) {
       <td style="padding:4px 8px;font-size:11px;font-weight:700;white-space:nowrap;${textColor};${textDeco}">${num}</td>
       <td style="padding:4px 8px;font-size:10.5px;${isRes?'color:#92400e':'color:#6b7280'};${textDeco};${fwBold}">${tip}</td>
       <td style="padding:4px 8px;font-size:11px;text-align:right;white-space:nowrap;${textColor};${textDeco};${fwBold}">${fmtN(u.area_m2)}</td>
-      <td style="padding:4px 8px;font-size:11px;font-weight:700;text-align:right;white-space:nowrap;${isRes?'color:#92400e':isVend?'color:#991b1b':'color:#111827'};${textDeco}">${fmt2(P)}</td>
+      <td style="padding:4px 8px;font-size:11px;font-weight:700;text-align:right;white-space:nowrap;${isRes?'color:#92400e':isVend?'color:#78350f':'color:#111827'};${textDeco}">${fmt2(P)}</td>
       <td style="padding:4px 8px;font-size:11px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${entrada}</td>
       <td style="padding:4px 8px;font-size:11px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${reforco}</td>
       <td style="padding:4px 8px;font-size:11px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${parcela} ${totalSim}</td>
