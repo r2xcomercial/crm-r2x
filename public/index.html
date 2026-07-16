@@ -5823,6 +5823,42 @@ async function atualizarPreviewBaixa(clienteId) {
   }, 400);
 }
 
+async function paExtrairNF(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const status = document.getElementById('pa-nf-status');
+  status.style.display = 'block';
+  status.innerHTML = '⏳ Lendo NF com IA…';
+  input.value = '';
+
+  const fd = new FormData();
+  fd.append('arquivo', file);
+  const token = localStorage.getItem('crm_token') || '';
+
+  try {
+    const resp = await fetch('/api/financeiro/avulso/extrair-nf', {
+      method: 'POST',
+      headers: { 'x-crm-token': token },
+      body: fd
+    });
+    const r = await resp.json();
+    if (!r.ok) { status.innerHTML = '❌ ' + (r.error || 'Erro ao ler NF'); return; }
+
+    const d = r.dados;
+    if (d.nf_numero) document.getElementById('pa-nf-num').value = d.nf_numero;
+    if (d.nf_data)   document.getElementById('pa-nf-data').value = d.nf_data;
+    if (d.valor_servico)     document.getElementById('pa-bruto').value = Number(d.valor_servico).toFixed(2);
+    if (d.retencoes_federais !== undefined) document.getElementById('pa-retido').value = Number(d.retencoes_federais).toFixed(2);
+    if (d.valor_liquido)     document.getElementById('pa-valor').value = Number(d.valor_liquido).toFixed(2);
+    if (d.descricao && !document.getElementById('pa-desc').value) document.getElementById('pa-desc').value = d.descricao;
+
+    paRecalcularLiquido();
+    status.innerHTML = `✅ NF lida — ${d.tomador_nome || ''}`;
+  } catch(e) {
+    status.innerHTML = '❌ Erro: ' + e.message;
+  }
+}
+
 function paRecalcularLiquido() {
   const bruto = parseFloat(document.getElementById('pa-bruto')?.value) || 0;
   const retido = parseFloat(document.getElementById('pa-retido')?.value) || 0;
@@ -5869,7 +5905,14 @@ async function abrirModalPagtoAvulso(clienteIdPresel, nomePresel) {
       </div>
 
       <div class="form-group span2" style="border:1px solid rgba(96,165,250,.3);border-radius:8px;padding:12px;background:rgba(96,165,250,.05)">
-        <div style="font-size:11px;font-weight:700;color:#60a5fa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">📄 Nota Fiscal (opcional)</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:700;color:#60a5fa;text-transform:uppercase;letter-spacing:.5px">📄 Nota Fiscal (opcional)</div>
+          <label id="pa-nf-upload-btn" style="background:rgba(96,165,250,.15);border:1px solid rgba(96,165,250,.4);color:#60a5fa;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+            📎 Carregar NF (PDF)
+            <input type="file" accept="application/pdf" style="display:none" onchange="paExtrairNF(this)">
+          </label>
+        </div>
+        <div id="pa-nf-status" style="display:none;font-size:12px;color:var(--text2);margin-bottom:8px;padding:6px 10px;background:rgba(0,0,0,.2);border-radius:6px"></div>
         <div class="form-grid" style="gap:10px">
           <div class="form-group"><label style="font-size:12px">Número da NF</label>
             <input id="pa-nf-num" placeholder="ex: 00123" oninput="paRecalcularLiquido()">

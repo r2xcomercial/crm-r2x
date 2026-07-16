@@ -2863,6 +2863,54 @@ app.post('/api/financeiro/entradas/extrair-nf', autenticar, uploadNF.single('arq
   }
 });
 
+// Extração de NF específica para pagamento avulso — retorna campos financeiros completos
+app.post('/api/financeiro/avulso/extrair-nf', autenticar, uploadNF.single('arquivo'), async (req, res) => {
+  if (!req.file) return res.json({ ok: false, error: 'Arquivo não enviado' });
+  if (!process.env.ANTHROPIC_API_KEY) return res.json({ ok: false, error: 'ANTHROPIC_API_KEY não configurada' });
+  try {
+    const b64 = req.file.buffer
+      ? req.file.buffer.toString('base64')
+      : require('fs').readFileSync(req.file.path).toString('base64');
+    const resposta = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+            { type: 'text', text: `Extraia os campos financeiros desta NFS-e e retorne SOMENTE um JSON válido sem markdown:
+{
+  "nf_numero": "número da NFS-e",
+  "nf_data": "data de emissão no formato YYYY-MM-DD",
+  "tomador_nome": "nome ou razão social do tomador",
+  "valor_servico": valor numérico bruto do serviço (campo Valor do Serviço),
+  "retencoes_federais": valor numérico do campo Total das Retenções Federais (0 se não houver),
+  "issqn_retido": valor numérico do ISSQN Retido (0 se não houver),
+  "valor_liquido": valor numérico líquido da NFS-e (campo Valor Líquido da NFS-e),
+  "descricao": "discriminação do serviço (resumida em até 80 chars)"
+}` }
+          ]
+        }]
+      })
+    });
+    const json = await resposta.json();
+    const texto = json.content?.[0]?.text || '';
+    const dados = JSON.parse(texto.replace(/```json\n?|\n?```/g, '').trim());
+    ok(res, { dados });
+  } catch (e) {
+    console.error('[avulso/extrair-nf]', e.message);
+    res.json({ ok: false, error: 'Erro ao ler NF: ' + e.message });
+  }
+});
+
 // Vincula NF (importada do contador) a entradas + salva caminho do arquivo
 app.post('/api/financeiro/entradas/importar-nf-arquivo', autenticar, (req, res) => {
   const { ids, nf_numero, nf_data, nf_arquivo } = req.body;
