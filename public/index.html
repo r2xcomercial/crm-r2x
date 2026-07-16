@@ -4704,6 +4704,7 @@ async function renderFinanceiro(filter = '') {
       <button class="fin-tab ${finTab==='fixas'?'active':''}" onclick="setFinTab('fixas')">🔁 Despesas Fixas</button>
       <button class="fin-tab ${finTab==='impostos'?'active':''}" onclick="setFinTab('impostos')">🏛️ Impostos</button>
       <button class="fin-tab ${finTab==='reconciliacao'?'active':''}" onclick="setFinTab('reconciliacao')">🔗 Reconciliação</button>
+      <button class="fin-tab ${finTab==='saldo-inc'?'active':''}" onclick="setFinTab('saldo-inc')">🏦 Saldo Incorporadoras</button>
       <button class="fin-tab ${finTab==='dre'?'active':''}" onclick="setFinTab('dre')">📊 DRE</button>
     </div>
     <div id="fin-content"></div>
@@ -4713,7 +4714,7 @@ async function renderFinanceiro(filter = '') {
 
 function setFinTab(tab) {
   finTab = tab;
-  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo', fixas:'Fixas', impostos:'Impost', reconciliacao:'Reconcil', dre:'DRE' };
+  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo', fixas:'Fixas', impostos:'Impost', reconciliacao:'Reconcil', 'saldo-inc':'Saldo Incorpor', dre:'DRE' };
   document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(keys[tab]||'')));
   renderFinTab();
 }
@@ -4897,6 +4898,8 @@ function renderFinTab() {
     renderFluxoCaixa(el);
   } else if (finTab === 'reconciliacao') {
     renderReconciliacao(el);
+  } else if (finTab === 'saldo-inc') {
+    renderSaldoIncorporadoras(el);
   } else if (finTab === 'dre') {
     renderDRE(el);
   } else {
@@ -5607,6 +5610,197 @@ async function rejeitarReconciliacao(entrada_id, transaction_id) {
   if (!r.ok) { toast('Erro: ' + r.error); return; }
   const el = document.getElementById('fin-content');
   if (el) renderReconciliacao(el);
+}
+
+async function renderSaldoIncorporadoras(el) {
+  el.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text2)">Carregando…</div>`;
+  const [r, clr] = await Promise.all([get('/api/financeiro/saldo-incorporadoras'), get('/api/clientes')]);
+  if (!r.ok) { el.innerHTML = `<p style="color:red">Erro ao carregar</p>`; return; }
+  const { incorporadoras, historico } = r.data;
+  const clientes = clr.data || [];
+
+  const fmtV = v => 'R$ ' + Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtD = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
+
+  const cardColor = saldo => saldo > 0 ? 'rgba(250,204,21,.08)' : saldo < 0 ? 'rgba(74,222,128,.08)' : 'var(--navy3)';
+  const badgeColor = saldo => saldo > 0 ? '#f87171' : saldo < 0 ? '#4ade80' : 'var(--text2)';
+
+  const incCards = incorporadoras.length === 0
+    ? `<p style="color:var(--text2);padding:20px">Nenhuma incorporadora com saldo pendente.</p>`
+    : incorporadoras.map(inc => `
+      <div style="background:${cardColor(inc.saldo_devedor)};border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div>
+            <div style="font-weight:700;font-size:15px">${inc.razao_social}</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:2px">
+              Pendente: <strong>${fmtV(inc.total_pendente)}</strong> &nbsp;|&nbsp;
+              Pago: <strong>${fmtV(inc.total_pago)}</strong>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="text-align:right">
+              <div style="font-size:11px;color:var(--text2)">${inc.saldo_devedor > 0 ? 'AINDA DEVE' : inc.saldo_devedor < 0 ? 'SALDO POSITIVO (crédito)' : 'QUITADO'}</div>
+              <div style="font-size:20px;font-weight:900;color:${badgeColor(inc.saldo_devedor)}">${fmtV(Math.abs(inc.saldo_devedor))}</div>
+            </div>
+            <button onclick="abrirModalPagtoAvulso(${inc.cliente_id},'${inc.razao_social.replace(/'/g,"\\'")}')"
+              style="background:var(--accent);color:var(--navy);border:none;border-radius:8px;padding:8px 14px;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap">
+              + Registrar Pagamento
+            </button>
+          </div>
+        </div>
+      </div>`).join('');
+
+  const histRows = historico.length === 0
+    ? `<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:16px">Nenhum pagamento avulso registrado.</td></tr>`
+    : historico.map(p => `
+      <tr>
+        <td>${fmtD(p.data_recebimento)}</td>
+        <td><strong>${p.incorporadora_nome}</strong></td>
+        <td>${p.empreendimento_nome || '—'}</td>
+        <td>${p.descricao || '—'}</td>
+        <td style="text-align:right;font-weight:700;color:#4ade80">${fmtV(p.valor)}</td>
+        <td style="text-align:right">
+          <button onclick="editarPagtoAvulso(${p.id})" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:11px;margin-right:4px">✏️</button>
+          <button onclick="deletarPagtoAvulso(${p.id})" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#f87171;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:11px">🗑️</button>
+        </td>
+      </tr>`).join('');
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:13px;color:var(--text2)">Saldo pendente de comissões R2X por incorporadora, descontando pagamentos avulsos já recebidos.</div>
+      <button onclick="abrirModalPagtoAvulso()" style="background:var(--accent);color:var(--navy);border:none;border-radius:8px;padding:8px 16px;font-weight:700;font-size:13px;cursor:pointer">+ Registrar Pagamento Avulso</button>
+    </div>
+
+    <div style="margin-bottom:24px">${incCards}</div>
+
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">📋 Histórico de Pagamentos Avulsos</div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>Data</th><th>Incorporadora</th><th>Empreendimento</th><th>Descrição</th>
+            <th style="text-align:right">Valor</th><th style="text-align:right"></th>
+          </tr></thead>
+          <tbody>${histRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+async function abrirModalPagtoAvulso(clienteIdPresel, nomePresel) {
+  const [clr, empr] = await Promise.all([get('/api/clientes'), get('/api/empreendimentos')]);
+  const clientes = clr.data || [];
+  const emps = empr.data || [];
+
+  const cliOpts = clientes.map(c =>
+    `<option value="${c.id}" ${c.id == clienteIdPresel ? 'selected' : ''}>${c.razao_social}</option>`
+  ).join('');
+  const empOpts = `<option value="">— Todos os empreendimentos —</option>` +
+    emps.map(e => `<option value="${e.id}">${e.nome}</option>`).join('');
+
+  openModal('💰 Registrar Pagamento Avulso', `
+    <div class="form-grid">
+      <div class="form-group span2"><label>Incorporadora *</label>
+        <select id="pa-cliente"><option value="">— selecione —</option>${cliOpts}</select>
+      </div>
+      <div class="form-group span2"><label>Empreendimento (opcional)</label>
+        <select id="pa-emp">${empOpts}</select>
+      </div>
+      <div class="form-group"><label>Valor Recebido (R$) *</label>
+        <input type="number" id="pa-valor" step="0.01" min="0" placeholder="0,00">
+      </div>
+      <div class="form-group"><label>Data Recebimento *</label>
+        <input type="date" id="pa-data" value="${new Date().toISOString().slice(0,10)}">
+      </div>
+      <div class="form-group span2"><label>Descrição</label>
+        <input id="pa-desc" placeholder="ex: Saldo comissões - Bloco A">
+      </div>
+      <div class="form-group span2"><label>Observações</label>
+        <textarea id="pa-obs" rows="2" style="width:100%;resize:vertical;background:var(--navy3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px;font-size:13px"></textarea>
+      </div>
+    </div>
+  `, async () => {
+    const body = {
+      cliente_id: v('pa-cliente'),
+      empreendimento_id: v('pa-emp') || null,
+      valor: parseFloat(v('pa-valor')),
+      data_recebimento: v('pa-data'),
+      descricao: v('pa-desc') || null,
+      observacoes: v('pa-obs') || null,
+    };
+    if (!body.cliente_id) return toast('Selecione a incorporadora', 'error');
+    if (!body.valor || body.valor <= 0) return toast('Informe o valor', 'error');
+    if (!body.data_recebimento) return toast('Informe a data', 'error');
+    const r = await post('/api/financeiro/pagamentos-avulsos', body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Pagamento registrado!');
+    closeModal();
+    renderFinanceiro();
+  });
+}
+
+async function editarPagtoAvulso(id) {
+  const [lr, clr, empr] = await Promise.all([
+    get('/api/financeiro/pagamentos-avulsos'), get('/api/clientes'), get('/api/empreendimentos')
+  ]);
+  const p = (lr.data || []).find(x => x.id === id);
+  if (!p) return toast('Não encontrado', 'error');
+  const clientes = clr.data || [];
+  const emps = empr.data || [];
+
+  const cliOpts = clientes.map(c =>
+    `<option value="${c.id}" ${c.id == p.cliente_id ? 'selected' : ''}>${c.razao_social}</option>`
+  ).join('');
+  const empOpts = `<option value="">— Todos —</option>` +
+    emps.map(e => `<option value="${e.id}" ${e.id == p.empreendimento_id ? 'selected' : ''}>${e.nome}</option>`).join('');
+
+  openModal('✏️ Editar Pagamento Avulso', `
+    <div class="form-grid">
+      <div class="form-group span2"><label>Incorporadora *</label>
+        <select id="pa-cliente"><option value="">— selecione —</option>${cliOpts}</select>
+      </div>
+      <div class="form-group span2"><label>Empreendimento (opcional)</label>
+        <select id="pa-emp">${empOpts}</select>
+      </div>
+      <div class="form-group"><label>Valor (R$) *</label>
+        <input type="number" id="pa-valor" step="0.01" value="${p.valor}">
+      </div>
+      <div class="form-group"><label>Data Recebimento *</label>
+        <input type="date" id="pa-data" value="${p.data_recebimento}">
+      </div>
+      <div class="form-group span2"><label>Descrição</label>
+        <input id="pa-desc" value="${p.descricao||''}">
+      </div>
+      <div class="form-group span2"><label>Observações</label>
+        <textarea id="pa-obs" rows="2" style="width:100%;resize:vertical;background:var(--navy3);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:8px;font-size:13px">${p.observacoes||''}</textarea>
+      </div>
+    </div>
+  `, async () => {
+    const body = {
+      cliente_id: v('pa-cliente'),
+      empreendimento_id: v('pa-emp') || null,
+      valor: parseFloat(v('pa-valor')),
+      data_recebimento: v('pa-data'),
+      descricao: v('pa-desc') || null,
+      observacoes: v('pa-obs') || null,
+    };
+    if (!body.cliente_id || !body.valor || !body.data_recebimento) return toast('Preencha os campos obrigatórios', 'error');
+    const r = await put(`/api/financeiro/pagamentos-avulsos/${id}`, body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Atualizado!');
+    closeModal();
+    renderFinanceiro();
+  });
+}
+
+async function deletarPagtoAvulso(id) {
+  if (!confirm('Excluir este pagamento avulso?')) return;
+  const r = await del(`/api/financeiro/pagamentos-avulsos/${id}`);
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Excluído');
+  renderFinanceiro();
 }
 
 async function renderDRE(el) {

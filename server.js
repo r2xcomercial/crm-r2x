@@ -5924,6 +5924,128 @@ app.post('/api/financeiro/ressincronizar-descricoes', autenticar, (req, res) => 
   ok(res, { atualizadas });
 });
 
+// ─── PAGAMENTOS AVULSOS POR INCORPORADORA ────────────────────────────────────
+
+db.exec(`CREATE TABLE IF NOT EXISTS pagamentos_avulsos_incorporadora (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cliente_id INTEGER NOT NULL REFERENCES clientes(id),
+  empreendimento_id INTEGER REFERENCES empreendimentos(id),
+  valor REAL NOT NULL,
+  data_recebimento TEXT NOT NULL,
+  descricao TEXT,
+  observacoes TEXT,
+  criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
+
+app.get('/api/financeiro/pagamentos-avulsos', autenticar, (req, res) => {
+  const rows = db.prepare(`
+    SELECT p.*, c.razao_social as incorporadora_nome, e.nome as empreendimento_nome
+    FROM pagamentos_avulsos_incorporadora p
+    LEFT JOIN clientes c ON c.id = p.cliente_id
+    LEFT JOIN empreendimentos e ON e.id = p.empreendimento_id
+    ORDER BY p.data_recebimento DESC
+  `).all();
+  ok(res, rows);
+});
+
+app.post('/api/financeiro/pagamentos-avulsos', autenticar, (req, res) => {
+  const { cliente_id, empreendimento_id, valor, data_recebimento, descricao, observacoes } = req.body;
+  if (!cliente_id || !valor || !data_recebimento) return err(res, 'Incorporadora, valor e data obrigatórios');
+  const r = db.prepare(`INSERT INTO pagamentos_avulsos_incorporadora
+    (cliente_id, empreendimento_id, valor, data_recebimento, descricao, observacoes)
+    VALUES (?,?,?,?,?,?)`).run(
+    parseInt(cliente_id), empreendimento_id ? parseInt(empreendimento_id) : null,
+    parseFloat(valor), data_recebimento, descricao || null, observacoes || null
+  );
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.put('/api/financeiro/pagamentos-avulsos/:id', autenticar, (req, res) => {
+  const { cliente_id, empreendimento_id, valor, data_recebimento, descricao, observacoes } = req.body;
+  db.prepare(`UPDATE pagamentos_avulsos_incorporadora
+    SET cliente_id=?, empreendimento_id=?, valor=?, data_recebimento=?, descricao=?, observacoes=?
+    WHERE id=?`).run(
+    parseInt(cliente_id), empreendimento_id ? parseInt(empreendimento_id) : null,
+    parseFloat(valor), data_recebimento, descricao || null, observacoes || null, req.params.id
+  );
+  ok(res, {});
+});
+
+app.delete('/api/financeiro/pagamentos-avulsos/:id', autenticar, (req, res) => {
+  db.prepare('DELETE FROM pagamentos_avulsos_incorporadora WHERE id=?').run(req.params.id);
+  ok(res, {});
+});
+
+// Saldo consolidado por incorporadora
+app.get('/api/financeiro/saldo-incorporadoras', autenticar, (req, res) => {
+  // Pendente: soma das entradas pendentes cujo empreendimento pertence à incorporadora
+  const pendentes = db.prepare(`
+    SELECT c.id as cliente_id, c.razao_social,
+      COALESCE(SUM(fe.valor), 0) as total_pendente
+    FROM clientes c
+    JOIN empreendimentos e ON e.cliente_id = c.id
+    JOIN financeiro_entradas fe ON fe.empreendimento_id = e.id AND fe.status = 'pendente'
+    GROUP BY c.id, c.razao_social
+  `).all();
+
+  // Pagamentos avulsos recebidos por incorporadora
+  const pagos = db.prepare(`
+    SELECT cliente_id, SUM(valor) as total_pago
+    FROM pagamentos_avulsos_incorporadora
+    GROUP BY cliente_id
+  `).all();
+
+  // Histórico de pagamentos avulsos
+  const historico = db.prepare(`
+    SELECT p.*, c.razao_social as incorporadora_nome, e.nome as empreendimento_nome
+    FROM pagamentos_avulsos_incorporadora p
+    LEFT JOIN clientes c ON c.id = p.cliente_id
+    LEFT JOIN empreendimentos e ON e.id = p.empreendimento_id
+    ORDER BY p.data_recebimento DESC
+  `).all();
+
+  const pagoMap = {};
+  pagos.forEach(p => { pagoMap[p.cliente_id] = p.total_pago; });
+
+  // Incorporadoras que têm pagamentos avulsos mas nenhuma entrada pendente
+  const soComPagto = db.prepare(`
+    SELECT DISTINCT p.cliente_id, c.razao_social
+    FROM pagamentos_avulsos_incorporadora p
+    JOIN clientes c ON c.id = p.cliente_id
+  `).all();
+
+  const result = [];
+  const seen = new Set();
+
+  for (const row of pendentes) {
+    const pago = pagoMap[row.cliente_id] || 0;
+    result.push({
+      cliente_id: row.cliente_id,
+      razao_social: row.razao_social,
+      total_pendente: row.total_pendente,
+      total_pago: pago,
+      saldo_devedor: row.total_pendente - pago,
+    });
+    seen.add(row.cliente_id);
+  }
+
+  for (const row of soComPagto) {
+    if (!seen.has(row.cliente_id)) {
+      const pago = pagoMap[row.cliente_id] || 0;
+      result.push({
+        cliente_id: row.cliente_id,
+        razao_social: row.razao_social,
+        total_pendente: 0,
+        total_pago: pago,
+        saldo_devedor: -pago,
+      });
+    }
+  }
+
+  result.sort((a, b) => b.saldo_devedor - a.saldo_devedor);
+  ok(res, { incorporadoras: result, historico });
+});
+
 // ─── START ────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => console.log(`CRM R2X rodando em http://localhost:${PORT}`));
