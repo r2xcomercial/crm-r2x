@@ -3158,7 +3158,37 @@ async function renderEmpreendimentos(filter = '') {
       ${kpi('📍', 'Cidades com Lançamentos', cidades.length, cidades.slice(0,3).map(c=>c[0]).join(', ')||'—')}
     </div>
 
-    <div class="dash-row" style="margin-bottom:20px">
+    <div class="table-card" style="margin-bottom:20px">
+      <div class="table-header"><div class="table-title">🏗️ Empreendimentos (${rows.length})</div></div>
+      <table>
+        <thead><tr><th>Nome</th><th>Incorporador</th><th>Cidade</th><th>Unidades</th><th>VGV Estimado</th><th>Status</th><th>Lançamento</th><th></th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(e => `
+            <tr>
+              <td><strong style="cursor:pointer;color:var(--accent);text-decoration:underline" onclick="verEspelho(${e.id})" title="Abrir empreendimento">${e.nome}</strong></td>
+              <td>${e.cliente_nome||'—'}</td>
+              <td>${e.cidade||'—'}${e.estado?'/'+e.estado:''}</td>
+              <td>${e.num_unidades||'—'}</td>
+              <td style="color:var(--success)">${e.vgv_estimado ? fmt(e.vgv_estimado) : '—'}</td>
+              <td><span class="badge ${statusBadge[e.status]||'badge-gray'}">${e.status}</span></td>
+              <td>${e.data_lancamento ? fmtDate(e.data_lancamento) : '—'}</td>
+              <td style="white-space:nowrap">
+                ${e.num_unidades ? `<button class="btn-icon" title="Espelho de Vendas" onclick="verEspelho(${e.id})">🏠</button>` : ''}
+                ${e.tipo === 'predio' ? `<button class="btn-icon" title="Vagas de Garagem" onclick="verVagas(${e.id})" style="color:#60a5fa">🅿️</button>` : ''}
+                <button class="btn-icon" title="Checklist de Marketing" onclick="verChecklist(${e.id})" style="color:#a78bfa">✅</button>
+                <button class="btn-icon" title="Gerar Contrato (.docx)" onclick="gerarContrato(${e.id})" style="color:var(--success)">📄</button>
+                <button class="btn-icon" title="Relatório gerencial" onclick="gerarRelatorio(${e.id})" style="color:var(--accent)">📊</button>
+                <button class="btn-icon" title="Portal do Incorporador" onclick="gerarLinkPortal(${e.id},'${(e.nome||'').replace(/'/g,"\\'")}')">🔗</button>
+                <button class="btn-icon btn-edit" onclick="editEmp(${e.id})">✏️</button>
+                <button class="btn-icon btn-delete" onclick="deleteEmp(${e.id})">🗑️</button>
+              </td>
+            </tr>
+          `).join('') : '<tr class="empty-row"><td colspan="8">Nenhum empreendimento cadastrado</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="dash-row" style="margin-top:20px">
       <div class="mini-card" style="grid-column:span 2">
         <h4>🏆 Ranking de Lucratividade R2X</h4>
         <div style="margin-top:8px;max-height:280px;overflow-y:auto">
@@ -3180,35 +3210,6 @@ async function renderEmpreendimentos(filter = '') {
           }).join('') : '<div style="color:var(--text2);font-size:13px;padding:8px 0">Sem dados financeiros ainda</div>'}
         </div>
       </div>
-    </div>
-    <div class="table-card">
-      <div class="table-header"><div class="table-title">🏗️ Empreendimentos (${rows.length})</div></div>
-      <table>
-        <thead><tr><th>Nome</th><th>Incorporador</th><th>Cidade</th><th>Unidades</th><th>VGV Estimado</th><th>Status</th><th>Lançamento</th><th></th></tr></thead>
-        <tbody>
-          ${rows.length ? rows.map(e => `
-            <tr>
-              <td><strong>${e.nome}</strong></td>
-              <td>${e.cliente_nome||'—'}</td>
-              <td>${e.cidade||'—'}${e.estado?'/'+e.estado:''}</td>
-              <td>${e.num_unidades||'—'}</td>
-              <td style="color:var(--success)">${e.vgv_estimado ? fmt(e.vgv_estimado) : '—'}</td>
-              <td><span class="badge ${statusBadge[e.status]||'badge-gray'}">${e.status}</span></td>
-              <td>${e.data_lancamento ? fmtDate(e.data_lancamento) : '—'}</td>
-              <td style="white-space:nowrap">
-                ${e.num_unidades ? `<button class="btn-icon" title="Espelho de Vendas" onclick="verEspelho(${e.id})">🏠</button>` : ''}
-                ${e.tipo === 'predio' ? `<button class="btn-icon" title="Vagas de Garagem" onclick="verVagas(${e.id})" style="color:#60a5fa">🅿️</button>` : ''}
-                <button class="btn-icon" title="Checklist de Marketing" onclick="verChecklist(${e.id})" style="color:#a78bfa">✅</button>
-                <button class="btn-icon" title="Gerar Contrato (.docx)" onclick="gerarContrato(${e.id})" style="color:var(--success)">📄</button>
-                <button class="btn-icon" title="Relatório gerencial" onclick="gerarRelatorio(${e.id})" style="color:var(--accent)">📊</button>
-                <button class="btn-icon" title="Portal do Incorporador" onclick="gerarLinkPortal(${e.id},'${(e.nome||'').replace(/'/g,"\\'")}')">🔗</button>
-                <button class="btn-icon btn-edit" onclick="editEmp(${e.id})">✏️</button>
-                <button class="btn-icon btn-delete" onclick="deleteEmp(${e.id})">🗑️</button>
-              </td>
-            </tr>
-          `).join('') : '<tr class="empty-row"><td colspan="8">Nenhum empreendimento cadastrado</td></tr>'}
-        </tbody>
-      </table>
     </div>
   `;
 }
