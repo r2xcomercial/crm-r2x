@@ -429,6 +429,7 @@
 
     <div class="nav-section">Financeiro</div>
     <div class="nav-item" onclick="navigate('financeiro')"><span class="icon">💰</span> Financeiro</div>
+    <div class="nav-item" onclick="navigate('relatorios')"><span class="icon">📈</span> Relatórios</div>
     <div class="nav-item" onclick="navigate('gestao-pessoal')"><span class="icon">🧘</span> Gestão Pessoal</div>
     <div class="nav-item" onclick="navigate('calculadora')" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px"><span class="icon">🧮</span> Calculadora</div>
     <div id="nav-usuarios" class="nav-item" onclick="navigate('usuarios')" style="display:none"><span class="icon">👤</span> Usuários</div>
@@ -533,7 +534,7 @@ function navigate(page) {
 const pageTitles = {
   dashboard: 'Dashboard', leads: 'Leads', kanban: 'Kanban de Leads', vendas: 'Vendas',
   clientes: 'Incorporadores', empreendimentos: 'Empreendimentos', corretores: 'Corretores',
-  financeiro: 'Financeiro', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
+  financeiro: 'Financeiro', relatorios: 'Relatórios', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
   painel: 'Painel de Lançamento', usuarios: 'Usuários do Sistema', calculadora: 'Calculadora de Financiamento',
   'corretor-painel': 'Meu Painel', 'incorporador-painel': 'Portal do Incorporador',
   eventos: 'Eventos de Lançamento', 'gestao-pessoal': 'Gestão Pessoal'
@@ -559,6 +560,7 @@ async function renderPage(page) {
       case 'empreendimentos': await renderEmpreendimentos(); break;
       case 'corretores': await renderCorretores(); break;
       case 'financeiro': await renderFinanceiro(); break;
+      case 'relatorios': await renderRelatorios(); break;
       case 'calendario': await renderCalendario(); break;
       case 'ranking': await renderRanking(); break;
       case 'painel': await renderPainel(); break;
@@ -11316,6 +11318,322 @@ function exportarVendas() {
   if (f.mes)         params.set('mes', f.mes);
   if (f.incorporador) params.set('incorporador', f.incorporador);
   window.open(`/api/exportar/vendas?${params.toString()}`, '_blank');
+}
+
+// ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
+
+let _relFiltros = { data_inicio: '', data_fim: '', empreendimento_id: '', corretor_id: '', aba: 'financeiro' };
+let _relDados   = null;
+
+async function renderRelatorios() {
+  const [empR, corR] = await Promise.all([get('/api/empreendimentos'), get('/api/corretores')]);
+  const emps = empR.data || [];
+  const cors = corR.data || [];
+
+  const hoje = new Date();
+  const primeiroDia = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-01`;
+  const ultimoDia   = hoje.toISOString().slice(0,10);
+  if (!_relFiltros.data_inicio) _relFiltros.data_inicio = primeiroDia;
+  if (!_relFiltros.data_fim)    _relFiltros.data_fim    = ultimoDia;
+
+  const mesAntIni = (() => { const d=new Date(hoje.getFullYear(),hoje.getMonth()-1,1); return d.toISOString().slice(0,10); })();
+  const mesAntFim = (() => { const d=new Date(hoje.getFullYear(),hoje.getMonth(),0);   return d.toISOString().slice(0,10); })();
+  const ult3m     = (() => { const d=new Date(hoje); d.setMonth(d.getMonth()-3); return d.toISOString().slice(0,10); })();
+
+  const presets = [
+    { label:'Este mês',     ini:primeiroDia,                    fim:ultimoDia },
+    { label:'Mês anterior', ini:mesAntIni,                      fim:mesAntFim },
+    { label:'Últimos 3m',   ini:ult3m,                          fim:ultimoDia },
+    { label:'Este ano',     ini:`${hoje.getFullYear()}-01-01`,  fim:ultimoDia },
+    { label:'Ano anterior', ini:`${hoje.getFullYear()-1}-01-01`,fim:`${hoje.getFullYear()-1}-12-31` },
+    { label:'Tudo',         ini:'2020-01-01',                   fim:'2099-12-31' },
+  ];
+
+  document.getElementById('content').innerHTML = `
+    <div style="background:var(--navy2);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:18px">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Período</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${presets.map(p=>`<button onclick="relSetPreset('${p.ini}','${p.fim}')"
+              style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:${_relFiltros.data_inicio===p.ini&&_relFiltros.data_fim===p.fim?'var(--accent)':'var(--navy3)'};color:${_relFiltros.data_inicio===p.ini&&_relFiltros.data_fim===p.fim?'#fff':'var(--text)'};font-size:11px;cursor:pointer;font-weight:600">${p.label}</button>`).join('')}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">De</div>
+          <input type="date" id="rel-ini" value="${_relFiltros.data_inicio}" onchange="_relFiltros.data_inicio=this.value" style="padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px">
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Até</div>
+          <input type="date" id="rel-fim" value="${_relFiltros.data_fim}" onchange="_relFiltros.data_fim=this.value" style="padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px">
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Empreendimento</div>
+          <select id="rel-emp" onchange="_relFiltros.empreendimento_id=this.value" style="padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px">
+            <option value="">Todos</option>
+            ${emps.map(e=>`<option value="${e.id}" ${_relFiltros.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Corretor</div>
+          <select id="rel-cor" onchange="_relFiltros.corretor_id=this.value" style="padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px">
+            <option value="">Todos</option>
+            ${cors.map(c=>`<option value="${c.id}" ${_relFiltros.corretor_id==c.id?'selected':''}>${c.nome}</option>`).join('')}
+          </select>
+        </div>
+        <button onclick="relCarregar()" style="padding:8px 20px;border-radius:8px;background:var(--accent);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer">🔍 Filtrar</button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:4px;margin-bottom:14px;border-bottom:2px solid var(--border);padding-bottom:0">
+      ${[['financeiro','💰 Financeiro'],['vendas','🏆 Vendas'],['corretores','👥 Corretores'],['leads','🎯 Leads']].map(([id,label])=>`
+        <button onclick="relAba('${id}')" id="rel-tab-${id}" style="padding:9px 18px;border:none;border-bottom:2px solid ${_relFiltros.aba===id?'var(--accent)':'transparent'};margin-bottom:-2px;background:none;color:${_relFiltros.aba===id?'var(--accent)':'var(--text2)'};font-size:13px;font-weight:${_relFiltros.aba===id?700:500};cursor:pointer">${label}</button>
+      `).join('')}
+    </div>
+
+    <div id="rel-corpo"><div style="text-align:center;padding:60px;color:var(--text2)">Clique em <strong>🔍 Filtrar</strong> para carregar o relatório.</div></div>
+  `;
+
+  if (_relDados) relRenderCorpo();
+  else relCarregar();
+}
+
+function relSetPreset(ini, fim) {
+  _relFiltros.data_inicio = ini;
+  _relFiltros.data_fim    = fim;
+  renderRelatorios();
+}
+
+function relAba(aba) {
+  _relFiltros.aba = aba;
+  document.querySelectorAll('[id^="rel-tab-"]').forEach(b => {
+    const isAtivo = b.id === `rel-tab-${aba}`;
+    b.style.borderBottomColor = isAtivo ? 'var(--accent)' : 'transparent';
+    b.style.color      = isAtivo ? 'var(--accent)' : 'var(--text2)';
+    b.style.fontWeight = isAtivo ? '700' : '500';
+  });
+  if (_relDados) relRenderCorpo();
+}
+
+async function relCarregar() {
+  const corpo = document.getElementById('rel-corpo');
+  if (!corpo) return;
+  _relFiltros.data_inicio       = document.getElementById('rel-ini')?.value || _relFiltros.data_inicio;
+  _relFiltros.data_fim          = document.getElementById('rel-fim')?.value || _relFiltros.data_fim;
+  _relFiltros.empreendimento_id = document.getElementById('rel-emp')?.value || '';
+  _relFiltros.corretor_id       = document.getElementById('rel-cor')?.value || '';
+  corpo.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text2)">⏳ Carregando...</div>`;
+  const p = new URLSearchParams();
+  if (_relFiltros.data_inicio)       p.set('data_inicio',       _relFiltros.data_inicio);
+  if (_relFiltros.data_fim)          p.set('data_fim',          _relFiltros.data_fim);
+  if (_relFiltros.empreendimento_id) p.set('empreendimento_id', _relFiltros.empreendimento_id);
+  if (_relFiltros.corretor_id)       p.set('corretor_id',       _relFiltros.corretor_id);
+  const r = await get(`/api/relatorios/geral?${p}`);
+  if (!r.ok) { corpo.innerHTML = `<div style="color:var(--danger);padding:24px">Erro: ${r.error}</div>`; return; }
+  _relDados = r.data;
+  relRenderCorpo();
+}
+
+function relRenderCorpo() {
+  const corpo = document.getElementById('rel-corpo');
+  if (!corpo || !_relDados) return;
+  const d   = _relDados;
+  const aba = _relFiltros.aba;
+
+  if (aba === 'financeiro') {
+    const totalEnt = d.entradas.reduce((s,e)=>s+e.valor,0);
+    const totalSai = d.saidas.reduce((s,e)=>s+e.valor,0);
+    const saldo    = totalEnt - totalSai;
+
+    const porCat = {};
+    d.saidas.forEach(s => { porCat[s.categoria] = (porCat[s.categoria]||0)+s.valor; });
+    const porTipo = {};
+    d.entradas.forEach(e => { porTipo[e.tipo||'outro'] = (porTipo[e.tipo||'outro']||0)+e.valor; });
+    const porEmp = {};
+    d.entradas.forEach(e => {
+      const k = e.empreendimento_nome||'Sem empreendimento';
+      porEmp[k] = (porEmp[k]||0)+e.valor;
+    });
+
+    corpo.innerHTML = `
+      <div class="kpi-grid" style="margin-bottom:18px">
+        ${kpi('📥','Entradas Recebidas', fmt(totalEnt), `${d.entradas.length} lançamentos`)}
+        ${kpi('📤','Saídas Pagas', fmt(totalSai), `${d.saidas.length} lançamentos`)}
+        ${kpi('💰','Saldo do Período', fmt(saldo), saldo>=0?'Positivo ✅':'Negativo ⚠️')}
+        ${kpi('📊','Margem', totalEnt>0?Math.round(saldo/totalEnt*100)+'%':'—', 'saldo / entradas')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px">
+        <div class="mini-card">
+          <h4 style="margin-bottom:10px;font-size:13px">📥 Entradas por Empreendimento</h4>
+          ${Object.entries(porEmp).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+              <span style="color:var(--text2)">${n}</span><span style="font-weight:700;color:var(--success)">${fmt(v)}</span>
+            </div>`).join('') || '<div style="color:var(--text2);font-size:12px">Sem dados</div>'}
+        </div>
+        <div class="mini-card">
+          <h4 style="margin-bottom:10px;font-size:13px">📤 Saídas por Categoria</h4>
+          ${Object.entries(porCat).sort((a,b)=>b[1]-a[1]).map(([cat,v])=>`
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+              <span style="color:var(--text2)">${CATEGORIAS_SAIDA_LABEL?.[cat]||cat}</span><span style="font-weight:700;color:var(--danger)">${fmt(v)}</span>
+            </div>`).join('') || '<div style="color:var(--text2);font-size:12px">Sem dados</div>'}
+        </div>
+      </div>
+      <div class="table-card" style="margin-bottom:16px">
+        <div class="table-header"><div class="table-title">📥 Entradas (${d.entradas.length})</div></div>
+        <table><thead><tr><th>Data</th><th>Empreendimento</th><th>Corretor</th><th>Descrição</th><th class="right">Valor</th></tr></thead>
+        <tbody>${d.entradas.length ? d.entradas.map(e=>`
+          <tr>
+            <td style="white-space:nowrap">${fmtDate(e.data)}</td>
+            <td>${e.empreendimento_nome||'—'}</td>
+            <td>${e.corretor_nome||'—'}</td>
+            <td style="font-size:11px;color:var(--text2)">${e.descricao||'—'}</td>
+            <td style="text-align:right;font-weight:700;color:var(--success)">${fmt(e.valor)}</td>
+          </tr>`).join('') : '<tr class="empty-row"><td colspan="5">Nenhuma entrada no período</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">📤 Saídas (${d.saidas.length})</div></div>
+        <table><thead><tr><th>Data</th><th>Empreendimento</th><th>Categoria</th><th>Descrição</th><th class="right">Valor</th></tr></thead>
+        <tbody>${d.saidas.length ? d.saidas.map(s=>`
+          <tr>
+            <td style="white-space:nowrap">${fmtDate(s.data)}</td>
+            <td>${s.empreendimento_nome||'—'}</td>
+            <td><span class="badge badge-gray" style="font-size:10px">${CATEGORIAS_SAIDA_LABEL?.[s.categoria]||s.categoria}</span></td>
+            <td style="font-size:11px;color:var(--text2)">${s.descricao||'—'}</td>
+            <td style="text-align:right;font-weight:700;color:var(--danger)">${fmt(s.valor)}</td>
+          </tr>`).join('') : '<tr class="empty-row"><td colspan="5">Nenhuma saída no período</td></tr>'}</tbody>
+        </table>
+      </div>`;
+
+  } else if (aba === 'vendas') {
+    const ativas   = d.vendas.filter(v=>v.status==='ativo');
+    const vgvTotal = ativas.reduce((s,v)=>s+v.valor,0);
+    const comR2X   = ativas.reduce((s,v)=>s+(v.comissao_r2x||0),0);
+    const comCor   = ativas.reduce((s,v)=>s+(v.comissao_corretor||0),0);
+    const porEmpV  = {};
+    ativas.forEach(v => {
+      const k = v.empreendimento_nome||'—';
+      if (!porEmpV[k]) porEmpV[k] = {qtd:0,vgv:0};
+      porEmpV[k].qtd++; porEmpV[k].vgv+=v.valor;
+    });
+
+    corpo.innerHTML = `
+      <div class="kpi-grid" style="margin-bottom:18px">
+        ${kpi('🏆','Total de Vendas', ativas.length, `${d.vendas.length} no período`)}
+        ${kpi('💎','VGV Vendido', fmt(vgvTotal), 'vendas ativas')}
+        ${kpi('💵','Ticket Médio', ativas.length?fmt(vgvTotal/ativas.length):'—', 'por venda')}
+        ${kpi('🤝','Comissão R2X', fmt(comR2X), `Corretor: ${fmt(comCor)}`)}
+      </div>
+      <div class="mini-card" style="margin-bottom:16px">
+        <h4 style="margin-bottom:10px;font-size:13px">🏗️ Vendas por Empreendimento</h4>
+        <div style="display:flex;flex-wrap:wrap;gap:10px">
+          ${Object.entries(porEmpV).sort((a,b)=>b[1].vgv-a[1].vgv).map(([n,v])=>`
+            <div style="background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:10px 16px;min-width:150px">
+              <div style="font-size:11px;color:var(--text2)">${n}</div>
+              <div style="font-weight:700;font-size:15px;color:var(--success)">${fmt(v.vgv)}</div>
+              <div style="font-size:10px;color:var(--text2)">${v.qtd} venda${v.qtd!==1?'s':''}</div>
+            </div>`).join('') || '<span style="color:var(--text2);font-size:12px">Sem vendas ativas</span>'}
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">🏆 Vendas (${d.vendas.length})</div></div>
+        <table><thead><tr><th>Data</th><th>Cliente</th><th>Empreendimento</th><th>Unidade</th><th>Corretor</th><th>Status</th><th class="right">Valor</th><th class="right">Com. R2X</th><th class="right">Com. Cor.</th></tr></thead>
+        <tbody>${d.vendas.length ? d.vendas.map(v=>`
+          <tr style="${v.status==='distrato'?'opacity:.6':''}">
+            <td style="white-space:nowrap">${fmtDate(v.data)}</td>
+            <td>${v.cliente_nome||'—'}</td>
+            <td>${v.empreendimento_nome||'—'}</td>
+            <td style="font-size:11px">${v.imovel||'—'}</td>
+            <td>${v.corretor_nome||'—'}</td>
+            <td><span class="badge ${v.status==='ativo'?'badge-green':v.status==='reserva'?'badge-orange':'badge-red'}">${v.status}</span></td>
+            <td style="text-align:right;font-weight:700">${fmt(v.valor)}</td>
+            <td style="text-align:right;color:var(--success)">${v.comissao_r2x?fmt(v.comissao_r2x):'—'}</td>
+            <td style="text-align:right;color:var(--accent)">${v.comissao_corretor?fmt(v.comissao_corretor):'—'}</td>
+          </tr>`).join('') : '<tr class="empty-row"><td colspan="9">Nenhuma venda no período</td></tr>'}</tbody>
+        </table>
+      </div>`;
+
+  } else if (aba === 'corretores') {
+    const totalVendas = d.corretores.reduce((s,c)=>s+c.total_vendas,0);
+    const totalVGV    = d.corretores.reduce((s,c)=>s+c.vgv_total,0);
+    const totalLeads  = d.corretores.reduce((s,c)=>s+c.total_leads,0);
+
+    corpo.innerHTML = `
+      <div class="kpi-grid" style="margin-bottom:18px">
+        ${kpi('👥','Corretores Ativos', d.corretores.length, 'com atividade no período')}
+        ${kpi('🏆','Vendas Totais', totalVendas, 'soma de todos')}
+        ${kpi('💎','VGV Total', fmt(totalVGV), 'soma de todos')}
+        ${kpi('🎯','Leads Distribuídos', totalLeads, 'no período')}
+      </div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">👥 Ranking de Corretores</div></div>
+        <table><thead><tr><th>#</th><th>Corretor</th><th class="right">Leads</th><th class="right">Vendas</th><th class="right">Conversão</th><th class="right">VGV Total</th><th class="right">Ticket Médio</th></tr></thead>
+        <tbody>${d.corretores.length ? d.corretores.map((c,i)=>{
+          const conv   = c.total_leads>0 ? Math.round(c.total_vendas/c.total_leads*100) : 0;
+          const ticket = c.total_vendas>0 ? c.vgv_total/c.total_vendas : 0;
+          const medalha = i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`;
+          return `<tr>
+            <td style="font-weight:700;color:${i<3?'var(--accent)':'var(--text2)'}">${medalha}</td>
+            <td><strong>${c.nome}</strong></td>
+            <td style="text-align:right">${c.total_leads}</td>
+            <td style="text-align:right;font-weight:700">${c.total_vendas}</td>
+            <td style="text-align:right"><span style="color:${conv>=30?'var(--success)':conv>=15?'#f59e0b':'var(--danger)'};font-weight:700">${conv}%</span></td>
+            <td style="text-align:right;font-weight:700;color:var(--success)">${fmt(c.vgv_total)}</td>
+            <td style="text-align:right;color:var(--text2)">${ticket>0?fmt(ticket):'—'}</td>
+          </tr>`;
+        }).join('') : '<tr class="empty-row"><td colspan="7">Nenhum corretor com atividade no período</td></tr>'}</tbody>
+        </table>
+      </div>`;
+
+  } else if (aba === 'leads') {
+    const porStatus = {};
+    d.leads.forEach(l => { porStatus[l.status] = (porStatus[l.status]||0)+1; });
+    const conv    = d.leads.filter(l=>l.status==='vendido').length;
+    const convPct = d.leads.length>0 ? Math.round(conv/d.leads.length*100) : 0;
+    const porEmpL = {};
+    d.leads.forEach(l => { const k=l.empreendimento_nome||'Sem empreendimento'; porEmpL[k]=(porEmpL[k]||0)+1; });
+
+    const SL = { novo:'Captado', qualificado:'Qualificado', com_corretor:'Distribuído', visitou:'Atend./Visita', proposta:'Proposta', reserva:'Reserva', vendido:'Venda', sem_venda:'Sem venda', perdido:'Sem venda' };
+    const SB = { novo:'badge-accent', qualificado:'badge-blue', com_corretor:'badge-blue', visitou:'badge-purple', proposta:'badge-yellow', reserva:'badge-orange', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
+
+    corpo.innerHTML = `
+      <div class="kpi-grid" style="margin-bottom:18px">
+        ${kpi('🎯','Total de Leads', d.leads.length, 'no período')}
+        ${kpi('🏆','Convertidos', conv, `${convPct}% de conversão`)}
+        ${kpi('🔒','Em Reserva', d.leads.filter(l=>l.status==='reserva').length, 'aguardando venda')}
+        ${kpi('❌','Sem Venda', d.leads.filter(l=>['sem_venda','perdido'].includes(l.status)).length, 'perdidos')}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="mini-card">
+          <h4 style="margin-bottom:10px;font-size:13px">📊 Por Status</h4>
+          ${Object.entries(porStatus).sort((a,b)=>b[1]-a[1]).map(([st,n])=>`
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">
+              <span class="badge ${SB[st]||'badge-gray'}" style="font-size:10px">${SL[st]||st}</span>
+              <span style="font-weight:700">${n}</span>
+            </div>`).join('') || '<div style="color:var(--text2);font-size:12px">Sem dados</div>'}
+        </div>
+        <div class="mini-card">
+          <h4 style="margin-bottom:10px;font-size:13px">🏗️ Por Empreendimento</h4>
+          ${Object.entries(porEmpL).sort((a,b)=>b[1]-a[1]).map(([n,qt])=>`
+            <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
+              <span style="color:var(--text2)">${n}</span><span style="font-weight:700">${qt}</span>
+            </div>`).join('') || '<div style="color:var(--text2);font-size:12px">Sem dados</div>'}
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-header"><div class="table-title">🎯 Leads no Período (${d.leads.length})</div></div>
+        <table><thead><tr><th>Data</th><th>Nome</th><th>Status</th><th>Empreendimento</th><th>Corretor</th></tr></thead>
+        <tbody>${d.leads.length ? d.leads.map(l=>`
+          <tr>
+            <td style="white-space:nowrap">${fmtDate(l.data)}</td>
+            <td><strong>${l.nome||'—'}</strong></td>
+            <td><span class="badge ${SB[l.status]||'badge-gray'}" style="font-size:10px">${SL[l.status]||l.status}</span></td>
+            <td>${l.empreendimento_nome||'—'}</td>
+            <td>${l.corretor_nome||'—'}</td>
+          </tr>`).join('') : '<tr class="empty-row"><td colspan="5">Nenhum lead no período</td></tr>'}</tbody>
+        </table>
+      </div>`;
+  }
 }
 
 // ─── PORTAL DO INCORPORADOR ───────────────────────────────────────────────────

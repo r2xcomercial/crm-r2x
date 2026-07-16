@@ -6227,6 +6227,101 @@ app.post('/api/financeiro/aplicar-baixa-incorporadora', autenticar, (req, res) =
   ok(res, result);
 });
 
+// ─── RELATÓRIOS ──────────────────────────────────────────────────────────────
+
+app.get('/api/relatorios/geral', autenticar, (req, res) => {
+  const { data_inicio, data_fim, empreendimento_id, corretor_id } = req.query;
+  const dtIni = data_inicio || '2020-01-01';
+  const dtFim = data_fim   || '2099-12-31';
+  const empId  = empreendimento_id ? Number(empreendimento_id) : null;
+  const corId  = corretor_id ? Number(corretor_id) : null;
+
+  // ── FINANCEIRO ──
+  const entParams = [dtIni, dtFim];
+  let entWhere = `fe.status='recebido' AND fe.data_recebimento BETWEEN ? AND ?`;
+  if (empId) { entWhere += ' AND fe.empreendimento_id=?'; entParams.push(empId); }
+
+  const entradas = db.prepare(`
+    SELECT fe.id, fe.data_recebimento as data, fe.valor, fe.descricao, fe.tipo,
+           e.nome as empreendimento_nome, c.nome as corretor_nome
+    FROM financeiro_entradas fe
+    LEFT JOIN empreendimentos e ON e.id=fe.empreendimento_id
+    LEFT JOIN vendas v ON v.id=fe.venda_id
+    LEFT JOIN corretores c ON c.id=v.corretor_id
+    WHERE ${entWhere}
+    ORDER BY fe.data_recebimento DESC
+  `).all(...entParams);
+
+  const saiParams = [dtIni, dtFim];
+  let saiWhere = `fs.data_pagamento BETWEEN ? AND ?`;
+  if (empId) { saiWhere += ' AND fs.empreendimento_id=?'; saiParams.push(empId); }
+
+  const saidas = db.prepare(`
+    SELECT fs.id, fs.data_pagamento as data, fs.valor, fs.descricao, fs.categoria,
+           e.nome as empreendimento_nome
+    FROM financeiro_saidas fs
+    LEFT JOIN empreendimentos e ON e.id=fs.empreendimento_id
+    WHERE ${saiWhere}
+    ORDER BY fs.data_pagamento DESC
+  `).all(...saiParams);
+
+  // ── VENDAS ──
+  const vndParams = [dtIni, dtFim];
+  let vndWhere = `v.data_venda BETWEEN ? AND ?`;
+  if (empId) { vndWhere += ' AND v.empreendimento_id=?'; vndParams.push(empId); }
+  if (corId) { vndWhere += ' AND v.corretor_id=?';       vndParams.push(corId); }
+
+  const vendas = db.prepare(`
+    SELECT v.id, v.data_venda as data, v.valor, v.status, v.imovel,
+           v.comissao_r2x, v.comissao_corretor_valor as comissao_corretor,
+           l.nome as cliente_nome, c.nome as corretor_nome, c.id as corretor_id,
+           e.nome as empreendimento_nome, e.id as empreendimento_id
+    FROM vendas v
+    LEFT JOIN leads l ON l.id=v.lead_id
+    LEFT JOIN corretores c ON c.id=v.corretor_id
+    LEFT JOIN empreendimentos e ON e.id=v.empreendimento_id
+    WHERE ${vndWhere}
+    ORDER BY v.data_venda DESC
+  `).all(...vndParams);
+
+  // ── LEADS ──
+  const ldParams = [dtIni, dtFim];
+  let ldWhere = `l.criado_em BETWEEN ? AND ?`;
+  if (empId) { ldWhere += ' AND l.empreendimento_id=?'; ldParams.push(empId); }
+  if (corId) { ldWhere += ' AND l.corretor_id=?';       ldParams.push(corId); }
+
+  const leads = db.prepare(`
+    SELECT l.id, l.nome, l.status, l.criado_em as data,
+           c.nome as corretor_nome, e.nome as empreendimento_nome
+    FROM leads l
+    LEFT JOIN corretores c ON c.id=l.corretor_id
+    LEFT JOIN empreendimentos e ON e.id=l.empreendimento_id
+    WHERE ${ldWhere}
+    ORDER BY l.criado_em DESC
+  `).all(...ldParams);
+
+  // ── CORRETORES (ranking no período) ──
+  const corrParams = [dtIni, dtFim, dtIni, dtFim];
+  if (empId) corrParams.push(empId, empId);
+  const corretores = db.prepare(`
+    SELECT c.id, c.nome,
+      (SELECT COUNT(*) FROM vendas v WHERE v.corretor_id=c.id AND v.status='ativo'
+       AND v.data_venda BETWEEN ? AND ?
+       ${empId ? 'AND v.empreendimento_id=?' : ''}) as total_vendas,
+      (SELECT COALESCE(SUM(v.valor),0) FROM vendas v WHERE v.corretor_id=c.id AND v.status='ativo'
+       AND v.data_venda BETWEEN ? AND ?
+       ${empId ? 'AND v.empreendimento_id=?' : ''}) as vgv_total,
+      (SELECT COUNT(*) FROM leads l WHERE l.corretor_id=c.id
+       AND l.criado_em BETWEEN ? AND ?
+       ${empId ? 'AND l.empreendimento_id=?' : ''}) as total_leads
+    FROM corretores c
+    ORDER BY total_vendas DESC, vgv_total DESC
+  `).all(...[dtIni, dtFim, ...(empId?[empId]:[]), dtIni, dtFim, ...(empId?[empId]:[]), dtIni, dtFim, ...(empId?[empId]:[])]);
+  const corretoresFiltrados = corretores.filter(c => c.total_vendas > 0 || c.total_leads > 0);
+
+  ok(res, { entradas, saidas, vendas, leads, corretores: corretoresFiltrados });
+});
+
 // ─── START ────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => console.log(`CRM R2X rodando em http://localhost:${PORT}`));
