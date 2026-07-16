@@ -5864,17 +5864,17 @@ async function abrirModalPagtoAvulso(clienteIdPresel, nomePresel) {
           <div class="form-group"><label style="font-size:12px">Data de Emissão</label>
             <input type="date" id="pa-nf-data">
           </div>
-          <div class="form-group"><label style="font-size:12px">Valor Bruto da NF (R$)</label>
+          <div class="form-group"><label style="font-size:12px">Valor do Serviço / Bruto (R$)</label>
             <input type="number" id="pa-bruto" step="0.01" min="0" placeholder="0,00" oninput="paRecalcularLiquido()">
           </div>
-          <div class="form-group"><label style="font-size:12px">Imposto Retido (R$)</label>
-            <input type="number" id="pa-retido" step="0.01" min="0" placeholder="0,00" oninput="paRecalcularLiquido()">
+          <div class="form-group"><label style="font-size:12px">Total Retenções Federais (R$)</label>
+            <input type="number" id="pa-retido" step="0.01" min="0" placeholder="0,00" oninput="paRecalcularLiquido()" title="Campo 'Total das Retenções Federais' da NFS-e — retido e pago pelo incorporador">
           </div>
         </div>
         <div id="pa-resumo-nf" style="display:none;margin-top:8px;padding:8px;background:rgba(0,0,0,.2);border-radius:6px;font-size:12px"></div>
       </div>
 
-      <div class="form-group"><label>Valor Líquido Recebido (R$) *</label>
+      <div class="form-group"><label>Valor Líquido da NFS-e (R$) *</label>
         <input type="number" id="pa-valor" step="0.01" min="0" placeholder="0,00" oninput="document.getElementById('pa-bruto').value=''">
       </div>
       <div class="form-group"><label>Data Recebimento *</label>
@@ -5947,11 +5947,11 @@ async function editarPagtoAvulso(id) {
           <div class="form-group"><label style="font-size:12px">Data de Emissão</label>
             <input type="date" id="pa-nf-data" value="${p.nf_data||''}">
           </div>
-          <div class="form-group"><label style="font-size:12px">Valor Bruto da NF (R$)</label>
+          <div class="form-group"><label style="font-size:12px">Valor do Serviço / Bruto (R$)</label>
             <input type="number" id="pa-bruto" step="0.01" min="0" value="${p.valor_bruto_nf||''}" placeholder="0,00" oninput="paRecalcularLiquido()">
           </div>
-          <div class="form-group"><label style="font-size:12px">Imposto Retido (R$)</label>
-            <input type="number" id="pa-retido" step="0.01" min="0" value="${p.imposto_retido||''}" placeholder="0,00" oninput="paRecalcularLiquido()">
+          <div class="form-group"><label style="font-size:12px">Total Retenções Federais (R$)</label>
+            <input type="number" id="pa-retido" step="0.01" min="0" value="${p.imposto_retido||''}" placeholder="0,00" oninput="paRecalcularLiquido()" title="Campo 'Total das Retenções Federais' da NFS-e — retido e pago pelo incorporador">
           </div>
         </div>
         <div id="pa-resumo-nf" style="display:${p.valor_bruto_nf?'block':'none'};margin-top:8px;padding:8px;background:rgba(0,0,0,.2);border-radius:6px;font-size:12px">
@@ -5963,7 +5963,7 @@ async function editarPagtoAvulso(id) {
         </div>
       </div>
 
-      <div class="form-group"><label>Valor Líquido Recebido (R$) *</label>
+      <div class="form-group"><label>Valor Líquido da NFS-e (R$) *</label>
         <input type="number" id="pa-valor" step="0.01" value="${p.valor}" oninput="document.getElementById('pa-bruto').value=''">
       </div>
       <div class="form-group"><label>Data Recebimento *</label>
