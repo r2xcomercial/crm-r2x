@@ -5978,7 +5978,7 @@ app.delete('/api/financeiro/pagamentos-avulsos/:id', autenticar, (req, res) => {
 
 // Saldo consolidado por incorporadora
 app.get('/api/financeiro/saldo-incorporadoras', autenticar, (req, res) => {
-  // Pendente: soma das entradas pendentes cujo empreendimento pertence à incorporadora
+  // Entradas pendentes agrupadas por incorporadora
   const pendentes = db.prepare(`
     SELECT c.id as cliente_id, c.razao_social,
       COALESCE(SUM(fe.valor), 0) as total_pendente
@@ -5990,9 +5990,18 @@ app.get('/api/financeiro/saldo-incorporadoras', autenticar, (req, res) => {
 
   // Pagamentos avulsos recebidos por incorporadora
   const pagos = db.prepare(`
-    SELECT cliente_id, SUM(valor) as total_pago
+    SELECT cliente_id, SUM(valor) as total_avulso
     FROM pagamentos_avulsos_incorporadora
     GROUP BY cliente_id
+  `).all();
+
+  // Entradas já recebidas por incorporadora (para calcular avulso disponível)
+  const recebidos = db.prepare(`
+    SELECT c.id as cliente_id, COALESCE(SUM(fe.valor), 0) as total_recebido
+    FROM clientes c
+    JOIN empreendimentos e ON e.cliente_id = c.id
+    JOIN financeiro_entradas fe ON fe.empreendimento_id = e.id AND fe.status = 'recebido'
+    GROUP BY c.id
   `).all();
 
   // Histórico de pagamentos avulsos
@@ -6005,10 +6014,12 @@ app.get('/api/financeiro/saldo-incorporadoras', autenticar, (req, res) => {
   `).all();
 
   const pagoMap = {};
-  pagos.forEach(p => { pagoMap[p.cliente_id] = p.total_pago; });
+  pagos.forEach(p => { pagoMap[p.cliente_id] = p.total_avulso; });
+  const recebidoMap = {};
+  recebidos.forEach(r => { recebidoMap[r.cliente_id] = r.total_recebido; });
 
-  // Incorporadoras que têm pagamentos avulsos mas nenhuma entrada pendente
-  const soComPagto = db.prepare(`
+  // Incorporadoras que têm pagamentos avulsos mas podem não ter entradas pendentes
+  const comAvulso = db.prepare(`
     SELECT DISTINCT p.cliente_id, c.razao_social
     FROM pagamentos_avulsos_incorporadora p
     JOIN clientes c ON c.id = p.cliente_id
@@ -6018,32 +6029,124 @@ app.get('/api/financeiro/saldo-incorporadoras', autenticar, (req, res) => {
   const seen = new Set();
 
   for (const row of pendentes) {
-    const pago = pagoMap[row.cliente_id] || 0;
+    const total_avulso = pagoMap[row.cliente_id] || 0;
+    const total_recebido = recebidoMap[row.cliente_id] || 0;
+    const avulso_disponivel = Math.max(0, total_avulso - total_recebido);
     result.push({
       cliente_id: row.cliente_id,
       razao_social: row.razao_social,
       total_pendente: row.total_pendente,
-      total_pago: pago,
-      saldo_devedor: row.total_pendente - pago,
+      total_avulso,
+      total_recebido,
+      avulso_disponivel,
+      saldo_devedor: row.total_pendente,
     });
     seen.add(row.cliente_id);
   }
 
-  for (const row of soComPagto) {
+  for (const row of comAvulso) {
     if (!seen.has(row.cliente_id)) {
-      const pago = pagoMap[row.cliente_id] || 0;
+      const total_avulso = pagoMap[row.cliente_id] || 0;
+      const total_recebido = recebidoMap[row.cliente_id] || 0;
+      const avulso_disponivel = Math.max(0, total_avulso - total_recebido);
       result.push({
         cliente_id: row.cliente_id,
         razao_social: row.razao_social,
         total_pendente: 0,
-        total_pago: pago,
-        saldo_devedor: -pago,
+        total_avulso,
+        total_recebido,
+        avulso_disponivel,
+        saldo_devedor: 0,
       });
+      seen.add(row.cliente_id);
     }
   }
 
   result.sort((a, b) => b.saldo_devedor - a.saldo_devedor);
   ok(res, { incorporadoras: result, historico });
+});
+
+// Preview + execução de baixa automática pelos mais antigos
+app.get('/api/financeiro/preview-baixa/:clienteId', autenticar, (req, res) => {
+  const valor = parseFloat(req.query.valor || 0);
+  const entries = db.prepare(`
+    SELECT fe.*, e.nome as empreendimento_nome
+    FROM financeiro_entradas fe
+    JOIN empreendimentos e ON e.id = fe.empreendimento_id
+    WHERE e.cliente_id = ? AND fe.status = 'pendente' AND fe.valor > 0
+    ORDER BY COALESCE(fe.data_prevista, fe.criado_em) ASC, fe.id ASC
+  `).all(req.params.clienteId);
+
+  let restante = valor;
+  const aBaixar = [];
+  const manter = [];
+
+  for (const e of entries) {
+    if (restante <= 0) { manter.push(e); continue; }
+    if (e.valor <= restante + 0.005) {
+      aBaixar.push({ ...e, valor_baixa: e.valor, split: false });
+      restante -= e.valor;
+    } else {
+      // Divide: valor_baixa = restante, novo_pendente = e.valor - restante
+      aBaixar.push({ ...e, valor_baixa: parseFloat(restante.toFixed(2)), split: true, valor_restante: parseFloat((e.valor - restante).toFixed(2)) });
+      restante = 0;
+      manter.push({ ...e, valor: parseFloat((e.valor - restante).toFixed(2)) });
+    }
+  }
+
+  ok(res, { a_baixar: aBaixar, pendentes_restantes: entries.length - aBaixar.length, total_baixa: valor - Math.max(0, restante) });
+});
+
+app.post('/api/financeiro/aplicar-baixa-incorporadora', autenticar, (req, res) => {
+  const { cliente_id, valor, data_recebimento } = req.body;
+  if (!cliente_id || !valor || valor <= 0) return err(res, 'Parâmetros inválidos');
+
+  const dataRec = data_recebimento || new Date().toISOString().slice(0, 10);
+
+  const entries = db.prepare(`
+    SELECT fe.*
+    FROM financeiro_entradas fe
+    JOIN empreendimentos e ON e.id = fe.empreendimento_id
+    WHERE e.cliente_id = ? AND fe.status = 'pendente' AND fe.valor > 0
+    ORDER BY COALESCE(fe.data_prevista, fe.criado_em) ASC, fe.id ASC
+  `).all(parseInt(cliente_id));
+
+  let restante = parseFloat(valor);
+  let baixados = 0;
+  let divididos = 0;
+
+  const aplicar = db.transaction(() => {
+    for (const e of entries) {
+      if (restante <= 0.005) break;
+      if (e.valor <= restante + 0.005) {
+        // Baixa total
+        db.prepare(`UPDATE financeiro_entradas SET status='recebido', data_recebimento=? WHERE id=?`).run(dataRec, e.id);
+        restante -= e.valor;
+        baixados++;
+      } else {
+        // Divide: cria nova entrada para o restante pendente
+        const valorBaixa = parseFloat(restante.toFixed(2));
+        const valorSobra = parseFloat((e.valor - valorBaixa).toFixed(2));
+        // Atualiza original com valor da baixa e marca recebido
+        db.prepare(`UPDATE financeiro_entradas SET valor=?, status='recebido', data_recebimento=? WHERE id=?`).run(valorBaixa, dataRec, e.id);
+        // Insere parcela restante como pendente
+        db.prepare(`INSERT INTO financeiro_entradas
+          (empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, status, observacoes, parcela_num, parcela_total, tem_nf_propria)
+          VALUES (?,?,?,?,?,?,'pendente',?,?,?,?)`).run(
+          e.empreendimento_id, e.venda_id,
+          e.descricao, e.tipo, valorSobra,
+          e.data_prevista,
+          e.observacoes ? `${e.observacoes} [saldo após baixa parcial]` : '[saldo após baixa parcial]',
+          e.parcela_num || null, e.parcela_total || null, e.tem_nf_propria || 1
+        );
+        restante = 0;
+        divididos++;
+      }
+    }
+  });
+
+  aplicar();
+  ok(res, { baixados, divididos, aplicado: parseFloat((parseFloat(valor) - Math.max(0, restante)).toFixed(2)) });
 });
 
 // ─── START ────────────────────────────────────────────────────────────────────
