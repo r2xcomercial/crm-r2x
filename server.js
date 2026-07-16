@@ -2904,7 +2904,7 @@ app.post('/api/financeiro/avulso/extrair-nf', autenticar, uploadNF.single('arqui
     const json = await resposta.json();
     const texto = json.content?.[0]?.text || '';
     const dados = JSON.parse(texto.replace(/```json\n?|\n?```/g, '').trim());
-    ok(res, { dados });
+    res.json({ ok: true, dados });
   } catch (e) {
     console.error('[avulso/extrair-nf]', e.message);
     res.json({ ok: false, error: 'Erro ao ler NF: ' + e.message });
