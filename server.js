@@ -6078,9 +6078,9 @@ app.get('/api/financeiro/saldo-incorporadoras', autenticar, (req, res) => {
     GROUP BY c.id, c.razao_social
   `).all();
 
-  // Pagamentos avulsos recebidos por incorporadora
+  // Pagamentos avulsos — usa valor bruto da NF (quando existe) para abater a dívida
   const pagos = db.prepare(`
-    SELECT cliente_id, SUM(valor) as total_avulso
+    SELECT cliente_id, SUM(COALESCE(valor_bruto_nf, valor)) as total_avulso
     FROM pagamentos_avulsos_incorporadora
     GROUP BY cliente_id
   `).all();
@@ -6188,10 +6188,11 @@ app.get('/api/financeiro/preview-baixa/:clienteId', autenticar, (req, res) => {
 });
 
 app.post('/api/financeiro/aplicar-baixa-incorporadora', autenticar, (req, res) => {
-  const { cliente_id, valor, data_recebimento } = req.body;
+  const { cliente_id, valor, data_recebimento, observacao_nf } = req.body;
   if (!cliente_id || !valor || valor <= 0) return err(res, 'Parâmetros inválidos');
 
   const dataRec = data_recebimento || new Date().toISOString().slice(0, 10);
+  const obsNf = observacao_nf ? observacao_nf.trim() : null;
 
   const entries = db.prepare(`
     SELECT fe.*
@@ -6205,28 +6206,36 @@ app.post('/api/financeiro/aplicar-baixa-incorporadora', autenticar, (req, res) =
   let baixados = 0;
   let divididos = 0;
 
+  const _obsEntry = (obsAtual, sufixo) => {
+    const partes = [];
+    if (obsAtual) partes.push(obsAtual);
+    if (obsNf) partes.push(obsNf);
+    if (sufixo) partes.push(sufixo);
+    return partes.join(' | ') || null;
+  };
+
   const aplicar = db.transaction(() => {
     for (const e of entries) {
       if (restante <= 0.005) break;
       if (e.valor <= restante + 0.005) {
         // Baixa total
-        db.prepare(`UPDATE financeiro_entradas SET status='recebido', data_recebimento=? WHERE id=?`).run(dataRec, e.id);
+        db.prepare(`UPDATE financeiro_entradas SET status='recebido', data_recebimento=?, observacoes=? WHERE id=?`)
+          .run(dataRec, _obsEntry(e.observacoes, null), e.id);
         restante -= e.valor;
         baixados++;
       } else {
         // Divide: cria nova entrada para o restante pendente
         const valorBaixa = parseFloat(restante.toFixed(2));
         const valorSobra = parseFloat((e.valor - valorBaixa).toFixed(2));
-        // Atualiza original com valor da baixa e marca recebido
-        db.prepare(`UPDATE financeiro_entradas SET valor=?, status='recebido', data_recebimento=? WHERE id=?`).run(valorBaixa, dataRec, e.id);
-        // Insere parcela restante como pendente
+        db.prepare(`UPDATE financeiro_entradas SET valor=?, status='recebido', data_recebimento=?, observacoes=? WHERE id=?`)
+          .run(valorBaixa, dataRec, _obsEntry(e.observacoes, null), e.id);
         db.prepare(`INSERT INTO financeiro_entradas
           (empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, status, observacoes, parcela_num, parcela_total, tem_nf_propria)
           VALUES (?,?,?,?,?,?,'pendente',?,?,?,?)`).run(
           e.empreendimento_id, e.venda_id,
           e.descricao, e.tipo, valorSobra,
           e.data_prevista,
-          e.observacoes ? `${e.observacoes} [saldo após baixa parcial]` : '[saldo após baixa parcial]',
+          _obsEntry(e.observacoes, '[saldo após baixa parcial]'),
           e.parcela_num || null, e.parcela_total || null, e.tem_nf_propria || 1
         );
         restante = 0;

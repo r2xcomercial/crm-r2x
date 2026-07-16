@@ -5717,16 +5717,23 @@ async function renderSaldoIncorporadoras(el) {
 
 async function abrirModalDarBaixa(clienteId, nomeInc, avulsoDisponivel) {
   const fmtV = v => 'R$ ' + Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
-  const fmtD = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
 
-  // Abre o modal já com o preview carregado
+  // Busca pagamentos avulsos com NF para pré-preencher a referência
+  const avulsoR = await get('/api/financeiro/pagamentos-avulsos');
+  const avulsos = (avulsoR.data || []).filter(p => p.cliente_id == clienteId && p.nf_numero);
+  // Pega a NF mais recente com bruto disponível para baixa
+  const nfRecente = avulsos[0];
+  const nfRefDefault = nfRecente
+    ? `NF ${nfRecente.nf_numero}${nfRecente.data_recebimento ? ' (' + new Date(nfRecente.data_recebimento+'T12:00:00').toLocaleDateString('pt-BR') + ')' : ''}`
+    : '';
+
   openModal(`✅ Dar Baixa — ${nomeInc}`, `
     <div style="margin-bottom:16px">
       <div style="font-size:13px;color:var(--text2);margin-bottom:12px">
         O sistema marcará os lançamentos <strong>mais antigos</strong> como recebidos até o valor informado.
         Se necessário, o último lançamento será <strong>dividido</strong>.
       </div>
-      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px">
         <div style="flex:1;min-width:160px">
           <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Valor a dar baixa (R$)</label>
           <input type="number" id="db-valor" step="0.01" min="0.01" value="${avulsoDisponivel.toFixed(2)}"
@@ -5739,14 +5746,23 @@ async function abrirModalDarBaixa(clienteId, nomeInc, avulsoDisponivel) {
             style="width:100%;padding:8px;border-radius:6px;background:var(--navy3);border:1px solid var(--border);color:var(--text);font-size:14px">
         </div>
       </div>
+      <div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">📄 Referência NF (será gravada na observação de cada lançamento)</label>
+        <input id="db-obs-nf" value="${nfRefDefault}" placeholder="ex: NF 21 – RESIDENCIAL BELVEDERE SPE"
+          style="width:100%;padding:8px;border-radius:6px;background:var(--navy3);border:1px solid var(--border);color:var(--text);font-size:13px;box-sizing:border-box">
+        ${avulsos.length > 1 ? `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${avulsos.slice(0,5).map(p=>`<button type="button" onclick="document.getElementById('db-obs-nf').value='NF ${p.nf_numero} (${new Date(p.data_recebimento+'T12:00:00').toLocaleDateString('pt-BR')})'" style="background:var(--navy2);border:1px solid var(--border);color:#60a5fa;border-radius:5px;padding:3px 8px;font-size:11px;cursor:pointer">NF ${p.nf_numero}</button>`).join('')}</div>` : ''}
+      </div>
     </div>
     <div id="preview-baixa" style="font-size:12px;color:var(--text2);padding:8px;text-align:center">Calculando…</div>
   `, async () => {
     const valor = parseFloat(document.getElementById('db-valor')?.value || 0);
     const dataRec = document.getElementById('db-data')?.value;
+    const obsNf = document.getElementById('db-obs-nf')?.value?.trim() || null;
     if (!valor || valor <= 0) return toast('Informe o valor', 'error');
     if (!dataRec) return toast('Informe a data', 'error');
-    const r = await post('/api/financeiro/aplicar-baixa-incorporadora', { cliente_id: clienteId, valor, data_recebimento: dataRec });
+    const r = await post('/api/financeiro/aplicar-baixa-incorporadora', {
+      cliente_id: clienteId, valor, data_recebimento: dataRec, observacao_nf: obsNf
+    });
     if (!r.ok) return toast(r.error, 'error');
     const { baixados, divididos, aplicado } = r.data;
     toast(`Baixa aplicada: ${baixados} lançamento(s) recebido(s)${divididos ? `, ${divididos} dividido(s)` : ''}. Total: ${fmtV(aplicado)}`);
@@ -5754,7 +5770,6 @@ async function abrirModalDarBaixa(clienteId, nomeInc, avulsoDisponivel) {
     renderFinanceiro();
   });
 
-  // Carrega o preview automaticamente
   setTimeout(() => atualizarPreviewBaixa(clienteId), 100);
 }
 
