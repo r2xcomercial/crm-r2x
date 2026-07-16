@@ -1288,10 +1288,11 @@ app.put("/api/config/cub-sc", autenticar, (req, res) => {
 });
 
 // Gera texto descritivo da forma de pagamento via IA
-app.post("/api/vendas/:id/gerar-forma-pagamento", autenticar, (req, res) => {
+app.post("/api/vendas/:id/gerar-forma-pagamento", autenticar, async (req, res) => {
   const venda = db.prepare(`
-    SELECT v.*, e.valor_cub
+    SELECT v.*, l.nome as lead_nome, e.nome as emp_nome, e.valor_cub
     FROM vendas v
+    LEFT JOIN leads l ON l.id = v.lead_id
     LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
     WHERE v.id=?
   `).get(req.params.id);
@@ -1302,31 +1303,90 @@ app.post("/api/vendas/:id/gerar-forma-pagamento", autenticar, (req, res) => {
 
   let saldoParcelas = [];
   try { saldoParcelas = venda.saldo_parcelas ? JSON.parse(venda.saldo_parcelas) : []; } catch(_) {}
-
+  let entradaParcelas = [];
+  try { entradaParcelas = venda.entrada_parcelas ? JSON.parse(venda.entrada_parcelas) : []; } catch(_) {}
   let permuta = [];
   try { permuta = venda.permuta ? JSON.parse(venda.permuta) : []; } catch(_) {}
 
-  const itens = [];
+  // Processa cada item em ordem: CUB → programático, demais → IA
   const letras = ['a','b','c','d','e','f','g','h','i','j','k','l','m'];
-  const total = saldoParcelas.filter(p => parseFloat(p.valor) > 0).length + permuta.length;
+  let idxLetra = 0;
+  const totalItens = saldoParcelas.filter(p => parseFloat(p.valor) > 0).length + permuta.length;
 
-  saldoParcelas.forEach((p, i) => {
+  const itensProgramaticos = [];
+  const itensParaIA = [];
+
+  saldoParcelas.forEach(p => {
     if (!parseFloat(p.valor)) return;
-    const etiqueta = total > 1 ? letras[itens.length] + ')' : '';
-    const texto = _gerarTextoParcela(p, cubRef, mesRef, etiqueta);
-    if (texto) itens.push(texto);
+    const etiqueta = totalItens > 1 ? letras[idxLetra++] + ')' : (idxLetra++, '');
+    if (cubRef && p.correcao === 'CUB/SC') {
+      const t = _gerarTextoParcela(p, cubRef, mesRef, etiqueta);
+      if (t) itensProgramaticos.push(t);
+    } else {
+      itensParaIA.push({ tipo: 'parcela', dados: p, etiqueta });
+    }
   });
 
   permuta.forEach(pm => {
     if (!pm.descricao && !pm.valor) return;
-    const etiqueta = total > 1 ? letras[itens.length] + ')' : '';
-    const valStr = pm.valor ? ` — avaliado em ${_fBRL(pm.valor)} (${_realExt(parseFloat(pm.valor))})` : '';
-    itens.push(`${etiqueta ? etiqueta + ' ' : ''}${pm.tipo}: ${pm.descricao || ''}${valStr}, dado em dação em pagamento como parte integrante da composição do preço ajustado.`);
+    const etiqueta = totalItens > 1 ? letras[idxLetra++] + ')' : (idxLetra++, '');
+    itensParaIA.push({ tipo: 'permuta', dados: pm, etiqueta });
   });
 
-  if (itens.length === 0) return err(res, 'Nenhuma parcela com valor cadastrada nesta venda');
+  // Se não tem itens para IA, retorna só os programáticos
+  if (itensParaIA.length === 0) {
+    if (itensProgramaticos.length === 0) return err(res, 'Nenhuma parcela com valor cadastrada');
+    return ok(res, { texto: itensProgramaticos.join('\n\n') });
+  }
 
-  ok(res, { texto: itens.join('\n\n') });
+  // Monta contexto para a IA (apenas itens não-CUB)
+  if (!process.env.ANTHROPIC_API_KEY) {
+    // Sem API key: retorna só os programáticos
+    return ok(res, { texto: itensProgramaticos.join('\n\n') || 'Sem itens' });
+  }
+
+  const fmtVal = n => Number(n||0).toLocaleString('pt-BR', {style:'currency', currency:'BRL', minimumFractionDigits:2});
+  let ctx = '';
+
+  entradaParcelas.forEach((p, i) => {
+    const dt = p.data ? new Date(p.data + 'T12:00:00').toLocaleDateString('pt-BR') : 'sem data';
+    ctx += `Entrada ${i+1}: ${fmtVal(p.valor)} em ${dt}\n`;
+  });
+
+  itensParaIA.forEach(item => {
+    if (item.tipo === 'parcela') {
+      const p = item.dados;
+      const qtdN = parseInt(p.qtd) || 1;
+      const dt = p.vencimento ? new Date(p.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '';
+      ctx += `${item.etiqueta || '-'} ${p.titulo || 'Parcela'}: ${qtdN > 1 ? qtdN + 'x ' : ''}${fmtVal(p.valor)}${dt ? `, venc. ${dt}` : ''}${p.forma_pagamento ? `, ${p.forma_pagamento}` : ''}${p.correcao && p.correcao !== 'Sem Correção' ? `, corrigido pelo ${p.correcao}` : ''}${p.juros ? `, juros ${p.juros}` : ''}\n`;
+    } else {
+      const pm = item.dados;
+      ctx += `${item.etiqueta || '-'} Permuta (${pm.tipo}): ${pm.descricao || ''}${pm.valor ? `, avaliado em ${fmtVal(pm.valor)}` : ''}\n`;
+    }
+  });
+
+  const multi = itensParaIA.length > 1;
+  const prompt = `Você é assistente jurídico imobiliário brasileiro. Com base nos dados abaixo, redija ${multi ? 'um parágrafo por item (iniciando pela etiqueta de letra correspondente)' : 'um parágrafo'} descrevendo as condições de pagamento para inserção em contrato de compra e venda. Use linguagem jurídica formal. Não use títulos nem markdown — apenas texto corrido. Para permuta, descreva o bem e mencione que é dado em dação em pagamento. Para cheques, especifique condição de entrega se informada.
+
+${ctx}
+
+Redija apenas o(s) texto(s) das cláusulas, sem introdução nem rodapé.`;
+
+  try {
+    const resposta = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, messages: [{ role: 'user', content: prompt }] })
+    });
+    const json = await resposta.json();
+    if (!resposta.ok) return err(res, json.error?.message || 'Erro na API Claude');
+    const textoIA = json.content?.[0]?.text?.trim() || '';
+    const partes = [...itensProgramaticos, textoIA].filter(Boolean);
+    ok(res, { texto: partes.join('\n\n') });
+  } catch(e) {
+    console.error('[gerar-forma-pagamento]', e.message);
+    err(res, 'Erro ao gerar texto: ' + e.message);
+  }
 });
 
 // Atualiza status de uma unidade (disponivel / reservado / vendido)
