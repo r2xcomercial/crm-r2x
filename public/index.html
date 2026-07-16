@@ -5666,19 +5666,30 @@ async function renderSaldoIncorporadoras(el) {
     }).join('');
 
   const histRows = historico.length === 0
-    ? `<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:16px">Nenhum pagamento avulso registrado.</td></tr>`
-    : historico.map(p => `
-      <tr>
-        <td>${fmtD(p.data_recebimento)}</td>
-        <td><strong>${p.incorporadora_nome}</strong></td>
-        <td>${p.empreendimento_nome || '—'}</td>
-        <td>${p.descricao || '—'}</td>
-        <td style="text-align:right;font-weight:700;color:#4ade80">${fmtV(p.valor)}</td>
-        <td style="text-align:right">
-          <button onclick="editarPagtoAvulso(${p.id})" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:11px;margin-right:4px">✏️</button>
-          <button onclick="deletarPagtoAvulso(${p.id})" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#f87171;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:11px">🗑️</button>
-        </td>
-      </tr>`).join('');
+    ? `<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:16px">Nenhum pagamento avulso registrado.</td></tr>`
+    : historico.map(p => {
+        const temNf = p.nf_numero || p.valor_bruto_nf;
+        const nfBadge = temNf
+          ? `<div style="font-size:10px;color:#60a5fa;margin-top:2px">NF ${p.nf_numero||'s/n'} · Bruto ${fmtV(p.valor_bruto_nf||p.valor)}</div>`
+          : '';
+        const impostoBadge = p.imposto_retido
+          ? `<div style="font-size:10px;color:#f87171;margin-top:1px">Retido: ${fmtV(p.imposto_retido)} (já saída)</div>`
+          : '';
+        return `<tr>
+          <td>${fmtD(p.data_recebimento)}</td>
+          <td><strong>${p.incorporadora_nome}</strong></td>
+          <td>${p.empreendimento_nome || '—'}</td>
+          <td>${p.descricao || '—'}${nfBadge}${impostoBadge}</td>
+          <td style="text-align:right">
+            ${p.valor_bruto_nf && p.imposto_retido ? `<div style="font-size:10px;color:var(--text2);text-decoration:line-through">${fmtV(p.valor_bruto_nf)}</div>` : ''}
+            <div style="font-weight:700;color:#4ade80">${fmtV(p.valor)}</div>
+          </td>
+          <td style="text-align:right">
+            <button onclick="editarPagtoAvulso(${p.id})" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:3px 8px;cursor:pointer;font-size:11px;margin-right:4px">✏️</button>
+            <button onclick="deletarPagtoAvulso(${p.id})" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#f87171;border-radius:5px;padding:3px 8px;cursor:pointer;font-size:11px">🗑️</button>
+          </td>
+        </tr>`;
+      }).join('');
 
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
@@ -5695,8 +5706,8 @@ async function renderSaldoIncorporadoras(el) {
       <div style="overflow-x:auto">
         <table>
           <thead><tr>
-            <th>Data</th><th>Incorporadora</th><th>Empreendimento</th><th>Descrição</th>
-            <th style="text-align:right">Valor</th><th style="text-align:right"></th>
+            <th>Data</th><th>Incorporadora</th><th>Empreendimento</th><th>Descrição / NF</th>
+            <th style="text-align:right">Líquido R2X</th><th style="text-align:right"></th>
           </tr></thead>
           <tbody>${histRows}</tbody>
         </table>
@@ -5799,6 +5810,31 @@ async function atualizarPreviewBaixa(clienteId) {
   }, 400);
 }
 
+function paRecalcularLiquido() {
+  const bruto = parseFloat(document.getElementById('pa-bruto')?.value) || 0;
+  const retido = parseFloat(document.getElementById('pa-retido')?.value) || 0;
+  const fmtV = v => 'R$ ' + Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const resumo = document.getElementById('pa-resumo-nf');
+  const campoLiq = document.getElementById('pa-valor');
+  if (bruto > 0) {
+    const liquido = bruto - retido;
+    if (campoLiq) campoLiq.value = liquido.toFixed(2);
+    if (resumo) {
+      resumo.style.display = 'block';
+      resumo.innerHTML = `
+        <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <span style="color:var(--text2)">Valor Bruto NF: <strong style="color:var(--text)">${fmtV(bruto)}</strong></span>
+          <span style="color:var(--text2)">Imposto Retido: <strong style="color:#f87171">− ${fmtV(retido)}</strong></span>
+          <span style="color:var(--text2)">Líquido R2X: <strong style="color:#4ade80">${fmtV(liquido)}</strong></span>
+        </div>
+        ${retido > 0 ? '<div style="color:#fbbf24;font-size:11px;margin-top:4px">⚡ Uma saída "RETENÇÕES FEDERAIS" será criada automaticamente no financeiro.</div>' : ''}
+      `;
+    }
+  } else {
+    if (resumo) resumo.style.display = 'none';
+  }
+}
+
 async function abrirModalPagtoAvulso(clienteIdPresel, nomePresel) {
   const [clr, empr] = await Promise.all([get('/api/clientes'), get('/api/empreendimentos')]);
   const clientes = clr.data || [];
@@ -5818,8 +5854,28 @@ async function abrirModalPagtoAvulso(clienteIdPresel, nomePresel) {
       <div class="form-group span2"><label>Empreendimento (opcional)</label>
         <select id="pa-emp">${empOpts}</select>
       </div>
-      <div class="form-group"><label>Valor Recebido (R$) *</label>
-        <input type="number" id="pa-valor" step="0.01" min="0" placeholder="0,00">
+
+      <div class="form-group span2" style="border:1px solid rgba(96,165,250,.3);border-radius:8px;padding:12px;background:rgba(96,165,250,.05)">
+        <div style="font-size:11px;font-weight:700;color:#60a5fa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">📄 Nota Fiscal (opcional)</div>
+        <div class="form-grid" style="gap:10px">
+          <div class="form-group"><label style="font-size:12px">Número da NF</label>
+            <input id="pa-nf-num" placeholder="ex: 00123" oninput="paRecalcularLiquido()">
+          </div>
+          <div class="form-group"><label style="font-size:12px">Data de Emissão</label>
+            <input type="date" id="pa-nf-data">
+          </div>
+          <div class="form-group"><label style="font-size:12px">Valor Bruto da NF (R$)</label>
+            <input type="number" id="pa-bruto" step="0.01" min="0" placeholder="0,00" oninput="paRecalcularLiquido()">
+          </div>
+          <div class="form-group"><label style="font-size:12px">Imposto Retido (R$)</label>
+            <input type="number" id="pa-retido" step="0.01" min="0" placeholder="0,00" oninput="paRecalcularLiquido()">
+          </div>
+        </div>
+        <div id="pa-resumo-nf" style="display:none;margin-top:8px;padding:8px;background:rgba(0,0,0,.2);border-radius:6px;font-size:12px"></div>
+      </div>
+
+      <div class="form-group"><label>Valor Líquido Recebido (R$) *</label>
+        <input type="number" id="pa-valor" step="0.01" min="0" placeholder="0,00" oninput="document.getElementById('pa-bruto').value=''">
       </div>
       <div class="form-group"><label>Data Recebimento *</label>
         <input type="date" id="pa-data" value="${new Date().toISOString().slice(0,10)}">
@@ -5832,16 +5888,23 @@ async function abrirModalPagtoAvulso(clienteIdPresel, nomePresel) {
       </div>
     </div>
   `, async () => {
+    const bruto = parseFloat(v('pa-bruto')) || 0;
+    const retido = parseFloat(v('pa-retido')) || 0;
+    const liquido = parseFloat(v('pa-valor')) || (bruto > 0 ? bruto - retido : 0);
     const body = {
       cliente_id: v('pa-cliente'),
       empreendimento_id: v('pa-emp') || null,
-      valor: parseFloat(v('pa-valor')),
+      valor: liquido,
       data_recebimento: v('pa-data'),
       descricao: v('pa-desc') || null,
       observacoes: v('pa-obs') || null,
+      valor_bruto_nf: bruto || null,
+      imposto_retido: retido || null,
+      nf_numero: v('pa-nf-num') || null,
+      nf_data: v('pa-nf-data') || null,
     };
     if (!body.cliente_id) return toast('Selecione a incorporadora', 'error');
-    if (!body.valor || body.valor <= 0) return toast('Informe o valor', 'error');
+    if (!body.valor || body.valor <= 0) return toast('Informe o valor líquido', 'error');
     if (!body.data_recebimento) return toast('Informe a data', 'error');
     const r = await post('/api/financeiro/pagamentos-avulsos', body);
     if (!r.ok) return toast(r.error, 'error');
@@ -5874,8 +5937,34 @@ async function editarPagtoAvulso(id) {
       <div class="form-group span2"><label>Empreendimento (opcional)</label>
         <select id="pa-emp">${empOpts}</select>
       </div>
-      <div class="form-group"><label>Valor (R$) *</label>
-        <input type="number" id="pa-valor" step="0.01" value="${p.valor}">
+
+      <div class="form-group span2" style="border:1px solid rgba(96,165,250,.3);border-radius:8px;padding:12px;background:rgba(96,165,250,.05)">
+        <div style="font-size:11px;font-weight:700;color:#60a5fa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">📄 Nota Fiscal (opcional)</div>
+        <div class="form-grid" style="gap:10px">
+          <div class="form-group"><label style="font-size:12px">Número da NF</label>
+            <input id="pa-nf-num" placeholder="ex: 00123" value="${p.nf_numero||''}" oninput="paRecalcularLiquido()">
+          </div>
+          <div class="form-group"><label style="font-size:12px">Data de Emissão</label>
+            <input type="date" id="pa-nf-data" value="${p.nf_data||''}">
+          </div>
+          <div class="form-group"><label style="font-size:12px">Valor Bruto da NF (R$)</label>
+            <input type="number" id="pa-bruto" step="0.01" min="0" value="${p.valor_bruto_nf||''}" placeholder="0,00" oninput="paRecalcularLiquido()">
+          </div>
+          <div class="form-group"><label style="font-size:12px">Imposto Retido (R$)</label>
+            <input type="number" id="pa-retido" step="0.01" min="0" value="${p.imposto_retido||''}" placeholder="0,00" oninput="paRecalcularLiquido()">
+          </div>
+        </div>
+        <div id="pa-resumo-nf" style="display:${p.valor_bruto_nf?'block':'none'};margin-top:8px;padding:8px;background:rgba(0,0,0,.2);border-radius:6px;font-size:12px">
+          ${p.valor_bruto_nf ? `<div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap">
+            <span style="color:var(--text2)">Valor Bruto NF: <strong style="color:var(--text)">R$ ${Number(p.valor_bruto_nf).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></span>
+            <span style="color:var(--text2)">Imposto Retido: <strong style="color:#f87171">− R$ ${Number(p.imposto_retido||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></span>
+            <span style="color:var(--text2)">Líquido R2X: <strong style="color:#4ade80">R$ ${Number(p.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></span>
+          </div>` : ''}
+        </div>
+      </div>
+
+      <div class="form-group"><label>Valor Líquido Recebido (R$) *</label>
+        <input type="number" id="pa-valor" step="0.01" value="${p.valor}" oninput="document.getElementById('pa-bruto').value=''">
       </div>
       <div class="form-group"><label>Data Recebimento *</label>
         <input type="date" id="pa-data" value="${p.data_recebimento}">
@@ -5888,13 +5977,20 @@ async function editarPagtoAvulso(id) {
       </div>
     </div>
   `, async () => {
+    const bruto = parseFloat(v('pa-bruto')) || 0;
+    const retido = parseFloat(v('pa-retido')) || 0;
+    const liquido = parseFloat(v('pa-valor')) || (bruto > 0 ? bruto - retido : 0);
     const body = {
       cliente_id: v('pa-cliente'),
       empreendimento_id: v('pa-emp') || null,
-      valor: parseFloat(v('pa-valor')),
+      valor: liquido,
       data_recebimento: v('pa-data'),
       descricao: v('pa-desc') || null,
       observacoes: v('pa-obs') || null,
+      valor_bruto_nf: bruto || null,
+      imposto_retido: retido || null,
+      nf_numero: v('pa-nf-num') || null,
+      nf_data: v('pa-nf-data') || null,
     };
     if (!body.cliente_id || !body.valor || !body.data_recebimento) return toast('Preencha os campos obrigatórios', 'error');
     const r = await put(`/api/financeiro/pagamentos-avulsos/${id}`, body);

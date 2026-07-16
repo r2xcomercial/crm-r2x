@@ -5934,8 +5934,19 @@ db.exec(`CREATE TABLE IF NOT EXISTS pagamentos_avulsos_incorporadora (
   data_recebimento TEXT NOT NULL,
   descricao TEXT,
   observacoes TEXT,
+  valor_bruto_nf REAL,
+  imposto_retido REAL,
+  nf_numero TEXT,
+  nf_data TEXT,
+  saida_imposto_id INTEGER REFERENCES financeiro_saidas(id),
   criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
 )`);
+// Migração: adiciona colunas NF se não existirem
+try { db.exec('ALTER TABLE pagamentos_avulsos_incorporadora ADD COLUMN valor_bruto_nf REAL'); } catch(e) {}
+try { db.exec('ALTER TABLE pagamentos_avulsos_incorporadora ADD COLUMN imposto_retido REAL'); } catch(e) {}
+try { db.exec('ALTER TABLE pagamentos_avulsos_incorporadora ADD COLUMN nf_numero TEXT'); } catch(e) {}
+try { db.exec('ALTER TABLE pagamentos_avulsos_incorporadora ADD COLUMN nf_data TEXT'); } catch(e) {}
+try { db.exec('ALTER TABLE pagamentos_avulsos_incorporadora ADD COLUMN saida_imposto_id INTEGER'); } catch(e) {}
 
 app.get('/api/financeiro/pagamentos-avulsos', autenticar, (req, res) => {
   const rows = db.prepare(`
@@ -5949,30 +5960,109 @@ app.get('/api/financeiro/pagamentos-avulsos', autenticar, (req, res) => {
 });
 
 app.post('/api/financeiro/pagamentos-avulsos', autenticar, (req, res) => {
-  const { cliente_id, empreendimento_id, valor, data_recebimento, descricao, observacoes } = req.body;
+  const { cliente_id, empreendimento_id, valor, data_recebimento, descricao, observacoes,
+          valor_bruto_nf, imposto_retido, nf_numero, nf_data } = req.body;
   if (!cliente_id || !valor || !data_recebimento) return err(res, 'Incorporadora, valor e data obrigatórios');
-  const r = db.prepare(`INSERT INTO pagamentos_avulsos_incorporadora
-    (cliente_id, empreendimento_id, valor, data_recebimento, descricao, observacoes)
-    VALUES (?,?,?,?,?,?)`).run(
-    parseInt(cliente_id), empreendimento_id ? parseInt(empreendimento_id) : null,
-    parseFloat(valor), data_recebimento, descricao || null, observacoes || null
-  );
-  ok(res, { id: r.lastInsertRowid });
+
+  const bruto = valor_bruto_nf ? parseFloat(valor_bruto_nf) : null;
+  const retido = imposto_retido ? parseFloat(imposto_retido) : null;
+  // valor = líquido (o que a R2X efetivamente recebe)
+  const valorLiquido = parseFloat(valor);
+
+  const insert = db.transaction(() => {
+    let saida_id = null;
+    if (retido && retido > 0) {
+      const empId = empreendimento_id ? parseInt(empreendimento_id) : null;
+      const nfRef = nf_numero ? ` - NF ${nf_numero}` : '';
+      const sr = db.prepare(`INSERT INTO financeiro_saidas
+        (empreendimento_id, descricao, categoria, valor, data_pagamento, status, recorrente, observacoes)
+        VALUES (?,?,?,?,?,?,?,?)`).run(
+        empId,
+        `RETENÇÕES FEDERAIS${nfRef}`,
+        'imposto',
+        retido,
+        data_recebimento,
+        'pago',
+        0,
+        `Imposto retido pelo incorporador na NF${nfRef}. Pago por conta da R2X.`
+      );
+      saida_id = sr.lastInsertRowid;
+    }
+    const r = db.prepare(`INSERT INTO pagamentos_avulsos_incorporadora
+      (cliente_id, empreendimento_id, valor, data_recebimento, descricao, observacoes,
+       valor_bruto_nf, imposto_retido, nf_numero, nf_data, saida_imposto_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+      parseInt(cliente_id), empreendimento_id ? parseInt(empreendimento_id) : null,
+      valorLiquido, data_recebimento, descricao || null, observacoes || null,
+      bruto, retido || null, nf_numero || null, nf_data || null, saida_id
+    );
+    return r.lastInsertRowid;
+  });
+
+  const newId = insert();
+  ok(res, { id: newId });
 });
 
 app.put('/api/financeiro/pagamentos-avulsos/:id', autenticar, (req, res) => {
-  const { cliente_id, empreendimento_id, valor, data_recebimento, descricao, observacoes } = req.body;
-  db.prepare(`UPDATE pagamentos_avulsos_incorporadora
-    SET cliente_id=?, empreendimento_id=?, valor=?, data_recebimento=?, descricao=?, observacoes=?
-    WHERE id=?`).run(
-    parseInt(cliente_id), empreendimento_id ? parseInt(empreendimento_id) : null,
-    parseFloat(valor), data_recebimento, descricao || null, observacoes || null, req.params.id
-  );
+  const { cliente_id, empreendimento_id, valor, data_recebimento, descricao, observacoes,
+          valor_bruto_nf, imposto_retido, nf_numero, nf_data } = req.body;
+
+  const bruto = valor_bruto_nf ? parseFloat(valor_bruto_nf) : null;
+  const retido = imposto_retido ? parseFloat(imposto_retido) : null;
+  const valorLiquido = parseFloat(valor);
+  const empId = empreendimento_id ? parseInt(empreendimento_id) : null;
+
+  const update = db.transaction(() => {
+    const existing = db.prepare('SELECT * FROM pagamentos_avulsos_incorporadora WHERE id=?').get(req.params.id);
+    if (!existing) return;
+
+    // Atualiza ou cria/deleta saída de imposto
+    if (retido && retido > 0) {
+      const nfRef = nf_numero ? ` - NF ${nf_numero}` : '';
+      if (existing.saida_imposto_id) {
+        db.prepare(`UPDATE financeiro_saidas SET empreendimento_id=?,descricao=?,valor=?,data_pagamento=?,observacoes=? WHERE id=?`).run(
+          empId, `RETENÇÕES FEDERAIS${nfRef}`, retido, data_recebimento,
+          `Imposto retido pelo incorporador na NF${nfRef}. Pago por conta da R2X.`,
+          existing.saida_imposto_id
+        );
+      } else {
+        const nfRef2 = nf_numero ? ` - NF ${nf_numero}` : '';
+        const sr = db.prepare(`INSERT INTO financeiro_saidas
+          (empreendimento_id, descricao, categoria, valor, data_pagamento, status, recorrente, observacoes)
+          VALUES (?,?,?,?,?,?,?,?)`).run(
+          empId, `RETENÇÕES FEDERAIS${nfRef2}`, 'imposto', retido, data_recebimento, 'pago', 0,
+          `Imposto retido pelo incorporador na NF${nfRef2}. Pago por conta da R2X.`
+        );
+        db.prepare('UPDATE pagamentos_avulsos_incorporadora SET saida_imposto_id=? WHERE id=?').run(sr.lastInsertRowid, req.params.id);
+      }
+    } else if (existing.saida_imposto_id) {
+      // Imposto removido na edição — apaga a saída vinculada
+      db.prepare('DELETE FROM financeiro_saidas WHERE id=?').run(existing.saida_imposto_id);
+      db.prepare('UPDATE pagamentos_avulsos_incorporadora SET saida_imposto_id=NULL WHERE id=?').run(req.params.id);
+    }
+
+    db.prepare(`UPDATE pagamentos_avulsos_incorporadora
+      SET cliente_id=?, empreendimento_id=?, valor=?, data_recebimento=?, descricao=?, observacoes=?,
+          valor_bruto_nf=?, imposto_retido=?, nf_numero=?, nf_data=?
+      WHERE id=?`).run(
+      parseInt(cliente_id), empId, valorLiquido, data_recebimento, descricao || null, observacoes || null,
+      bruto, retido || null, nf_numero || null, nf_data || null, req.params.id
+    );
+  });
+
+  update();
   ok(res, {});
 });
 
 app.delete('/api/financeiro/pagamentos-avulsos/:id', autenticar, (req, res) => {
-  db.prepare('DELETE FROM pagamentos_avulsos_incorporadora WHERE id=?').run(req.params.id);
+  const del = db.transaction(() => {
+    const existing = db.prepare('SELECT saida_imposto_id FROM pagamentos_avulsos_incorporadora WHERE id=?').get(req.params.id);
+    if (existing?.saida_imposto_id) {
+      db.prepare('DELETE FROM financeiro_saidas WHERE id=?').run(existing.saida_imposto_id);
+    }
+    db.prepare('DELETE FROM pagamentos_avulsos_incorporadora WHERE id=?').run(req.params.id);
+  });
+  del();
   ok(res, {});
 });
 
