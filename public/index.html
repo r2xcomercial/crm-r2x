@@ -429,6 +429,7 @@
 
     <div class="nav-section">Financeiro</div>
     <div class="nav-item" onclick="navigate('financeiro')"><span class="icon">💰</span> Financeiro</div>
+    <div class="nav-item" onclick="navigate('caixa')"><span class="icon">🏦</span> Caixa</div>
     <div class="nav-item" onclick="navigate('relatorios')"><span class="icon">📈</span> Relatórios</div>
     <div class="nav-item" onclick="navigate('gestao-pessoal')"><span class="icon">🧘</span> Gestão Pessoal</div>
     <div class="nav-item" onclick="navigate('calculadora')" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px"><span class="icon">🧮</span> Calculadora</div>
@@ -534,7 +535,7 @@ function navigate(page) {
 const pageTitles = {
   dashboard: 'Dashboard', leads: 'Leads', kanban: 'Kanban de Leads', vendas: 'Vendas',
   clientes: 'Incorporadores', empreendimentos: 'Empreendimentos', corretores: 'Corretores',
-  financeiro: 'Financeiro', relatorios: 'Relatórios', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
+  financeiro: 'Financeiro', caixa: 'Caixa & Conferência Bancária', relatorios: 'Relatórios', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
   painel: 'Painel de Lançamento', usuarios: 'Usuários do Sistema', calculadora: 'Calculadora de Financiamento',
   'corretor-painel': 'Meu Painel', 'incorporador-painel': 'Portal do Incorporador',
   eventos: 'Eventos de Lançamento', 'gestao-pessoal': 'Gestão Pessoal'
@@ -560,6 +561,7 @@ async function renderPage(page) {
       case 'empreendimentos': await renderEmpreendimentos(); break;
       case 'corretores': await renderCorretores(); break;
       case 'financeiro': await renderFinanceiro(); break;
+      case 'caixa': await renderCaixa(); break;
       case 'relatorios': await renderRelatorios(); break;
       case 'calendario': await renderCalendario(); break;
       case 'ranking': await renderRanking(); break;
@@ -11518,6 +11520,287 @@ function exportarVendasPDF() {
   const w = window.open('', '_blank');
   w.document.write(html);
   w.document.close();
+}
+
+// ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
+
+// ─── CAIXA ───────────────────────────────────────────────────────────────────
+
+async function renderCaixa() {
+  const c = document.getElementById('content');
+
+  // Carrega dados em paralelo
+  const [dash, contas, saldos] = await Promise.all([
+    api('GET', '/api/caixa/dashboard'),
+    api('GET', '/api/caixa/contas'),
+    api('GET', '/api/caixa/saldos')
+  ]);
+
+  const d     = dash.data || dash;
+  const cList = contas.data || contas;
+  const sList = saldos.data || saldos;
+
+  const fmt = v => 'R$ ' + parseFloat(v||0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtDate = s => s ? s.slice(0,10).split('-').reverse().join('/') : '-';
+
+  const diff       = (d.saldoReal || 0) - (d.saldoSistema || 0);
+  const diffColor  = Math.abs(diff) < 0.01 ? '#16a34a' : diff > 0 ? '#2563eb' : '#dc2626';
+  const diffIcon   = Math.abs(diff) < 0.01 ? '✅' : diff > 0 ? '📈' : '⚠️';
+  const diffLabel  = Math.abs(diff) < 0.01 ? 'Conferido' : diff > 0 ? 'A favor (banco > sistema)' : 'Divergência (banco < sistema)';
+
+  const contasOptsHtml = cList.map(ct => `<option value="${ct.id}">${ct.nome}${ct.banco ? ` — ${ct.banco}` : ''}</option>`).join('');
+
+  c.innerHTML = `
+  <div style="max-width:1100px;margin:0 auto;padding:0 4px">
+
+    <!-- KPI CARDS -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px">
+
+      <!-- Saldo Real -->
+      <div style="background:var(--navy2);border:1px solid var(--border);border-radius:12px;padding:20px">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">🏦 Saldo Real (Banco)</div>
+        <div style="font-size:26px;font-weight:700;color:var(--accent)">${fmt(d.saldoReal)}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">${cList.length} conta(s) cadastrada(s)</div>
+        ${d.ultimosSaldos && d.ultimosSaldos.length ? `<div style="font-size:11px;color:var(--text2);margin-top:2px">Última atualização: ${fmtDate(d.ultimosSaldos[0]?.data)}</div>` : '<div style="font-size:11px;color:var(--danger);margin-top:4px">Nenhum saldo informado ainda</div>'}
+      </div>
+
+      <!-- Saldo Sistema -->
+      <div style="background:var(--navy2);border:1px solid var(--border);border-radius:12px;padding:20px">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">📊 Saldo do Sistema</div>
+        <div style="font-size:26px;font-weight:700;color:var(--text)">${fmt(d.saldoSistema)}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">Entradas recebidas − Saídas pagas</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">+ ${fmt(d.entradasPendentes)} pendente a receber</div>
+      </div>
+
+      <!-- Diferença -->
+      <div style="background:var(--navy2);border:2px solid ${diffColor}33;border-radius:12px;padding:20px">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">${diffIcon} Diferença</div>
+        <div style="font-size:26px;font-weight:700;color:${diffColor}">${fmt(diff)}</div>
+        <div style="font-size:11px;color:${diffColor};margin-top:4px;font-weight:600">${diffLabel}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">Banco − Sistema</div>
+      </div>
+    </div>
+
+    <!-- GRID: Informar saldo + Contas -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+
+      <!-- INFORMAR SALDO -->
+      <div style="background:var(--navy2);border:1px solid var(--border);border-radius:12px;padding:20px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:16px">📝 Informar Saldo do Banco</div>
+        <div id="caixa-form-msg"></div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Conta Bancária</label>
+            <select id="cf-conta" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px">
+              <option value="">— Sem conta específica —</option>
+              ${contasOptsHtml}
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Data</label>
+              <input type="date" id="cf-data" value="${new Date().toISOString().slice(0,10)}" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px">
+            </div>
+            <div>
+              <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Saldo (R$)</label>
+              <input type="number" id="cf-saldo" placeholder="0,00" step="0.01" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Observação (opcional)</label>
+            <input type="text" id="cf-obs" placeholder="Ex: conferido extrato banco X" style="padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px">
+          </div>
+          <button onclick="caixaInformarSaldo()" style="padding:10px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Salvar Saldo</button>
+        </div>
+      </div>
+
+      <!-- CONTAS BANCÁRIAS -->
+      <div style="background:var(--navy2);border:1px solid var(--border);border-radius:12px;padding:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div style="font-weight:700;font-size:14px">🏦 Contas Bancárias</div>
+          <button onclick="caixaNovaContaModal()" style="padding:6px 14px;border-radius:6px;border:none;background:var(--accent);color:#fff;font-size:12px;cursor:pointer">+ Conta</button>
+        </div>
+        ${cList.length === 0
+          ? `<div style="color:var(--text2);font-size:13px;text-align:center;padding:20px">Nenhuma conta cadastrada.<br><span style="font-size:12px">Adicione suas contas para rastrear os saldos por banco.</span></div>`
+          : `<div style="display:flex;flex-direction:column;gap:8px">
+            ${cList.map(ct => `
+              <div style="background:var(--navy3);border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <div style="font-weight:600;font-size:13px">${ct.nome}</div>
+                  <div style="font-size:11px;color:var(--text2)">${ct.banco||''}${ct.agencia?` · Ag. ${ct.agencia}`:''}${ct.conta_numero?` · Cta. ${ct.conta_numero}`:''}</div>
+                  ${ct.ultimo_saldo !== null && ct.ultimo_saldo !== undefined
+                    ? `<div style="font-size:12px;color:var(--accent);margin-top:2px">${fmt(ct.ultimo_saldo)} <span style="color:var(--text2)">em ${fmtDate(ct.ultima_data)}</span></div>`
+                    : `<div style="font-size:11px;color:var(--text2)">Sem saldo informado</div>`}
+                </div>
+                <button onclick="caixaExcluirConta(${ct.id})" title="Remover conta" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px">🗑</button>
+              </div>`).join('')}
+          </div>`}
+      </div>
+    </div>
+
+    <!-- RESUMO SISTEMA -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+      ${[
+        ['✅ Entradas Recebidas', d.totalEntradas, '#16a34a'],
+        ['⏳ A Receber (pendente)', d.entradasPendentes, '#d97706'],
+        ['💸 Saídas Pagas', d.totalSaidas, '#dc2626'],
+        ['⏳ A Pagar (pendente)', d.saidasPendentes, '#dc2626'],
+      ].map(([label,val,color]) => `
+        <div style="background:var(--navy2);border:1px solid var(--border);border-radius:10px;padding:14px">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px">${label}</div>
+          <div style="font-size:18px;font-weight:700;color:${color}">${fmt(val)}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- HISTÓRICO DE SALDOS INFORMADOS -->
+    <div style="background:var(--navy2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:24px">
+      <div style="font-weight:700;font-size:14px;margin-bottom:14px">📋 Histórico de Conferências</div>
+      ${sList.length === 0
+        ? `<div style="color:var(--text2);font-size:13px;text-align:center;padding:20px">Nenhuma conferência registrada ainda.</div>`
+        : `<div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead>
+              <tr style="color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.4px">
+                <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Data</th>
+                <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Conta</th>
+                <th style="text-align:right;padding:8px 10px;border-bottom:1px solid var(--border)">Saldo Informado</th>
+                <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Observação</th>
+                <th style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sList.map(s => `
+                <tr style="border-bottom:1px solid var(--border)10">
+                  <td style="padding:8px 10px;font-weight:600">${fmtDate(s.data)}</td>
+                  <td style="padding:8px 10px;color:var(--text2)">${s.conta_nome||'Geral'}${s.banco?` · ${s.banco}`:''}</td>
+                  <td style="padding:8px 10px;text-align:right;color:var(--accent);font-weight:600">${fmt(s.saldo)}</td>
+                  <td style="padding:8px 10px;color:var(--text2)">${s.observacao||'—'}</td>
+                  <td style="padding:8px 10px;text-align:center"><button onclick="caixaExcluirSaldo(${s.id})" style="background:none;border:none;color:var(--danger);cursor:pointer">🗑</button></td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`}
+    </div>
+
+    <!-- MOVIMENTAÇÕES DO SISTEMA -->
+    <div style="background:var(--navy2);border:1px solid var(--border);border-radius:12px;padding:20px">
+      <div style="font-weight:700;font-size:14px;margin-bottom:14px">💹 Últimas Movimentações no Sistema</div>
+      ${d.movimentacoes && d.movimentacoes.length
+        ? `<div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead>
+              <tr style="color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.4px">
+                <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Data</th>
+                <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Tipo</th>
+                <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Descrição</th>
+                <th style="text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)">Empreendimento</th>
+                <th style="text-align:right;padding:8px 10px;border-bottom:1px solid var(--border)">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${d.movimentacoes.map(m => `
+                <tr style="border-bottom:1px solid var(--border)10">
+                  <td style="padding:8px 10px;white-space:nowrap">${fmtDate(m.data)}</td>
+                  <td style="padding:8px 10px">
+                    <span style="padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;${m.tipo==='entrada'?'background:#16a34a22;color:#16a34a':'background:#dc262622;color:#dc2626'}">
+                      ${m.tipo === 'entrada' ? '↑ Entrada' : '↓ Saída'}
+                    </span>
+                  </td>
+                  <td style="padding:8px 10px;color:var(--text)">${m.descricao||'—'}</td>
+                  <td style="padding:8px 10px;color:var(--text2);font-size:12px">${m.empreendimento||'—'}</td>
+                  <td style="padding:8px 10px;text-align:right;font-weight:600;color:${m.tipo==='entrada'?'#16a34a':'#dc2626'}">${m.tipo==='entrada'?'+':'-'} ${fmt(m.valor)}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`
+        : `<div style="color:var(--text2);font-size:13px;text-align:center;padding:20px">Nenhuma movimentação registrada no sistema.</div>`}
+    </div>
+  </div>`;
+}
+
+async function caixaInformarSaldo() {
+  const conta_id = document.getElementById('cf-conta').value || null;
+  const data     = document.getElementById('cf-data').value;
+  const saldo    = document.getElementById('cf-saldo').value;
+  const observacao = document.getElementById('cf-obs').value;
+  const msg = document.getElementById('caixa-form-msg');
+  if (!data || saldo === '') { msg.innerHTML = `<div style="color:var(--danger);font-size:12px;margin-bottom:8px">Preencha data e saldo.</div>`; return; }
+  const r = await api('POST', '/api/caixa/saldos', { conta_id, data, saldo: parseFloat(saldo), observacao });
+  if (r.ok) { await renderCaixa(); } else { msg.innerHTML = `<div style="color:var(--danger);font-size:12px;margin-bottom:8px">Erro ao salvar.</div>`; }
+}
+
+async function caixaExcluirSaldo(id) {
+  if (!confirm('Remover esta conferência?')) return;
+  await api('DELETE', `/api/caixa/saldos/${id}`);
+  await renderCaixa();
+}
+
+async function caixaExcluirConta(id) {
+  if (!confirm('Remover esta conta bancária?')) return;
+  await api('DELETE', `/api/caixa/contas/${id}`);
+  await renderCaixa();
+}
+
+function caixaNovaContaModal() {
+  const existing = document.getElementById('caixa-modal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'caixa-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:#00000088;display:flex;align-items:center;justify-content:center;z-index:9999';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border:1px solid var(--border);border-radius:14px;padding:28px;width:420px;max-width:95vw">
+      <div style="font-weight:700;font-size:16px;margin-bottom:20px">🏦 Nova Conta Bancária</div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div>
+          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Nome da conta *</label>
+          <input id="nc-nome" type="text" placeholder="Ex: Conta Principal, Nubank PJ" style="padding:9px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;width:100%">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Banco</label>
+            <input id="nc-banco" type="text" placeholder="Ex: Nubank, Itaú" style="padding:9px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;width:100%">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Tipo</label>
+            <select id="nc-tipo" style="padding:9px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;width:auto">
+              <option value="corrente">Conta Corrente</option>
+              <option value="poupanca">Poupança</option>
+              <option value="investimento">Investimento</option>
+              <option value="caixa">Caixa</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Agência</label>
+            <input id="nc-agencia" type="text" placeholder="0001" style="padding:9px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;width:100%">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Nº da Conta</label>
+            <input id="nc-numconta" type="text" placeholder="12345-6" style="padding:9px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;width:100%">
+          </div>
+        </div>
+        <div id="nc-err" style="color:var(--danger);font-size:12px;min-height:16px"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
+          <button onclick="document.getElementById('caixa-modal').remove()" style="padding:9px 20px;border-radius:7px;border:1px solid var(--border);background:none;color:var(--text);font-size:13px;cursor:pointer">Cancelar</button>
+          <button onclick="caixaSalvarConta()" style="padding:9px 20px;border-radius:7px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Salvar</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function caixaSalvarConta() {
+  const nome       = document.getElementById('nc-nome').value.trim();
+  const banco      = document.getElementById('nc-banco').value.trim();
+  const tipo       = document.getElementById('nc-tipo').value;
+  const agencia    = document.getElementById('nc-agencia').value.trim();
+  const conta_numero = document.getElementById('nc-numconta').value.trim();
+  if (!nome) { document.getElementById('nc-err').textContent = 'Nome obrigatório.'; return; }
+  const r = await api('POST', '/api/caixa/contas', { nome, banco, tipo, agencia, conta_numero });
+  if (r.ok) { document.getElementById('caixa-modal').remove(); await renderCaixa(); }
+  else { document.getElementById('nc-err').textContent = 'Erro ao salvar conta.'; }
 }
 
 // ─── RELATÓRIOS ───────────────────────────────────────────────────────────────

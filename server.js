@@ -6322,6 +6322,113 @@ app.get('/api/relatorios/geral', autenticar, (req, res) => {
   ok(res, { entradas, saidas, vendas, leads, corretores: corretoresFiltrados });
 });
 
+// ─── CAIXA / CONFERÊNCIA BANCÁRIA ────────────────────────────────────────────
+
+db.exec(`CREATE TABLE IF NOT EXISTS contas_bancarias (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL,
+  banco TEXT,
+  agencia TEXT,
+  conta_numero TEXT,
+  tipo TEXT DEFAULT 'corrente',
+  ativo INTEGER DEFAULT 1,
+  criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
+
+db.exec(`CREATE TABLE IF NOT EXISTS caixa_saldo_banco (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conta_id INTEGER REFERENCES contas_bancarias(id),
+  data TEXT NOT NULL,
+  saldo REAL NOT NULL,
+  observacao TEXT,
+  criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
+
+app.get('/api/caixa/contas', autenticar, (req, res) => {
+  const contas = db.prepare(`SELECT cb.*,
+    (SELECT saldo FROM caixa_saldo_banco WHERE conta_id=cb.id ORDER BY data DESC, id DESC LIMIT 1) as ultimo_saldo,
+    (SELECT data FROM caixa_saldo_banco WHERE conta_id=cb.id ORDER BY data DESC, id DESC LIMIT 1) as ultima_data
+    FROM contas_bancarias cb WHERE cb.ativo=1 ORDER BY cb.nome`).all();
+  ok(res, contas);
+});
+
+app.post('/api/caixa/contas', autenticar, (req, res) => {
+  const { nome, banco, agencia, conta_numero, tipo } = req.body;
+  if (!nome) return err(res, 'Nome obrigatório', 400);
+  const r = db.prepare(`INSERT INTO contas_bancarias (nome,banco,agencia,conta_numero,tipo) VALUES (?,?,?,?,?)`).run(nome, banco||null, agencia||null, conta_numero||null, tipo||'corrente');
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.put('/api/caixa/contas/:id', autenticar, (req, res) => {
+  const { nome, banco, agencia, conta_numero, tipo, ativo } = req.body;
+  db.prepare(`UPDATE contas_bancarias SET nome=?,banco=?,agencia=?,conta_numero=?,tipo=?,ativo=? WHERE id=?`).run(nome, banco||null, agencia||null, conta_numero||null, tipo||'corrente', ativo!==undefined?ativo:1, req.params.id);
+  ok(res, {});
+});
+
+app.delete('/api/caixa/contas/:id', autenticar, (req, res) => {
+  db.prepare(`UPDATE contas_bancarias SET ativo=0 WHERE id=?`).run(req.params.id);
+  ok(res, {});
+});
+
+app.get('/api/caixa/saldos', autenticar, (req, res) => {
+  const { conta_id } = req.query;
+  const where = conta_id ? 'WHERE s.conta_id=?' : '';
+  const params = conta_id ? [conta_id] : [];
+  const saldos = db.prepare(`SELECT s.*, cb.nome as conta_nome, cb.banco FROM caixa_saldo_banco s LEFT JOIN contas_bancarias cb ON cb.id=s.conta_id ${where} ORDER BY s.data DESC, s.id DESC LIMIT 100`).all(...params);
+  ok(res, saldos);
+});
+
+app.post('/api/caixa/saldos', autenticar, (req, res) => {
+  const { conta_id, data, saldo, observacao } = req.body;
+  if (!data || saldo === undefined) return err(res, 'Data e saldo obrigatórios', 400);
+  const r = db.prepare(`INSERT INTO caixa_saldo_banco (conta_id,data,saldo,observacao) VALUES (?,?,?,?)`).run(conta_id||null, data, parseFloat(saldo), observacao||null);
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.delete('/api/caixa/saldos/:id', autenticar, (req, res) => {
+  db.prepare(`DELETE FROM caixa_saldo_banco WHERE id=?`).run(req.params.id);
+  ok(res, {});
+});
+
+app.get('/api/caixa/dashboard', autenticar, (req, res) => {
+  // Saldo do sistema: entradas recebidas - saidas pagas
+  const totalEntradas = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM financeiro_entradas WHERE status='recebido'`).get().total;
+  const totalSaidas   = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM financeiro_saidas WHERE status='pago'`).get().total;
+  const saldoSistema  = totalEntradas - totalSaidas;
+
+  // Pendentes
+  const entradasPendentes = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM financeiro_entradas WHERE status='pendente'`).get().total;
+  const saidasPendentes   = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM financeiro_saidas WHERE status='pendente'`).get().total;
+
+  // Saldo real: soma dos últimos saldos por conta
+  const ultimosSaldos = db.prepare(`
+    SELECT s.conta_id, s.saldo, s.data, s.observacao, cb.nome as conta_nome, cb.banco
+    FROM caixa_saldo_banco s
+    LEFT JOIN contas_bancarias cb ON cb.id=s.conta_id
+    WHERE s.id IN (
+      SELECT id FROM caixa_saldo_banco s2
+      WHERE s2.conta_id IS NOT DISTINCT FROM s.conta_id
+      ORDER BY s2.data DESC, s2.id DESC LIMIT 1
+    )
+    ORDER BY s.data DESC
+  `).all();
+  const saldoReal = ultimosSaldos.reduce((acc, s) => acc + s.saldo, 0);
+
+  // Últimas movimentações do sistema (30)
+  const movimentacoes = db.prepare(`
+    SELECT 'entrada' as tipo, data_recebimento as data, descricao, valor, status, empreendimento_id,
+      (SELECT nome FROM empreendimentos WHERE id=empreendimento_id) as empreendimento
+    FROM financeiro_entradas WHERE status='recebido' AND data_recebimento IS NOT NULL
+    UNION ALL
+    SELECT 'saida' as tipo, data_pagamento as data, descricao, valor, status, empreendimento_id,
+      (SELECT nome FROM empreendimentos WHERE id=empreendimento_id) as empreendimento
+    FROM financeiro_saidas WHERE status='pago' AND data_pagamento IS NOT NULL
+    ORDER BY data DESC LIMIT 30
+  `).all();
+
+  ok(res, { saldoSistema, saldoReal, totalEntradas, totalSaidas, entradasPendentes, saidasPendentes, ultimosSaldos, movimentacoes });
+});
+
 // ─── START ────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => console.log(`CRM R2X rodando em http://localhost:${PORT}`));
