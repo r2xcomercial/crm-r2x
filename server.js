@@ -6322,6 +6322,77 @@ app.get('/api/relatorios/geral', autenticar, (req, res) => {
   ok(res, { entradas, saidas, vendas, leads, corretores: corretoresFiltrados });
 });
 
+// ─── REAJUSTE DE TABELA DE PREÇOS ────────────────────────────────────────────
+
+db.exec(`CREATE TABLE IF NOT EXISTS reajustes_tabela (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  empreendimento_id INTEGER NOT NULL REFERENCES empreendimentos(id),
+  indice TEXT NOT NULL,
+  percentual REAL NOT NULL,
+  data_referencia TEXT,
+  observacao TEXT,
+  total_unidades INTEGER,
+  criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+)`);
+
+// Aplica reajuste percentual em todas as unidades (tabela de referência)
+// NÃO altera vendas.valor nem nenhuma tabela financeira
+app.post('/api/empreendimentos/:id/reajustar-tabela', autenticar, (req, res) => {
+  const empId = parseInt(req.params.id);
+  const { indice, percentual, data_referencia, observacao } = req.body;
+  if (!percentual || isNaN(parseFloat(percentual))) return err(res, 'Percentual inválido', 400);
+
+  const pct = parseFloat(percentual) / 100;
+  const fator = 1 + pct;
+
+  // Aplica em TODAS as unidades do empreendimento (disponível, reservado e vendido)
+  const result = db.prepare(`
+    UPDATE unidades SET preco = ROUND(preco * ?, 2)
+    WHERE empreendimento_id = ?
+  `).run(fator, empId);
+
+  // Registra histórico
+  db.prepare(`
+    INSERT INTO reajustes_tabela (empreendimento_id, indice, percentual, data_referencia, observacao, total_unidades)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(empId, indice || 'Percentual Livre', parseFloat(percentual), data_referencia || null, observacao || null, result.changes);
+
+  // Recalcula VGV no empreendimento (baseado apenas em disponíveis)
+  const stats = db.prepare("SELECT COUNT(*) as total, COALESCE(SUM(preco),0) as vgv FROM unidades WHERE empreendimento_id=?").get(empId);
+
+  ok(res, { unidades_atualizadas: result.changes, novo_vgv: stats.vgv });
+});
+
+app.get('/api/empreendimentos/:id/historico-reajustes', autenticar, (req, res) => {
+  const rows = db.prepare(`SELECT * FROM reajustes_tabela WHERE empreendimento_id=? ORDER BY criado_em DESC LIMIT 50`).all(parseInt(req.params.id));
+  ok(res, rows);
+});
+
+// Prévia de reajuste (sem aplicar) — retorna min/max/médio antes e depois
+app.get('/api/empreendimentos/:id/preview-reajuste', autenticar, (req, res) => {
+  const empId = parseInt(req.params.id);
+  const pct   = parseFloat(req.query.percentual);
+  if (isNaN(pct)) return err(res, 'Percentual inválido', 400);
+  const fator = 1 + (pct / 100);
+  const stats = db.prepare(`
+    SELECT
+      COUNT(*) as total,
+      COUNT(CASE WHEN status='disponivel' THEN 1 END) as disponivel,
+      COUNT(CASE WHEN status='reservado'  THEN 1 END) as reservado,
+      COUNT(CASE WHEN status='vendido'    THEN 1 END) as vendido,
+      ROUND(MIN(preco),2) as preco_min,
+      ROUND(MAX(preco),2) as preco_max,
+      ROUND(AVG(preco),2) as preco_medio
+    FROM unidades WHERE empreendimento_id=?
+  `).get(empId);
+  ok(res, {
+    ...stats,
+    novo_min:    Math.round(stats.preco_min   * fator * 100) / 100,
+    novo_max:    Math.round(stats.preco_max   * fator * 100) / 100,
+    novo_medio:  Math.round(stats.preco_medio * fator * 100) / 100,
+  });
+});
+
 // ─── CAIXA / CONFERÊNCIA BANCÁRIA ────────────────────────────────────────────
 
 db.exec(`CREATE TABLE IF NOT EXISTS contas_bancarias (

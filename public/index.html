@@ -8305,6 +8305,7 @@ async function verEspelho(empId) {
       <select id="espelho-filtro" onchange="filtrarEspelho()" style="font-size:12px;padding:6px 10px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px">${filtros}</select>
       <button class="btn btn-secondary" onclick="verEspelho(${empId})" style="font-size:12px;padding:6px 12px">🔄</button>
       <button class="btn btn-secondary" onclick="verUnidades(${empId})" style="font-size:12px;padding:6px 12px">📋 Lista</button>
+      <button class="btn btn-secondary" onclick="abrirReajusteTabela(${empId})" style="font-size:12px;padding:6px 12px;color:#60a5fa;border-color:rgba(96,165,250,.4)" title="Reajustar preços da tabela de unidades">📈 Reajustar</button>
       <button class="btn btn-secondary" onclick="abrirExportarTabela(${empId})" style="font-size:12px;padding:6px 12px;color:#4ade80;border-color:rgba(74,222,128,.4)" title="Gerar tabela de vendas com simulação de pagamento">📄 Exportar Tabela</button>
       <label class="btn btn-secondary" style="font-size:12px;padding:6px 12px;cursor:pointer" title="Envie o PDF ou imagem da planta urbanística para importar lotes automaticamente">
         📐 Importar da Planta
@@ -8499,6 +8500,189 @@ function filtrarEspelho() {
     corpo.querySelectorAll('.espelho-secao').forEach(sec => {
       sec.style.display = (!val || sec.dataset.grupo === val) ? '' : 'none';
     });
+  }
+}
+
+// ─── REAJUSTE DE TABELA DE PREÇOS ────────────────────────────────────────────
+
+async function abrirReajusteTabela(empId) {
+  const emp = (currentData.emp||[]).find(e => e.id === empId) || {};
+
+  // Carrega histórico de reajustes
+  const histR = await api('GET', `/api/empreendimentos/${empId}/historico-reajustes`);
+  const hist  = histR.data || [];
+
+  const fmt = v => 'R$ ' + parseFloat(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtPct = v => (v >= 0 ? '+' : '') + parseFloat(v).toFixed(2).replace('.',',') + '%';
+  const fmtDate = s => s ? s.slice(0,10).split('-').reverse().join('/') : '—';
+
+  const modal = document.createElement('div');
+  modal.id = 'modal-reajuste';
+  modal.style.cssText = 'position:fixed;inset:0;background:#00000090;display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px';
+  modal.innerHTML = `
+    <div style="background:var(--navy1);border:1px solid var(--border);border-radius:16px;width:560px;max-width:100%;max-height:90vh;overflow-y:auto">
+
+      <div style="padding:24px 24px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div style="font-weight:700;font-size:16px">📈 Reajustar Tabela de Preços</div>
+          <button onclick="document.getElementById('modal-reajuste').remove()" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;line-height:1">×</button>
+        </div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:20px">${emp.nome} — atualiza o preço de referência de todas as unidades (inclusive vendidas). Não altera valores de vendas realizadas.</div>
+
+        <!-- Índice -->
+        <div style="margin-bottom:14px">
+          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">Índice de reajuste</label>
+          <select id="rj-indice" onchange="reajusteAtualizarCampos()" style="width:100%;padding:9px 12px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px">
+            <option value="Percentual Livre">📊 Percentual livre</option>
+            <option value="CUB">🏗 CUB (Custo Unitário Básico)</option>
+            <option value="INCC">📐 INCC (Índice Nacional da Construção Civil)</option>
+            <option value="IPCA">📦 IPCA (Inflação oficial)</option>
+            <option value="IGP-M">💹 IGP-M (Mercado)</option>
+            <option value="IGPDI">📈 IGP-DI</option>
+          </select>
+        </div>
+
+        <!-- Campos dinâmicos -->
+        <div id="rj-campos" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+          <div>
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">Percentual de reajuste (%)</label>
+            <input type="number" id="rj-pct" step="0.01" placeholder="Ex: 5,00" oninput="reajustePreview(${empId})"
+              style="padding:9px 12px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;width:100%">
+          </div>
+          <div id="rj-campo-data">
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">Mês/Ano de referência</label>
+            <input type="month" id="rj-data" style="padding:9px 12px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;width:100%">
+          </div>
+        </div>
+
+        <!-- Observação -->
+        <div style="margin-bottom:16px">
+          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">Observação (opcional)</label>
+          <input type="text" id="rj-obs" placeholder="Ex: Reajuste anual 2026"
+            style="padding:9px 12px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;width:100%">
+        </div>
+
+        <!-- Prévia -->
+        <div id="rj-preview" style="background:var(--navy3);border-radius:10px;padding:14px;margin-bottom:16px;min-height:80px;display:flex;align-items:center;justify-content:center">
+          <span style="color:var(--text2);font-size:13px">Digite o percentual para ver a prévia dos valores</span>
+        </div>
+
+        <!-- Aviso -->
+        <div style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:8px;padding:10px 14px;margin-bottom:18px;font-size:12px;color:#93c5fd">
+          ⚠️ <strong>Atenção:</strong> esta ação atualiza os preços de referência de <strong>todas as unidades</strong> (disponíveis, reservadas e vendidas). Os valores das vendas já realizadas <strong>não serão alterados</strong>.
+        </div>
+
+        <div id="rj-err" style="color:var(--danger);font-size:12px;min-height:18px;margin-bottom:8px"></div>
+
+        <div style="display:flex;gap:10px;margin-bottom:20px">
+          <button onclick="document.getElementById('modal-reajuste').remove()" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text);font-size:13px;cursor:pointer">Cancelar</button>
+          <button id="rj-btn-aplicar" onclick="reajusteAplicar(${empId})" disabled style="flex:1;padding:10px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:700;cursor:pointer;opacity:.5">Aplicar Reajuste</button>
+        </div>
+      </div>
+
+      <!-- Histórico -->
+      ${hist.length > 0 ? `
+      <div style="border-top:1px solid var(--border);padding:20px 24px">
+        <div style="font-weight:600;font-size:13px;margin-bottom:12px;color:var(--text2)">📋 Histórico de Reajustes</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${hist.map(h => `
+            <div style="display:flex;justify-content:space-between;align-items:center;background:var(--navy3);border-radius:7px;padding:9px 12px;font-size:12px">
+              <div>
+                <span style="font-weight:700;color:${parseFloat(h.percentual)>=0?'#4ade80':'#f87171'}">${fmtPct(h.percentual)}</span>
+                <span style="color:var(--text2);margin-left:8px">${h.indice}</span>
+                ${h.data_referencia ? `<span style="color:var(--text2)"> · ${h.data_referencia.slice(0,7)}</span>` : ''}
+              </div>
+              <div style="text-align:right;color:var(--text2)">
+                ${h.total_unidades} un. · ${fmtDate(h.criado_em)}
+                ${h.observacao ? `<div style="font-size:11px">${h.observacao}</div>` : ''}
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>` : ''}
+    </div>`;
+
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  reajusteAtualizarCampos();
+}
+
+function reajusteAtualizarCampos() {
+  const indice = document.getElementById('rj-indice').value;
+  const campoData = document.getElementById('rj-campo-data');
+  campoData.style.display = indice === 'Percentual Livre' ? 'none' : 'block';
+}
+
+let _rjPreviewTimer = null;
+async function reajustePreview(empId) {
+  clearTimeout(_rjPreviewTimer);
+  const pct = parseFloat(document.getElementById('rj-pct').value);
+  const btn = document.getElementById('rj-btn-aplicar');
+  const prev = document.getElementById('rj-preview');
+  const err  = document.getElementById('rj-err');
+
+  if (isNaN(pct) || pct === 0) {
+    prev.innerHTML = `<span style="color:var(--text2);font-size:13px">Digite o percentual para ver a prévia dos valores</span>`;
+    btn.disabled = true; btn.style.opacity = '.5'; err.textContent = '';
+    return;
+  }
+  if (Math.abs(pct) > 50) {
+    err.textContent = 'Percentual muito alto. Verifique o valor digitado (máximo 50%).';
+    btn.disabled = true; btn.style.opacity = '.5'; return;
+  }
+  err.textContent = '';
+  prev.innerHTML = `<span style="color:var(--text2);font-size:13px">Calculando prévia...</span>`;
+
+  _rjPreviewTimer = setTimeout(async () => {
+    const r = await api('GET', `/api/empreendimentos/${empId}/preview-reajuste?percentual=${pct}`);
+    if (!r.ok || !r.data) { prev.innerHTML = `<span style="color:var(--danger);font-size:13px">Erro ao calcular prévia</span>`; return; }
+    const d = r.data;
+    const fmt = v => 'R$ ' + parseFloat(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const sinal = pct >= 0 ? '+' : '';
+    const cor   = pct >= 0 ? '#4ade80' : '#f87171';
+    prev.innerHTML = `
+      <div style="width:100%">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span style="font-size:13px;font-weight:600">Prévia do reajuste: <span style="color:${cor}">${sinal}${pct.toFixed(2).replace('.',',')}%</span></span>
+          <span style="font-size:11px;color:var(--text2)">${d.total} unidade(s) · ${d.disponivel} disp. · ${d.reservado} res. · ${d.vendido} vend.</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          ${[['Mínimo', d.preco_min, d.novo_min], ['Médio', d.preco_medio, d.novo_medio], ['Máximo', d.preco_max, d.novo_max]].map(([lbl, ant, dep]) => `
+            <div style="background:var(--navy2);border-radius:7px;padding:10px;text-align:center">
+              <div style="font-size:11px;color:var(--text2);margin-bottom:4px">${lbl}</div>
+              <div style="font-size:11px;color:var(--text2);text-decoration:line-through">${fmt(ant)}</div>
+              <div style="font-size:13px;font-weight:700;color:${cor}">${fmt(dep)}</div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    btn.disabled = false; btn.style.opacity = '1';
+  }, 400);
+}
+
+async function reajusteAplicar(empId) {
+  const pct     = parseFloat(document.getElementById('rj-pct').value);
+  const indice  = document.getElementById('rj-indice').value;
+  const data    = document.getElementById('rj-data')?.value || null;
+  const obs     = document.getElementById('rj-obs').value;
+  const errEl   = document.getElementById('rj-err');
+
+  if (isNaN(pct) || pct === 0) { errEl.textContent = 'Informe um percentual válido.'; return; }
+
+  const sinal = pct >= 0 ? '+' : '';
+  if (!confirm(`Confirma o reajuste de ${sinal}${pct.toFixed(2)}% (${indice}) em todas as unidades de preços da tabela?\n\nOs valores das vendas já realizadas NÃO serão alterados.`)) return;
+
+  const btn = document.getElementById('rj-btn-aplicar');
+  btn.disabled = true; btn.textContent = 'Aplicando...';
+
+  const r = await api('POST', `/api/empreendimentos/${empId}/reajustar-tabela`, {
+    indice, percentual: pct, data_referencia: data, observacao: obs
+  });
+
+  if (r.ok) {
+    document.getElementById('modal-reajuste').remove();
+    await verEspelho(empId);
+  } else {
+    errEl.textContent = r.error || 'Erro ao aplicar reajuste.';
+    btn.disabled = false; btn.textContent = 'Aplicar Reajuste';
   }
 }
 
