@@ -1501,6 +1501,106 @@ app.post("/api/empreendimentos/:id/vagas", (req, res) => {
   ok(res, { id: r.lastInsertRowid });
 });
 
+// Extrai vagas de garagem de matrícula/registro de incorporação (PDF)
+const uploadMatricula = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } });
+app.post('/api/empreendimentos/:id/extrair-vagas-matricula', autenticar, uploadMatricula.single('arquivo'), async (req, res) => {
+  if (!process.env.ANTHROPIC_API_KEY) return err(res, 'ANTHROPIC_API_KEY não configurada');
+  if (!req.file) return err(res, 'Nenhum arquivo enviado');
+  if (req.file.mimetype !== 'application/pdf') return err(res, 'Envie o arquivo em PDF');
+
+  const b64 = req.file.buffer.toString('base64');
+
+  const prompt = `Você está analisando uma matrícula imobiliária ou registro de incorporação de um empreendimento.
+Extraia TODAS as vagas de garagem mencionadas no documento.
+
+Para cada vaga encontrada, extraia:
+- numero: número/identificação da vaga (ex: "01", "A-02", "P1-05")
+- box: número do box, se houver (ex: "B-12", "Box 3")
+- tipo: tipo da vaga — use exatamente um dos valores: "simples", "dupla", "tripla", "moto", "deficiente", "coberta", "descoberta"
+- pavimento: onde a vaga está (ex: "Subsolo 1", "Subsolo", "Térreo", "P1", "B1")
+- tamanho: área em m² como número decimal (ex: 12.5) — null se não informado
+- preco: valor em reais como número (ex: 45000) — null se não informado
+- unidade_vinculada: número/identificação da unidade à qual a vaga está vinculada (ex: "101", "Apto 202") — null se não vinculada ou se for vaga autônoma/livre
+- observacoes: qualquer informação adicional relevante (ex: "Próxima ao elevador", "Box duplo") — null se não houver
+
+Retorne APENAS um JSON válido no seguinte formato (sem markdown, sem texto adicional):
+{
+  "vagas": [
+    {"numero": "01", "box": "B-01", "tipo": "simples", "pavimento": "Subsolo 1", "tamanho": 12.5, "preco": null, "unidade_vinculada": "101", "observacoes": null},
+    {"numero": "02", "box": null, "tipo": "dupla", "pavimento": "Subsolo", "tamanho": 25.0, "preco": null, "unidade_vinculada": null, "observacoes": "Vaga autônoma"}
+  ],
+  "total_encontradas": 2,
+  "observacoes_gerais": "Breve resumo sobre as vagas encontradas no documento"
+}
+
+Se não encontrar nenhuma vaga, retorne: {"vagas": [], "total_encontradas": 0, "observacoes_gerais": "Nenhuma vaga de garagem identificada"}`;
+
+  try {
+    const resposta = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+            { type: 'text', text: prompt }
+          ]
+        }]
+      })
+    });
+
+    const json = await resposta.json();
+    if (!resposta.ok) return err(res, json.error?.message || 'Erro na API Claude');
+
+    const texto = (json.content?.[0]?.text || '{}').trim().replace(/^```json\n?|^```\n?|```$/g, '').trim();
+    const dados = JSON.parse(texto);
+    ok(res, dados);
+  } catch(e) {
+    console.error('[extrair-vagas-matricula]', e.message);
+    err(res, 'Erro ao processar PDF: ' + e.message);
+  }
+});
+
+// Importa múltiplas vagas de uma vez (lote)
+app.post('/api/empreendimentos/:id/vagas/importar-lote', autenticar, (req, res) => {
+  const empId = parseInt(req.params.id);
+  const { vagas } = req.body;
+  if (!Array.isArray(vagas) || vagas.length === 0) return err(res, 'Nenhuma vaga para importar', 400);
+
+  const insert = db.prepare(`
+    INSERT INTO vagas_garagem (empreendimento_id, numero, box, bloco, tipo, tamanho, pavimento, preco, observacoes, unidade_id)
+    VALUES (?,?,?,?,?,?,?,?,?,?)
+  `);
+
+  // Tenta vincular unidades por número se unidade_vinculada fornecida
+  const unidades = db.prepare(`SELECT id, lote FROM unidades WHERE empreendimento_id=?`).all(empId);
+
+  const importar = db.transaction(() => {
+    let salvos = 0;
+    for (const v of vagas) {
+      let unidade_id = null;
+      if (v.unidade_vinculada) {
+        const u = unidades.find(u => String(u.lote) === String(v.unidade_vinculada));
+        if (u) unidade_id = u.id;
+      }
+      insert.run(empId, v.numero, v.box||null, v.bloco||null, v.tipo||'simples', v.tamanho||null, v.pavimento||null, v.preco||null, v.observacoes||null, unidade_id);
+      salvos++;
+    }
+    return salvos;
+  });
+
+  const salvos = importar();
+  ok(res, { importadas: salvos });
+});
+
 app.put("/api/vagas/:id", (req, res) => {
   const { numero, box, bloco, tipo, tamanho, pavimento, preco, status, observacoes, unidade_id } = req.body;
   const vaga = db.prepare("SELECT * FROM vagas_garagem WHERE id=?").get(req.params.id);

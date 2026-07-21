@@ -11241,7 +11241,11 @@ async function verVagas(empId) {
   }
 
   openModal(`🅿️ Vagas — ${empNome}`, `
-    <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:8px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:7px;border:1px solid rgba(96,165,250,.4);background:none;color:#60a5fa;font-size:13px;cursor:pointer;font-weight:600" title="Importar vagas lendo a matrícula/registro de incorporação com IA">
+        📄 Importar da Matrícula
+        <input type="file" accept=".pdf" style="display:none" onchange="importarVagasMatricula(this,${empId})">
+      </label>
       <button class="btn" onclick="abrirVagaModal(${empId})" style="font-size:13px;padding:7px 16px">+ Nova Vaga</button>
     </div>
     <div id="vagas-list-content">⏳ Carregando...</div>
@@ -11323,6 +11327,125 @@ async function deletarVaga(vagaId, empId) {
   const r = await del(`/api/vagas/${vagaId}`);
   if (!r.ok) return toast(r.error || 'Erro ao excluir', 'error');
   toast('Vaga excluída ✓');
+  verVagas(empId);
+}
+
+async function importarVagasMatricula(input, empId) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  const cont = document.getElementById('vagas-list-content');
+  cont.innerHTML = `
+    <div style="text-align:center;padding:40px">
+      <div style="font-size:28px;margin-bottom:12px">🤖</div>
+      <div style="font-weight:600;margin-bottom:6px">Lendo a matrícula com IA…</div>
+      <div style="font-size:12px;color:var(--text2)">Isso pode levar alguns segundos dependendo do tamanho do documento.</div>
+    </div>`;
+
+  const fd = new FormData();
+  fd.append('arquivo', file);
+
+  let dados;
+  try {
+    const resp = await fetch(`/api/empreendimentos/${empId}/extrair-vagas-matricula`, {
+      method: 'POST',
+      headers: { 'x-crm-token': TOKEN },
+      body: fd
+    });
+    const json = await resp.json();
+    if (!json.ok) throw new Error(json.error || 'Erro na extração');
+    dados = json.data;
+  } catch(e) {
+    cont.innerHTML = `<div style="color:var(--danger);padding:20px;text-align:center">❌ ${e.message}</div>`;
+    return;
+  }
+
+  if (!dados.vagas || dados.vagas.length === 0) {
+    cont.innerHTML = `
+      <div style="text-align:center;padding:30px;color:var(--text2)">
+        <div style="font-size:24px;margin-bottom:8px">🔍</div>
+        <div>Nenhuma vaga de garagem identificada no documento.</div>
+        ${dados.observacoes_gerais ? `<div style="font-size:12px;margin-top:8px">${dados.observacoes_gerais}</div>` : ''}
+      </div>`;
+    return;
+  }
+
+  // Guarda as vagas extraídas para uso no import
+  window._vagasExtraidas = dados.vagas.map((v, i) => ({ ...v, _idx: i, _sel: true }));
+
+  const fmtTipo = t => ({ simples:'Simples', dupla:'Dupla', tripla:'Tripla', moto:'Moto', deficiente:'PCD', coberta:'Coberta', descoberta:'Descoberta' }[t] || t);
+  const fmt = v => v ? 'R$ ' + parseFloat(v).toLocaleString('pt-BR', {minimumFractionDigits:2}) : '—';
+
+  cont.innerHTML = `
+    <div style="background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#93c5fd">
+      🤖 IA encontrou <strong>${dados.total_encontradas} vaga(s)</strong> na matrícula.
+      ${dados.observacoes_gerais ? `<span style="color:var(--text2)"> ${dados.observacoes_gerais}</span>` : ''}
+      <br>Revise abaixo e desmarque as que não deseja importar.
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:12px;color:var(--text2)"><span id="vg-sel-count">${dados.vagas.length}</span> de ${dados.vagas.length} selecionadas</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="vagasToggleAll(true)"  style="font-size:11px;padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:none;color:var(--text2);cursor:pointer">Marcar todas</button>
+        <button onclick="vagasToggleAll(false)" style="font-size:11px;padding:4px 10px;border-radius:5px;border:1px solid var(--border);background:none;color:var(--text2);cursor:pointer">Desmarcar todas</button>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px" id="vagas-review-list">
+      ${window._vagasExtraidas.map(v => `
+        <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--navy3);border-radius:8px;border:2px solid var(--accent);cursor:pointer" id="vg-row-${v._idx}">
+          <input type="checkbox" checked onchange="vagasToggle(${v._idx},this.checked)" style="width:auto;margin-top:2px;flex-shrink:0">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+              <span style="font-weight:700;font-size:14px">Vaga ${v.numero}</span>
+              ${v.box ? `<span style="font-size:12px;color:var(--text2)">Box ${v.box}</span>` : ''}
+              <span style="font-size:11px;background:var(--navy2);padding:2px 8px;border-radius:20px">${fmtTipo(v.tipo)}</span>
+              ${v.pavimento ? `<span style="font-size:12px;color:var(--text2)">${v.pavimento}</span>` : ''}
+              ${v.tamanho ? `<span style="font-size:12px;color:var(--text2)">${v.tamanho} m²</span>` : ''}
+              ${v.preco ? `<span style="font-size:12px;color:var(--accent)">${fmt(v.preco)}</span>` : ''}
+            </div>
+            ${v.unidade_vinculada ? `<div style="font-size:11px;color:var(--text2);margin-top:3px">🔗 Vinculada à unidade ${v.unidade_vinculada}</div>` : ''}
+            ${v.observacoes ? `<div style="font-size:11px;color:var(--text2);margin-top:2px;font-style:italic">${v.observacoes}</div>` : ''}
+          </div>
+        </label>`).join('')}
+    </div>
+
+    <div style="display:flex;gap:10px">
+      <button onclick="verVagas(${empId})" style="flex:1;padding:9px;border-radius:7px;border:1px solid var(--border);background:none;color:var(--text);font-size:13px;cursor:pointer">Cancelar</button>
+      <button onclick="confirmarImportacaoVagas(${empId})" style="flex:1;padding:9px;border-radius:7px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:700;cursor:pointer">✅ Importar Selecionadas</button>
+    </div>`;
+}
+
+function vagasToggle(idx, checked) {
+  window._vagasExtraidas[idx]._sel = checked;
+  const row = document.getElementById(`vg-row-${idx}`);
+  if (row) row.style.borderColor = checked ? 'var(--accent)' : 'var(--border)';
+  const sel = window._vagasExtraidas.filter(v => v._sel).length;
+  const el = document.getElementById('vg-sel-count');
+  if (el) el.textContent = sel;
+}
+
+function vagasToggleAll(checked) {
+  window._vagasExtraidas.forEach(v => {
+    v._sel = checked;
+    const cb = document.querySelector(`#vg-row-${v._idx} input`);
+    if (cb) cb.checked = checked;
+    const row = document.getElementById(`vg-row-${v._idx}`);
+    if (row) row.style.borderColor = checked ? 'var(--accent)' : 'var(--border)';
+  });
+  const el = document.getElementById('vg-sel-count');
+  if (el) el.textContent = checked ? window._vagasExtraidas.length : 0;
+}
+
+async function confirmarImportacaoVagas(empId) {
+  const selecionadas = (window._vagasExtraidas || []).filter(v => v._sel);
+  if (selecionadas.length === 0) { toast('Selecione ao menos uma vaga.', 'error'); return; }
+
+  const r = await post(`/api/empreendimentos/${empId}/vagas/importar-lote`, { vagas: selecionadas });
+  if (!r.ok) return toast(r.error || 'Erro ao importar', 'error');
+  toast(`${r.data?.importadas || selecionadas.length} vaga(s) importada(s) com sucesso ✓`);
+  delete window._vagasExtraidas;
   verVagas(empId);
 }
 
