@@ -8259,7 +8259,7 @@ async function verEspelho(empId) {
     if (!grupos[g]) grupos[g] = [];
     grupos[g].push(u);
   });
-  const _flo = g => { const n = parseFloat(g); if (!isNaN(n)) return n; const gl = g.toLowerCase(); if (gl.includes('térr')||gl.includes('terr')) return 0; return Infinity; };
+  const _flo = g => { const n = parseFloat(g); if (!isNaN(n)) return n; const gl = g.toLowerCase(); if (gl.includes('cob')||gl.includes('pent')||gl.includes('ático')||gl.includes('atico')) return 999; if (gl.includes('térr')||gl.includes('terr')||gl.includes('sala')||gl.includes('loja')||gl.includes('comer')||gl.includes('pav t')) return 0; return 0; };
   const grupoKeys = Object.keys(grupos).sort((a,b) => {
     return isPredio ? _flo(b) - _flo(a) : _flo(a) - _flo(b);
   });
