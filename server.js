@@ -1510,30 +1510,38 @@ app.post('/api/empreendimentos/:id/extrair-vagas-matricula', autenticar, uploadM
 
   const b64 = req.file.buffer.toString('base64');
 
-  const prompt = `Você está analisando uma matrícula imobiliária ou registro de incorporação de um empreendimento.
-Extraia TODAS as vagas de garagem mencionadas no documento.
+  const prompt = `Você está analisando uma matrícula imobiliária ou registro de incorporação de um edifício brasileiro.
 
-Para cada vaga encontrada, extraia:
-- numero: número/identificação da vaga (ex: "01", "A-02", "P1-05")
-- box: número do box, se houver (ex: "B-12", "Box 3")
-- tipo: tipo da vaga — use exatamente um dos valores: "simples", "dupla", "tripla", "moto", "deficiente", "coberta", "descoberta"
-- pavimento: onde a vaga está (ex: "Subsolo 1", "Subsolo", "Térreo", "P1", "B1")
-- tamanho: área em m² como número decimal (ex: 12.5) — null se não informado
-- preco: valor em reais como número (ex: 45000) — null se não informado
-- unidade_vinculada: número/identificação da unidade à qual a vaga está vinculada (ex: "101", "Apto 202") — null se não vinculada ou se for vaga autônoma/livre
-- observacoes: qualquer informação adicional relevante (ex: "Próxima ao elevador", "Box duplo") — null se não houver
+O documento contém uma tabela de unidades autônomas com colunas tipicamente nesta ordem:
+  Unidade | Pavimento/Andar | Área Total (m²) | Área Privativa (m²) | Área Comum (m²) | Fração Ideal | %
 
-Retorne APENAS um JSON válido no seguinte formato (sem markdown, sem texto adicional):
+Extraia APENAS as linhas referentes a VAGAS DE GARAGEM (ignore apartamentos, salas comerciais, etc.).
+As vagas aparecem com nomenclaturas como: "Vaga de Garagem nº 01", "Vaga nº 01", "VG-01", "PVE-01", etc.
+
+REGRAS IMPORTANTES:
+1. "numero": extraia apenas o número/código da vaga, sem o texto "Vaga de Garagem nº" (ex: "01", "30-A", "P1-05")
+2. "tipo": identifique pelo número de letras/sufixos na designação:
+   - "dupla" se o número tiver dois identificadores como "30-A/30-B" ou "30A e 30B" (área dobrada ~36-50m²)
+   - "simples" para vaga individual padrão (~10-25m² de área privativa)
+   - "moto" se explicitamente mencionado ou área muito pequena (<8m²)
+   - "deficiente" se mencionado PCD, acessível, ou deficiente
+3. "pavimento": extraia o andar/pavimento da coluna "Pavimento/Andar"; formatos comuns: "Térreo", "Subsolo", "1º/Térreo", "2º/1º", "3º/2º" — mantenha como está no documento
+4. "tamanho": use o valor da coluna ÁREA PRIVATIVA (segunda coluna numérica, geralmente menor que a total)
+5. "preco": null se não houver valor monetário na tabela (matrículas raramente têm preço)
+6. "unidade_vinculada": null para vagas de garagem autônomas (na maioria dos registros de incorporação as vagas são unidades autônomas independentes)
+7. "observacoes": inclua se houver indicação de localização especial ou vaga dupla/tripla
+
+Retorne APENAS JSON válido (sem markdown, sem texto antes ou depois):
 {
   "vagas": [
-    {"numero": "01", "box": "B-01", "tipo": "simples", "pavimento": "Subsolo 1", "tamanho": 12.5, "preco": null, "unidade_vinculada": "101", "observacoes": null},
-    {"numero": "02", "box": null, "tipo": "dupla", "pavimento": "Subsolo", "tamanho": 25.0, "preco": null, "unidade_vinculada": null, "observacoes": "Vaga autônoma"}
+    {"numero": "01", "box": null, "tipo": "simples", "pavimento": "2º/1º", "tamanho": 13.82, "preco": null, "unidade_vinculada": null, "observacoes": null},
+    {"numero": "30-A/30-B", "box": null, "tipo": "dupla", "pavimento": "4º/3º", "tamanho": 28.00, "preco": null, "unidade_vinculada": null, "observacoes": "Vaga dupla"}
   ],
   "total_encontradas": 2,
-  "observacoes_gerais": "Breve resumo sobre as vagas encontradas no documento"
+  "observacoes_gerais": "31 vagas de garagem distribuídas entre os pavimentos 2º/1º a 4º/3º"
 }
 
-Se não encontrar nenhuma vaga, retorne: {"vagas": [], "total_encontradas": 0, "observacoes_gerais": "Nenhuma vaga de garagem identificada"}`;
+Se não encontrar vagas: {"vagas": [], "total_encontradas": 0, "observacoes_gerais": "Nenhuma vaga de garagem identificada"}`;
 
   try {
     const resposta = await fetch('https://api.anthropic.com/v1/messages', {
