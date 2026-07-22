@@ -6501,7 +6501,7 @@ app.get('/api/empreendimentos/:id/preview-reajuste', autenticar, (req, res) => {
   });
 });
 
-// ─── CAIXA / CONFERÊNCIA BANCÁRIA ────────────────────────────────────────────
+// ─── CAIXA / CONCILIAÇÃO BANCÁRIA ────────────────────────────────────────────
 
 db.exec(`CREATE TABLE IF NOT EXISTS contas_bancarias (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -6511,8 +6511,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS contas_bancarias (
   conta_numero TEXT,
   tipo TEXT DEFAULT 'corrente',
   ativo INTEGER DEFAULT 1,
+  saldo_inicial REAL DEFAULT 0,
   criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
 )`);
+try { db.exec("ALTER TABLE contas_bancarias ADD COLUMN saldo_inicial REAL DEFAULT 0"); } catch(_) {}
 
 db.exec(`CREATE TABLE IF NOT EXISTS caixa_saldo_banco (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -6523,24 +6525,53 @@ db.exec(`CREATE TABLE IF NOT EXISTS caixa_saldo_banco (
   criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
 )`);
 
+// Migrations R1/R2/R3/R5: conta_id, empresa_id, historico
+try { db.exec("ALTER TABLE financeiro_entradas ADD COLUMN conta_id INTEGER REFERENCES contas_bancarias(id)"); } catch(_) {}
+try { db.exec("ALTER TABLE financeiro_entradas ADD COLUMN empresa_id INTEGER DEFAULT 1"); } catch(_) {}
+try { db.exec("ALTER TABLE financeiro_entradas ADD COLUMN historico INTEGER DEFAULT 0"); } catch(_) {}
+try { db.exec("ALTER TABLE financeiro_saidas ADD COLUMN conta_id INTEGER REFERENCES contas_bancarias(id)"); } catch(_) {}
+try { db.exec("ALTER TABLE financeiro_saidas ADD COLUMN empresa_id INTEGER DEFAULT 1"); } catch(_) {}
+try { db.exec("ALTER TABLE financeiro_saidas ADD COLUMN historico INTEGER DEFAULT 0"); } catch(_) {}
+try { db.exec("ALTER TABLE distribuicoes ADD COLUMN empresa_id INTEGER DEFAULT 1"); } catch(_) {}
+try { db.exec("ALTER TABLE distribuicoes ADD COLUMN conta_id INTEGER REFERENCES contas_bancarias(id)"); } catch(_) {}
+try { db.exec("ALTER TABLE distribuicoes ADD COLUMN historico INTEGER DEFAULT 0"); } catch(_) {}
+
+const DATA_CORTE_CAIXA = '2026-07-20';
+
+function _calcSaldoConta(contaId, saldoInicial) {
+  const ent = db.prepare("SELECT COALESCE(SUM(valor),0) as t FROM financeiro_entradas WHERE conta_id=? AND status='recebido' AND COALESCE(historico,0)=0").get(contaId).t;
+  const sai = db.prepare("SELECT COALESCE(SUM(valor),0) as t FROM financeiro_saidas WHERE conta_id=? AND status='pago' AND COALESCE(historico,0)=0").get(contaId).t;
+  const dis = db.prepare("SELECT COALESCE(SUM(valor),0) as t FROM distribuicoes WHERE conta_id=? AND COALESCE(historico,0)=0").get(contaId).t;
+  return Math.round(((saldoInicial||0) + ent - sai - dis) * 100) / 100;
+}
+
 app.get('/api/caixa/contas', autenticar, (req, res) => {
-  const contas = db.prepare(`SELECT cb.*,
-    (SELECT saldo FROM caixa_saldo_banco WHERE conta_id=cb.id ORDER BY data DESC, id DESC LIMIT 1) as ultimo_saldo,
-    (SELECT data FROM caixa_saldo_banco WHERE conta_id=cb.id ORDER BY data DESC, id DESC LIMIT 1) as ultima_data
-    FROM contas_bancarias cb WHERE cb.ativo=1 ORDER BY cb.nome`).all();
+  const contas = db.prepare(`
+    SELECT cb.*,
+      (SELECT saldo FROM caixa_saldo_banco WHERE conta_id=cb.id ORDER BY data DESC, id DESC LIMIT 1) as saldo_real,
+      (SELECT data FROM caixa_saldo_banco WHERE conta_id=cb.id ORDER BY data DESC, id DESC LIMIT 1) as saldo_real_data
+    FROM contas_bancarias cb WHERE cb.ativo=1 ORDER BY cb.nome
+  `).all();
+  for (const c of contas) {
+    c.saldo_sistema = _calcSaldoConta(c.id, c.saldo_inicial);
+    c.diferenca = c.saldo_real !== null && c.saldo_real !== undefined
+      ? Math.round((c.saldo_sistema - c.saldo_real) * 100) / 100 : null;
+  }
   ok(res, contas);
 });
 
 app.post('/api/caixa/contas', autenticar, (req, res) => {
-  const { nome, banco, agencia, conta_numero, tipo } = req.body;
+  const { nome, banco, agencia, conta_numero, tipo, saldo_inicial } = req.body;
   if (!nome) return err(res, 'Nome obrigatório', 400);
-  const r = db.prepare(`INSERT INTO contas_bancarias (nome,banco,agencia,conta_numero,tipo) VALUES (?,?,?,?,?)`).run(nome, banco||null, agencia||null, conta_numero||null, tipo||'corrente');
+  const r = db.prepare(`INSERT INTO contas_bancarias (nome,banco,agencia,conta_numero,tipo,saldo_inicial) VALUES (?,?,?,?,?,?)`)
+    .run(nome, banco||null, agencia||null, conta_numero||null, tipo||'corrente', parseFloat(saldo_inicial)||0);
   ok(res, { id: r.lastInsertRowid });
 });
 
 app.put('/api/caixa/contas/:id', autenticar, (req, res) => {
-  const { nome, banco, agencia, conta_numero, tipo, ativo } = req.body;
-  db.prepare(`UPDATE contas_bancarias SET nome=?,banco=?,agencia=?,conta_numero=?,tipo=?,ativo=? WHERE id=?`).run(nome, banco||null, agencia||null, conta_numero||null, tipo||'corrente', ativo!==undefined?ativo:1, req.params.id);
+  const { nome, banco, agencia, conta_numero, tipo, ativo, saldo_inicial } = req.body;
+  db.prepare(`UPDATE contas_bancarias SET nome=?,banco=?,agencia=?,conta_numero=?,tipo=?,ativo=?,saldo_inicial=? WHERE id=?`)
+    .run(nome, banco||null, agencia||null, conta_numero||null, tipo||'corrente', ativo!==undefined?ativo:1, saldo_inicial!==undefined?parseFloat(saldo_inicial):0, req.params.id);
   ok(res, {});
 });
 
@@ -6553,7 +6584,7 @@ app.get('/api/caixa/saldos', autenticar, (req, res) => {
   const { conta_id } = req.query;
   const where = conta_id ? 'WHERE s.conta_id=?' : '';
   const params = conta_id ? [conta_id] : [];
-  const saldos = db.prepare(`SELECT s.*, cb.nome as conta_nome, cb.banco FROM caixa_saldo_banco s LEFT JOIN contas_bancarias cb ON cb.id=s.conta_id ${where} ORDER BY s.data DESC, s.id DESC LIMIT 100`).all(...params);
+  const saldos = db.prepare(`SELECT s.*, cb.nome as conta_nome, cb.banco FROM caixa_saldo_banco s LEFT JOIN contas_bancarias cb ON cb.id=s.conta_id ${where} ORDER BY s.data DESC, s.id DESC LIMIT 200`).all(...params);
   ok(res, saldos);
 });
 
@@ -6569,43 +6600,126 @@ app.delete('/api/caixa/saldos/:id', autenticar, (req, res) => {
   ok(res, {});
 });
 
+// Marca transações anteriores à data de corte como históricas (não entram no saldo)
+app.post('/api/caixa/marcar-historico', autenticar, (req, res) => {
+  const e = db.prepare("UPDATE financeiro_entradas SET historico=1 WHERE date(data_recebimento) < ? AND status='recebido' AND COALESCE(historico,0)=0").run(DATA_CORTE_CAIXA);
+  const s = db.prepare("UPDATE financeiro_saidas SET historico=1 WHERE date(data_pagamento) < ? AND status='pago' AND COALESCE(historico,0)=0").run(DATA_CORTE_CAIXA);
+  const d = db.prepare("UPDATE distribuicoes SET historico=1 WHERE date(data) < ? AND COALESCE(historico,0)=0").run(DATA_CORTE_CAIXA);
+  ok(res, { entradas: e.changes, saidas: s.changes, distribuicoes: d.changes, data_corte: DATA_CORTE_CAIXA });
+});
+
+// Vincula uma entrada a uma conta na baixa
+app.post('/api/financeiro/entradas/:id/baixar', autenticar, (req, res) => {
+  const { conta_id, data_recebimento } = req.body;
+  if (!data_recebimento) return err(res, 'Data de recebimento obrigatória', 400);
+  const e = db.prepare("SELECT * FROM financeiro_entradas WHERE id=?").get(req.params.id);
+  if (!e) return err(res, 'Entrada não encontrada', 404);
+  if (e.historico) return err(res, 'Registro histórico não pode ser alterado', 400);
+  db.prepare("UPDATE financeiro_entradas SET status='recebido', data_recebimento=?, conta_id=? WHERE id=?")
+    .run(data_recebimento, conta_id||null, req.params.id);
+  ok(res, {});
+});
+
+// Vincula uma saída a uma conta na baixa
+app.post('/api/financeiro/saidas/:id/baixar', autenticar, (req, res) => {
+  const { conta_id, data_pagamento } = req.body;
+  if (!data_pagamento) return err(res, 'Data de pagamento obrigatória', 400);
+  const s = db.prepare("SELECT * FROM financeiro_saidas WHERE id=?").get(req.params.id);
+  if (!s) return err(res, 'Saída não encontrada', 404);
+  if (s.historico) return err(res, 'Registro histórico não pode ser alterado', 400);
+  db.prepare("UPDATE financeiro_saidas SET status='pago', data_pagamento=?, conta_id=? WHERE id=?")
+    .run(data_pagamento, conta_id||null, req.params.id);
+  ok(res, {});
+});
+
 app.get('/api/caixa/dashboard', autenticar, (req, res) => {
-  // Saldo do sistema: entradas recebidas - saidas pagas
-  const totalEntradas = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM financeiro_entradas WHERE status='recebido'`).get().total;
-  const totalSaidas   = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM financeiro_saidas WHERE status='pago'`).get().total;
-  const saldoSistema  = totalEntradas - totalSaidas;
+  const contas = db.prepare("SELECT * FROM contas_bancarias WHERE ativo=1 ORDER BY nome").all();
+  let saldoSistema = 0;
+  const saldosPorConta = [];
 
-  // Pendentes
-  const entradasPendentes = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM financeiro_entradas WHERE status='pendente'`).get().total;
-  const saidasPendentes   = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM financeiro_saidas WHERE status='pendente'`).get().total;
+  for (const c of contas) {
+    const sistema = _calcSaldoConta(c.id, c.saldo_inicial);
+    saldoSistema += sistema;
+    const ultsaldo = db.prepare("SELECT saldo, data FROM caixa_saldo_banco WHERE conta_id=? ORDER BY data DESC, id DESC LIMIT 1").get(c.id);
+    saldosPorConta.push({
+      id: c.id, nome: c.nome, banco: c.banco, tipo: c.tipo,
+      saldo_inicial: c.saldo_inicial||0,
+      saldo_sistema: sistema,
+      saldo_real: ultsaldo?.saldo ?? null,
+      saldo_real_data: ultsaldo?.data ?? null,
+      diferenca: ultsaldo !== undefined && ultsaldo !== null
+        ? Math.round((sistema - ultsaldo.saldo) * 100) / 100 : null,
+    });
+  }
 
-  // Saldo real: soma dos últimos saldos por conta
-  const ultimosSaldos = db.prepare(`
-    SELECT s.conta_id, s.saldo, s.data, s.observacao, cb.nome as conta_nome, cb.banco
-    FROM caixa_saldo_banco s
-    LEFT JOIN contas_bancarias cb ON cb.id=s.conta_id
-    WHERE s.id IN (
-      SELECT id FROM caixa_saldo_banco s2
-      WHERE s2.conta_id IS NOT DISTINCT FROM s.conta_id
-      ORDER BY s2.data DESC, s2.id DESC LIMIT 1
-    )
-    ORDER BY s.data DESC
-  `).all();
-  const saldoReal = ultimosSaldos.reduce((acc, s) => acc + s.saldo, 0);
+  // Entradas/saídas sem conta_id (ainda não atribuídas)
+  const entSemConta = db.prepare("SELECT COALESCE(SUM(valor),0) as t FROM financeiro_entradas WHERE conta_id IS NULL AND status='recebido' AND COALESCE(historico,0)=0").get().t;
+  const saiSemConta = db.prepare("SELECT COALESCE(SUM(valor),0) as t FROM financeiro_saidas WHERE conta_id IS NULL AND status='pago' AND COALESCE(historico,0)=0").get().t;
+  saldoSistema = Math.round((saldoSistema + entSemConta - saiSemConta) * 100) / 100;
 
-  // Últimas movimentações do sistema (30)
+  const saldoReal = saldosPorConta.reduce((acc, c) => acc + (c.saldo_real ?? 0), 0);
+  const entradasPendentes = db.prepare("SELECT COALESCE(SUM(valor),0) as total FROM financeiro_entradas WHERE status='pendente'").get().total;
+  const saidasPendentes   = db.prepare("SELECT COALESCE(SUM(valor),0) as total FROM financeiro_saidas WHERE status='pendente'").get().total;
+  const totalEntradas     = db.prepare("SELECT COALESCE(SUM(valor),0) as total FROM financeiro_entradas WHERE status='recebido'").get().total;
+  const totalSaidas       = db.prepare("SELECT COALESCE(SUM(valor),0) as total FROM financeiro_saidas WHERE status='pago'").get().total;
+
   const movimentacoes = db.prepare(`
-    SELECT 'entrada' as tipo, data_recebimento as data, descricao, valor, status, empreendimento_id,
-      (SELECT nome FROM empreendimentos WHERE id=empreendimento_id) as empreendimento
+    SELECT 'entrada' as tipo, data_recebimento as data, descricao, valor, status,
+      empreendimento_id, conta_id, COALESCE(historico,0) as historico,
+      (SELECT nome FROM empreendimentos WHERE id=empreendimento_id) as empreendimento,
+      (SELECT nome FROM contas_bancarias WHERE id=conta_id) as conta_nome
     FROM financeiro_entradas WHERE status='recebido' AND data_recebimento IS NOT NULL
     UNION ALL
-    SELECT 'saida' as tipo, data_pagamento as data, descricao, valor, status, empreendimento_id,
-      (SELECT nome FROM empreendimentos WHERE id=empreendimento_id) as empreendimento
+    SELECT 'saida' as tipo, data_pagamento as data, descricao, valor, status,
+      empreendimento_id, conta_id, COALESCE(historico,0) as historico,
+      (SELECT nome FROM empreendimentos WHERE id=empreendimento_id) as empreendimento,
+      (SELECT nome FROM contas_bancarias WHERE id=conta_id) as conta_nome
     FROM financeiro_saidas WHERE status='pago' AND data_pagamento IS NOT NULL
-    ORDER BY data DESC LIMIT 30
+    ORDER BY data DESC LIMIT 50
   `).all();
 
-  ok(res, { saldoSistema, saldoReal, totalEntradas, totalSaidas, entradasPendentes, saidasPendentes, ultimosSaldos, movimentacoes });
+  ok(res, {
+    saldoSistema, saldoReal, totalEntradas, totalSaidas,
+    entradasPendentes, saidasPendentes, saldosPorConta, movimentacoes,
+    semConta: { entradas: entSemConta, saidas: saiSemConta },
+    data_corte: DATA_CORTE_CAIXA,
+  });
+});
+
+// Conciliação detalhada por conta
+app.get('/api/caixa/conciliar', autenticar, (req, res) => {
+  const contas = db.prepare("SELECT * FROM contas_bancarias WHERE ativo=1 ORDER BY nome").all();
+  const resultado = contas.map(c => {
+    const entradas = db.prepare(`
+      SELECT fe.id, fe.data_recebimento as data, fe.descricao, fe.valor, fe.tipo, fe.historico,
+        (SELECT nome FROM empreendimentos WHERE id=fe.empreendimento_id) as empreendimento
+      FROM financeiro_entradas fe
+      WHERE fe.conta_id=? AND fe.status='recebido' AND COALESCE(fe.historico,0)=0
+      ORDER BY fe.data_recebimento DESC LIMIT 100
+    `).all(c.id);
+    const saidas = db.prepare(`
+      SELECT fs.id, fs.data_pagamento as data, fs.descricao, fs.valor, fs.categoria, fs.historico,
+        (SELECT nome FROM empreendimentos WHERE id=fs.empreendimento_id) as empreendimento
+      FROM financeiro_saidas fs
+      WHERE fs.conta_id=? AND fs.status='pago' AND COALESCE(fs.historico,0)=0
+      ORDER BY fs.data_pagamento DESC LIMIT 100
+    `).all(c.id);
+    const sistema = _calcSaldoConta(c.id, c.saldo_inicial);
+    const ultsaldo = db.prepare("SELECT saldo, data FROM caixa_saldo_banco WHERE conta_id=? ORDER BY data DESC, id DESC LIMIT 1").get(c.id);
+    return {
+      conta: { id: c.id, nome: c.nome, banco: c.banco, tipo: c.tipo, saldo_inicial: c.saldo_inicial||0 },
+      saldo_sistema: sistema,
+      saldo_real: ultsaldo?.saldo ?? null,
+      saldo_real_data: ultsaldo?.data ?? null,
+      diferenca: ultsaldo ? Math.round((sistema - ultsaldo.saldo) * 100) / 100 : null,
+      entradas, saidas,
+    };
+  });
+
+  const semContaEnt = db.prepare("SELECT id, data_recebimento as data, descricao, valor FROM financeiro_entradas WHERE conta_id IS NULL AND status='recebido' AND COALESCE(historico,0)=0 ORDER BY data_recebimento DESC LIMIT 50").all();
+  const semContaSai = db.prepare("SELECT id, data_pagamento as data, descricao, valor FROM financeiro_saidas WHERE conta_id IS NULL AND status='pago' AND COALESCE(historico,0)=0 ORDER BY data_pagamento DESC LIMIT 50").all();
+
+  ok(res, { contas: resultado, semConta: { entradas: semContaEnt, saidas: semContaSai } });
 });
 
 // ─── START ────────────────────────────────────────────────────────────────────
