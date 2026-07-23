@@ -8369,6 +8369,7 @@ async function verEspelho(empId) {
         📐 Importar da Planta
         <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" style="display:none" onchange="analisarPlanta(this,${empId},'${(emp.nome||'').replace(/'/g,"\\'")}')">
       </label>
+      <button class="btn btn-secondary" onclick="gerenciarEspelhoPublico(${empId})" style="font-size:12px;padding:6px 12px;color:#a78bfa;border-color:rgba(167,139,250,.4)" title="Gerar link público do espelho de vendas">🔗 Link Público</button>
     </div>
 
     <!-- Barra VSO (somente admin) -->
@@ -8406,6 +8407,59 @@ async function verEspelho(empId) {
       ${isPredio ? renderEspelhoPredio(grupoKeys, grupos, empId) : renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId)}
     </div>
   `;
+}
+
+async function gerenciarEspelhoPublico(empId) {
+  const emp = (currentData.emp||[]).find(e => e.id === empId) || {};
+  const slugAtual = emp.espelho_slug || '';
+  const baseUrl = location.origin;
+
+  showModal(`
+    <div class="modal-head"><span style="font-size:16px;font-weight:700">🔗 Link Público do Espelho</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:16px">
+      <div style="background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.3);border-radius:8px;padding:14px;font-size:13px;line-height:1.6;color:var(--text2)">
+        Gere um link público onde <strong style="color:var(--text)">qualquer pessoa</strong> consegue ver o espelho de vendas com os status das unidades em <strong style="color:var(--text)">tempo real</strong>, sem precisar fazer login.
+      </div>
+
+      <div class="form-group">
+        <label style="font-size:12px;color:var(--text2);font-weight:600">Slug (identificador na URL)</label>
+        <div style="display:flex;gap:8px">
+          <input id="esp-slug" type="text" value="${slugAtual}" placeholder="ex: bel-monte" style="flex:1;padding:9px 12px;background:var(--navy3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
+          <button onclick="salvarEspelhoSlug(${empId})" style="padding:9px 16px;border-radius:7px;border:none;background:#7c3aed;color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Salvar</button>
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">Apenas letras minúsculas, números e hífens. Ex: <code style="color:#a78bfa">bel-monte</code></div>
+      </div>
+
+      ${slugAtual ? `
+      <div class="form-group">
+        <label style="font-size:12px;color:var(--text2);font-weight:600">Link público atual</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" value="${baseUrl}/espelho/${slugAtual}" readonly id="esp-link-field"
+            style="flex:1;padding:9px 12px;background:var(--navy3);border:1px solid rgba(167,139,250,.4);border-radius:7px;color:#a78bfa;font-size:13px;cursor:pointer"
+            onclick="this.select()">
+          <button onclick="navigator.clipboard.writeText('${baseUrl}/espelho/${slugAtual}').then(()=>toast('✅ Link copiado!'))" style="padding:9px 14px;border-radius:7px;border:1px solid rgba(167,139,250,.4);background:rgba(167,139,250,.1);color:#a78bfa;font-size:13px;cursor:pointer;white-space:nowrap">📋 Copiar</button>
+          <a href="/espelho/${slugAtual}" target="_blank" style="padding:9px 14px;border-radius:7px;border:1px solid rgba(20,184,166,.4);background:rgba(20,184,166,.1);color:#2dd4bf;font-size:13px;text-decoration:none;white-space:nowrap">↗ Abrir</a>
+        </div>
+      </div>
+      ` : '<div style="font-size:13px;color:var(--text2);text-align:center;padding:8px 0">Defina um slug acima para ativar o link público.</div>'}
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>
+    </div>
+  `);
+}
+
+async function salvarEspelhoSlug(empId) {
+  const slug = document.getElementById('esp-slug')?.value?.trim();
+  if (!slug) return toast('Informe o slug', 'error');
+  const r = await api('PUT', `/api/empreendimentos/${empId}/espelho-slug`, { slug });
+  if (!r.ok) return toast(r.error || 'Erro ao salvar slug', 'error');
+  toast('✅ Slug salvo!');
+  // Atualiza o objeto local
+  const emp = (currentData.emp||[]).find(e => e.id === empId);
+  if (emp) emp.espelho_slug = r.data.slug;
+  closeModal();
+  gerenciarEspelhoPublico(empId);
 }
 
 function renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId) {

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Espelho de Vendas</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  .logo { font-size: 20px; font-weight: 800; color: #fff; }
+  .logo span { color: #14b8a6; }
+  .subtitle { font-size: 13px; color: #94a3b8; margin-top: 2px; }
+  .atualizado { font-size: 12px; color: #64748b; text-align: right; }
+  .atualizado strong { color: #94a3b8; }
+
+  .resumo { display: flex; gap: 12px; padding: 16px 24px; flex-wrap: wrap; }
+  .resumo-card { flex: 1; min-width: 120px; background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px 18px; text-align: center; }
+  .resumo-card .num { font-size: 28px; font-weight: 800; line-height: 1; }
+  .resumo-card .label { font-size: 12px; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: .05em; }
+  .resumo-card.disp .num { color: #22c55e; }
+  .resumo-card.res  .num { color: #f59e0b; }
+  .resumo-card.vend .num { color: #ef4444; }
+  .resumo-card.total .num { color: #e2e8f0; }
+
+  main { padding: 0 24px 32px; }
+
+  /* Mapa com overlay */
+  .mapa-wrap { position: relative; display: inline-block; max-width: 100%; }
+  .mapa-wrap img { width: 100%; max-width: 1100px; display: block; border-radius: 12px; }
+  .marcador {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 2px solid rgba(0,0,0,.35);
+    cursor: default;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 7px; font-weight: 700; color: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.5);
+    transition: transform .15s;
+  }
+  .marcador:hover { transform: translate(-50%,-50%) scale(1.4); z-index: 10; }
+  .marcador.disponivel { background: #22c55e; }
+  .marcador.reservado  { background: #f59e0b; }
+  .marcador.vendido    { background: #ef4444; }
+  .marcador.entregue   { background: #8b5cf6; }
+
+  /* Tooltip */
+  .marcador .tip {
+    display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+    padding: 6px 10px; white-space: nowrap; font-size: 11px; z-index: 20;
+    pointer-events: none; line-height: 1.5;
+  }
+  .marcador:hover .tip { display: block; }
+
+  /* Sem mapa — grade de tiles */
+  .grade-section { margin-top: 0; }
+  .grade-titulo { font-size: 14px; font-weight: 600; color: #94a3b8; margin-bottom: 12px; }
+  .grade { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tile {
+    width: 54px; height: 54px; border-radius: 8px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; cursor: default;
+    border: 1.5px solid transparent; font-weight: 700;
+    transition: transform .15s;
+    position: relative;
+  }
+  .tile:hover { transform: scale(1.15); z-index: 5; }
+  .tile .lote-num { font-size: 14px; line-height: 1; }
+  .tile .quadra { font-size: 9px; opacity: .7; margin-top: 1px; }
+  .tile.disponivel { background: #14532d; border-color: #22c55e; color: #4ade80; }
+  .tile.reservado  { background: #78350f; border-color: #f59e0b; color: #fbbf24; }
+  .tile.vendido    { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
+  .tile.entregue   { background: #2e1065; border-color: #8b5cf6; color: #c4b5fd; }
+
+  .tile .tip2 {
+    display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+    padding: 6px 10px; white-space: nowrap; font-size: 11px; z-index: 20;
+    pointer-events: none; line-height: 1.5; color: #e2e8f0;
+  }
+  .tile:hover .tip2 { display: block; }
+
+  /* Legenda */
+  .legenda { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0 20px; }
+  .leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; }
+  .leg-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .leg-dot.disponivel { background: #22c55e; }
+  .leg-dot.reservado  { background: #f59e0b; }
+  .leg-dot.vendido    { background: #ef4444; }
+  .leg-dot.entregue   { background: #8b5cf6; }
+
+  /* Contador regressivo */
+  .refresh-bar { text-align: center; font-size: 11px; color: #475569; padding: 8px 0 4px; }
+  .refresh-bar span { color: #14b8a6; font-weight: 600; }
+
+  /* Estados */
+  .loading { text-align: center; padding: 80px 24px; color: #64748b; }
+  .erro { text-align: center; padding: 60px 24px; color: #ef4444; }
+
+  @media (max-width: 600px) {
+    header { padding: 12px 16px; }
+    .resumo { padding: 12px 16px; gap: 8px; }
+    main { padding: 0 16px 24px; }
+    .tile { width: 46px; height: 46px; }
+    .tile .lote-num { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">R2X <span>CRM</span></div>
+    <div class="subtitle" id="emp-nome">Carregando...</div>
+  </div>
+  <div class="atualizado">
+    Espelho de Vendas — Tempo Real<br>
+    <strong id="hora-atual">—</strong>
+  </div>
+</header>
+
+<div class="resumo" id="resumo">
+  <div class="resumo-card total"><div class="num" id="r-total">—</div><div class="label">Total</div></div>
+  <div class="resumo-card disp"><div class="num" id="r-disp">—</div><div class="label">Disponível</div></div>
+  <div class="resumo-card res"><div class="num" id="r-res">—</div><div class="label">Reservado</div></div>
+  <div class="resumo-card vend"><div class="num" id="r-vend">—</div><div class="label">Vendido</div></div>
+</div>
+
+<main>
+  <div id="conteudo"><div class="loading">Carregando espelho de vendas...</div></div>
+  <div class="refresh-bar">Atualiza automaticamente em <span id="countdown">15</span>s</div>
+</main>
+
+<script>
+const slug = location.pathname.split('/espelho/')[1]?.split('/')[0];
+let countdown = 15;
+let timer;
+
+const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+
+function statusLabel(s) {
+  return { disponivel: 'Disponível', reservado: 'Reservado', vendido: 'Vendido', entregue: 'Entregue' }[s] || s;
+}
+
+async function carregar() {
+  try {
+    const r = await fetch(`/api/espelho-publico/${slug}`);
+    const resp = await r.json();
+    if (!resp.ok) { document.getElementById('conteudo').innerHTML = `<div class="erro">⚠️ ${resp.error}</div>`; return; }
+
+    const { empreendimento: emp, imagem, units, resumo, atualizado_em } = resp.data;
+
+    document.title = `Espelho — ${emp.nome}`;
+    document.getElementById('emp-nome').textContent = emp.nome + (emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : '');
+    document.getElementById('hora-atual').textContent = new Date(atualizado_em).toLocaleTimeString('pt-BR');
+
+    document.getElementById('r-total').textContent = units.length;
+    document.getElementById('r-disp').textContent  = resumo.disponivel || 0;
+    document.getElementById('r-res').textContent   = resumo.reservado  || 0;
+    document.getElementById('r-vend').textContent  = resumo.vendido    || 0;
+
+    // Verifica se alguma unidade tem posição no mapa
+    const comPosicao = units.filter(u => u.mapa_x != null && u.mapa_y != null);
+    const html = [];
+
+    // Legenda
+    html.push(`<div class="legenda">
+      <div class="leg-item"><div class="leg-dot disponivel"></div>Disponível</div>
+      <div class="leg-item"><div class="leg-dot reservado"></div>Reservado</div>
+      <div class="leg-item"><div class="leg-dot vendido"></div>Vendido</div>
+      <div class="leg-item"><div class="leg-dot entregue"></div>Entregue</div>
+    </div>`);
+
+    if (imagem && comPosicao.length > 0) {
+      // Modo overlay no mapa
+      html.push(`<div class="mapa-wrap" id="mapa-wrap">
+        <img src="${imagem}" id="mapa-img" alt="Mapa" onload="ajustarMarcadores()">
+        <div id="marcadores"></div>
+      </div>`);
+      document.getElementById('conteudo').innerHTML = html.join('');
+
+      // Renderiza marcadores após imagem carregar
+      window._units = units;
+      window._comPosicao = comPosicao;
+      ajustarMarcadores();
+
+    } else {
+      // Modo grade de tiles (sem posições ou sem imagem)
+      if (imagem) {
+        html.push(`<div style="margin-bottom:20px"><img src="${imagem}" style="width:100%;max-width:1100px;border-radius:12px;display:block" alt="Mapa"></div>`);
+      }
+
+      // Agrupar por quadra
+      const quadras = {};
+      for (const u of units) {
+        const q = u.quadra || '—';
+        if (!quadras[q]) quadras[q] = [];
+        quadras[q].push(u);
+      }
+
+      html.push(`<div class="grade-section">`);
+      for (const [q, lotes] of Object.entries(quadras)) {
+        if (Object.keys(quadras).length > 1) {
+          html.push(`<div class="grade-titulo">${q !== '—' ? 'Quadra ' + q : 'Lotes'}</div>`);
+        }
+        html.push(`<div class="grade" style="margin-bottom:16px">`);
+        for (const u of lotes) {
+          const tipInfo = [
+            u.quadra ? `Quadra ${u.quadra}` : '',
+            `Lote ${u.lote}`,
+            u.area_m2 ? `${u.area_m2}m²` : '',
+            u.preco ? fmt.format(u.preco) : '',
+            statusLabel(u.status)
+          ].filter(Boolean).join('<br>');
+          html.push(`<div class="tile ${u.status}" title="${statusLabel(u.status)}">
+            <div class="lote-num">${u.lote}</div>
+            ${u.quadra ? `<div class="quadra">Q${u.quadra}</div>` : ''}
+            <div class="tip2">${tipInfo}</div>
+          </div>`);
+        }
+        html.push(`</div>`);
+      }
+      html.push(`</div>`);
+      document.getElementById('conteudo').innerHTML = html.join('');
+    }
+
+  } catch(e) {
+    document.getElementById('conteudo').innerHTML = `<div class="erro">⚠️ Erro ao carregar: ${e.message}</div>`;
+  }
+}
+
+function ajustarMarcadores() {
+  const wrap = document.getElementById('mapa-wrap');
+  const img  = document.getElementById('mapa-img');
+  const cont = document.getElementById('marcadores');
+  if (!wrap || !img || !cont || !window._units) return;
+
+  const w = img.offsetWidth || img.naturalWidth;
+  const h = img.offsetHeight || img.naturalHeight;
+  if (!w || !h) return;
+
+  const html = [];
+  for (const u of (window._comPosicao || [])) {
+    const x = (u.mapa_x / 100) * w;
+    const y = (u.mapa_y / 100) * h;
+    const tipInfo = [
+      u.quadra ? `Quadra ${u.quadra}` : '',
+      `Lote ${u.lote}`,
+      u.area_m2 ? `${u.area_m2}m²` : '',
+      u.preco ? fmt.format(u.preco) : '',
+      statusLabel(u.status)
+    ].filter(Boolean).join('<br>');
+    html.push(`<div class="marcador ${u.status}" style="left:${x}px;top:${y}px">
+      ${u.lote}
+      <div class="tip">${tipInfo}</div>
+    </div>`);
+  }
+  cont.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none';
+  cont.innerHTML = html.join('');
+  // Ativa pointer-events nos marcadores
+  cont.querySelectorAll('.marcador').forEach(m => m.style.pointerEvents = 'auto');
+}
+
+function iniciarContador() {
+  clearInterval(timer);
+  countdown = 15;
+  document.getElementById('countdown').textContent = countdown;
+  timer = setInterval(() => {
+    countdown--;
+    document.getElementById('countdown').textContent = countdown;
+    if (countdown <= 0) {
+      clearInterval(timer);
+      carregar().then(iniciarContador);
+    }
+  }, 1000);
+}
+
+if (!slug) {
+  document.getElementById('conteudo').innerHTML = '<div class="erro">⚠️ Link inválido.</div>';
+} else {
+  carregar().then(iniciarContador);
+  window.addEventListener('resize', ajustarMarcadores);
+}
+</script>
+</body>
+</html>

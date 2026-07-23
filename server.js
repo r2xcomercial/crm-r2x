@@ -3615,6 +3615,52 @@ app.get("/api/corretores/conversao", (req, res) => {
 try { db.exec('ALTER TABLE unidades ADD COLUMN mapa_x REAL'); } catch(_) {}
 try { db.exec('ALTER TABLE unidades ADD COLUMN mapa_y REAL'); } catch(_) {}
 
+// Migration: slug público para espelho de vendas
+try { db.exec("ALTER TABLE empreendimentos ADD COLUMN espelho_slug TEXT"); } catch(_) {}
+
+// ─── ESPELHO DE VENDAS PÚBLICO ───────────────────────────────────────────────
+
+// Adiciona /api/espelho-publico/ às rotas públicas (sem auth)
+if (!APIs_PUBLICAS.includes('/api/espelho-publico/')) {
+  APIs_PUBLICAS.push('/api/espelho-publico/');
+}
+
+// Gerenciar slug
+app.put('/api/empreendimentos/:id/espelho-slug', autenticar, (req, res) => {
+  const { slug } = req.body;
+  if (!slug) return err(res, 'Slug obrigatório', 400);
+  const limpo = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  if (!limpo) return err(res, 'Slug inválido', 400);
+  const existing = db.prepare("SELECT id FROM empreendimentos WHERE espelho_slug=? AND id!=?").get(limpo, req.params.id);
+  if (existing) return err(res, 'Esse slug já está em uso por outro empreendimento', 409);
+  db.prepare("UPDATE empreendimentos SET espelho_slug=? WHERE id=?").run(limpo, req.params.id);
+  ok(res, { slug: limpo });
+});
+
+// API pública — retorna dados do espelho sem autenticação
+app.get('/api/espelho-publico/:slug', (req, res) => {
+  const emp = db.prepare("SELECT id, nome, cidade, estado, tipo FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
+  if (!emp) return res.status(404).json({ ok: false, error: 'Espelho não encontrado' });
+  const mapa = db.prepare("SELECT svg_data FROM mapas WHERE empreendimento_id=?").get(emp.id);
+  const units = db.prepare(`
+    SELECT u.id, u.quadra, u.lote, u.area_m2, u.preco, u.status, u.mapa_x, u.mapa_y,
+      (SELECT COUNT(*) FROM vendas v WHERE v.unidade_id=u.id AND v.status NOT IN ('distrato','cancelado')) as tem_venda
+    FROM unidades u WHERE u.empreendimento_id=? ORDER BY u.quadra, u.lote
+  `).all(emp.id);
+  const resumo = units.reduce((acc, u) => {
+    acc[u.status] = (acc[u.status] || 0) + 1;
+    return acc;
+  }, {});
+  ok(res, { empreendimento: emp, imagem: mapa?.svg_data || null, units, resumo, atualizado_em: new Date().toISOString() });
+});
+
+// Rota pública da página de espelho (no-cache para sempre servir versão atual)
+app.get('/espelho/:slug', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'public', 'espelho-publico.html'));
+});
+
+
 // Migration: campos extras de vagas + vínculo com unidade
 try { db.exec('ALTER TABLE vagas_garagem ADD COLUMN box TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vagas_garagem ADD COLUMN tamanho REAL'); } catch(_) {}
