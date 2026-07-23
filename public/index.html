@@ -63,7 +63,7 @@
   .nav-badge { background: var(--accent); color: var(--navy); font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; margin-left: auto; }
 
   /* ── MAIN ── */
-  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #main { flex: 1; display: flex; flex-direction: column; overflow-y: hidden; overflow-x: auto; min-width: 0; }
   #topbar {
     height: 56px; background: var(--navy2); border-bottom: 1px solid var(--border);
     display: flex; align-items: center; padding: 0 24px; gap: 16px; flex-shrink: 0;
@@ -80,7 +80,8 @@
     padding: 7px 12px; border-radius: 6px; font-size: 13px; width: 200px; outline: none;
   }
   .topbar-search:focus { border-color: var(--accent); }
-  #content { flex: 1; overflow-y: auto; padding: 24px; }
+  #content { flex: 1; overflow-y: auto; overflow-x: auto; padding: 24px; min-width: 0; }
+  #content > * { min-width: 680px; }
 
   /* ── CARDS ── */
   .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px,1fr)); gap: 16px; margin-bottom: 24px; }
