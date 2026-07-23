@@ -9441,7 +9441,9 @@ async function analisarPlanta(input, empId, empNome) {
       </div>
     `;
 
-    document.getElementById('modal-foot').innerHTML = `
+    const foot = document.getElementById('modal-foot');
+    foot.style.display = '';
+    foot.innerHTML = `
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" id="btn-confirmar-planta" onclick="confirmarImportacaoPlanta(${empId})">
         ✅ Importar lotes selecionados
