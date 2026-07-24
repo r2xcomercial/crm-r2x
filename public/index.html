@@ -95,10 +95,10 @@
   .kpi-icon { font-size: 22px; margin-bottom: 4px; }
 
   /* ── TABLES ── */
-  .table-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
+  .table-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; overflow-y: hidden; margin-bottom: 20px; }
   .table-header { padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
   .table-title { font-size: 14px; font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; }
+  table { width: 100%; border-collapse: collapse; min-width: 600px; }
   th { padding: 10px 16px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text2); background: var(--card2); border-bottom: 1px solid var(--border); white-space: nowrap; }
   td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
@@ -7967,8 +7967,8 @@ async function verEspelhoImagem(empId, emp, mapaData) {
     <div style="display:flex;gap:14px;align-items:flex-start">
       <!-- Imagem do mapa com marcadores + zoom/pan por scroll -->
       <div style="flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;position:relative;height:calc(100vh - 270px);min-height:420px" id="mapa-outer">
-        <div id="mapa-zoom-wrap" style="width:100%;height:100%;overflow:auto;cursor:crosshair">
-          <div id="mapa-inner" style="position:relative;display:inline-block;min-width:100%">
+        <div id="mapa-zoom-wrap" style="width:100%;height:100%;overflow:auto;cursor:crosshair;-webkit-overflow-scrolling:touch">
+          <div id="mapa-inner" style="position:relative;display:inline-block;min-width:0">
             <img id="mapa-img" src="${imagem}" style="display:block;width:100%;user-select:none;-webkit-user-drag:none">
             <div id="mapa-markers" style="position:absolute;inset:0;pointer-events:none"></div>
           </div>
@@ -8000,7 +8000,39 @@ async function verEspelhoImagem(empId, emp, mapaData) {
   `;
 
   _mapaZoomLevel = 1;
+  // Garante width explícito antes do primeiro render
+  const _mapaInnerInit = document.getElementById('mapa-inner');
+  if (_mapaInnerInit) { _mapaInnerInit.style.width = '100%'; _mapaInnerInit.style.minWidth = '100%'; }
   renderMarkers();
+
+  // Auto-fit: ajusta zoom para mostrar o mapa completo no container
+  (function autoFitMapa() {
+    const outer = document.getElementById('mapa-outer');
+    const inner = document.getElementById('mapa-inner');
+    const img   = document.getElementById('mapa-img');
+    if (!outer || !inner || !img) return;
+    function doFit() {
+      requestAnimationFrame(function() {
+        if (!img.naturalWidth || !img.naturalHeight) return;
+        const ow = outer.clientWidth  || outer.offsetWidth;
+        const oh = outer.clientHeight || outer.offsetHeight;
+        if (!ow || !oh) return;
+        const wRatio = ow / img.naturalWidth;
+        const hRatio = oh / img.naturalHeight;
+        const fit = Math.min(wRatio, hRatio, 1);
+        if (fit < 0.97) {
+          _mapaZoomLevel = Math.max(0.1, fit);
+          inner.style.width    = (_mapaZoomLevel * 100) + '%';
+          inner.style.minWidth = '0';
+          const pct = document.getElementById('mapa-zoom-pct');
+          if (pct) pct.textContent = Math.round(_mapaZoomLevel * 100) + '%';
+          renderMarkers();
+        }
+      });
+    }
+    if (img.complete && img.naturalWidth) doFit();
+    else img.addEventListener('load', doFit);
+  })();
 
   // Click para posicionar unidades
   document.getElementById('mapa-zoom-wrap').addEventListener('click', onMapaClick);
@@ -8091,8 +8123,9 @@ function mapaZoom(delta, clientX, clientY) {
     pctY = cursorYInContent / inner.offsetHeight;
   }
 
-  _mapaZoomLevel = Math.max(0.4, Math.min(5, _mapaZoomLevel + delta));
-  inner.style.width = (_mapaZoomLevel * 100) + '%';
+  _mapaZoomLevel = Math.max(0.1, Math.min(5, _mapaZoomLevel + delta));
+  inner.style.width = (_mapaZoomLevel >= 1 ? _mapaZoomLevel * 100 + '%' : _mapaZoomLevel * 100 + '%');
+  inner.style.minWidth = _mapaZoomLevel >= 1 ? '100%' : '0';
   const pct = document.getElementById('mapa-zoom-pct');
   if (pct) pct.textContent = Math.round(_mapaZoomLevel * 100) + '%';
   renderMarkers();
