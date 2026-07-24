@@ -9225,20 +9225,20 @@ async function gerarTabelaVendas(empId, params, emp) {
 <title>Tabela de Vendas — ${params.nome}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, Helvetica, sans-serif; background: #fff; color: #111; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; background: #fff; color: #111; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-scheme: light; }
   @page { size: A4 landscape; margin: ${isLoteamento ? '3mm 5mm' : '8mm 10mm'}; }
-  @media print { .no-print { display: none !important; } }
+  @media print { .no-print { display: none !important; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: ${isLoteamento ? '3px' : '10px'}; padding-bottom: ${isLoteamento ? '3px' : '8px'}; border-bottom: 2px solid #111; }
-  .header-left h1 { font-size: ${isLoteamento ? '11px' : '17px'}; font-weight: 900; letter-spacing: -.5px; }
-  .header-left p  { font-size: ${isLoteamento ? '7px' : '10px'}; color: #6b7280; margin-top: 1px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: ${isLoteamento ? '3px' : '10px'}; padding-bottom: ${isLoteamento ? '3px' : '8px'}; border-bottom: 3px solid #111; }
+  .header-left h1 { font-size: ${isLoteamento ? '11px' : '17px'}; font-weight: 900; letter-spacing: -.5px; color: #000; }
+  .header-left p  { font-size: ${isLoteamento ? '7px' : '10px'}; color: #374151; margin-top: 1px; }
   .header-right   { text-align: right; }
-  .header-right .data  { font-size: ${isLoteamento ? '10px' : '15px'}; font-weight: 900; color: #111; }
-  .header-right .titulo { font-size: ${isLoteamento ? '7px' : '8px'}; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
+  .header-right .data  { font-size: ${isLoteamento ? '10px' : '15px'}; font-weight: 900; color: #000; }
+  .header-right .titulo { font-size: ${isLoteamento ? '7px' : '8px'}; color: #374151; text-transform: uppercase; letter-spacing: 1px; }
 
   table { width: 100%; border-collapse: collapse; font-size: ${isLoteamento ? '8px' : '10.5px'}; }
-  thead th { background: #111827; color: #fff; padding: ${isLoteamento ? '3px 4px 2px' : '7px 8px 6px'}; font-size: ${isLoteamento ? '7px' : '9.5px'}; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; vertical-align: bottom; }
-  thead th .sub { display: block; font-size: ${isLoteamento ? '6.5px' : '8.5px'}; font-weight: 400; opacity: .65; text-transform: none; letter-spacing: 0; margin-top: 0; }
+  thead th { background: #0f172a !important; color: #ffffff !important; padding: ${isLoteamento ? '4px 4px 3px' : '7px 8px 6px'}; font-size: ${isLoteamento ? '7.5px' : '9.5px'}; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; vertical-align: bottom; border: 1px solid #0f172a; }
+  thead th .sub { display: block; font-size: ${isLoteamento ? '6.5px' : '8.5px'}; font-weight: 400; opacity: .75; text-transform: none; letter-spacing: 0; margin-top: 1px; color: #cbd5e1; }
   thead th.right  { text-align: right; }
   thead th.center { text-align: center; }
   tbody tr { line-height: 1; }

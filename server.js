@@ -66,6 +66,7 @@ app.use(express.static(path.join(__dirname, "public")));
 // Rotas sem extensão → arquivos HTML correspondentes
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/portal', (req, res) => res.sendFile(path.join(__dirname, 'public', 'portal.html')));
+app.get('/portal/:token', (req, res) => res.sendFile(path.join(__dirname, 'public', 'portal.html')));
 
 const PORT = process.env.PORT || 4000;
 
