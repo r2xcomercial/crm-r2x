@@ -7896,7 +7896,8 @@ let _mapaEmpTipo  = null;
 let _posicoes     = {};   // id → {x, y} percentuais pendentes de salvar
 let _modoPosiconar = false;
 let _unitAtiva    = null; // id da unidade a ser posicionada
-let _mapaZoomLevel = 1;   // nível de zoom atual do mapa
+let _mapaZoomLevel   = 1;    // nível de zoom atual do mapa
+let _mapaMarkerSize  = 20;   // tamanho base das bolinhas (px a 100% zoom)
 
 async function verEspelhoImagem(empId, emp, mapaData) {
   const { imagem, units } = mapaData;
@@ -7983,6 +7984,14 @@ async function verEspelhoImagem(empId, emp, mapaData) {
             <div id="mapa-markers" style="position:absolute;inset:0;pointer-events:none"></div>
           </div>
         </div>
+        <!-- Controle tamanho dos marcadores -->
+        <div style="position:absolute;bottom:10px;left:10px;display:flex;align-items:center;gap:8px;z-index:10;background:rgba(0,0,0,.55);border-radius:8px;padding:6px 10px">
+          <span style="font-size:10px;color:#cbd5e1;white-space:nowrap">⬤ Bolinhas</span>
+          <input type="range" id="marker-size-range" min="8" max="60" value="20"
+            oninput="mapaMarkerResize(this.value)"
+            style="width:80px;cursor:pointer;accent-color:#14b8a6">
+          <span id="marker-size-val" style="font-size:10px;color:#fff;min-width:22px;text-align:right">20px</span>
+        </div>
         <!-- Controles de zoom -->
         <div style="position:absolute;bottom:10px;right:10px;display:flex;align-items:center;gap:6px;z-index:10">
           <button onclick="mapaZoom(-0.25)" title="Reduzir" style="width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;font-weight:bold;display:flex;align-items:center;justify-content:center;line-height:1">−</button>
@@ -8009,7 +8018,8 @@ async function verEspelhoImagem(empId, emp, mapaData) {
     </div>
   `;
 
-  _mapaZoomLevel = 1;
+  _mapaZoomLevel  = 1;
+  _mapaMarkerSize = 20;
   // Garante width explícito antes do primeiro render
   const _mapaInnerInit = document.getElementById('mapa-inner');
   if (_mapaInnerInit) { _mapaInnerInit.style.width = '100%'; _mapaInnerInit.style.minWidth = '100%'; }
@@ -8147,6 +8157,13 @@ function mapaZoom(delta, clientX, clientY) {
   }
 }
 
+function mapaMarkerResize(val) {
+  _mapaMarkerSize = parseInt(val);
+  const lbl = document.getElementById('marker-size-val');
+  if (lbl) lbl.textContent = val + 'px';
+  renderMarkers();
+}
+
 function renderMarkers() {
   const wrap = document.getElementById('mapa-markers');
   if (!wrap) return;
@@ -8160,8 +8177,8 @@ function renderMarkers() {
   };
   const borderColors = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#ef4444' };
 
-  const sz = Math.round(Math.max(14, Math.min(36, 20 * _mapaZoomLevel)));
-  const fs = Math.round(Math.max(6,  Math.min(11,  8 * _mapaZoomLevel)));
+  const sz = Math.round(Math.max(6, Math.min(120, _mapaMarkerSize * _mapaZoomLevel)));
+  const fs = Math.round(Math.max(4, Math.min(28,  (_mapaMarkerSize * 0.42) * _mapaZoomLevel)));
 
   wrap.innerHTML = Object.entries(_posicoes).map(([idStr, pos]) => {
     const id = parseInt(idStr);
