@@ -4214,7 +4214,7 @@ app.get('/api/portal/:token', (req, res) => {
     SELECT c.id, c.nome, c.telefone,
       COUNT(CASE WHEN v.status='ativo' THEN 1 END) as total_vendas,
       COALESCE(SUM(CASE WHEN v.status='ativo' THEN v.valor ELSE 0 END), 0) as vgv_total,
-      COALESCE(SUM(CASE WHEN v.status='ativo' THEN v.comissao_corretor ELSE 0 END), 0) as comissao_total,
+      COALESCE(SUM(CASE WHEN v.status='ativo' THEN v.comissao_corretor_valor ELSE 0 END), 0) as comissao_total,
       (SELECT COUNT(*) FROM leads l WHERE l.corretor_id=c.id AND l.empreendimento_id=?) as total_leads
     FROM corretores c
     JOIN vendas v ON v.corretor_id=c.id AND v.empreendimento_id=?
