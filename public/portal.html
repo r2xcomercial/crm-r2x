@@ -86,6 +86,7 @@ function render(d) {
   const disponiveis= d.disponiveis     || 0;
   const vendas     = d.vendas          || [];
   const checklist  = d.checklist       || [];
+  const ranking    = d.ranking         || [];
 
   const vso       = total > 0 ? ((vendidas + reservadas) / total * 100).toFixed(1) : 0;
   const vgvVendido= vendas.reduce((s, v) => s + (v.valor || 0), 0);
@@ -160,6 +161,43 @@ function render(d) {
         </tbody>
       </table>
     </div>` : `<div class="table-card"><div class="empty">Nenhuma venda registrada ainda.</div></div>`}
+
+    <!-- Ranking de Corretores -->
+    ${ranking.length ? `
+    <div class="section-title">👥 Ranking de Corretores</div>
+    <div class="table-card">
+      <table>
+        <thead><tr>
+          <th style="width:36px">#</th>
+          <th>Corretor</th>
+          <th style="text-align:right">Leads</th>
+          <th style="text-align:right">Vendas</th>
+          <th style="text-align:right">Conversão</th>
+          <th style="text-align:right">VGV Total</th>
+          <th style="text-align:right">Ticket Médio</th>
+        </tr></thead>
+        <tbody>
+          ${ranking.map((c, i) => {
+            const conv   = c.total_leads > 0 ? Math.round(c.total_vendas / c.total_leads * 100) : 0;
+            const ticket = c.total_vendas > 0 ? c.vgv_total / c.total_vendas : 0;
+            const medal  = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `<span style="color:var(--text2)">${i+1}</span>`;
+            const convColor = conv >= 30 ? 'var(--success)' : conv >= 15 ? 'var(--warning)' : 'var(--danger)';
+            return `<tr>
+              <td style="font-weight:700;text-align:center">${medal}</td>
+              <td>
+                <div style="font-weight:600">${c.nome}</div>
+                ${c.telefone ? `<div style="font-size:11px;color:var(--text2)">${c.telefone}</div>` : ''}
+              </td>
+              <td style="text-align:right;color:var(--text2)">${c.total_leads}</td>
+              <td style="text-align:right;font-weight:700;color:var(--accent)">${c.total_vendas}</td>
+              <td style="text-align:right;font-weight:700;color:${convColor}">${conv}%</td>
+              <td style="text-align:right;font-weight:700;color:var(--success)">${fmt(c.vgv_total)}</td>
+              <td style="text-align:right;color:var(--text2)">${ticket > 0 ? fmt(ticket) : '—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}
 
     <!-- Checklist de Marketing -->
     ${checklist.length ? `

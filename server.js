@@ -4210,11 +4210,22 @@ app.get('/api/portal/:token', (req, res) => {
     ORDER BY v.data_venda DESC
   `).all(empId);
   const checklist = db.prepare('SELECT material, responsavel, status, data_entrega FROM checklist_marketing WHERE empreendimento_id=? ORDER BY ordem').all(empId);
+  const ranking = db.prepare(`
+    SELECT c.id, c.nome, c.telefone,
+      COUNT(CASE WHEN v.status='ativo' THEN 1 END) as total_vendas,
+      COALESCE(SUM(CASE WHEN v.status='ativo' THEN v.valor ELSE 0 END), 0) as vgv_total,
+      COALESCE(SUM(CASE WHEN v.status='ativo' THEN v.comissao_corretor ELSE 0 END), 0) as comissao_total,
+      (SELECT COUNT(*) FROM leads l WHERE l.corretor_id=c.id AND l.empreendimento_id=?) as total_leads
+    FROM corretores c
+    JOIN vendas v ON v.corretor_id=c.id AND v.empreendimento_id=?
+    GROUP BY c.id
+    ORDER BY total_vendas DESC, vgv_total DESC
+  `).all(empId, empId);
   const totalUnidades = unidadesGrupo.reduce((s, u) => s + u.n, 0);
   const vendidas   = unidadesGrupo.find(u => u.status === 'vendido')?.n   || 0;
   const reservadas = unidadesGrupo.find(u => u.status === 'reservado')?.n || 0;
   const disponiveis= unidadesGrupo.find(u => u.status === 'disponivel')?.n|| 0;
-  ok(res, { emp, totalUnidades, vendidas, reservadas, disponiveis, vendas, checklist });
+  ok(res, { emp, totalUnidades, vendidas, reservadas, disponiveis, vendas, checklist, ranking });
 });
 
 // ─── EVENTOS ──────────────────────────────────────────────────────────────────
