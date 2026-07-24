@@ -8175,7 +8175,10 @@ function mapaMarkerResize(val, empId) {
   _mapaMarkerSize = parseInt(val);
   const lbl = document.getElementById('marker-size-val');
   if (lbl) lbl.textContent = val + 'px';
-  if (empId) localStorage.setItem(`mapa_marker_size_${empId}`, val);
+  if (empId) {
+    localStorage.setItem(`mapa_marker_size_${empId}`, val);
+    api('PUT', `/api/empreendimentos/${empId}/espelho-marker-size`, { size: parseInt(val) }).catch(() => {});
+  }
   renderMarkers();
 }
 

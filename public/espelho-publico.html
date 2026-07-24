@@ -42,7 +42,7 @@
   .marcador.disponivel  { background: #22c55e; }
   .marcador.reservado   { background: #f59e0b; }
   .marcador.vendido     { background: #ef4444; }
-  .marcador.entregue    { background: #8b5cf6; }
+  .marcador.entregue    { background: #ef4444; }
   .marcador.indisponivel { background: #64748b; }
   .marcador .tip {
     display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
@@ -68,7 +68,7 @@
   .tile.disponivel  { background: #14532d; border-color: #22c55e; color: #4ade80; }
   .tile.reservado   { background: #78350f; border-color: #f59e0b; color: #fbbf24; }
   .tile.vendido     { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
-  .tile.entregue    { background: #2e1065; border-color: #8b5cf6; color: #c4b5fd; }
+  .tile.entregue    { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
   .tile.indisponivel { background: #1e293b; border-color: #64748b; color: #94a3b8; }
   .tile .tip2 {
     display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
@@ -199,6 +199,7 @@
   <div class="resumo-card disp"><div class="num" id="r-disp">—</div><div class="label">Disponível</div></div>
   <div class="resumo-card res"><div class="num" id="r-res">—</div><div class="label">Reservado</div></div>
   <div class="resumo-card vend"><div class="num" id="r-vend">—</div><div class="label">Vendido</div></div>
+  <div class="resumo-card indisp" id="r-indisp-card" style="display:none"><div class="num" id="r-indisp">0</div><div class="label">Indisponível</div></div>
 </div>
 
 <main>
@@ -211,12 +212,13 @@ const slug = location.pathname.split('/espelho/')[1]?.split('/')[0];
 let countdown = 15, timer;
 let _empNome = '';
 let _simParams = null;
+let _markerSize = 20;
 
 const fmt  = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
 const fmt0 = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 
 function statusLabel(s) {
-  return { disponivel: 'Disponível', reservado: 'Reservado', vendido: 'Vendido', entregue: 'Entregue', indisponivel: 'Indisponível' }[s] || s;
+  return { disponivel: 'Disponível', reservado: 'Reservado', vendido: 'Vendido', entregue: 'Vendido', indisponivel: 'Indisponível' }[s] || s;
 }
 
 // ── Cálculo PMT (Price) ──────────────────────────────────────────────────────
@@ -559,6 +561,7 @@ async function carregar() {
     const { empreendimento: emp, imagem, units, resumo, espelhoParams, atualizado_em } = resp.data;
     _empNome    = emp.nome + (emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : '');
     _simParams  = espelhoParams || null;
+    _markerSize = markerSize || 20;
 
     document.title = `Espelho — ${emp.nome}`;
     document.getElementById('emp-nome').textContent  = _empNome;
@@ -568,9 +571,12 @@ async function carregar() {
     document.getElementById('r-disp').textContent  = resumo.disponivel || 0;
     document.getElementById('r-res').textContent   = resumo.reservado  || 0;
     document.getElementById('r-vend').textContent  = resumo.vendido    || 0;
+    const indispCard = document.getElementById('r-indisp-card');
     if (resumo.indisponivel) {
-      document.getElementById('resumo').insertAdjacentHTML('beforeend',
-        `<div class="resumo-card indisp"><div class="num">${resumo.indisponivel}</div><div class="label">Indisponível</div></div>`);
+      document.getElementById('r-indisp').textContent = resumo.indisponivel;
+      if (indispCard) indispCard.style.display = '';
+    } else {
+      if (indispCard) indispCard.style.display = 'none';
     }
 
     window._units = units;
@@ -585,7 +591,6 @@ async function carregar() {
       <div class="leg-item"><div class="leg-dot disponivel"></div>Disponível</div>
       <div class="leg-item"><div class="leg-dot reservado"></div>Reservado</div>
       <div class="leg-item"><div class="leg-dot vendido"></div>Vendido</div>
-      <div class="leg-item"><div class="leg-dot entregue"></div>Entregue</div>
       ${resumo.indisponivel ? `<div class="leg-item"><div class="leg-dot indisponivel"></div>Indisponível</div>` : ''}
       ${simHint}
     </div>`);
@@ -649,6 +654,9 @@ function ajustarMarcadores() {
   const h = img.offsetHeight || img.naturalHeight;
   if (!w || !h) return;
 
+  const sz = Math.round(Math.max(6, Math.min(120, _markerSize)));
+  const fs = Math.round(Math.max(4, Math.min(28,  _markerSize * 0.42)));
+
   const html = [];
   for (const u of (window._comPosicao || [])) {
     const x = (u.mapa_x / 100) * w;
@@ -660,8 +668,8 @@ function ajustarMarcadores() {
       u.preco ? fmt0.format(u.preco) : '',
       statusLabel(u.status)
     ].filter(Boolean).join('<br>');
-    html.push(`<div class="marcador ${u.status}" style="left:${x}px;top:${y}px" onclick="abrirSimulacao(${u.id})">
-      ${u.lote}
+    html.push(`<div class="marcador ${u.status}" style="left:${x}px;top:${y}px;width:${sz}px;height:${sz}px;font-size:${fs}px" onclick="abrirSimulacao(${u.id})">
+      ${/^\d+$/.test(u.lote) ? String(parseInt(u.lote, 10)) : u.lote}
       <div class="tip">${tipInfo}</div>
     </div>`);
   }
