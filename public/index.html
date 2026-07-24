@@ -8496,13 +8496,12 @@ async function gerenciarEspelhoPublico(empId) {
   const slugAtual = emp.espelho_slug || '';
   const baseUrl = location.origin;
 
-  showModal(`
-    <div class="modal-head"><span style="font-size:16px;font-weight:700">🔗 Link Público do Espelho</span><button class="modal-close" onclick="closeModal()">✕</button></div>
-    <div class="modal-body" style="display:flex;flex-direction:column;gap:16px">
+  document.getElementById('modal-title').textContent = '🔗 Link Público do Espelho';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:16px">
       <div style="background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.3);border-radius:8px;padding:14px;font-size:13px;line-height:1.6;color:var(--text2)">
         Gere um link público onde <strong style="color:var(--text)">qualquer pessoa</strong> consegue ver o espelho de vendas com os status das unidades em <strong style="color:var(--text)">tempo real</strong>, sem precisar fazer login.
       </div>
-
       <div class="form-group">
         <label style="font-size:12px;color:var(--text2);font-weight:600">Slug (identificador na URL)</label>
         <div style="display:flex;gap:8px">
@@ -8511,7 +8510,6 @@ async function gerenciarEspelhoPublico(empId) {
         </div>
         <div style="font-size:11px;color:var(--text2);margin-top:4px">Apenas letras minúsculas, números e hífens. Ex: <code style="color:#a78bfa">bel-monte</code></div>
       </div>
-
       ${slugAtual ? `
       <div class="form-group">
         <label style="font-size:12px;color:var(--text2);font-weight:600">Link público atual</label>
@@ -8525,10 +8523,9 @@ async function gerenciarEspelhoPublico(empId) {
       </div>
       ` : '<div style="font-size:13px;color:var(--text2);text-align:center;padding:8px 0">Defina um slug acima para ativar o link público.</div>'}
     </div>
-    <div class="modal-foot">
-      <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>
-    </div>
-  `);
+  `;
+  document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
+  document.getElementById('modal-overlay').classList.add('open');
 }
 
 async function salvarEspelhoSlug(empId) {
