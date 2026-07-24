@@ -3660,6 +3660,18 @@ app.get('/espelho/:slug', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'espelho-publico.html'));
 });
 
+// Diagnóstico público: verifica se o slug existe (sem expor dados sensíveis)
+app.get('/api/espelho-publico/:slug/ping', (req, res) => {
+  try {
+    const emp = db.prepare("SELECT id, nome FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
+    if (!emp) return res.json({ ok: false, found: false, slug: req.params.slug });
+    const cnt = db.prepare("SELECT COUNT(*) as n FROM unidades WHERE empreendimento_id=?").get(emp.id);
+    res.json({ ok: true, found: true, nome: emp.nome, unidades: cnt.n });
+  } catch(e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
 
 // Migration: campos extras de vagas + vínculo com unidade
 try { db.exec('ALTER TABLE vagas_garagem ADD COLUMN box TEXT'); } catch(_) {}
