@@ -87,10 +87,15 @@
   .legenda { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0 20px; }
   .leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; }
   .leg-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
-  .leg-dot.disponivel { background: #22c55e; }
-  .leg-dot.reservado  { background: #f59e0b; }
-  .leg-dot.vendido    { background: #ef4444; }
-  .leg-dot.entregue   { background: #8b5cf6; }
+  .leg-dot.disponivel   { background: #22c55e; }
+  .leg-dot.reservado    { background: #f59e0b; }
+  .leg-dot.vendido      { background: #ef4444; }
+  .leg-dot.entregue     { background: #8b5cf6; }
+  .leg-dot.indisponivel { background: #64748b; }
+
+  .marcador.indisponivel { background: #64748b; }
+  .tile.indisponivel { background: #1e293b; border-color: #64748b; color: #94a3b8; }
+  .resumo-card.indisp .num { color: #94a3b8; }
 
   /* Contador regressivo */
   .refresh-bar { text-align: center; font-size: 11px; color: #475569; padding: 8px 0 4px; }
@@ -142,7 +147,7 @@ let timer;
 const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 
 function statusLabel(s) {
-  return { disponivel: 'Disponível', reservado: 'Reservado', vendido: 'Vendido', entregue: 'Entregue' }[s] || s;
+  return { disponivel: 'Disponível', reservado: 'Reservado', vendido: 'Vendido', entregue: 'Entregue', indisponivel: 'Indisponível' }[s] || s;
 }
 
 async function carregar() {
@@ -161,6 +166,10 @@ async function carregar() {
     document.getElementById('r-disp').textContent  = resumo.disponivel || 0;
     document.getElementById('r-res').textContent   = resumo.reservado  || 0;
     document.getElementById('r-vend').textContent  = resumo.vendido    || 0;
+    if (resumo.indisponivel) {
+      document.getElementById('resumo').insertAdjacentHTML('beforeend',
+        `<div class="resumo-card indisp"><div class="num">${resumo.indisponivel}</div><div class="label">Indisponível</div></div>`);
+    }
 
     // Verifica se alguma unidade tem posição no mapa
     const comPosicao = units.filter(u => u.mapa_x != null && u.mapa_y != null);
@@ -172,6 +181,7 @@ async function carregar() {
       <div class="leg-item"><div class="leg-dot reservado"></div>Reservado</div>
       <div class="leg-item"><div class="leg-dot vendido"></div>Vendido</div>
       <div class="leg-item"><div class="leg-dot entregue"></div>Entregue</div>
+      ${resumo.indisponivel ? `<div class="leg-item"><div class="leg-dot indisponivel"></div>Indisponível</div>` : ''}
     </div>`);
 
     if (imagem && comPosicao.length > 0) {
@@ -279,7 +289,7 @@ function iniciarContador() {
 }
 
 if (!slug) {
-  document.getElementById('conteudo').innerHTML = '<div class="erro">⚠️ Link inválido.</div>';
+  document.getElementById('conteudo').innerHTML = '<div class="erro">⚠️ Link inválido. Verifique a URL do espelho de vendas.</div>';
 } else {
   carregar().then(iniciarContador);
   window.addEventListener('resize', ajustarMarcadores);
