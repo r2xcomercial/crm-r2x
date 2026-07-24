@@ -7931,16 +7931,26 @@ async function verEspelhoImagem(empId, emp, mapaData) {
         <div style="font-size:17px;font-weight:700">${emp.nome}</div>
         <div style="font-size:12px;color:var(--text2)">${total} unidades · ${semPos} sem posição no mapa</div>
       </div>
-      <button onclick="toggleModoPosiconar(${empId})" id="btn-posicionar"
-        style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;font-size:13px;font-weight:600">
+      ${USUARIO.perfil !== 'corretor' ? `
+      <button onclick="toggleModoPosiconar(${empId})" id="btn-posicionar" class="btn btn-secondary" style="font-size:12px;padding:6px 12px">
         📍 Posicionar Unidades
       </button>
       <button onclick="salvarPosicoes(${empId})" id="btn-salvar-pos"
         style="display:none;padding:6px 14px;border-radius:6px;border:none;background:var(--accent);color:var(--navy);cursor:pointer;font-size:13px;font-weight:700">
         💾 Salvar Posições
       </button>
-      <button onclick="verEspelho(${empId})" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;font-size:12px">🔄</button>
-      <button onclick="verUnidades(${empId})" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;font-size:12px">📋 Lista</button>
+      ` : ''}
+      <button onclick="verEspelho(${empId})" class="btn btn-secondary" style="font-size:12px;padding:6px 12px">🔄</button>
+      <button onclick="verUnidades(${empId})" class="btn btn-secondary" style="font-size:12px;padding:6px 12px">📋 Lista</button>
+      ${USUARIO.perfil !== 'corretor' ? `
+      <button class="btn btn-secondary" onclick="abrirReajusteTabela(${empId})" style="font-size:12px;padding:6px 12px;color:#60a5fa;border-color:rgba(96,165,250,.4)" title="Reajustar preços da tabela de unidades">📈 Reajustar</button>
+      <button class="btn btn-secondary" onclick="abrirExportarTabela(${empId})" style="font-size:12px;padding:6px 12px;color:#4ade80;border-color:rgba(74,222,128,.4)" title="Gerar tabela de vendas com simulação de pagamento">📄 Exportar Tabela</button>
+      <label class="btn btn-secondary" style="font-size:12px;padding:6px 12px;cursor:pointer" title="Envie o PDF ou imagem da planta urbanística para importar lotes automaticamente">
+        📐 Importar da Planta
+        <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" style="display:none" onchange="analisarPlanta(this,${empId},'${(emp.nome||'').replace(/'/g,"\\'")}')">
+      </label>
+      <button class="btn btn-secondary" onclick="gerenciarEspelhoPublico(${empId})" style="font-size:12px;padding:6px 12px;color:#a78bfa;border-color:rgba(167,139,250,.4)" title="Gerar link público do espelho de vendas">🔗 Link Público</button>
+      ` : ''}
     </div>
 
     <!-- VSO -->
