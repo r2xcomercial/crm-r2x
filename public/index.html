@@ -9066,9 +9066,15 @@ async function gerarTabelaVendas(empId, params, emp) {
 
   const unidades = (r.data || []).sort((a, b) => {
     const qa = String(a.quadra||''), qb = String(b.quadra||'');
-    const qcmp = floorOrder(qa) - floorOrder(qb);
+    const na = parseFloat(qa), nb = parseFloat(qb);
+    // Quadras numéricas: ordem numérica; alfabéticas: ordem lexicográfica
+    const qcmp = (!isNaN(na) && !isNaN(nb))
+      ? na - nb
+      : qa.localeCompare(qb, 'pt-BR', {numeric: true, sensitivity: 'base'});
     if (qcmp !== 0) return qcmp;
-    const la = parseFloat(a.lote||'0'), lb = parseFloat(b.lote||'0');
+    // Lotes sempre numéricos
+    const la = parseFloat(String(a.lote||'').replace(/\D/g,'')||'0');
+    const lb = parseFloat(String(b.lote||'').replace(/\D/g,'')||'0');
     return (!isNaN(la) && !isNaN(lb)) ? la - lb : String(a.lote||'').localeCompare(String(b.lote||''), 'pt-BR', {numeric:true});
   });
 
@@ -9213,26 +9219,27 @@ async function gerarTabelaVendas(empId, params, emp) {
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, Helvetica, sans-serif; background: #fff; color: #111; padding: 0; }
-  @page { size: A4 landscape; margin: 8mm 10mm; }
-  @media print { .no-print { display: none !important; } .r2x-footer { margin-top: 8px; } }
+  @page { size: A4 landscape; margin: ${isLoteamento ? '5mm 7mm' : '8mm 10mm'}; }
+  @media print { .no-print { display: none !important; } }
 
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #111; }
-  .header-left h1 { font-size: 17px; font-weight: 900; letter-spacing: -.5px; }
-  .header-left p  { font-size: 10px; color: #6b7280; margin-top: 2px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: ${isLoteamento ? '5px' : '10px'}; padding-bottom: ${isLoteamento ? '5px' : '8px'}; border-bottom: 2px solid #111; }
+  .header-left h1 { font-size: ${isLoteamento ? '14px' : '17px'}; font-weight: 900; letter-spacing: -.5px; }
+  .header-left p  { font-size: ${isLoteamento ? '8px' : '10px'}; color: #6b7280; margin-top: 2px; }
   .header-right   { text-align: right; }
-  .header-right .data  { font-size: 15px; font-weight: 900; color: #111; }
-  .header-right .titulo { font-size: 9px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
+  .header-right .data  { font-size: ${isLoteamento ? '12px' : '15px'}; font-weight: 900; color: #111; }
+  .header-right .titulo { font-size: 8px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
 
-  table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
-  thead th { background: #111827; color: #fff; padding: 7px 8px 6px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; vertical-align: bottom; }
-  thead th .sub { display: block; font-size: 8.5px; font-weight: 400; opacity: .65; text-transform: none; letter-spacing: 0; margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: ${isLoteamento ? '8px' : '10.5px'}; }
+  thead th { background: #111827; color: #fff; padding: ${isLoteamento ? '4px 6px 3px' : '7px 8px 6px'}; font-size: ${isLoteamento ? '7.5px' : '9.5px'}; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; vertical-align: bottom; }
+  thead th .sub { display: block; font-size: ${isLoteamento ? '7px' : '8.5px'}; font-weight: 400; opacity: .65; text-transform: none; letter-spacing: 0; margin-top: 1px; }
   thead th.right  { text-align: right; }
   thead th.center { text-align: center; }
+  tbody tr { line-height: 1; }
 
-  .resumo { display: flex; gap: 8px; margin-top: 8px; }
-  .resumo-card { flex: 1; border: 1px solid #e5e7eb; border-radius: 6px; padding: 5px 10px; text-align: center; }
-  .resumo-card .val { font-size: 15px; font-weight: 900; }
-  .resumo-card .lbl { font-size: 8px; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-top: 1px; }
+  .resumo { display: flex; gap: 6px; margin-top: ${isLoteamento ? '5px' : '8px'}; }
+  .resumo-card { flex: 1; border: 1px solid #e5e7eb; border-radius: 4px; padding: ${isLoteamento ? '3px 6px' : '5px 10px'}; text-align: center; }
+  .resumo-card .val { font-size: ${isLoteamento ? '12px' : '15px'}; font-weight: 900; }
+  .resumo-card .lbl { font-size: 7px; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-top: 1px; }
   .resumo-card.green  { border-color: #bbf7d0; background: #f0fdf4; }
   .resumo-card.green .val  { color: #166534; }
   .resumo-card.yellow { border-color: #fde68a; background: #fefce8; }
@@ -9242,18 +9249,18 @@ async function gerarTabelaVendas(empId, params, emp) {
   .resumo-card.gray   { border-color: #d1d5db; background: #f9fafb; }
   .resumo-card.gray .val   { color: #374151; }
 
-  .obs-box { margin-top: 8px; background: #f8fafc; border: 1.5px solid #111827; border-radius: 6px; padding: 8px 12px; }
-  .obs-box h3 { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #111827; margin-bottom: 5px; border-bottom: 1px solid #d1d5db; padding-bottom: 4px; }
-  .obs-box ul { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 20px; }
-  .obs-box ul li { font-size: 10px; color: #374151; line-height: 1.5; }
+  .obs-box { margin-top: 6px; background: #f8fafc; border: 1.5px solid #111827; border-radius: 5px; padding: ${isLoteamento ? '5px 8px' : '8px 12px'}; }
+  .obs-box h3 { font-size: ${isLoteamento ? '8px' : '10px'}; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #111827; margin-bottom: 3px; border-bottom: 1px solid #d1d5db; padding-bottom: 3px; }
+  .obs-box ul { list-style: none; display: flex; flex-wrap: wrap; gap: 2px 16px; }
+  .obs-box ul li { font-size: ${isLoteamento ? '8px' : '10px'}; color: #374151; line-height: 1.4; }
   .obs-box ul li::before { content: "• "; font-weight: 700; color: #111827; }
 
-  .formula-note { margin-top: 5px; font-size: 9px; color: #6b7280; text-align: right; }
+  .formula-note { margin-top: 4px; font-size: ${isLoteamento ? '7.5px' : '9px'}; color: #6b7280; text-align: right; }
 
   .btn-print { position: fixed; bottom: 24px; right: 24px; background: #111827; color: #fff; border: none; border-radius: 10px; padding: 12px 24px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.3); z-index: 99; }
   .btn-print:hover { background: #374151; }
 
-  .r2x-footer { margin-top: 10px; padding-top: 7px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; color: #9ca3af; letter-spacing: .2px; }
+  .r2x-footer { margin-top: ${isLoteamento ? '5px' : '10px'}; padding-top: 5px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; font-size: ${isLoteamento ? '7px' : '8.5px'}; color: #9ca3af; letter-spacing: .2px; }
   .r2x-footer strong { color: #6b7280; }
 </style>
 </head><body>
