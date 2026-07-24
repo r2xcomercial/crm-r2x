@@ -9162,13 +9162,13 @@ async function gerarTabelaVendas(empId, params, emp) {
     const isVend   = st === 'vendido';
     const isIndisp = st === 'indisponivel';
     const rowStyle = isVend
-      ? 'background:#fde68a;border-bottom:1px solid #fbbf24;border-left:4px solid #92400e'
+      ? 'background:#fde68a;border-bottom:2px solid #f59e0b;border-left:4px solid #92400e'
       : isRes
-        ? 'background:#fef3c7;border-bottom:1px solid #fcd34d;border-left:4px solid #f59e0b'
+        ? 'background:#fef3c7;border-bottom:2px solid #fcd34d;border-left:4px solid #f59e0b'
         : isIndisp
-          ? 'background:#f1f5f9;border-bottom:1px solid #cbd5e1;border-left:4px solid #94a3b8'
-          : 'background:#ffffff;border-bottom:1px solid #e5e7eb;border-left:4px solid transparent';
-    const textDeco  = isVend ? 'text-decoration:line-through' : '';
+          ? 'background:#f0f4f8;border-bottom:2px solid #94a3b8;border-left:4px solid #64748b'
+          : 'background:#ffffff;border-bottom:2px solid #d1d5db;border-left:4px solid transparent';
+    const textDeco  = isVend ? 'text-decoration:line-through' : isIndisp ? 'text-decoration:underline;opacity:.65' : '';
     const numColor  = isRes ? '#92400e' : isVend ? '#78350f' : isIndisp ? '#64748b' : '#111827';
     const textColor = isRes ? 'color:#92400e' : isVend ? 'color:#78350f' : isIndisp ? 'color:#64748b' : 'color:#374151';
     const badgeBg   = isVend ? '#92400e' : isRes ? '#d97706' : isIndisp ? '#64748b' : '#16a34a';

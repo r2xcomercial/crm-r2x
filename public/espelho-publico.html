@@ -154,6 +154,15 @@
   .btn-sim.primary { background: #0d9488; color: #fff; }
   .btn-sim.primary:hover { background: #0f766e; }
   .sim-aviso { font-size: 10px; color: #475569; text-align: center; padding: 0 20px 14px; }
+  /* Botão WhatsApp */
+  .btn-sim.wa { background: #25d366; color: #fff; }
+  .btn-sim.wa:hover { background: #1ebe5e; }
+  /* Campos do formulário de proposta */
+  .sim-field { display: flex; flex-direction: column; gap: 5px; }
+  .sim-field label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  .sim-field input, .sim-field textarea { background: #0f172a; border: 1px solid #334155; border-radius: 7px; color: #e2e8f0; font-size: 13px; padding: 8px 12px; width: 100%; font-family: inherit; }
+  .sim-field input:focus, .sim-field textarea:focus { outline: none; border-color: #14b8a6; }
+  .sim-field textarea { resize: vertical; min-height: 80px; }
 
   /* Contador regressivo */
   .refresh-bar { text-align: center; font-size: 11px; color: #475569; padding: 8px 0 4px; }
@@ -276,6 +285,37 @@ function abrirSimulacao(unitId) {
     ${!preco ? 'Este lote não possui valor cadastrado.' : 'Condições de pagamento ainda não configuradas pelo empreendedor.'}
   </div>` : '';
 
+  // Build footer + optional form screen (screen-2)
+  const propostaBtn = (p && preco && u.status === 'disponivel')
+    ? '<button class="btn-sim wa" onclick="mostrarFormProposta(' + unitId + ')">📲 Proposta</button>'
+    : '';
+  const formFields = [
+    '<div class="sim-field"><label>Nome do Cliente *</label><input id="sf-cliente" type="text" placeholder="Ex: João da Silva" autocomplete="off"></div>',
+    '<div class="sim-field"><label>CPF do Cliente</label><input id="sf-cpf" type="text" placeholder="000.000.000-00" oninput="fmtCPF(this)" maxlength="14" autocomplete="off"></div>',
+    '<div class="sim-field"><label>Nome do Corretor *</label><input id="sf-corretor" type="text" placeholder="Seu nome" autocomplete="off"></div>',
+    '<div class="sim-field"><label>Proposta</label><textarea id="sf-proposta" rows="5"></textarea></div>',
+    '<div class="sim-field"><label>Observações</label><textarea id="sf-obs" rows="2" placeholder="Observações adicionais..."></textarea></div>'
+  ].join('');
+  const footerContent = p && preco
+    ? `<div class="sim-foot">
+        <button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button>
+        <button class="btn-sim primary" onclick="gerarPDFSimulacao(${unitId})">🖨️ PDF</button>
+        ${propostaBtn}
+      </div>
+      <div class="sim-aviso">* Simulação sujeita a alterações. Consulte seu corretor.</div>
+      </div>
+      <div id="sim-screen-2" style="display:none">
+        <div class="sim-body" style="border-top:1px solid #334155">
+          <div style="font-size:12px;color:#64748b;padding:0 0 8px">Preencha para enviar a proposta via WhatsApp:</div>
+          ${formFields}
+        </div>
+        <div class="sim-foot">
+          <button class="btn-sim secondary" onclick="voltarParaSimulacao()">← Voltar</button>
+          <button class="btn-sim wa" onclick="enviarPropostaWA(${unitId})">📲 Enviar WhatsApp</button>
+        </div>
+      </div>`
+    : '<div class="sim-foot"><button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button></div></div>';
+
   const modalHtml = `<div class="sim-overlay" id="sim-overlay" onclick="if(event.target===this)fecharSimulacao()">
     <div class="sim-modal">
       <div class="sim-head">
@@ -285,6 +325,7 @@ function abrirSimulacao(unitId) {
         </div>
         <button class="sim-close" onclick="fecharSimulacao()">✕</button>
       </div>
+      <div id="sim-screen-1">
       <div class="sim-body">
         <div class="sim-info-grid">
           ${u.area_m2 ? `<div class="sim-info-cell"><div class="lbl">Área</div><div class="val">${Number(u.area_m2).toLocaleString('pt-BR', {minimumFractionDigits:2})} m²</div></div>` : ''}
@@ -305,13 +346,7 @@ function abrirSimulacao(unitId) {
 
         ${condsHtml ? `<div><div class="sim-section-title">Condições de Parcelamento</div><div style="display:flex;flex-direction:column;gap:8px">${condsHtml}</div></div>` : semParamsHtml}
       </div>
-      ${p && preco ? `
-      <div class="sim-foot">
-        <button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button>
-        <button class="btn-sim primary" onclick="gerarPDFSimulacao(${unitId})">🖨️ Gerar PDF</button>
-      </div>
-      <div class="sim-aviso">* Simulação sujeita a alterações. Consulte seu corretor para condições definitivas.</div>` :
-      `<div class="sim-foot"><button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button></div>`}
+      ${footerContent}
     </div>
   </div>`;
 
@@ -320,6 +355,82 @@ function abrirSimulacao(unitId) {
 
 function fecharSimulacao() {
   document.getElementById('sim-overlay')?.remove();
+}
+
+function mostrarFormProposta(unitId) {
+  const u = (window._units || []).find(x => x.id === unitId);
+  if (!u) return;
+  const p = _simParams;
+  const preco = u.preco;
+
+  // Pré-preenche o textarea de proposta
+  let txt = `Empreendimento: ${_empNome}\n`;
+  txt += `Lote: ${u.lote}${u.quadra ? ' · Quadra ' + u.quadra : ''}`;
+  if (u.area_m2) txt += ` · ${Number(u.area_m2).toLocaleString('pt-BR', {minimumFractionDigits:2})}m²`;
+  txt += `\nValor: ${fmt0.format(preco)}\n`;
+  if (p && preco) {
+    const entFixo = p.entrada_tipo === 'valor';
+    const entV    = entFixo ? (p.entrada_valor || 0) : preco * ((p.entrada_pct || 0) / 100);
+    const entParcN = p.entrada_parc || 1;
+    txt += `Entrada: ${fmt.format(entV)}`;
+    txt += entParcN > 1 ? ` (${entParcN}x de ${fmt.format(entV / entParcN)})` : ' (à vista)';
+    txt += '\n';
+    const totalRef = preco * ((p.pRef || 0) / 100);
+    const saldo    = preco - entV - totalRef;
+    (p.condicoes || []).forEach(c => {
+      const pmv = calcPMT(saldo, c.nParc, c.juros || 0);
+      txt += `${c.label || c.nParc + 'x'}: ${c.nParc}x ${fmt.format(pmv)}/mês`;
+      if (c.juros > 0) txt += ` (${c.juros.toFixed(2)}% a.m.)`;
+      txt += '\n';
+    });
+  }
+
+  document.getElementById('sim-screen-1').style.display = 'none';
+  document.getElementById('sim-screen-2').style.display = '';
+  const el = document.getElementById('sf-proposta');
+  if (el && !el.value) el.value = txt.trim();
+  document.getElementById('sf-cliente')?.focus();
+}
+
+function voltarParaSimulacao() {
+  document.getElementById('sim-screen-2').style.display = 'none';
+  document.getElementById('sim-screen-1').style.display = '';
+}
+
+function fmtCPF(input) {
+  let v = input.value.replace(/\D/g, '').slice(0, 11);
+  if (v.length > 9)      v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{0,2})/, '$1.$2.$3-$4');
+  else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{0,3})/, '$1.$2.$3');
+  else if (v.length > 3) v = v.replace(/(\d{3})(\d{0,3})/, '$1.$2');
+  input.value = v;
+}
+
+function enviarPropostaWA(unitId) {
+  const cliente  = (document.getElementById('sf-cliente')?.value  || '').trim();
+  const cpf      = (document.getElementById('sf-cpf')?.value      || '').trim();
+  const corretor = (document.getElementById('sf-corretor')?.value || '').trim();
+  const proposta = (document.getElementById('sf-proposta')?.value || '').trim();
+  const obs      = (document.getElementById('sf-obs')?.value      || '').trim();
+
+  if (!cliente)  { alert('Informe o nome do cliente.');   return; }
+  if (!corretor) { alert('Informe o nome do corretor.'); return; }
+
+  const partes = [
+    '📋 *PROPOSTA DE COMPRA — R2X*',
+    '━━━━━━━━━━━━━━━━━━━━━',
+    '',
+    `👤 *Cliente:* ${cliente}`,
+    cpf      ? `🪪 *CPF:* ${cpf}` : null,
+    `👨‍💼 *Corretor:* ${corretor}`,
+    '',
+    '💳 *Proposta:*',
+    proposta,
+    obs ? `\n📝 *Obs:* ${obs}` : null,
+    '',
+    '_Enviado via R2X Espelho de Vendas_'
+  ].filter(l => l !== null).join('\n');
+
+  window.open('https://wa.me/5548988228031?text=' + encodeURIComponent(partes), '_blank');
 }
 
 // ── PDF por lote ─────────────────────────────────────────────────────────────
