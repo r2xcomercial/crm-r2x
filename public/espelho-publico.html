@@ -558,7 +558,7 @@ async function carregar() {
       return;
     }
 
-    const { empreendimento: emp, imagem, units, resumo, espelhoParams, atualizado_em } = resp.data;
+    const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, atualizado_em } = resp.data;
     _empNome    = emp.nome + (emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : '');
     _simParams  = espelhoParams || null;
     _markerSize = markerSize || 20;
