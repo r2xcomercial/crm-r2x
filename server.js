@@ -1411,10 +1411,10 @@ Redija apenas o(s) texto(s) das cláusulas, sem introdução nem rodapé.`;
   }
 });
 
-// Atualiza status de uma unidade (disponivel / reservado / vendido)
+// Atualiza status de uma unidade (disponivel / reservado / vendido / indisponivel)
 app.put("/api/unidades/:id/status", (req, res) => {
   const { status } = req.body;
-  if (!['disponivel','reservado','vendido'].includes(status)) return err(res, "Status inválido");
+  if (!['disponivel','reservado','vendido','indisponivel'].includes(status)) return err(res, "Status inválido");
   db.prepare("UPDATE unidades SET status=? WHERE id=?").run(status, req.params.id);
   ok(res, {});
 });
