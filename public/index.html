@@ -12722,6 +12722,7 @@ async function renderRelatorios() {
           </select>
         </div>
         <button onclick="relCarregar()" style="padding:8px 20px;border-radius:8px;background:var(--accent);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer">🔍 Filtrar</button>
+        <button onclick="exportarRelatorioPDF()" style="padding:8px 16px;border-radius:8px;background:var(--navy3);color:var(--text);border:1px solid var(--border);font-size:13px;font-weight:600;cursor:pointer" title="Exportar como PDF">🖨️ PDF</button>
       </div>
     </div>
 
@@ -12974,6 +12975,187 @@ function relRenderCorpo() {
         </table>
       </div>`;
   }
+}
+
+function exportarRelatorioPDF() {
+  if (!_relDados) { toast('Carregue o relatório primeiro (clique em Filtrar)', 'error'); return; }
+  const d   = _relDados;
+  const aba = _relFiltros.aba;
+  const abaLabels = { financeiro:'Financeiro', vendas:'Vendas', corretores:'Corretores', leads:'Leads' };
+  const titulo    = abaLabels[aba] || aba;
+  const hoje      = new Date().toLocaleDateString('pt-BR');
+  const fmtD = s  => s ? s.split('T')[0].split('-').reverse().join('/') : '—';
+  const fmtV = v  => (v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2});
+  const dIni = fmtD(_relFiltros.data_inicio);
+  const dFim = fmtD(_relFiltros.data_fim);
+  const periodoStr = `${dIni} até ${dFim}`;
+  const empEl = document.getElementById('rel-emp');
+  const corEl = document.getElementById('rel-cor');
+  const empLabel = empEl?.options[empEl.selectedIndex]?.text || 'Todos';
+  const corLabel = corEl?.options[corEl.selectedIndex]?.text || 'Todos';
+
+  let conteudo = '';
+
+  if (aba === 'financeiro') {
+    const totalEnt = d.entradas.reduce((s,e)=>s+e.valor,0);
+    const totalSai = d.saidas.reduce((s,e)=>s+e.valor,0);
+    const saldo    = totalEnt - totalSai;
+    const porCat = {}; d.saidas.forEach(s=>{porCat[s.categoria]=(porCat[s.categoria]||0)+s.valor;});
+    const porEmp = {}; d.entradas.forEach(e=>{const k=e.empreendimento_nome||'Sem empreendimento';porEmp[k]=(porEmp[k]||0)+e.valor;});
+    conteudo = `
+      <div class="kpis">
+        <div class="kpi"><div class="kpi-l">📥 Entradas</div><div class="kpi-v green">${fmtV(totalEnt)}</div><div class="kpi-s">${d.entradas.length} lançamentos</div></div>
+        <div class="kpi"><div class="kpi-l">📤 Saídas</div><div class="kpi-v red">${fmtV(totalSai)}</div><div class="kpi-s">${d.saidas.length} lançamentos</div></div>
+        <div class="kpi"><div class="kpi-l">💰 Saldo</div><div class="kpi-v ${saldo>=0?'green':'red'}">${fmtV(saldo)}</div><div class="kpi-s">${saldo>=0?'Positivo':'Negativo'}</div></div>
+        <div class="kpi"><div class="kpi-l">📊 Margem</div><div class="kpi-v">${totalEnt>0?Math.round(saldo/totalEnt*100)+'%':'—'}</div><div class="kpi-s">saldo / entradas</div></div>
+      </div>
+      <div class="two-col">
+        <div><h3>📥 Entradas por Empreendimento</h3>
+          <table><thead><tr><th>Empreendimento</th><th class="r">Valor</th></tr></thead><tbody>
+          ${Object.entries(porEmp).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<tr><td>${n}</td><td class="r green">${fmtV(v)}</td></tr>`).join('')||'<tr><td colspan="2" class="em">Sem dados</td></tr>'}
+          </tbody></table></div>
+        <div><h3>📤 Saídas por Categoria</h3>
+          <table><thead><tr><th>Categoria</th><th class="r">Valor</th></tr></thead><tbody>
+          ${Object.entries(porCat).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<tr><td>${typeof CATEGORIAS_SAIDA_LABEL!=='undefined'&&CATEGORIAS_SAIDA_LABEL[c]?CATEGORIAS_SAIDA_LABEL[c]:c}</td><td class="r red">${fmtV(v)}</td></tr>`).join('')||'<tr><td colspan="2" class="em">Sem dados</td></tr>'}
+          </tbody></table></div>
+      </div>
+      <h3>📥 Entradas (${d.entradas.length})</h3>
+      <table><thead><tr><th>Data</th><th>Empreendimento</th><th>Corretor</th><th>Descrição</th><th class="r">Valor</th></tr></thead><tbody>
+      ${d.entradas.length?d.entradas.map(e=>`<tr><td>${fmtD(e.data)}</td><td>${e.empreendimento_nome||'—'}</td><td>${e.corretor_nome||'—'}</td><td class="sm">${e.descricao||'—'}</td><td class="r green">${fmtV(e.valor)}</td></tr>`).join(''):'<tr><td colspan="5" class="em">Nenhuma entrada</td></tr>'}
+      </tbody></table>
+      <h3 style="margin-top:12px">📤 Saídas (${d.saidas.length})</h3>
+      <table><thead><tr><th>Data</th><th>Empreendimento</th><th>Categoria</th><th>Descrição</th><th class="r">Valor</th></tr></thead><tbody>
+      ${d.saidas.length?d.saidas.map(s=>`<tr><td>${fmtD(s.data)}</td><td>${s.empreendimento_nome||'—'}</td><td>${typeof CATEGORIAS_SAIDA_LABEL!=='undefined'&&CATEGORIAS_SAIDA_LABEL[s.categoria]?CATEGORIAS_SAIDA_LABEL[s.categoria]:s.categoria}</td><td class="sm">${s.descricao||'—'}</td><td class="r red">${fmtV(s.valor)}</td></tr>`).join(''):'<tr><td colspan="5" class="em">Nenhuma saída</td></tr>'}
+      </tbody></table>`;
+
+  } else if (aba === 'vendas') {
+    const ativas   = d.vendas.filter(v=>v.status==='ativo');
+    const vgvTotal = ativas.reduce((s,v)=>s+v.valor,0);
+    const comR2X   = ativas.reduce((s,v)=>s+(v.comissao_r2x||0),0);
+    const comCor   = ativas.reduce((s,v)=>s+(v.comissao_corretor||0),0);
+    const porEmpV  = {}; ativas.forEach(v=>{const k=v.empreendimento_nome||'—';if(!porEmpV[k])porEmpV[k]={qtd:0,vgv:0};porEmpV[k].qtd++;porEmpV[k].vgv+=v.valor;});
+    conteudo = `
+      <div class="kpis">
+        <div class="kpi"><div class="kpi-l">🏆 Vendas Ativas</div><div class="kpi-v">${ativas.length}</div><div class="kpi-s">${d.vendas.length} no período</div></div>
+        <div class="kpi"><div class="kpi-l">💎 VGV</div><div class="kpi-v green">${fmtV(vgvTotal)}</div><div class="kpi-s">vendas ativas</div></div>
+        <div class="kpi"><div class="kpi-l">💵 Ticket Médio</div><div class="kpi-v">${ativas.length?fmtV(vgvTotal/ativas.length):'—'}</div><div class="kpi-s">por venda</div></div>
+        <div class="kpi"><div class="kpi-l">🤝 Com. R2X</div><div class="kpi-v green">${fmtV(comR2X)}</div><div class="kpi-s">Corretor: ${fmtV(comCor)}</div></div>
+      </div>
+      ${Object.keys(porEmpV).length?`<h3>🏗️ Por Empreendimento</h3>
+      <table><thead><tr><th>Empreendimento</th><th class="r">Qtd</th><th class="r">VGV</th></tr></thead><tbody>
+      ${Object.entries(porEmpV).sort((a,b)=>b[1].vgv-a[1].vgv).map(([n,v])=>`<tr><td>${n}</td><td class="r">${v.qtd}</td><td class="r green">${fmtV(v.vgv)}</td></tr>`).join('')}
+      </tbody></table>`:''}
+      <h3 style="margin-top:12px">🏆 Vendas (${d.vendas.length})</h3>
+      <table><thead><tr><th>Data</th><th>Cliente</th><th>Empreendimento</th><th>Unidade</th><th>Corretor</th><th>Status</th><th class="r">Valor</th><th class="r">Com. R2X</th><th class="r">Com. Cor.</th></tr></thead><tbody>
+      ${d.vendas.length?d.vendas.map(v=>`<tr style="${v.status==='distrato'?'opacity:.6':''}"><td>${fmtD(v.data)}</td><td>${v.cliente_nome||'—'}</td><td>${v.empreendimento_nome||'—'}</td><td class="sm">${v.imovel||'—'}</td><td>${v.corretor_nome||'—'}</td><td>${v.status}</td><td class="r b">${fmtV(v.valor)}</td><td class="r green">${v.comissao_r2x?fmtV(v.comissao_r2x):'—'}</td><td class="r blue">${v.comissao_corretor?fmtV(v.comissao_corretor):'—'}</td></tr>`).join(''):'<tr><td colspan="9" class="em">Nenhuma venda</td></tr>'}
+      </tbody></table>`;
+
+  } else if (aba === 'corretores') {
+    const totalVendas = d.corretores.reduce((s,c)=>s+c.total_vendas,0);
+    const totalVGV    = d.corretores.reduce((s,c)=>s+c.vgv_total,0);
+    const totalLeads  = d.corretores.reduce((s,c)=>s+c.total_leads,0);
+    conteudo = `
+      <div class="kpis">
+        <div class="kpi"><div class="kpi-l">👥 Corretores</div><div class="kpi-v">${d.corretores.length}</div><div class="kpi-s">com atividade</div></div>
+        <div class="kpi"><div class="kpi-l">🏆 Vendas</div><div class="kpi-v">${totalVendas}</div><div class="kpi-s">soma de todos</div></div>
+        <div class="kpi"><div class="kpi-l">💎 VGV Total</div><div class="kpi-v green">${fmtV(totalVGV)}</div><div class="kpi-s">soma de todos</div></div>
+        <div class="kpi"><div class="kpi-l">🎯 Leads</div><div class="kpi-v">${totalLeads}</div><div class="kpi-s">distribuídos</div></div>
+      </div>
+      <h3>👥 Ranking de Corretores</h3>
+      <table><thead><tr><th>#</th><th>Corretor</th><th class="r">Leads</th><th class="r">Vendas</th><th class="r">Conversão</th><th class="r">VGV Total</th><th class="r">Ticket Médio</th></tr></thead><tbody>
+      ${d.corretores.length?d.corretores.map((c,i)=>{
+        const conv=c.total_leads>0?Math.round(c.total_vendas/c.total_leads*100):0;
+        const ticket=c.total_vendas>0?c.vgv_total/c.total_vendas:0;
+        const medalha=i===0?'🥇':i===1?'🥈':i===2?'🥉':'#'+(i+1);
+        const cc=conv>=30?'#166534':conv>=15?'#92400e':'#991b1b';
+        return `<tr><td class="b">${medalha}</td><td><strong>${c.nome}</strong></td><td class="r">${c.total_leads}</td><td class="r b">${c.total_vendas}</td><td class="r" style="color:${cc};font-weight:700">${conv}%</td><td class="r green b">${fmtV(c.vgv_total)}</td><td class="r">${ticket>0?fmtV(ticket):'—'}</td></tr>`;
+      }).join(''):'<tr><td colspan="7" class="em">Sem atividade</td></tr>'}
+      </tbody></table>`;
+
+  } else if (aba === 'leads') {
+    const SL={novo:'Captado',qualificado:'Qualificado',com_corretor:'Distribuído',visitou:'Atend./Visita',proposta:'Proposta',reserva:'Reserva',vendido:'Venda',sem_venda:'Sem venda',perdido:'Sem venda'};
+    const SC={novo:'#374151',qualificado:'#1d4ed8',com_corretor:'#1d4ed8',visitou:'#6d28d9',proposta:'#92400e',reserva:'#92400e',vendido:'#166534',sem_venda:'#991b1b',perdido:'#991b1b'};
+    const conv=d.leads.filter(l=>l.status==='vendido').length;
+    const convPct=d.leads.length>0?Math.round(conv/d.leads.length*100):0;
+    const porStatus={}; d.leads.forEach(l=>{porStatus[l.status]=(porStatus[l.status]||0)+1;});
+    const porEmpL={};  d.leads.forEach(l=>{const k=l.empreendimento_nome||'Sem empreendimento';porEmpL[k]=(porEmpL[k]||0)+1;});
+    conteudo = `
+      <div class="kpis">
+        <div class="kpi"><div class="kpi-l">🎯 Total de Leads</div><div class="kpi-v">${d.leads.length}</div><div class="kpi-s">no período</div></div>
+        <div class="kpi"><div class="kpi-l">🏆 Convertidos</div><div class="kpi-v green">${conv}</div><div class="kpi-s">${convPct}% de conversão</div></div>
+        <div class="kpi"><div class="kpi-l">🔒 Em Reserva</div><div class="kpi-v">${d.leads.filter(l=>l.status==='reserva').length}</div><div class="kpi-s">aguardando venda</div></div>
+        <div class="kpi"><div class="kpi-l">❌ Sem Venda</div><div class="kpi-v red">${d.leads.filter(l=>['sem_venda','perdido'].includes(l.status)).length}</div><div class="kpi-s">perdidos</div></div>
+      </div>
+      <div class="two-col">
+        <div><h3>📊 Por Status</h3>
+          <table><thead><tr><th>Status</th><th class="r">Qtd</th></tr></thead><tbody>
+          ${Object.entries(porStatus).sort((a,b)=>b[1]-a[1]).map(([st,n])=>`<tr><td style="color:${SC[st]||'#374151'};font-weight:700">${SL[st]||st}</td><td class="r b">${n}</td></tr>`).join('')||'<tr><td colspan="2" class="em">Sem dados</td></tr>'}
+          </tbody></table></div>
+        <div><h3>🏗️ Por Empreendimento</h3>
+          <table><thead><tr><th>Empreendimento</th><th class="r">Qtd</th></tr></thead><tbody>
+          ${Object.entries(porEmpL).sort((a,b)=>b[1]-a[1]).map(([n,qt])=>`<tr><td>${n}</td><td class="r b">${qt}</td></tr>`).join('')||'<tr><td colspan="2" class="em">Sem dados</td></tr>'}
+          </tbody></table></div>
+      </div>
+      <h3 style="margin-top:12px">🎯 Leads no Período (${d.leads.length})</h3>
+      <table><thead><tr><th>Data</th><th>Nome</th><th>Status</th><th>Empreendimento</th><th>Corretor</th></tr></thead><tbody>
+      ${d.leads.length?d.leads.map(l=>`<tr><td>${fmtD(l.data)}</td><td><strong>${l.nome||'—'}</strong></td><td style="color:${SC[l.status]||'#374151'};font-weight:700;font-size:9px">${SL[l.status]||l.status}</td><td>${l.empreendimento_nome||'—'}</td><td>${l.corretor_nome||'—'}</td></tr>`).join(''):'<tr><td colspan="5" class="em">Nenhum lead</td></tr>'}
+      </tbody></table>`;
+  }
+
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8">
+<title>Relatório ${titulo} — R2X CRM</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,Helvetica,sans-serif;color:#111;padding:0;font-size:11px}
+  @page{size:A4 landscape;margin:10mm 12mm}
+  @media print{.no-print{display:none!important}}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #111;padding-bottom:10px;margin-bottom:14px}
+  .header h1{font-size:17px;font-weight:900}
+  .header .sub{font-size:10px;color:#666;margin-top:2px}
+  .header-r{text-align:right;font-size:10px;color:#666}
+  .header-r .data{font-size:13px;font-weight:800;color:#111}
+  .filtros{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 10px;margin-bottom:12px;font-size:9px;color:#666;display:flex;gap:16px;flex-wrap:wrap}
+  .filtros strong{color:#111}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+  .kpi{border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;text-align:center}
+  .kpi-l{font-size:8px;color:#6b7280;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+  .kpi-v{font-size:16px;font-weight:900;line-height:1}
+  .kpi-v.green{color:#166534}.kpi-v.red{color:#991b1b}
+  .kpi-s{font-size:8px;color:#6b7280;margin-top:2px}
+  h3{font-size:11px;font-weight:800;margin-bottom:6px;margin-top:12px;text-transform:uppercase;letter-spacing:.3px;color:#1e293b;padding-bottom:3px;border-bottom:1.5px solid #e5e7eb}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  table{width:100%;border-collapse:collapse;margin-bottom:4px}
+  thead th{background:#1e293b;color:#fff;padding:4px 6px;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;text-align:left;white-space:nowrap}
+  thead th.r{text-align:right}
+  tbody td{padding:4px 6px;border-bottom:1px solid #e5e7eb;font-size:10px;vertical-align:middle}
+  tbody td.r{text-align:right}
+  tbody td.b{font-weight:700}
+  tbody td.green{color:#166534;font-weight:700}
+  tbody td.red{color:#991b1b;font-weight:700}
+  tbody td.blue{color:#1d4ed8;font-weight:700}
+  tbody td.sm{font-size:8.5px;color:#6b7280}
+  tbody td.em{text-align:center;color:#9ca3af;font-style:italic}
+  .footer{margin-top:12px;padding-top:6px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
+  .btn-print{position:fixed;bottom:20px;right:20px;background:#1e293b;color:#fff;border:none;border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+</style>
+</head><body>
+<div class="header">
+  <div><h1>R2X CRM — Relatório ${titulo}</h1><div class="sub">Gerado em ${hoje} · R2X Lançamentos Imobiliários</div></div>
+  <div class="header-r"><div class="data">${periodoStr}</div></div>
+</div>
+<div class="filtros">
+  <span><strong>Período:</strong> ${periodoStr}</span>
+  <span><strong>Empreendimento:</strong> ${empLabel}</span>
+  <span><strong>Corretor:</strong> ${corLabel}</span>
+</div>
+${conteudo}
+<div class="footer"><span>R2X CRM — Relatório Gerencial</span><span>Gerado em ${hoje}</span></div>
+<button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+<script>window.onload=function(){window.print()}<\/script>
+</body></html>`);
+  w.document.close();
 }
 
 // ─── PORTAL DO INCORPORADOR ───────────────────────────────────────────────────
