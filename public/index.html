@@ -196,19 +196,22 @@
     transition: transform .12s, box-shadow .12s, filter .12s;
   }
   .espelho-tile:hover { transform: scale(1.1); box-shadow: 0 4px 16px rgba(0,0,0,.45); z-index: 2; position: relative; filter: brightness(1.18); }
-  .espelho-tile.disponivel { background: rgba(34,197,94,.1);  border-color: rgba(34,197,94,.5); }
-  .espelho-tile.reservado  { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.55); }
-  .espelho-tile.vendido    { background: rgba(239,68,68,.12);  border-color: rgba(239,68,68,.55); }
+  .espelho-tile.disponivel    { background: rgba(34,197,94,.1);   border-color: rgba(34,197,94,.5); }
+  .espelho-tile.reservado     { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.55); }
+  .espelho-tile.vendido       { background: rgba(239,68,68,.12);  border-color: rgba(239,68,68,.55); }
+  .espelho-tile.indisponivel  { background: rgba(100,116,139,.12);border-color: rgba(100,116,139,.45); }
   .espelho-tile .tile-num  { font-size: 15px; font-weight: 900; line-height: 1; letter-spacing: -.3px; }
   .espelho-tile .tile-tip  { font-size: 7.5px; opacity: .7; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px; }
   .espelho-tile .tile-area { font-size: 7.5px; opacity: .6; margin-top: 1px; white-space: nowrap; }
   .espelho-tile .tile-preco { font-size: 8px; opacity: .85; margin-top: 1px; white-space: nowrap; font-weight: 600; }
-  .espelho-tile.disponivel .tile-num  { color: #4ade80; }
-  .espelho-tile.reservado  .tile-num  { color: #fbbf24; }
-  .espelho-tile.vendido    .tile-num  { color: #f87171; }
-  .espelho-tile.disponivel .tile-preco { color: rgba(74,222,128,.85); }
-  .espelho-tile.reservado  .tile-preco { color: rgba(251,191,36,.85); }
-  .espelho-tile.vendido    .tile-preco { color: rgba(248,113,113,.85); }
+  .espelho-tile.disponivel   .tile-num  { color: #4ade80; }
+  .espelho-tile.reservado    .tile-num  { color: #fbbf24; }
+  .espelho-tile.vendido      .tile-num  { color: #f87171; }
+  .espelho-tile.indisponivel .tile-num  { color: #94a3b8; }
+  .espelho-tile.disponivel   .tile-preco { color: rgba(74,222,128,.85); }
+  .espelho-tile.reservado    .tile-preco { color: rgba(251,191,36,.85); }
+  .espelho-tile.vendido      .tile-preco { color: rgba(248,113,113,.85); }
+  .espelho-tile.indisponivel .tile-preco { color: rgba(148,163,184,.7); }
   .espelho-secao { margin-bottom: 24px; }
   .espelho-secao-header {
     font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
@@ -7778,8 +7781,8 @@ async function verUnidades(empId) {
   const cnt = { disponivel:0, reservado:0, vendido:0 };
   units.forEach(u => { cnt[u.status] = (cnt[u.status]||0) + 1; });
   const vgvDisp = units.filter(u => u.status==='disponivel').reduce((s,u) => s+(u.preco||0), 0);
-  const statusBadge = { disponivel:'badge-green', reservado:'badge-orange', vendido:'badge-red' };
-  const statusLabel = { disponivel:'Disponível', reservado:'Reservado', vendido:'Vendido' };
+  const statusBadge = { disponivel:'badge-green', reservado:'badge-orange', vendido:'badge-red', indisponivel:'badge-gray' };
+  const statusLabel = { disponivel:'Disponível', reservado:'Reservado', vendido:'Vendido', indisponivel:'Indisponível' };
 
   document.getElementById('modal').classList.add('modal-wide');
   document.getElementById('modal-title').textContent = `🏠 Unidades — ${emp.nome||'Empreendimento'}`;
@@ -7788,6 +7791,7 @@ async function verUnidades(empId) {
       <div style="background:rgba(34,197,94,.1);border-radius:8px;padding:8px 14px;font-size:13px">✅ Disponível: <strong style="color:var(--success)">${cnt.disponivel}</strong></div>
       <div style="background:rgba(251,146,60,.1);border-radius:8px;padding:8px 14px;font-size:13px">🟡 Reservado: <strong style="color:#fb923c">${cnt.reservado}</strong></div>
       <div style="background:rgba(239,68,68,.1);border-radius:8px;padding:8px 14px;font-size:13px">🔴 Vendido: <strong style="color:var(--danger)">${cnt.vendido}</strong></div>
+      ${cnt.indisponivel?`<div style="background:rgba(100,116,139,.1);border-radius:8px;padding:8px 14px;font-size:13px">⛔ Indisponível: <strong style="color:#94a3b8">${cnt.indisponivel}</strong></div>`:''}
       <div style="background:rgba(0,196,180,.1);border-radius:8px;padding:8px 14px;font-size:13px">💰 VGV Disponível: <strong style="color:var(--accent)">${fmt(vgvDisp)}</strong></div>
     </div>
     <div style="max-height:420px;overflow-y:auto">
@@ -7916,14 +7920,16 @@ async function verEspelhoImagem(empId, emp, mapaData) {
     if (u.mapa_x != null) _posicoes[u.id] = { x: u.mapa_x, y: u.mapa_y };
   });
 
-  const cnt = { disponivel:0, reservado:0, vendido:0 };
+  const cnt = { disponivel:0, reservado:0, vendido:0, indisponivel:0 };
   units.forEach(u => { cnt[u.status] = (cnt[u.status]||0)+1; });
-  const total   = units.length;
-  const vsoNum  = total > 0 ? ((cnt.vendido+cnt.reservado)/total*100) : 0;
-  const vsoVend = total > 0 ? (cnt.vendido/total*100) : 0;
-  const vgvVend = units.filter(u=>u.status==='vendido').reduce((s,u)=>s+(u.preco||0),0);
-  const vgvDisp = units.filter(u=>u.status==='disponivel').reduce((s,u)=>s+(u.preco||0),0);
-  const semPos  = units.filter(u => u.mapa_x == null).length;
+  const total    = units.length;
+  const vsoBase  = total - (cnt.indisponivel||0);   // indisponível sai do denominador do VSO
+  const vsoNum   = vsoBase > 0 ? ((cnt.vendido+cnt.reservado)/vsoBase*100) : 0;
+  const vsoVend  = vsoBase > 0 ? (cnt.vendido/vsoBase*100) : 0;
+  const vgvVend  = units.filter(u=>u.status==='vendido').reduce((s,u)=>s+(u.preco||0),0);
+  const vgvDisp  = units.filter(u=>u.status==='disponivel').reduce((s,u)=>s+(u.preco||0),0);
+  const vgvIndisp= units.filter(u=>u.status==='indisponivel').reduce((s,u)=>s+(u.preco||0),0);
+  const semPos   = units.filter(u => u.mapa_x == null).length;
 
   document.getElementById('content').innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
@@ -7962,6 +7968,7 @@ async function verEspelhoImagem(empId, emp, mapaData) {
           <span style="color:#4ade80">✅ ${cnt.disponivel} disp. (${fmt(vgvDisp)})</span>
           <span style="color:#fbbf24">🟡 ${cnt.reservado} reservados</span>
           <span style="color:#f87171">🔴 ${cnt.vendido} vendidos (${fmt(vgvVend)})</span>
+          ${cnt.indisponivel?`<span style="color:#94a3b8">⛔ ${cnt.indisponivel} indisp. (${fmt(vgvIndisp)})</span>`:''}
         </span>
       </div>
       <div style="display:flex;height:8px;border-radius:6px;overflow:hidden;background:rgba(34,197,94,.12)">
@@ -8015,6 +8022,7 @@ async function verEspelhoImagem(empId, emp, mapaData) {
       <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:14px;background:rgba(34,197,94,.55);border-radius:50%;display:inline-block;border:2px solid #22c55e"></span>Disponível</span>
       <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:14px;background:rgba(245,158,11,.55);border-radius:50%;display:inline-block;border:2px solid #f59e0b"></span>Reservado</span>
       <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:14px;background:rgba(239,68,68,.7);border-radius:50%;display:inline-block;border:2px solid #ef4444"></span>Vendido</span>
+      <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:14px;background:rgba(100,116,139,.6);border-radius:50%;display:inline-block;border:2px solid #64748b"></span>Indisponível</span>
       <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:14px;background:rgba(148,163,184,.4);border-radius:50%;display:inline-block;border:2px dashed #94a3b8"></span>Sem posição</span>
     </div>
   `;
@@ -8178,11 +8186,12 @@ function renderMarkers() {
   if (!img.complete) { img.onload = renderMarkers; return; }
 
   const statusColors = {
-    disponivel: 'rgba(34,197,94,.7)',
-    reservado:  'rgba(245,158,11,.8)',
-    vendido:    'rgba(239,68,68,.85)',
+    disponivel:   'rgba(34,197,94,.7)',
+    reservado:    'rgba(245,158,11,.8)',
+    vendido:      'rgba(239,68,68,.85)',
+    indisponivel: 'rgba(100,116,139,.6)',
   };
-  const borderColors = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#ef4444' };
+  const borderColors = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#ef4444', indisponivel:'#64748b' };
 
   const sz = Math.round(Math.max(6, Math.min(120, _mapaMarkerSize * _mapaZoomLevel)));
   const fs = Math.round(Math.max(4, Math.min(28,  (_mapaMarkerSize * 0.42) * _mapaZoomLevel)));
@@ -8319,7 +8328,7 @@ function atualizarListaSemPos() {
   lista.innerHTML = todas.map(u => {
     const temPos  = !!_posicoes[u.id];
     const isAtivo = _unitAtiva === u.id;
-    const statusColor = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#f87171' };
+    const statusColor = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#f87171', indisponivel:'#64748b' };
     const lbl = `${u.quadra ? `Qd${u.quadra} - ` : ''}${u.lote}`;
     return `<div
       draggable="true"
@@ -8368,14 +8377,16 @@ async function verEspelho(empId) {
   const lblB = isPredio ? 'Unidade' : 'Lote';
 
   // Contagens
-  const cnt = { disponivel:0, reservado:0, vendido:0 };
+  const cnt = { disponivel:0, reservado:0, vendido:0, indisponivel:0 };
   units.forEach(u => { cnt[u.status] = (cnt[u.status]||0)+1; });
-  const total   = units.length;
-  const vsoNum  = total > 0 ? ((cnt.vendido+cnt.reservado)/total*100) : 0;
-  const vsoVend = total > 0 ? (cnt.vendido/total*100) : 0;
-  const vgvDisp = units.filter(u=>u.status==='disponivel').reduce((s,u)=>s+(u.preco||0),0);
-  const vgvVend = units.filter(u=>u.status==='vendido').reduce((s,u)=>s+(u.preco||0),0);
-  const vgvRes  = units.filter(u=>u.status==='reservado').reduce((s,u)=>s+(u.preco||0),0);
+  const total    = units.length;
+  const vsoBase  = total - (cnt.indisponivel||0);
+  const vsoNum   = vsoBase > 0 ? ((cnt.vendido+cnt.reservado)/vsoBase*100) : 0;
+  const vsoVend  = vsoBase > 0 ? (cnt.vendido/vsoBase*100) : 0;
+  const vgvDisp  = units.filter(u=>u.status==='disponivel').reduce((s,u)=>s+(u.preco||0),0);
+  const vgvVend  = units.filter(u=>u.status==='vendido').reduce((s,u)=>s+(u.preco||0),0);
+  const vgvRes   = units.filter(u=>u.status==='reservado').reduce((s,u)=>s+(u.preco||0),0);
+  const vgvIndisp= units.filter(u=>u.status==='indisponivel').reduce((s,u)=>s+(u.preco||0),0);
 
   // Agrupar por quadra/andar e ordenar
   const grupos = {};
@@ -8417,6 +8428,7 @@ async function verEspelho(empId) {
       <span style="background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);color:#4ade80;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:700">✅ ${cnt.disponivel} disponíveis</span>
       <span style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);color:#fbbf24;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:700">🟡 ${cnt.reservado} reservados</span>
       <span style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#f87171;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:700">🔴 ${cnt.vendido} vendidos</span>
+      ${cnt.indisponivel?`<span style="background:rgba(100,116,139,.15);border:1px solid rgba(100,116,139,.4);color:#94a3b8;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:700">⛔ ${cnt.indisponivel} indisponíveis</span>`:''}
     </div>
     ` : `
     <!-- ── CABEÇALHO ADMIN (completo) ── -->
@@ -8447,6 +8459,7 @@ async function verEspelho(empId) {
           <span style="color:#4ade80">✅ ${cnt.disponivel} disp.</span>
           <span style="color:#fbbf24">🟡 ${cnt.reservado} res. (${fmt(vgvRes)})</span>
           <span style="color:#f87171">🔴 ${cnt.vendido} vend. (${fmt(vgvVend)})</span>
+          ${cnt.indisponivel?`<span style="color:#94a3b8">⛔ ${cnt.indisponivel} indisp. (${fmt(vgvIndisp)})</span>`:''}
         </div>
       </div>
       <div style="display:flex;height:12px;border-radius:6px;overflow:hidden;background:rgba(34,197,94,.15)">
@@ -8455,6 +8468,7 @@ async function verEspelho(empId) {
       </div>
       <div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--text2)">
         <span>🔴 Vendido</span><span>🟡 Reservado</span><span style="color:rgba(34,197,94,.6)">██ Disponível</span>
+        ${cnt.indisponivel?`<span style="color:#64748b">⛔ Indisponível (fora do VSO)</span>`:''}
         <span style="margin-left:auto">VGV disponível: <strong style="color:var(--accent)">${fmt(vgvDisp)}</strong></span>
       </div>
     </div>
@@ -8465,6 +8479,7 @@ async function verEspelho(empId) {
       <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(34,197,94,.15);border:2px solid rgba(34,197,94,.5);border-radius:3px;display:inline-block"></span>Disponível</span>
       <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(245,158,11,.15);border:2px solid rgba(245,158,11,.5);border-radius:3px;display:inline-block"></span>Reservado</span>
       <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(239,68,68,.15);border:2px solid rgba(239,68,68,.5);border-radius:3px;display:inline-block"></span>Vendido</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(100,116,139,.15);border:2px solid rgba(100,116,139,.45);border-radius:3px;display:inline-block"></span>Indisponível</span>
       <span style="margin-left:auto;font-size:11px;color:var(--text2)">Clique em qualquer unidade para ver detalhes ou alterar status</span>
     </div>
     `}
@@ -8533,7 +8548,7 @@ function renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId) {
   if (!grupoKeys.length) return '<div style="color:var(--text2);padding:32px;text-align:center">Nenhuma unidade importada para este empreendimento</div>';
   return grupoKeys.map(g => {
     const items = grupos[g];
-    const cntG = { disponivel: items.filter(u=>u.status==='disponivel').length, reservado: items.filter(u=>u.status==='reservado').length, vendido: items.filter(u=>u.status==='vendido').length };
+    const cntG = { disponivel: items.filter(u=>u.status==='disponivel').length, reservado: items.filter(u=>u.status==='reservado').length, vendido: items.filter(u=>u.status==='vendido').length, indisponivel: items.filter(u=>u.status==='indisponivel').length };
     return `
       <div class="espelho-secao" data-grupo="${g}">
         <div class="espelho-secao-header">
@@ -8542,6 +8557,7 @@ function renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId) {
             <span style="color:#4ade80">${cntG.disponivel} disp</span> ·
             <span style="color:#fbbf24">${cntG.reservado} res</span> ·
             <span style="color:#f87171">${cntG.vendido} vend</span>
+            ${cntG.indisponivel?` · <span style="color:#94a3b8">${cntG.indisponivel} indisp</span>`:''}
           </span>
         </div>
         <div class="espelho-tiles">
@@ -8604,7 +8620,7 @@ function renderEspelhoPredio(grupoKeys, grupos, empId) {
     return '';
   });
 
-  const stClr = { disponivel:'#4ade80', reservado:'#fbbf24', vendido:'#f87171' };
+  const stClr = { disponivel:'#4ade80', reservado:'#fbbf24', vendido:'#f87171', indisponivel:'#94a3b8' };
 
   const thead = `<tr>
     <th style="padding:0 12px 10px 0;min-width:72px"></th>
@@ -8622,7 +8638,8 @@ function renderEspelhoPredio(grupoKeys, grupos, empId) {
     const cntG = {
       d: units.filter(u => u.status === 'disponivel').length,
       r: units.filter(u => u.status === 'reservado').length,
-      v: units.filter(u => u.status === 'vendido').length
+      v: units.filter(u => u.status === 'vendido').length,
+      i: units.filter(u => u.status === 'indisponivel').length
     };
     const _gl = g.toLowerCase(); const andLabel = (_gl.includes('térr')||_gl.includes('terr')) ? 'Tér' : !isNaN(parseFloat(g)) ? `${parseFloat(g)}º` : g;
 
@@ -8650,7 +8667,7 @@ function renderEspelhoPredio(grupoKeys, grupos, empId) {
         <div style="text-align:right;white-space:nowrap;padding-right:6px">
           <div style="font-size:12px;font-weight:700;color:var(--text)">${andLabel}</div>
           <div style="font-size:9px;color:var(--text2);margin-top:2px;line-height:1.4">
-            <span style="color:#4ade80">${cntG.d}&#9632;</span> <span style="color:#fbbf24">${cntG.r}&#9632;</span> <span style="color:#f87171">${cntG.v}&#9632;</span>
+            <span style="color:#4ade80">${cntG.d}&#9632;</span> <span style="color:#fbbf24">${cntG.r}&#9632;</span> <span style="color:#f87171">${cntG.v}&#9632;</span>${cntG.i?` <span style="color:#94a3b8">${cntG.i}&#9632;</span>`:''}
           </div>
         </div>
       </td>
@@ -9130,16 +9147,19 @@ async function gerarTabelaVendas(empId, params) {
     const st       = u.status || 'disponivel';
     const isRes    = st === 'reservado';
     const isVend   = st === 'vendido';
+    const isIndisp = st === 'indisponivel';
     const rowStyle = isVend
       ? 'background:#fde68a;border-bottom:1px solid #fbbf24;border-left:4px solid #92400e'
       : isRes
         ? 'background:#fef3c7;border-bottom:1px solid #fcd34d;border-left:4px solid #f59e0b'
-        : 'background:#ffffff;border-bottom:1px solid #e5e7eb;border-left:4px solid transparent';
+        : isIndisp
+          ? 'background:#f1f5f9;border-bottom:1px solid #cbd5e1;border-left:4px solid #94a3b8'
+          : 'background:#ffffff;border-bottom:1px solid #e5e7eb;border-left:4px solid transparent';
     const textDeco  = isVend ? 'text-decoration:line-through' : '';
-    const textColor = isRes  ? 'color:#92400e' : isVend ? 'color:#78350f' : 'color:#374151';
-    const fwBold    = (isRes || isVend) ? 'font-weight:700' : '';
-    const badgeBg   = isVend ? '#92400e' : isRes ? '#d97706' : '#16a34a';
-    const badgeTxt  = isVend ? 'VENDIDO' : isRes ? 'RESERVADO' : 'DISPONÍVEL';
+    const textColor = isRes ? 'color:#92400e' : isVend ? 'color:#78350f' : isIndisp ? 'color:#64748b' : 'color:#374151';
+    const fwBold    = (isRes || isVend || isIndisp) ? 'font-weight:700' : '';
+    const badgeBg   = isVend ? '#92400e' : isRes ? '#d97706' : isIndisp ? '#64748b' : '#16a34a';
+    const badgeTxt  = isVend ? 'VENDIDO' : isRes ? 'RESERVADO' : isIndisp ? 'INDISPONÍVEL' : 'DISPONÍVEL';
     const badgeExtra = isRes ? 'box-shadow:0 0 0 2px #f59e0b' : isVend ? 'box-shadow:0 0 0 2px #92400e' : '';
     const badge = `<span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:9px;font-weight:800;background:${badgeBg};color:#fff;letter-spacing:.3px;${badgeExtra}">${badgeTxt}</span>`;
 
@@ -9156,9 +9176,10 @@ async function gerarTabelaVendas(empId, params) {
     </tr>`;
   }).join('');
 
-  const nDisp = unidades.filter(u=>u.status==='disponivel').length;
-  const nRes  = unidades.filter(u=>u.status==='reservado').length;
-  const nVend = unidades.filter(u=>u.status==='vendido').length;
+  const nDisp   = unidades.filter(u=>u.status==='disponivel').length;
+  const nRes    = unidades.filter(u=>u.status==='reservado').length;
+  const nVend   = unidades.filter(u=>u.status==='vendido').length;
+  const nIndisp = unidades.filter(u=>u.status==='indisponivel').length;
   const total = unidades.length;
 
   const refColHd = nRef > 0
@@ -9268,6 +9289,10 @@ async function gerarTabelaVendas(empId, params) {
     <div class="val">${nVend}</div>
     <div class="lbl">Vendidos</div>
   </div>
+  ${nIndisp?`<div class="resumo-card gray">
+    <div class="val" style="color:#64748b">${nIndisp}</div>
+    <div class="lbl">Indisponíveis</div>
+  </div>`:''}
 </div>
 
 <div class="formula-note">Simulação: Entrada (${entradaSubHd})${nRef>0?` + ${nRef} balões anuais (${refPct}% do valor ÷ ${nRef} cada)`:''} · Condições: ${condsDesc} &nbsp;·&nbsp; ✓ = total confere com preço de lançamento</div>
@@ -9307,9 +9332,10 @@ async function abrirUnidade(unidadeId, empId) {
   const lblB = isPredio ? 'Unidade'  : 'Lote';
 
   const statusInfo = {
-    disponivel: { label:'✅ Disponível', color:'var(--success)' },
-    reservado:  { label:'🟡 Reservado',  color:'var(--warning)' },
-    vendido:    { label:'🔴 Vendido',    color:'var(--danger)'  }
+    disponivel:   { label:'✅ Disponível',    color:'var(--success)' },
+    reservado:    { label:'🟡 Reservado',     color:'var(--warning)' },
+    vendido:      { label:'🔴 Vendido',       color:'var(--danger)'  },
+    indisponivel: { label:'⛔ Indisponível',  color:'#94a3b8'        }
   };
   const si = statusInfo[u.status] || statusInfo.disponivel;
 
@@ -9424,9 +9450,10 @@ async function abrirUnidade(unidadeId, empId) {
       <div style="border-top:1px solid var(--border);padding-top:16px">
         <div style="font-size:11px;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">Alterar Status</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${u.status!=='disponivel'?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(34,197,94,.4);color:#4ade80" onclick="mudarStatusEspelho(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
-          ${u.status!=='reservado' ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(245,158,11,.4);color:#fbbf24" onclick="mudarStatusEspelho(${u.id},'reservado',${empId})">🟡 Reservar</button>`:''}
-          ${u.status!=='vendido'   ?`<button class="btn btn-danger"    style="flex:1" onclick="mudarStatusEspelho(${u.id},'vendido',${empId})">🔴 Marcar Vendido</button>`:''}
+          ${u.status!=='disponivel'   ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(34,197,94,.4);color:#4ade80" onclick="mudarStatusEspelho(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
+          ${u.status!=='reservado'    ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(245,158,11,.4);color:#fbbf24" onclick="mudarStatusEspelho(${u.id},'reservado',${empId})">🟡 Reservar</button>`:''}
+          ${u.status!=='vendido'      ?`<button class="btn btn-danger"    style="flex:1" onclick="mudarStatusEspelho(${u.id},'vendido',${empId})">🔴 Marcar Vendido</button>`:''}
+          ${u.status!=='indisponivel' ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(100,116,139,.4);color:#94a3b8" onclick="mudarStatusEspelho(${u.id},'indisponivel',${empId})">⛔ Indisponível</button>`:''}
         </div>
         ${u.status==='vendido'?`<div style="font-size:11px;color:var(--text2);margin-top:10px">Para liberar uma unidade vendida, altere o status da venda para "Distrato" na aba Vendas.</div>`:''}
       </div>`;
