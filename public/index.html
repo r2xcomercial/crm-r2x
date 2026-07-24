@@ -9039,7 +9039,7 @@ function abrirExportarTabela(empId) {
         condicoes: params.condicoes, filtro: params.filtro, obs: params.obs,
       }));
     } catch(_) {}
-    await gerarTabelaVendas(empId, params);
+    await gerarTabelaVendas(empId, params, emp);
   }, 'Gerar & Imprimir');
 
   // Preenche condições salvas após renderizar o modal
@@ -9050,7 +9050,10 @@ function abrirExportarTabela(empId) {
   }, 0);
 }
 
-async function gerarTabelaVendas(empId, params) {
+async function gerarTabelaVendas(empId, params, emp) {
+  emp = emp || (currentData.emp||[]).find(e => e.id === empId) || {};
+  const isLoteamento = (emp.tipo || 'loteamento') !== 'predio';
+
   const r = await get(`/api/empreendimentos/${empId}/unidades`);
 
   const floorOrder = q => {
@@ -9072,7 +9075,7 @@ async function gerarTabelaVendas(empId, params) {
   const lista    = params.filtro === 'disponivel' ? unidades.filter(u => u.status === 'disponivel') : unidades;
   const fmt2     = n => n == null ? '—' : 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
   const fmtN     = n => n == null ? '—' : n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' m²';
-  const extractNum = lote => { const m = String(lote).match(/\b(\d{2,4}[A-Za-z]?)\b/); return m ? m[1] : String(lote).split(/[\s\-]/)[0]; };
+  const extractNum = lote => { const m = String(lote).match(/\b(\d{1,4}[A-Za-z]?)\b/); return m ? m[1] : String(lote).split(/[\s\-]/)[0]; };
   const extractTip = lote => { const parts = String(lote).split(/\s*-\s*/); return parts.length > 1 ? parts.slice(1).filter(p => /[a-zA-ZÀ-ú]/.test(p)).join(' - ') : ''; };
 
   // Normaliza condições (suporte legado: params.nParc sem condicoes)
@@ -9138,10 +9141,10 @@ async function gerarTabelaVendas(empId, params) {
         const totalC = entV + totalRef + c.nParc * pmv;
         const ok = !c.juros && Math.abs(totalC - P) < 0.10;
         const chk = !c.juros ? `<span style="font-size:9px;color:${ok?'#166534':'#991b1b'};font-weight:700">${ok?'✓':'⚠'}</span>` : '';
-        return `<td style="padding:4px 8px;font-size:11px;text-align:right;white-space:nowrap">${fmt2(pmv)} ${chk}</td>`;
+        return `<td style="padding:5px 10px;font-size:12px;font-weight:700;text-align:right;white-space:nowrap">${fmt2(pmv)} ${chk}</td>`;
       }).join('');
     } else {
-      condCells = condicoes.map(() => `<td style="padding:4px 8px;text-align:right">—</td>`).join('');
+      condCells = condicoes.map(() => `<td style="padding:5px 10px;text-align:right;color:#9ca3af">—</td>`).join('');
     }
 
     const st       = u.status || 'disponivel';
@@ -9156,24 +9159,39 @@ async function gerarTabelaVendas(empId, params) {
           ? 'background:#f1f5f9;border-bottom:1px solid #cbd5e1;border-left:4px solid #94a3b8'
           : 'background:#ffffff;border-bottom:1px solid #e5e7eb;border-left:4px solid transparent';
     const textDeco  = isVend ? 'text-decoration:line-through' : '';
+    const numColor  = isRes ? '#92400e' : isVend ? '#78350f' : isIndisp ? '#64748b' : '#111827';
     const textColor = isRes ? 'color:#92400e' : isVend ? 'color:#78350f' : isIndisp ? 'color:#64748b' : 'color:#374151';
-    const fwBold    = (isRes || isVend || isIndisp) ? 'font-weight:700' : '';
     const badgeBg   = isVend ? '#92400e' : isRes ? '#d97706' : isIndisp ? '#64748b' : '#16a34a';
     const badgeTxt  = isVend ? 'VENDIDO' : isRes ? 'RESERVADO' : isIndisp ? 'INDISPONÍVEL' : 'DISPONÍVEL';
     const badgeExtra = isRes ? 'box-shadow:0 0 0 2px #f59e0b' : isVend ? 'box-shadow:0 0 0 2px #92400e' : '';
     const badge = `<span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:9px;font-weight:800;background:${badgeBg};color:#fff;letter-spacing:.3px;${badgeExtra}">${badgeTxt}</span>`;
 
-    return `<tr style="${rowStyle}">
-      <td style="padding:4px 8px;font-size:11px;white-space:nowrap;${textColor};${textDeco};${fwBold}">${andarLabel}</td>
-      <td style="padding:4px 8px;font-size:11px;font-weight:700;white-space:nowrap;${textColor};${textDeco}">${num}</td>
-      <td style="padding:4px 8px;font-size:10.5px;${isRes?'color:#92400e':'color:#6b7280'};${textDeco};${fwBold}">${tip}</td>
-      <td style="padding:4px 8px;font-size:11px;text-align:right;white-space:nowrap;${textColor};${textDeco};${fwBold}">${fmtN(u.area_m2)}</td>
-      <td style="padding:4px 8px;font-size:11px;font-weight:700;text-align:right;white-space:nowrap;${isRes?'color:#92400e':isVend?'color:#78350f':'color:#111827'};${textDeco}">${fmt2(P)}</td>
-      <td style="padding:4px 8px;font-size:11px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${entCell}</td>
-      ${nRef>0?`<td style="padding:4px 8px;font-size:11px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${refCell}</td>`:''}
-      ${condCells}
-      <td style="padding:4px 8px;text-align:center">${badge}</td>
-    </tr>`;
+    if (isLoteamento) {
+      // Loteamento: Quadra | Lote (grande) | Área | Valor | Entrada | Balões | Condições | Status
+      return `<tr style="${rowStyle}">
+        <td style="padding:5px 10px;font-size:11px;white-space:nowrap;${textColor};${textDeco}">${q}</td>
+        <td style="padding:5px 10px;font-size:16px;font-weight:900;white-space:nowrap;color:${numColor};${textDeco}">${num}</td>
+        <td style="padding:5px 10px;font-size:12px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${fmtN(u.area_m2)}</td>
+        <td style="padding:5px 10px;font-size:13px;font-weight:800;text-align:right;white-space:nowrap;color:${numColor};${textDeco}">${fmt2(P)}</td>
+        <td style="padding:5px 10px;font-size:12px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${entCell}</td>
+        ${nRef>0?`<td style="padding:5px 10px;font-size:12px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${refCell}</td>`:''}
+        ${condCells}
+        <td style="padding:5px 10px;text-align:center">${badge}</td>
+      </tr>`;
+    } else {
+      // Prédio: Andar | Unidade | Tipologia | Área | Valor | Entrada | Balões | Condições | Status
+      return `<tr style="${rowStyle}">
+        <td style="padding:5px 10px;font-size:11px;white-space:nowrap;${textColor};${textDeco}">${andarLabel}</td>
+        <td style="padding:5px 10px;font-size:15px;font-weight:900;white-space:nowrap;color:${numColor};${textDeco}">${num}</td>
+        <td style="padding:5px 10px;font-size:10.5px;${isRes?'color:#92400e':'color:#6b7280'};${textDeco}">${tip}</td>
+        <td style="padding:5px 10px;font-size:12px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${fmtN(u.area_m2)}</td>
+        <td style="padding:5px 10px;font-size:13px;font-weight:800;text-align:right;white-space:nowrap;color:${numColor};${textDeco}">${fmt2(P)}</td>
+        <td style="padding:5px 10px;font-size:12px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${entCell}</td>
+        ${nRef>0?`<td style="padding:5px 10px;font-size:12px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${refCell}</td>`:''}
+        ${condCells}
+        <td style="padding:5px 10px;text-align:center">${badge}</td>
+      </tr>`;
+    }
   }).join('');
 
   const nDisp   = unidades.filter(u=>u.status==='disponivel').length;
@@ -9258,9 +9276,10 @@ async function gerarTabelaVendas(empId, params) {
 <table>
   <thead>
     <tr>
-      <th>Andar</th>
-      <th>Unidade</th>
-      <th>Tipologia</th>
+      ${isLoteamento
+        ? `<th>Quadra</th><th>Lote</th>`
+        : `<th>Andar</th><th>Unidade</th><th>Tipologia</th>`
+      }
       <th class="right">Área</th>
       <th class="right">Valor<span class="sub">de lançamento</span></th>
       <th class="right">Entrada<span class="sub">${entradaSubHd}</span></th>
