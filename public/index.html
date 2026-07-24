@@ -9028,13 +9028,16 @@ function abrirExportarTabela(empId) {
       logo:          emp.logo_base64 || null,
     };
     try {
-      localStorage.setItem(`tabela_params_${empId}`, JSON.stringify({
+      const savedParams = {
         titulo: params.titulo, entrada_tipo: eTipoV,
         entrada_pct: params.entrada_pct * 100, entrada_valor: params.entrada_valor,
         entrada_parc: params.entrada_parc,
         nRef: params.nRef, pRef: params.pRef * 100,
         condicoes: params.condicoes, filtro: params.filtro, obs: params.obs,
-      }));
+      };
+      localStorage.setItem(`tabela_params_${empId}`, JSON.stringify(savedParams));
+      // Salva no banco para simulação pública
+      api('PUT', `/api/empreendimentos/${empId}/espelho-params`, { params: savedParams }).catch(() => {});
     } catch(_) {}
     await gerarTabelaVendas(empId, params, emp);
   }, 'Gerar & Imprimir');

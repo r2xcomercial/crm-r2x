@@ -3617,6 +3617,8 @@ try { db.exec('ALTER TABLE unidades ADD COLUMN mapa_y REAL'); } catch(_) {}
 
 // Migration: slug público para espelho de vendas
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN espelho_slug TEXT"); } catch(_) {}
+// Migration: parâmetros da última tabela gerada (para simulação pública)
+try { db.exec("ALTER TABLE empreendimentos ADD COLUMN espelho_params TEXT"); } catch(_) {}
 
 // ─── ESPELHO DE VENDAS PÚBLICO ───────────────────────────────────────────────
 
@@ -3624,6 +3626,14 @@ try { db.exec("ALTER TABLE empreendimentos ADD COLUMN espelho_slug TEXT"); } cat
 if (!APIs_PUBLICAS.includes('/api/espelho-publico/')) {
   APIs_PUBLICAS.push('/api/espelho-publico/');
 }
+
+// Salvar parâmetros da última tabela gerada (para simulação pública)
+app.put('/api/empreendimentos/:id/espelho-params', autenticar, (req, res) => {
+  const { params } = req.body;
+  if (!params) return err(res, 'Params obrigatório', 400);
+  db.prepare("UPDATE empreendimentos SET espelho_params=? WHERE id=?").run(JSON.stringify(params), req.params.id);
+  ok(res, {});
+});
 
 // Gerenciar slug
 app.put('/api/empreendimentos/:id/espelho-slug', autenticar, (req, res) => {
@@ -3639,7 +3649,7 @@ app.put('/api/empreendimentos/:id/espelho-slug', autenticar, (req, res) => {
 
 // API pública — retorna dados do espelho sem autenticação
 app.get('/api/espelho-publico/:slug', (req, res) => {
-  const emp = db.prepare("SELECT id, nome, cidade, estado, tipo FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
+  const emp = db.prepare("SELECT id, nome, cidade, estado, tipo, espelho_params FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
   if (!emp) return res.status(404).json({ ok: false, error: 'Espelho não encontrado' });
   const mapa = db.prepare("SELECT svg_data FROM mapas WHERE empreendimento_id=?").get(emp.id);
   const units = db.prepare(`
@@ -3651,7 +3661,8 @@ app.get('/api/espelho-publico/:slug', (req, res) => {
     acc[u.status] = (acc[u.status] || 0) + 1;
     return acc;
   }, {});
-  ok(res, { empreendimento: emp, imagem: mapa?.svg_data || null, units, resumo, atualizado_em: new Date().toISOString() });
+  const espelhoParams = emp.espelho_params ? JSON.parse(emp.espelho_params) : null;
+  ok(res, { empreendimento: emp, imagem: mapa?.svg_data || null, units, resumo, espelhoParams, atualizado_em: new Date().toISOString() });
 });
 
 // Rota pública da página de espelho (no-cache para sempre servir versão atual)

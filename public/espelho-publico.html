@@ -19,10 +19,11 @@
   .resumo-card { flex: 1; min-width: 120px; background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px 18px; text-align: center; }
   .resumo-card .num { font-size: 28px; font-weight: 800; line-height: 1; }
   .resumo-card .label { font-size: 12px; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: .05em; }
-  .resumo-card.disp .num { color: #22c55e; }
-  .resumo-card.res  .num { color: #f59e0b; }
-  .resumo-card.vend .num { color: #ef4444; }
+  .resumo-card.disp .num  { color: #22c55e; }
+  .resumo-card.res  .num  { color: #f59e0b; }
+  .resumo-card.vend .num  { color: #ef4444; }
   .resumo-card.total .num { color: #e2e8f0; }
+  .resumo-card.indisp .num { color: #94a3b8; }
 
   main { padding: 0 24px 32px; }
 
@@ -30,24 +31,19 @@
   .mapa-wrap { position: relative; display: inline-block; max-width: 100%; }
   .mapa-wrap img { width: 100%; max-width: 1100px; display: block; border-radius: 12px; }
   .marcador {
-    position: absolute;
-    transform: translate(-50%, -50%);
-    width: 22px; height: 22px;
-    border-radius: 50%;
-    border: 2px solid rgba(0,0,0,.35);
-    cursor: default;
+    position: absolute; transform: translate(-50%, -50%);
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid rgba(0,0,0,.35); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     font-size: 7px; font-weight: 700; color: #fff;
-    box-shadow: 0 1px 4px rgba(0,0,0,.5);
-    transition: transform .15s;
+    box-shadow: 0 1px 4px rgba(0,0,0,.5); transition: transform .15s;
   }
   .marcador:hover { transform: translate(-50%,-50%) scale(1.4); z-index: 10; }
-  .marcador.disponivel { background: #22c55e; }
-  .marcador.reservado  { background: #f59e0b; }
-  .marcador.vendido    { background: #ef4444; }
-  .marcador.entregue   { background: #8b5cf6; }
-
-  /* Tooltip */
+  .marcador.disponivel  { background: #22c55e; }
+  .marcador.reservado   { background: #f59e0b; }
+  .marcador.vendido     { background: #ef4444; }
+  .marcador.entregue    { background: #8b5cf6; }
+  .marcador.indisponivel { background: #64748b; }
   .marcador .tip {
     display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
     background: #0f172a; border: 1px solid #334155; border-radius: 6px;
@@ -56,25 +52,24 @@
   }
   .marcador:hover .tip { display: block; }
 
-  /* Sem mapa — grade de tiles */
+  /* Grade de tiles */
   .grade-section { margin-top: 0; }
   .grade-titulo { font-size: 14px; font-weight: 600; color: #94a3b8; margin-bottom: 12px; }
   .grade { display: flex; flex-wrap: wrap; gap: 6px; }
   .tile {
     width: 54px; height: 54px; border-radius: 8px; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; cursor: default;
+    align-items: center; justify-content: center; cursor: pointer;
     border: 1.5px solid transparent; font-weight: 700;
-    transition: transform .15s;
-    position: relative;
+    transition: transform .15s; position: relative;
   }
   .tile:hover { transform: scale(1.15); z-index: 5; }
   .tile .lote-num { font-size: 14px; line-height: 1; }
-  .tile .quadra { font-size: 9px; opacity: .7; margin-top: 1px; }
-  .tile.disponivel { background: #14532d; border-color: #22c55e; color: #4ade80; }
-  .tile.reservado  { background: #78350f; border-color: #f59e0b; color: #fbbf24; }
-  .tile.vendido    { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
-  .tile.entregue   { background: #2e1065; border-color: #8b5cf6; color: #c4b5fd; }
-
+  .tile .quadra   { font-size: 9px; opacity: .7; margin-top: 1px; }
+  .tile.disponivel  { background: #14532d; border-color: #22c55e; color: #4ade80; }
+  .tile.reservado   { background: #78350f; border-color: #f59e0b; color: #fbbf24; }
+  .tile.vendido     { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
+  .tile.entregue    { background: #2e1065; border-color: #8b5cf6; color: #c4b5fd; }
+  .tile.indisponivel { background: #1e293b; border-color: #64748b; color: #94a3b8; }
   .tile .tip2 {
     display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
     background: #1e293b; border: 1px solid #334155; border-radius: 6px;
@@ -84,7 +79,7 @@
   .tile:hover .tip2 { display: block; }
 
   /* Legenda */
-  .legenda { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0 20px; }
+  .legenda { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0 20px; align-items: center; }
   .leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; }
   .leg-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
   .leg-dot.disponivel   { background: #22c55e; }
@@ -92,18 +87,80 @@
   .leg-dot.vendido      { background: #ef4444; }
   .leg-dot.entregue     { background: #8b5cf6; }
   .leg-dot.indisponivel { background: #64748b; }
+  .leg-sim-hint { margin-left: auto; font-size: 11px; color: #475569; display: flex; align-items: center; gap: 5px; }
 
-  .marcador.indisponivel { background: #64748b; }
-  .tile.indisponivel { background: #1e293b; border-color: #64748b; color: #94a3b8; }
-  .resumo-card.indisp .num { color: #94a3b8; }
+  /* Modal de simulação */
+  .sim-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 200;
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+  }
+  .sim-modal {
+    background: #1e293b; border: 1px solid #334155; border-radius: 14px;
+    max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 24px 48px rgba(0,0,0,.6);
+  }
+  .sim-head {
+    padding: 18px 20px 14px; border-bottom: 1px solid #334155;
+    display: flex; justify-content: space-between; align-items: flex-start;
+  }
+  .sim-head-left .sim-title { font-size: 17px; font-weight: 800; color: #f1f5f9; }
+  .sim-head-left .sim-sub   { font-size: 12px; color: #64748b; margin-top: 2px; }
+  .sim-close {
+    background: none; border: none; color: #64748b; font-size: 20px; cursor: pointer;
+    padding: 0 4px; line-height: 1; flex-shrink: 0; margin-left: 12px;
+  }
+  .sim-close:hover { color: #e2e8f0; }
+  .sim-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .sim-info-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+  .sim-info-cell {
+    background: #0f172a; border-radius: 8px; padding: 10px 12px;
+  }
+  .sim-info-cell .lbl { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
+  .sim-info-cell .val { font-size: 15px; font-weight: 700; color: #e2e8f0; }
+  .sim-info-cell .val.price { color: #14b8a6; font-size: 17px; }
+  .sim-section-title {
+    font-size: 11px; color: #64748b; text-transform: uppercase;
+    letter-spacing: .07em; margin-bottom: 8px; font-weight: 600;
+  }
+  .sim-entrada-box {
+    background: #0f172a; border-radius: 8px; padding: 12px 14px;
+  }
+  .sim-entrada-row { display: flex; justify-content: space-between; align-items: baseline; }
+  .sim-entrada-total { font-size: 16px; font-weight: 800; color: #fbbf24; }
+  .sim-entrada-detalhe { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+  .sim-cond-card {
+    background: #0f172a; border-radius: 8px; padding: 12px 14px;
+    border-left: 3px solid #334155;
+  }
+  .sim-cond-card.first { border-left-color: #14b8a6; }
+  .sim-cond-label { font-size: 13px; font-weight: 700; color: #e2e8f0; margin-bottom: 6px; }
+  .sim-cond-rows { display: flex; flex-direction: column; gap: 3px; }
+  .sim-cond-row  { display: flex; justify-content: space-between; font-size: 12px; }
+  .sim-cond-key  { color: #94a3b8; }
+  .sim-cond-val  { color: #e2e8f0; font-weight: 600; }
+  .sim-cond-total-row { display: flex; justify-content: space-between; font-size: 13px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #1e293b; }
+  .sim-cond-total-lbl { color: #64748b; font-weight: 600; }
+  .sim-cond-total-val { color: #e2e8f0; font-weight: 800; }
+  .sim-no-params { background: #0f172a; border-radius: 8px; padding: 14px; font-size: 13px; color: #64748b; text-align: center; }
+  .sim-foot {
+    padding: 14px 20px; border-top: 1px solid #334155;
+    display: flex; gap: 10px; justify-content: flex-end;
+  }
+  .btn-sim { padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
+  .btn-sim.secondary { background: #334155; color: #e2e8f0; }
+  .btn-sim.secondary:hover { background: #475569; }
+  .btn-sim.primary { background: #0d9488; color: #fff; }
+  .btn-sim.primary:hover { background: #0f766e; }
+  .sim-aviso { font-size: 10px; color: #475569; text-align: center; padding: 0 20px 14px; }
 
   /* Contador regressivo */
   .refresh-bar { text-align: center; font-size: 11px; color: #475569; padding: 8px 0 4px; }
   .refresh-bar span { color: #14b8a6; font-weight: 600; }
 
-  /* Estados */
   .loading { text-align: center; padding: 80px 24px; color: #64748b; }
-  .erro { text-align: center; padding: 60px 24px; color: #ef4444; }
+  .erro    { text-align: center; padding: 60px 24px; color: #ef4444; }
 
   @media (max-width: 600px) {
     header { padding: 12px 16px; }
@@ -111,6 +168,7 @@
     main { padding: 0 16px 24px; }
     .tile { width: 46px; height: 46px; }
     .tile .lote-num { font-size: 12px; }
+    .sim-info-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -141,25 +199,258 @@
 
 <script>
 const slug = location.pathname.split('/espelho/')[1]?.split('/')[0];
-let countdown = 15;
-let timer;
+let countdown = 15, timer;
+let _empNome = '';
+let _simParams = null;
 
-const fmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+const fmt  = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
+const fmt0 = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 
 function statusLabel(s) {
   return { disponivel: 'Disponível', reservado: 'Reservado', vendido: 'Vendido', entregue: 'Entregue', indisponivel: 'Indisponível' }[s] || s;
 }
 
+// ── Cálculo PMT (Price) ──────────────────────────────────────────────────────
+function calcPMT(saldo, nParc, juros) {
+  if (saldo <= 0 || nParc <= 0) return 0;
+  if (!juros) return saldo / nParc;
+  const i = juros / 100;
+  return saldo * (i * Math.pow(1+i, nParc)) / (Math.pow(1+i, nParc) - 1);
+}
+
+// ── Simulação ────────────────────────────────────────────────────────────────
+function abrirSimulacao(unitId) {
+  const u = (window._units || []).find(x => x.id === unitId);
+  if (!u) return;
+
+  const p = _simParams;
+  const preco = u.preco;
+
+  // Calcula entrada e condições
+  let entV = 0, entLabel = '', entDetalhe = '';
+  let condsHtml = '';
+
+  if (p && preco) {
+    const entFixo = p.entrada_tipo === 'valor';
+    entV = entFixo ? (p.entrada_valor || 0) : preco * ((p.entrada_pct || 0) / 100);
+    const entParcN = p.entrada_parc || 1;
+    const pctFmt = entFixo ? fmt0.format(entV) : ((p.entrada_pct||0).toFixed(0) + '% — ' + fmt0.format(entV));
+    entLabel = fmt.format(entV);
+    entDetalhe = entParcN > 1
+      ? `${entParcN}× de ${fmt.format(entV / entParcN)}`
+      : 'à vista';
+
+    const totalRef = preco * ((p.pRef || 0) / 100);
+    const saldo = preco - entV - totalRef;
+    const condicoes = p.condicoes || [];
+
+    condsHtml = condicoes.map((c, i) => {
+      const pmv = calcPMT(saldo, c.nParc, c.juros || 0);
+      const totalCond = entV + totalRef + c.nParc * pmv;
+      const semJuros = !c.juros;
+      const chk = semJuros && Math.abs(totalCond - preco) < 1 ? ' ✓' : '';
+      const balaoInfo = totalRef > 0 ? `<div class="sim-cond-row"><span class="sim-cond-key">Balões</span><span class="sim-cond-val">${fmt0.format(totalRef)}</span></div>` : '';
+      return `<div class="sim-cond-card${i === 0 ? ' first' : ''}">
+        <div class="sim-cond-label">${c.label || c.nParc + 'x'} ${c.juros > 0 ? '· ' + c.juros.toFixed(2) + '% a.m.' : '· sem juros'}</div>
+        <div class="sim-cond-rows">
+          ${balaoInfo}
+          <div class="sim-cond-row">
+            <span class="sim-cond-key">${c.nParc}× parcelas</span>
+            <span class="sim-cond-val">${fmt.format(pmv)}/mês</span>
+          </div>
+        </div>
+        <div class="sim-cond-total-row">
+          <span class="sim-cond-total-lbl">Total${chk}</span>
+          <span class="sim-cond-total-val">${fmt0.format(totalCond)}</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  const dispVendido = u.status === 'vendido' || u.status === 'reservado';
+  const statusBadge = dispVendido
+    ? `<span style="background:${u.status==='vendido'?'#7f1d1d':'#78350f'};color:${u.status==='vendido'?'#fca5a5':'#fbbf24'};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${statusLabel(u.status).toUpperCase()}</span>`
+    : '';
+
+  const semParamsHtml = !p || !preco ? `<div class="sim-no-params">
+    ${!preco ? 'Este lote não possui valor cadastrado.' : 'Condições de pagamento ainda não configuradas pelo empreendedor.'}
+  </div>` : '';
+
+  const modalHtml = `<div class="sim-overlay" id="sim-overlay" onclick="if(event.target===this)fecharSimulacao()">
+    <div class="sim-modal">
+      <div class="sim-head">
+        <div class="sim-head-left">
+          <div class="sim-title">Lote ${u.lote}${u.quadra ? ' · Quadra ' + u.quadra : ''} ${statusBadge}</div>
+          <div class="sim-sub">${_empNome}</div>
+        </div>
+        <button class="sim-close" onclick="fecharSimulacao()">✕</button>
+      </div>
+      <div class="sim-body">
+        <div class="sim-info-grid">
+          ${u.area_m2 ? `<div class="sim-info-cell"><div class="lbl">Área</div><div class="val">${Number(u.area_m2).toLocaleString('pt-BR', {minimumFractionDigits:2})} m²</div></div>` : ''}
+          ${preco ? `<div class="sim-info-cell"><div class="lbl">Valor</div><div class="val price">${fmt0.format(preco)}</div></div>` : ''}
+        </div>
+
+        ${p && preco && entV > 0 ? `
+        <div>
+          <div class="sim-section-title">Entrada</div>
+          <div class="sim-entrada-box">
+            <div class="sim-entrada-row">
+              <span style="font-size:13px;color:#94a3b8">Valor da entrada</span>
+              <span class="sim-entrada-total">${entLabel}</span>
+            </div>
+            <div class="sim-entrada-detalhe">${entDetalhe}</div>
+          </div>
+        </div>` : ''}
+
+        ${condsHtml ? `<div><div class="sim-section-title">Condições de Parcelamento</div><div style="display:flex;flex-direction:column;gap:8px">${condsHtml}</div></div>` : semParamsHtml}
+      </div>
+      ${p && preco ? `
+      <div class="sim-foot">
+        <button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button>
+        <button class="btn-sim primary" onclick="gerarPDFSimulacao(${unitId})">🖨️ Gerar PDF</button>
+      </div>
+      <div class="sim-aviso">* Simulação sujeita a alterações. Consulte seu corretor para condições definitivas.</div>` :
+      `<div class="sim-foot"><button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button></div>`}
+    </div>
+  </div>`;
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function fecharSimulacao() {
+  document.getElementById('sim-overlay')?.remove();
+}
+
+// ── PDF por lote ─────────────────────────────────────────────────────────────
+function gerarPDFSimulacao(unitId) {
+  const u = (window._units || []).find(x => x.id === unitId);
+  if (!u) return;
+  const p = _simParams;
+  const preco = u.preco;
+  const hoje = new Date().toLocaleDateString('pt-BR');
+
+  let entV = 0, condsRows = '';
+  if (p && preco) {
+    const entFixo = p.entrada_tipo === 'valor';
+    entV = entFixo ? (p.entrada_valor || 0) : preco * ((p.entrada_pct || 0) / 100);
+    const entParcN = p.entrada_parc || 1;
+    const totalRef = preco * ((p.pRef || 0) / 100);
+    const saldo    = preco - entV - totalRef;
+    const condicoes = p.condicoes || [];
+
+    condsRows = condicoes.map((c, i) => {
+      const pmv = calcPMT(saldo, c.nParc, c.juros || 0);
+      const totalCond = entV + totalRef + c.nParc * pmv;
+      const semJuros  = !c.juros;
+      const chk = semJuros && Math.abs(totalCond - preco) < 1 ? ' ✓' : '';
+      const balaoRow = totalRef > 0 ? `<tr><td>Balões (${((p.pRef||0)).toFixed(0)}%)</td><td>${fmt0.format(totalRef)}</td></tr>` : '';
+      return `
+        <tr class="cond-header ${i===0?'first':''}">
+          <td colspan="2">${c.label || c.nParc + 'x'} — ${c.juros > 0 ? c.juros.toFixed(2) + '% a.m.' : 'sem juros'}</td>
+        </tr>
+        ${balaoRow}
+        <tr><td>${c.nParc} parcelas mensais</td><td>${fmt.format(pmv)}/mês</td></tr>
+        <tr class="total-row"><td>Total${chk}</td><td>${fmt0.format(totalCond)}</td></tr>`;
+    }).join('');
+  }
+
+  const entParcN = p?.entrada_parc || 1;
+  const entDetalhe = entParcN > 1 ? ` — ${entParcN}× de ${fmt.format(entV / entParcN)}` : ' — à vista';
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR"><head>
+<meta charset="UTF-8">
+<title>Simulação — Lote ${u.lote}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; color: #111; padding: 24px 32px; font-size: 13px; }
+  @page { size: A4 portrait; margin: 15mm 18mm; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #111; padding-bottom: 12px; margin-bottom: 20px; }
+  .header-left h1 { font-size: 20px; font-weight: 900; }
+  .header-left p { font-size: 11px; color: #666; margin-top: 3px; }
+  .header-right { text-align: right; }
+  .header-right .data-label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: .05em; }
+  .header-right .data-val { font-size: 13px; font-weight: 700; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 10px; font-weight: 800; background: #166534; color: #fff; margin-left: 8px; vertical-align: middle; }
+  .section { margin-bottom: 20px; }
+  .section-title { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: .07em; font-weight: 700; margin-bottom: 8px; }
+  table { width: 100%; border-collapse: collapse; }
+  table td { padding: 7px 10px; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
+  table td:last-child { text-align: right; font-weight: 700; }
+  .cond-header td { background: #111827; color: #fff; font-weight: 700; font-size: 12px; padding: 6px 10px; }
+  .cond-header.first td { background: #134e4a; }
+  .total-row td { background: #f0fdf4; font-weight: 800; font-size: 14px; border-top: 2px solid #166534; }
+  .footer { margin-top: 32px; padding-top: 10px; border-top: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 10px; color: #888; }
+  .aviso { font-size: 9px; color: #999; margin-top: 8px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-left">
+    <h1>Simulação de Compra <span class="badge">DISPONÍVEL</span></h1>
+    <p>${_empNome} · Gerado em ${hoje}</p>
+  </div>
+  <div class="header-right">
+    <div class="data-label">Lote</div>
+    <div class="data-val">${u.lote}${u.quadra ? ' · Quadra ' + u.quadra : ''}</div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Dados do Lote</div>
+  <table>
+    ${u.quadra ? `<tr><td>Quadra</td><td>${u.quadra}</td></tr>` : ''}
+    <tr><td>Lote</td><td>${u.lote}</td></tr>
+    ${u.area_m2 ? `<tr><td>Área</td><td>${Number(u.area_m2).toLocaleString('pt-BR', {minimumFractionDigits:2})} m²</td></tr>` : ''}
+    ${preco ? `<tr><td style="font-weight:700">Valor do Lote</td><td style="font-size:16px;color:#0d9488">${fmt0.format(preco)}</td></tr>` : ''}
+  </table>
+</div>
+
+${p && preco && entV > 0 ? `
+<div class="section">
+  <div class="section-title">Entrada</div>
+  <table>
+    <tr><td>Valor da entrada${entDetalhe}</td><td style="font-size:15px">${fmt.format(entV)}</td></tr>
+  </table>
+</div>` : ''}
+
+${condsRows ? `
+<div class="section">
+  <div class="section-title">Condições de Parcelamento</div>
+  <table>${condsRows}</table>
+</div>` : ''}
+
+<div class="footer">
+  <span>R2X CRM — Espelho de Vendas</span>
+  <span>${_empNome}</span>
+</div>
+<div class="aviso">* Esta simulação é meramente informativa e sujeita a alteração. Consulte seu corretor para obter as condições definitivas de compra.</div>
+
+<script>window.onload = function() { window.print(); }<\/script>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
+// ── Carregamento principal ───────────────────────────────────────────────────
 async function carregar() {
   try {
-    const r = await fetch(`/api/espelho-publico/${slug}`);
+    const r    = await fetch(`/api/espelho-publico/${slug}`);
     const resp = await r.json();
-    if (!resp.ok) { document.getElementById('conteudo').innerHTML = `<div class="erro">⚠️ ${resp.error}</div>`; return; }
+    if (!resp.ok) {
+      document.getElementById('conteudo').innerHTML = `<div class="erro">⚠️ ${resp.error}</div>`;
+      return;
+    }
 
-    const { empreendimento: emp, imagem, units, resumo, atualizado_em } = resp.data;
+    const { empreendimento: emp, imagem, units, resumo, espelhoParams, atualizado_em } = resp.data;
+    _empNome    = emp.nome + (emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : '');
+    _simParams  = espelhoParams || null;
 
     document.title = `Espelho — ${emp.nome}`;
-    document.getElementById('emp-nome').textContent = emp.nome + (emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : '');
+    document.getElementById('emp-nome').textContent  = _empNome;
     document.getElementById('hora-atual').textContent = new Date(atualizado_em).toLocaleTimeString('pt-BR');
 
     document.getElementById('r-total').textContent = units.length;
@@ -171,46 +462,41 @@ async function carregar() {
         `<div class="resumo-card indisp"><div class="num">${resumo.indisponivel}</div><div class="label">Indisponível</div></div>`);
     }
 
-    // Verifica se alguma unidade tem posição no mapa
+    window._units = units;
     const comPosicao = units.filter(u => u.mapa_x != null && u.mapa_y != null);
     const html = [];
 
-    // Legenda
+    const simHint = _simParams
+      ? `<span class="leg-sim-hint">💡 Clique em um lote para simular</span>`
+      : '';
+
     html.push(`<div class="legenda">
       <div class="leg-item"><div class="leg-dot disponivel"></div>Disponível</div>
       <div class="leg-item"><div class="leg-dot reservado"></div>Reservado</div>
       <div class="leg-item"><div class="leg-dot vendido"></div>Vendido</div>
       <div class="leg-item"><div class="leg-dot entregue"></div>Entregue</div>
       ${resumo.indisponivel ? `<div class="leg-item"><div class="leg-dot indisponivel"></div>Indisponível</div>` : ''}
+      ${simHint}
     </div>`);
 
     if (imagem && comPosicao.length > 0) {
-      // Modo overlay no mapa
       html.push(`<div class="mapa-wrap" id="mapa-wrap">
         <img src="${imagem}" id="mapa-img" alt="Mapa" onload="ajustarMarcadores()">
         <div id="marcadores"></div>
       </div>`);
       document.getElementById('conteudo').innerHTML = html.join('');
-
-      // Renderiza marcadores após imagem carregar
-      window._units = units;
       window._comPosicao = comPosicao;
       ajustarMarcadores();
-
     } else {
-      // Modo grade de tiles (sem posições ou sem imagem)
       if (imagem) {
         html.push(`<div style="margin-bottom:20px"><img src="${imagem}" style="width:100%;max-width:1100px;border-radius:12px;display:block" alt="Mapa"></div>`);
       }
-
-      // Agrupar por quadra
       const quadras = {};
       for (const u of units) {
         const q = u.quadra || '—';
         if (!quadras[q]) quadras[q] = [];
         quadras[q].push(u);
       }
-
       html.push(`<div class="grade-section">`);
       for (const [q, lotes] of Object.entries(quadras)) {
         if (Object.keys(quadras).length > 1) {
@@ -222,10 +508,10 @@ async function carregar() {
             u.quadra ? `Quadra ${u.quadra}` : '',
             `Lote ${u.lote}`,
             u.area_m2 ? `${u.area_m2}m²` : '',
-            u.preco ? fmt.format(u.preco) : '',
+            u.preco ? fmt0.format(u.preco) : '',
             statusLabel(u.status)
           ].filter(Boolean).join('<br>');
-          html.push(`<div class="tile ${u.status}" title="${statusLabel(u.status)}">
+          html.push(`<div class="tile ${u.status}" onclick="abrirSimulacao(${u.id})" title="Clique para simular">
             <div class="lote-num">${u.lote}</div>
             ${u.quadra ? `<div class="quadra">Q${u.quadra}</div>` : ''}
             <div class="tip2">${tipInfo}</div>
@@ -260,17 +546,16 @@ function ajustarMarcadores() {
       u.quadra ? `Quadra ${u.quadra}` : '',
       `Lote ${u.lote}`,
       u.area_m2 ? `${u.area_m2}m²` : '',
-      u.preco ? fmt.format(u.preco) : '',
+      u.preco ? fmt0.format(u.preco) : '',
       statusLabel(u.status)
     ].filter(Boolean).join('<br>');
-    html.push(`<div class="marcador ${u.status}" style="left:${x}px;top:${y}px">
+    html.push(`<div class="marcador ${u.status}" style="left:${x}px;top:${y}px" onclick="abrirSimulacao(${u.id})">
       ${u.lote}
       <div class="tip">${tipInfo}</div>
     </div>`);
   }
   cont.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none';
   cont.innerHTML = html.join('');
-  // Ativa pointer-events nos marcadores
   cont.querySelectorAll('.marcador').forEach(m => m.style.pointerEvents = 'auto');
 }
 
@@ -281,10 +566,7 @@ function iniciarContador() {
   timer = setInterval(() => {
     countdown--;
     document.getElementById('countdown').textContent = countdown;
-    if (countdown <= 0) {
-      clearInterval(timer);
-      carregar().then(iniciarContador);
-    }
+    if (countdown <= 0) { clearInterval(timer); carregar().then(iniciarContador); }
   }, 1000);
 }
 
