@@ -9100,10 +9100,12 @@ async function gerarTabelaVendas(empId, params, emp) {
   // Cabeçalho de entrada
   const entFixo  = params.entrada_tipo === 'valor';
   const entParcN = params.entrada_parc || 1;
+  // Para loteamento com entrada fixa: sub-info fica só no cabeçalho (célula singleline)
+  const entSingleLine = isLoteamento && entFixo && entParcN > 1;
   let entradaSubHd;
   if (entFixo) {
     entradaSubHd = entParcN > 1
-      ? `R$ ${(params.entrada_valor||0).toLocaleString('pt-BR')} · ${entParcN}x`
+      ? `R$ ${(params.entrada_valor||0).toLocaleString('pt-BR')} · ${entParcN}x R$ ${((params.entrada_valor||0)/entParcN).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`
       : `R$ ${(params.entrada_valor||0).toLocaleString('pt-BR')} · à vista`;
   } else {
     entradaSubHd = entParcN > 1
@@ -9133,7 +9135,7 @@ async function gerarTabelaVendas(empId, params, emp) {
       const saldo    = P - entV - totalRef;
 
       // Célula entrada
-      if (entParcN > 1) {
+      if (entParcN > 1 && !entSingleLine) {
         const parcEnt = entV / entParcN;
         entCell = `${fmt2(entV)}<br><span style="font-size:9px;color:#6b7280">${entParcN}x ${fmt2(parcEnt)}</span>`;
       } else {
@@ -9141,16 +9143,18 @@ async function gerarTabelaVendas(empId, params, emp) {
       }
       refCell = nRef > 0 ? fmt2(refVal) : '—';
 
+      const cp = isLoteamento ? '2px 4px' : '5px 10px';
       // Células por condição
       condCells = condicoes.map(c => {
         const pmv = calcPMT(saldo, c.nParc, c.juros);
         const totalC = entV + totalRef + c.nParc * pmv;
         const ok = !c.juros && Math.abs(totalC - P) < 0.10;
         const chk = !c.juros ? `<span style="font-size:9px;color:${ok?'#166534':'#991b1b'};font-weight:700">${ok?'✓':'⚠'}</span>` : '';
-        return `<td style="padding:5px 10px;font-size:12px;font-weight:700;text-align:right;white-space:nowrap">${fmt2(pmv)} ${chk}</td>`;
+        return `<td style="padding:${cp};font-size:${isLoteamento?'10px':'12px'};font-weight:700;text-align:right;white-space:nowrap">${fmt2(pmv)} ${chk}</td>`;
       }).join('');
     } else {
-      condCells = condicoes.map(() => `<td style="padding:5px 10px;text-align:right;color:#9ca3af">—</td>`).join('');
+      const cp = isLoteamento ? '2px 4px' : '5px 10px';
+      condCells = condicoes.map(() => `<td style="padding:${cp};text-align:right;color:#9ca3af">—</td>`).join('');
     }
 
     const st       = u.status || 'disponivel';
@@ -9175,14 +9179,14 @@ async function gerarTabelaVendas(empId, params, emp) {
     if (isLoteamento) {
       // Loteamento: Quadra | Lote (grande) | Área | Valor | Entrada | Balões | Condições | Status
       return `<tr style="${rowStyle}">
-        <td style="padding:5px 10px;font-size:11px;white-space:nowrap;${textColor};${textDeco}">${q}</td>
-        <td style="padding:5px 10px;font-size:16px;font-weight:900;white-space:nowrap;color:${numColor};${textDeco}">${num}</td>
-        <td style="padding:5px 10px;font-size:12px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${fmtN(u.area_m2)}</td>
-        <td style="padding:5px 10px;font-size:13px;font-weight:800;text-align:right;white-space:nowrap;color:${numColor};${textDeco}">${fmt2(P)}</td>
-        <td style="padding:5px 10px;font-size:12px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${entCell}</td>
-        ${nRef>0?`<td style="padding:5px 10px;font-size:12px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${refCell}</td>`:''}
+        <td style="padding:2px 4px;font-size:9px;white-space:nowrap;${textColor};${textDeco}">${q}</td>
+        <td style="padding:2px 4px;font-size:12px;font-weight:900;white-space:nowrap;color:${numColor};${textDeco}">${num}</td>
+        <td style="padding:2px 4px;font-size:9px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${fmtN(u.area_m2)}</td>
+        <td style="padding:2px 4px;font-size:10px;font-weight:800;text-align:right;white-space:nowrap;color:${numColor};${textDeco}">${fmt2(P)}</td>
+        <td style="padding:2px 4px;font-size:10px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${entCell}</td>
+        ${nRef>0?`<td style="padding:2px 4px;font-size:10px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${refCell}</td>`:''}
         ${condCells}
-        <td style="padding:5px 10px;text-align:center">${badge}</td>
+        <td style="padding:2px 4px;text-align:center">${badge}</td>
       </tr>`;
     } else {
       // Prédio: Andar | Unidade | Tipologia | Área | Valor | Entrada | Balões | Condições | Status
@@ -9219,27 +9223,27 @@ async function gerarTabelaVendas(empId, params, emp) {
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, Helvetica, sans-serif; background: #fff; color: #111; padding: 0; }
-  @page { size: A4 landscape; margin: ${isLoteamento ? '5mm 7mm' : '8mm 10mm'}; }
+  @page { size: A4 landscape; margin: ${isLoteamento ? '3mm 5mm' : '8mm 10mm'}; }
   @media print { .no-print { display: none !important; } }
 
-  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: ${isLoteamento ? '5px' : '10px'}; padding-bottom: ${isLoteamento ? '5px' : '8px'}; border-bottom: 2px solid #111; }
-  .header-left h1 { font-size: ${isLoteamento ? '14px' : '17px'}; font-weight: 900; letter-spacing: -.5px; }
-  .header-left p  { font-size: ${isLoteamento ? '8px' : '10px'}; color: #6b7280; margin-top: 2px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: ${isLoteamento ? '3px' : '10px'}; padding-bottom: ${isLoteamento ? '3px' : '8px'}; border-bottom: 2px solid #111; }
+  .header-left h1 { font-size: ${isLoteamento ? '11px' : '17px'}; font-weight: 900; letter-spacing: -.5px; }
+  .header-left p  { font-size: ${isLoteamento ? '7px' : '10px'}; color: #6b7280; margin-top: 1px; }
   .header-right   { text-align: right; }
-  .header-right .data  { font-size: ${isLoteamento ? '12px' : '15px'}; font-weight: 900; color: #111; }
-  .header-right .titulo { font-size: 8px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
+  .header-right .data  { font-size: ${isLoteamento ? '10px' : '15px'}; font-weight: 900; color: #111; }
+  .header-right .titulo { font-size: ${isLoteamento ? '7px' : '8px'}; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
 
   table { width: 100%; border-collapse: collapse; font-size: ${isLoteamento ? '8px' : '10.5px'}; }
-  thead th { background: #111827; color: #fff; padding: ${isLoteamento ? '4px 6px 3px' : '7px 8px 6px'}; font-size: ${isLoteamento ? '7.5px' : '9.5px'}; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; vertical-align: bottom; }
-  thead th .sub { display: block; font-size: ${isLoteamento ? '7px' : '8.5px'}; font-weight: 400; opacity: .65; text-transform: none; letter-spacing: 0; margin-top: 1px; }
+  thead th { background: #111827; color: #fff; padding: ${isLoteamento ? '3px 4px 2px' : '7px 8px 6px'}; font-size: ${isLoteamento ? '7px' : '9.5px'}; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; vertical-align: bottom; }
+  thead th .sub { display: block; font-size: ${isLoteamento ? '6.5px' : '8.5px'}; font-weight: 400; opacity: .65; text-transform: none; letter-spacing: 0; margin-top: 0; }
   thead th.right  { text-align: right; }
   thead th.center { text-align: center; }
   tbody tr { line-height: 1; }
 
-  .resumo { display: flex; gap: 6px; margin-top: ${isLoteamento ? '5px' : '8px'}; }
-  .resumo-card { flex: 1; border: 1px solid #e5e7eb; border-radius: 4px; padding: ${isLoteamento ? '3px 6px' : '5px 10px'}; text-align: center; }
-  .resumo-card .val { font-size: ${isLoteamento ? '12px' : '15px'}; font-weight: 900; }
-  .resumo-card .lbl { font-size: 7px; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-top: 1px; }
+  .resumo { display: flex; gap: 4px; margin-top: ${isLoteamento ? '3px' : '8px'}; }
+  .resumo-card { flex: 1; border: 1px solid #e5e7eb; border-radius: 4px; padding: ${isLoteamento ? '2px 4px' : '5px 10px'}; text-align: center; }
+  .resumo-card .val { font-size: ${isLoteamento ? '10px' : '15px'}; font-weight: 900; }
+  .resumo-card .lbl { font-size: ${isLoteamento ? '6px' : '7px'}; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-top: 1px; }
   .resumo-card.green  { border-color: #bbf7d0; background: #f0fdf4; }
   .resumo-card.green .val  { color: #166534; }
   .resumo-card.yellow { border-color: #fde68a; background: #fefce8; }
