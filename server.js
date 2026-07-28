@@ -6819,4 +6819,23 @@ app.get('/api/caixa/conciliar', autenticar, (req, res) => {
 
 // ─── START ────────────────────────────────────────────────────────────────────
 
+// ─── ROLLBACK TEMPORÁRIO ──────────────────────────────────────────────────────
+app.get('/api/admin/rollback-unidades/:empId', autenticar, (req, res) => {
+  const empId = parseInt(req.params.empId);
+  const n = parseInt(req.query.n) || 50;
+  const emp = db.prepare('SELECT id, nome FROM empreendimentos WHERE id=?').get(empId);
+  if (!emp) return err(res, 'Empreendimento não encontrado', 404);
+  const units = db.prepare(`SELECT id, quadra, lote, status, preco FROM unidades WHERE empreendimento_id=? ORDER BY id DESC LIMIT ?`).all(empId, n);
+  ok(res, { empreendimento: emp.nome, total_mostrado: units.length, aviso: 'Confirme os IDs e use DELETE /api/admin/rollback-unidades/:empId com body {ids:[...]}', units });
+});
+app.delete('/api/admin/rollback-unidades/:empId', autenticar, (req, res) => {
+  const empId = parseInt(req.params.empId);
+  const ids = req.body.ids;
+  if (!Array.isArray(ids) || ids.length === 0) return err(res, 'Informe ids[]', 400);
+  const placeholders = ids.map(() => '?').join(',');
+  const info = db.prepare(`DELETE FROM unidades WHERE empreendimento_id=? AND id IN (${placeholders})`).run(empId, ...ids);
+  ok(res, { deletados: info.changes });
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.listen(PORT, () => console.log(`CRM R2X rodando em http://localhost:${PORT}`));
