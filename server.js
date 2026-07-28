@@ -6819,6 +6819,27 @@ app.get('/api/caixa/conciliar', autenticar, (req, res) => {
 
 // ─── START ────────────────────────────────────────────────────────────────────
 
+// ─── DELETE EM LOTE DE UNIDADES ──────────────────────────────────────────────
+app.delete('/api/empreendimentos/:id/unidades/bulk', autenticar, (req, res) => {
+  const empId = parseInt(req.params.id);
+  const ids = req.body.ids;
+  if (!Array.isArray(ids) || ids.length === 0) return err(res, 'Informe ids[]', 400);
+  // Garante que só deleta unidades desse empreendimento e sem vendas ativas
+  const comVenda = db.prepare(`
+    SELECT u.id FROM unidades u
+    JOIN vendas v ON v.unidade_id = u.id AND v.status NOT IN ('distrato','cancelado')
+    WHERE u.empreendimento_id = ? AND u.id IN (${ids.map(()=>'?').join(',')})
+  `).all(empId, ...ids);
+  if (comVenda.length > 0) {
+    return err(res, `${comVenda.length} unidade(s) possuem vendas ativas e não podem ser excluídas`, 400);
+  }
+  const info = db.prepare(
+    `DELETE FROM unidades WHERE empreendimento_id=? AND id IN (${ids.map(()=>'?').join(',')})`
+  ).run(empId, ...ids);
+  const stats = db.prepare('SELECT COUNT(*) as total, COALESCE(SUM(preco),0) as vgv FROM unidades WHERE empreendimento_id=?').get(empId);
+  ok(res, { deletados: info.changes, total_restante: stats.total });
+});
+
 // ─── ROLLBACK TEMPORÁRIO ──────────────────────────────────────────────────────
 app.get('/api/admin/rollback-unidades/:empId', autenticar, (req, res) => {
   const empId = parseInt(req.params.empId);

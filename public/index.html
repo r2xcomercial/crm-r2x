@@ -8464,6 +8464,13 @@ async function verEspelho(empId) {
         <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" style="display:none" onchange="analisarPlanta(this,${empId},'${(emp.nome||'').replace(/'/g,"\\'")}')">
       </label>
       <button class="btn btn-secondary" onclick="gerenciarEspelhoPublico(${empId})" style="font-size:12px;padding:6px 12px;color:#a78bfa;border-color:rgba(167,139,250,.4)" title="Gerar link público do espelho de vendas">🔗 Link Público</button>
+      <button id="btn-selecionar-unds" class="btn btn-secondary" onclick="toggleModoSelecao(${empId})" style="font-size:12px;padding:6px 12px;color:#fb923c;border-color:rgba(251,146,60,.4)" title="Selecionar múltiplas unidades para excluir">☑ Selecionar</button>
+    </div>
+    <div id="sel-bar" style="display:none;position:sticky;top:0;z-index:50;background:#7f1d1d;border:1px solid #ef4444;border-radius:10px;padding:10px 16px;margin-bottom:12px;display:none;align-items:center;gap:12px;flex-wrap:wrap">
+      <span id="sel-count" style="font-weight:700;color:#fca5a5;font-size:13px">0 selecionadas</span>
+      <button onclick="excluirSelecionadas(${empId})" style="background:#ef4444;color:#fff;border:none;border-radius:7px;padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer">🗑 Excluir selecionadas</button>
+      <button onclick="selecionarTodasVisiveis()" style="background:rgba(239,68,68,.2);color:#fca5a5;border:1px solid rgba(239,68,68,.4);border-radius:7px;padding:6px 14px;font-size:12px;cursor:pointer">Selecionar todas visíveis</button>
+      <button onclick="toggleModoSelecao(${empId})" style="background:transparent;color:#94a3b8;border:1px solid var(--border);border-radius:7px;padding:6px 14px;font-size:12px;cursor:pointer">Cancelar</button>
     </div>
 
     <!-- Barra VSO (somente admin) -->
@@ -8579,7 +8586,7 @@ function renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId) {
             const tileNum  = dashIdx > -1 ? u.lote.slice(0, dashIdx) : u.lote;
             const tileSub  = dashIdx > -1 ? u.lote.slice(dashIdx + 3) : '';
             return `
-            <div class="espelho-tile ${u.status}" onclick="abrirUnidade(${u.id},${empId})"
+            <div class="espelho-tile ${u.status}" data-uid="${u.id}" onclick="abrirUnidade(${u.id},${empId})"
               title="${lblB} ${u.lote}${u.area_m2?' · '+u.area_m2+'m²':''}${u.preco?' · '+fmtPlain(u.preco):''}${u.num_vagas?' · '+u.num_vagas+' vaga(s)':''}">
               <div class="tile-num">${tileNum}</div>
               ${tileSub ? `<div class="tile-area" style="font-size:8px;opacity:.6;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${tileSub}</div>` : ''}
@@ -8665,7 +8672,7 @@ function renderEspelhoPredio(grupoKeys, grupos, empId) {
       const tooltip = `${andLabel} andar · Apto ${num}${tooltipTip}${u.area_m2 ? ' · ' + u.area_m2 + 'm²' : ''}${u.preco ? ' · ' + fmtPlain(u.preco) : ''}`;
       return `<td style="padding:2px 3px">
         <div onclick="abrirUnidade(${u.id},${empId})" title="${tooltip}"
-          class="espelho-tile ${u.status || 'disponivel'}">
+          data-uid="${u.id}" class="espelho-tile ${u.status || 'disponivel'}">
           <div class="tile-num" style="color:${clr}">${num}</div>
           ${tip ? `<div class="tile-tip">${tip}</div>` : ''}
           ${u.area_m2 ? `<div class="tile-area">${u.area_m2}m²</div>` : ''}
@@ -8709,6 +8716,81 @@ function filtrarEspelho() {
       sec.style.display = (!val || sec.dataset.grupo === val) ? '' : 'none';
     });
   }
+}
+
+// ─── SELEÇÃO MÚLTIPLA DE UNIDADES ────────────────────────────────────────────
+let _modoSelecao = false;
+let _selecionadas = new Set();
+
+function toggleModoSelecao(empId) {
+  _modoSelecao = !_modoSelecao;
+  _selecionadas.clear();
+  const btn = document.getElementById('btn-selecionar-unds');
+  const bar = document.getElementById('sel-bar');
+  if (_modoSelecao) {
+    if (btn) { btn.style.background = 'rgba(251,146,60,.25)'; btn.textContent = '✕ Cancelar seleção'; }
+    if (bar) bar.style.display = 'flex';
+    _ativarTilesSelecao(empId);
+  } else {
+    if (btn) { btn.style.background = ''; btn.textContent = '☑ Selecionar'; }
+    if (bar) bar.style.display = 'none';
+    _ativarTilesSelecao(empId);
+  }
+  _atualizarBarraSel();
+}
+
+function _ativarTilesSelecao(empId) {
+  document.querySelectorAll('.espelho-tile').forEach(el => {
+    el.onclick = _modoSelecao
+      ? () => _toggleTile(el)
+      : () => { const id = parseInt(el.dataset.uid); if (id) abrirUnidade(id, empId); };
+    if (!_modoSelecao) { el.classList.remove('sel-tile'); el.style.outline = ''; }
+  });
+}
+
+function _toggleTile(el) {
+  const id = parseInt(el.dataset.uid);
+  if (!id) return;
+  if (_selecionadas.has(id)) {
+    _selecionadas.delete(id);
+    el.classList.remove('sel-tile');
+    el.style.outline = '';
+  } else {
+    _selecionadas.add(id);
+    el.classList.add('sel-tile');
+    el.style.outline = '2.5px solid #ef4444';
+    el.style.outlineOffset = '2px';
+  }
+  _atualizarBarraSel();
+}
+
+function _atualizarBarraSel() {
+  const el = document.getElementById('sel-count');
+  if (el) el.textContent = `${_selecionadas.size} unidade${_selecionadas.size !== 1 ? 's' : ''} selecionada${_selecionadas.size !== 1 ? 's' : ''}`;
+}
+
+function selecionarTodasVisiveis() {
+  document.querySelectorAll('.espelho-tile:not([style*="display: none"])').forEach(el => {
+    const id = parseInt(el.dataset.uid);
+    if (!id) return;
+    _selecionadas.add(id);
+    el.classList.add('sel-tile');
+    el.style.outline = '2.5px solid #ef4444';
+    el.style.outlineOffset = '2px';
+  });
+  _atualizarBarraSel();
+}
+
+async function excluirSelecionadas(empId) {
+  if (_selecionadas.size === 0) return toast('Nenhuma unidade selecionada', 'error');
+  const ids = [..._selecionadas];
+  if (!confirm(`Excluir ${ids.length} unidade(s) permanentemente? Esta ação não pode ser desfeita.`)) return;
+  const r = await api('DELETE', `/api/empreendimentos/${empId}/unidades/bulk`, { ids });
+  if (!r.ok) return toast(r.error || 'Erro ao excluir', 'error');
+  toast(`${r.data.deletados} unidade(s) excluída(s)`);
+  _modoSelecao = false;
+  _selecionadas.clear();
+  verEspelho(empId);
 }
 
 // ─── REAJUSTE DE TABELA DE PREÇOS ────────────────────────────────────────────
