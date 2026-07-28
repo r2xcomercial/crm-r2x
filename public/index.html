@@ -8309,77 +8309,104 @@ function exportarMapaJPG() {
 
   const W = imgEl.naturalWidth;
   const H = imgEl.naturalHeight;
-  const sz = _mapaMarkerSize;  // tamanho base dos marcadores (px a 100%)
+  const sz = _mapaMarkerSize;
   const fs = Math.round(Math.max(6, sz * 0.42));
 
+  // Contagens
+  const cnt = { disponivel:0, reservado:0, vendido:0, indisponivel:0 };
+  Object.values(_mapaUnits).forEach(u => { cnt[u.status] = (cnt[u.status]||0)+1; });
+  const total   = Object.values(_mapaUnits).length;
+  const vsoBase = total - (cnt.indisponivel||0);
+  const vsoNum  = vsoBase > 0 ? ((cnt.vendido + cnt.reservado) / vsoBase * 100).toFixed(1) : '0.0';
+  const emp     = (currentData.emp||[]).find(e => e.id === _mapaEmpId);
+  const empNome = emp?.nome || '';
+
+  // Painel de legenda na base (~12% da altura)
+  const panH = Math.round(H * 0.12);
+
+  // Canvas com tamanho final correto desde o início
+  const canvas = document.createElement('canvas');
+  canvas.width  = W;
+  canvas.height = H + panH;
+  const ctx = canvas.getContext('2d');
+
+  // ── 1. Imagem de fundo ──────────────────────────────────────────────────────
+  ctx.drawImage(imgEl, 0, 0, W, H);
+
+  // ── 2. Marcadores ──────────────────────────────────────────────────────────
   const statusFill   = { disponivel:'rgba(34,197,94,.78)', reservado:'rgba(245,158,11,.88)', vendido:'rgba(239,68,68,.9)', indisponivel:'rgba(100,116,139,.65)' };
   const statusStroke = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#ef4444', indisponivel:'#64748b' };
 
-  const canvas = document.createElement('canvas');
-  canvas.width  = W;
-  canvas.height = H;
-  const ctx = canvas.getContext('2d');
-
-  // Desenha imagem de fundo
-  ctx.drawImage(imgEl, 0, 0, W, H);
-
-  // Desenha cada marcador posicionado
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
   ctx.font         = `800 ${fs}px "Segoe UI", system-ui, sans-serif`;
-
   Object.entries(_posicoes).forEach(([idStr, pos]) => {
     const u = _mapaUnits[parseInt(idStr)];
     if (!u) return;
     const cx = (pos.x / 100) * W;
     const cy = (pos.y / 100) * H;
     const r  = sz / 2;
-
-    // Círculo preenchido
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = statusFill[u.status] || 'rgba(148,163,184,.5)';
-    ctx.fill();
-    // Borda
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = statusFill[u.status] || 'rgba(148,163,184,.5)'; ctx.fill();
     ctx.strokeStyle = statusStroke[u.status] || '#94a3b8';
-    ctx.lineWidth   = Math.max(1, sz * 0.07);
-    ctx.stroke();
-
-    // Texto (lote sem zeros à esquerda)
+    ctx.lineWidth = Math.max(1, sz * 0.07); ctx.stroke();
     const label = /^\d+$/.test(u.lote) ? String(parseInt(u.lote, 10)) : u.lote;
-    ctx.shadowColor   = 'rgba(0,0,0,.75)';
-    ctx.shadowBlur    = 3;
-    ctx.fillStyle     = '#ffffff';
-    ctx.fillText(label, cx, cy);
-    ctx.shadowBlur    = 0;
+    ctx.shadowColor = 'rgba(0,0,0,.75)'; ctx.shadowBlur = 3;
+    ctx.fillStyle = '#ffffff'; ctx.fillText(label, cx, cy);
+    ctx.shadowBlur = 0;
   });
 
-  // Legenda no rodapé
-  const legH = Math.round(H * 0.038);
-  const pad  = Math.round(legH * 0.35);
-  const legY = H - legH;
-  ctx.fillStyle = 'rgba(0,0,0,.52)';
-  ctx.fillRect(0, legY, W, legH);
+  // ── 3. Painel de legenda ───────────────────────────────────────────────────
+  // Fundo navy
+  ctx.fillStyle = '#0d1b2e';
+  ctx.fillRect(0, H, W, panH);
+  // Linha teal no topo do painel
+  ctx.fillStyle = '#00c4b4';
+  ctx.fillRect(0, H, W, Math.round(panH * 0.025));
 
-  const items = [
-    { cor: '#22c55e', label: 'Disponível' },
-    { cor: '#f59e0b', label: 'Reservado' },
-    { cor: '#ef4444', label: 'Vendido' },
-    { cor: '#64748b', label: 'Indisponível' },
-  ];
-  const flegFs = Math.round(legH * 0.38);
-  ctx.font = `600 ${flegFs}px "Segoe UI", system-ui, sans-serif`;
+  const pad = Math.round(panH * 0.13);
+
+  // Nome (esquerda)
+  ctx.textAlign    = 'left';
   ctx.textBaseline = 'middle';
-  const cy2 = legY + legH / 2;
-  let x = pad;
-  items.forEach(item => {
-    const r2 = flegFs * 0.45;
-    ctx.beginPath(); ctx.arc(x + r2, cy2, r2, 0, Math.PI * 2);
-    ctx.fillStyle = item.cor; ctx.fill();
-    x += r2 * 2 + pad * 0.6;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(item.label, x, cy2);
-    x += ctx.measureText(item.label).width + pad * 1.6;
+  ctx.font      = `800 ${Math.round(panH * 0.22)}px "Segoe UI", system-ui, sans-serif`;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(empNome, pad, H + panH * 0.35);
+  // VSO
+  ctx.font      = `400 ${Math.round(panH * 0.16)}px "Segoe UI", system-ui, sans-serif`;
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText(`VSO ${vsoNum}% absorvido`, pad, H + panH * 0.68);
+
+  // Cards (direita)
+  const cards = [
+    { label:'TOTAL',      num: total,          cor:'#e2e8f0' },
+    { label:'DISPONÍVEL', num: cnt.disponivel, cor:'#22c55e' },
+    { label:'RESERVADO',  num: cnt.reservado,  cor:'#f59e0b' },
+    { label:'VENDIDO',    num: cnt.vendido,    cor:'#ef4444' },
+  ];
+  if (cnt.indisponivel > 0) cards.push({ label:'INDISPONÍVEL', num: cnt.indisponivel, cor:'#64748b' });
+
+  const cardW   = Math.round(W * 0.095);
+  const cardH   = Math.round(panH * 0.72);
+  const cardGap = Math.round(W * 0.012);
+  let cardX = W - pad - (cards.length * cardW + (cards.length - 1) * cardGap);
+  const cardY   = H + Math.round((panH - cardH) / 2);
+  const numFsz  = Math.round(cardH * 0.40);
+  const labFsz  = Math.round(cardH * 0.17);
+  const radius  = Math.round(cardH * 0.1);
+
+  cards.forEach(card => {
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.beginPath(); ctx.roundRect(cardX, cardY, cardW, cardH, radius); ctx.fill();
+    ctx.fillStyle = card.cor;
+    ctx.fillRect(cardX + radius, cardY, cardW - radius * 2, Math.round(cardH * 0.04));
+    ctx.font = `800 ${numFsz}px "Segoe UI", system-ui, sans-serif`;
+    ctx.fillStyle = card.cor; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(card.num), cardX + cardW / 2, cardY + cardH * 0.44);
+    ctx.font = `600 ${labFsz}px "Segoe UI", system-ui, sans-serif`;
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(card.label, cardX + cardW / 2, cardY + cardH * 0.76);
+    cardX += cardW + cardGap;
   });
 
   // Download
