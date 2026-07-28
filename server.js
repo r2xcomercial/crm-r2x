@@ -459,7 +459,7 @@ app.get("/api/empreendimentos/:id/unidades", (req, res) => {
       (SELECT COUNT(*) FROM vagas_garagem vg WHERE vg.unidade_id = u.id) as num_vagas
     FROM unidades u
     WHERE u.empreendimento_id = ?
-    ORDER BY u.quadra, u.lote
+    ORDER BY CAST(u.quadra AS REAL), CAST(REPLACE(u.lote,'-',' ') AS REAL), u.lote
   `).all(req.params.id);
   ok(res, rows);
 });
@@ -3668,7 +3668,7 @@ app.get('/api/espelho-publico/:slug', (req, res) => {
   const units = db.prepare(`
     SELECT u.id, u.quadra, u.lote, u.area_m2, u.preco, u.status, u.mapa_x, u.mapa_y,
       (SELECT COUNT(*) FROM vendas v WHERE v.unidade_id=u.id AND v.status NOT IN ('distrato','cancelado')) as tem_venda
-    FROM unidades u WHERE u.empreendimento_id=? ORDER BY u.quadra, u.lote
+    FROM unidades u WHERE u.empreendimento_id=? ORDER BY CAST(u.quadra AS REAL), CAST(REPLACE(u.lote,'-',' ') AS REAL), u.lote
   `).all(emp.id);
   const resumo = units.reduce((acc, u) => {
     acc[u.status] = (acc[u.status] || 0) + 1;

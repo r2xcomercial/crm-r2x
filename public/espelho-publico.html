@@ -590,6 +590,16 @@ async function carregar() {
       if (indispCard) indispCard.style.display = 'none';
     }
 
+    const sortNum = (a, b) => {
+      const qa = String(a.quadra||''), qb = String(b.quadra||'');
+      const qna = parseFloat(qa), qnb = parseFloat(qb);
+      const qcmp = (!isNaN(qna) && !isNaN(qnb)) ? qna - qnb : qa.localeCompare(qb, 'pt-BR', {numeric:true});
+      if (qcmp !== 0) return qcmp;
+      const la = parseFloat(String(a.lote||'').replace(/\D.*$/,'')) || 0;
+      const lb = parseFloat(String(b.lote||'').replace(/\D.*$/,'')) || 0;
+      return la !== lb ? la - lb : String(a.lote||'').localeCompare(String(b.lote||''), 'pt-BR', {numeric:true});
+    };
+    units.sort(sortNum);
     window._units = units;
     const comPosicao = units.filter(u => u.mapa_x != null && u.mapa_y != null);
     const html = [];
