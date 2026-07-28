@@ -34,8 +34,9 @@
   main { padding: 0 24px 32px; }
 
   /* Mapa com overlay */
-  .mapa-wrap { position: relative; display: inline-block; max-width: 100%; }
-  .mapa-wrap img { width: 100%; max-width: 1100px; display: block; border-radius: 12px; }
+  .mapa-outer { overflow: auto; width: 100%; -webkit-overflow-scrolling: touch; border-radius: 12px; }
+  .mapa-wrap { position: relative; display: inline-block; width: 100%; min-width: 100%; }
+  .mapa-wrap img { width: 100%; display: block; border-radius: 12px; user-select: none; -webkit-user-drag: none; }
   .marcador {
     position: absolute; transform: translate(-50%, -50%);
     width: 22px; height: 22px; border-radius: 50%;
@@ -320,7 +321,7 @@ function abrirSimulacao(unitId) {
         <button class="btn-sim primary" onclick="gerarPDFSimulacao(${unitId})">🖨️ PDF</button>
         ${propostaBtn}
       </div>
-      <div class="sim-aviso">* Simulação sujeita a alterações. Consulte seu corretor.</div>
+      <div class="sim-aviso">* Simulação sujeita a alterações. Consulte a equipe da R2X.</div>
       </div>
       <div id="sim-screen-2" style="display:none">
         <div class="sim-body" style="border-top:1px solid #334155">
@@ -554,7 +555,7 @@ ${condsRows ? `
   <span>R2X CRM — Espelho de Vendas</span>
   <span>${_empNome}</span>
 </div>
-<div class="aviso">* Esta simulação é meramente informativa e sujeita a alteração. Consulte seu corretor para obter as condições definitivas de compra.</div>
+<div class="aviso">* Esta simulação é meramente informativa e sujeita a alteração. Consulte a equipe da R2X para obter as condições definitivas de compra.</div>
 
 <script>window.onload = function() { window.print(); }<\/script>
 </body></html>`;
@@ -628,13 +629,16 @@ async function carregar() {
     </div>`);
 
     if (imagem && comPosicao.length > 0) {
-      html.push(`<div class="mapa-wrap" id="mapa-wrap">
-        <img src="${imagem}" id="mapa-img" alt="Mapa" onload="ajustarMarcadores()">
-        <div id="marcadores"></div>
+      html.push(`<div class="mapa-outer" id="mapa-outer">
+        <div class="mapa-wrap" id="mapa-wrap">
+          <img src="${imagem}" id="mapa-img" alt="Mapa" onload="ajustarMarcadores()">
+          <div id="marcadores"></div>
+        </div>
       </div>`);
       document.getElementById('conteudo').innerHTML = html.join('');
       window._comPosicao = comPosicao;
       ajustarMarcadores();
+      initMapaPinchZoom();
     } else {
       if (imagem) {
         html.push(`<div style="margin-bottom:20px"><img src="${imagem}" style="width:100%;max-width:1100px;border-radius:12px;display:block" alt="Mapa"></div>`);
@@ -708,6 +712,75 @@ function ajustarMarcadores() {
   cont.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none';
   cont.innerHTML = html.join('');
   cont.querySelectorAll('.marcador').forEach(m => m.style.pointerEvents = 'auto');
+}
+
+let _mapaScale = 1;
+
+function initMapaPinchZoom() {
+  const outer = document.getElementById('mapa-outer');
+  const wrap  = document.getElementById('mapa-wrap');
+  if (!outer || !wrap) return;
+  _mapaScale = 1;
+
+  let pinchDist0 = null, scale0 = 1;
+  let panStart = null, scrollStart = null;
+
+  function getDist(t) {
+    return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  }
+  function getMid(t) {
+    return { x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 };
+  }
+  function applyScale(newScale, midClient) {
+    const outerRect = outer.getBoundingClientRect();
+    const focusX = midClient.x - outerRect.left + outer.scrollLeft;
+    const focusY = midClient.y - outerRect.top  + outer.scrollTop;
+    const pctX   = focusX / wrap.offsetWidth;
+    const pctY   = focusY / wrap.offsetHeight;
+
+    _mapaScale = Math.max(1, Math.min(6, newScale));
+    wrap.style.width    = (_mapaScale * 100) + '%';
+    wrap.style.minWidth = _mapaScale > 1 ? '0' : '100%';
+    ajustarMarcadores();
+
+    outer.scrollLeft = pctX * wrap.offsetWidth  - (midClient.x - outerRect.left);
+    outer.scrollTop  = pctY * wrap.offsetHeight - (midClient.y - outerRect.top);
+  }
+
+  outer.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      pinchDist0 = getDist(e.touches);
+      scale0 = _mapaScale;
+      panStart = null;
+    } else if (e.touches.length === 1 && _mapaScale > 1) {
+      panStart    = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      scrollStart = { x: outer.scrollLeft, y: outer.scrollTop };
+    }
+  }, { passive: true });
+
+  outer.addEventListener('touchmove', e => {
+    if (e.touches.length === 2 && pinchDist0 !== null) {
+      e.preventDefault();
+      const newScale = scale0 * (getDist(e.touches) / pinchDist0);
+      applyScale(newScale, getMid(e.touches));
+    } else if (e.touches.length === 1 && panStart && _mapaScale > 1) {
+      e.preventDefault();
+      outer.scrollLeft = scrollStart.x - (e.touches[0].clientX - panStart.x);
+      outer.scrollTop  = scrollStart.y - (e.touches[0].clientY - panStart.y);
+    }
+  }, { passive: false });
+
+  outer.addEventListener('touchend', e => {
+    if (e.touches.length < 2) pinchDist0 = null;
+    if (e.touches.length === 0) panStart = null;
+    // Reset ao zoom mínimo (1×) se pinçar para fora
+    if (_mapaScale <= 1.05) {
+      _mapaScale = 1;
+      wrap.style.width = '100%'; wrap.style.minWidth = '100%';
+      outer.scrollLeft = 0; outer.scrollTop = 0;
+      ajustarMarcadores();
+    }
+  }, { passive: true });
 }
 
 function iniciarContador() {
