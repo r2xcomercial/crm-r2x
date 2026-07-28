@@ -3381,6 +3381,11 @@ function openEmpModal(e = {}) {
       <div class="form-group span2"><label>Endereço</label><input id="f-end" value="${e.endereco||''}"></div>
       <div class="form-group"><label>Cidade</label><input id="f-cidade" value="${e.cidade||''}"></div>
       <div class="form-group"><label>Estado</label><input id="f-estado" value="${e.estado||''}" placeholder="SC" maxlength="2"></div>
+      <div class="form-group span2">
+        <label>📍 Link do Google Maps</label>
+        <input id="f-maps-url" value="${e.maps_url||''}" placeholder="Cole aqui o link do Google Maps (https://maps.google.com/... ou https://goo.gl/maps/...)">
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">Exibido no espelho público para clientes e corretores localizarem o empreendimento.</div>
+      </div>
       <div class="form-group"><label>Nº de Unidades</label><input id="f-units" type="number" value="${e.num_unidades||''}"></div>
       <div class="form-group"><label>VGV Estimado (R$)</label><input id="f-vgv" type="number" value="${e.vgv_estimado||''}"></div>
       <div class="form-group"><label>% Comissão R2X</label><input id="f-pct" type="number" step="0.01" min="0" max="100" value="${e.percentual_r2x||''}" placeholder="ex: 1.5"></div>
@@ -3538,6 +3543,7 @@ function openEmpModal(e = {}) {
       valor_cub: parseFloat(v('f-valor-cub'))||null,
       patrimonio_afetacao: document.getElementById('f-patrimonio-afetacao')?.checked ? 1 : 0,
       logo_base64: window._empLogoEdit !== undefined ? window._empLogoEdit : null,
+      maps_url: v('f-maps-url')||null,
       condicao_pagamento_padrao: [...document.querySelectorAll('#emp-cp-list .ecp-condicao')].map(cond => ({
         nome: cond.querySelector('.ecp-nome')?.value?.trim() || '',
         parcelas: [...cond.querySelectorAll('.emp-cp-row')].map(row => ({

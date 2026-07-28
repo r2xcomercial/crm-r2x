@@ -24,6 +24,9 @@
   .resumo-card.vend .num  { color: #ef4444; }
   .resumo-card.total .num { color: #e2e8f0; }
   .resumo-card.indisp .num { color: #94a3b8; }
+  .maps-btn { display:flex; align-items:center; gap:7px; background:#1a73e8; color:#fff; border-radius:10px; padding:14px 20px; font-size:13px; font-weight:700; text-decoration:none; white-space:nowrap; transition:background .15s; border:1px solid #1557b0; }
+  .maps-btn:hover { background:#1557b0; }
+  .maps-btn svg { flex-shrink:0; }
 
   main { padding: 0 24px 32px; }
 
@@ -200,6 +203,10 @@
   <div class="resumo-card res"><div class="num" id="r-res">—</div><div class="label">Reservado</div></div>
   <div class="resumo-card vend"><div class="num" id="r-vend">—</div><div class="label">Vendido</div></div>
   <div class="resumo-card indisp" id="r-indisp-card" style="display:none"><div class="num" id="r-indisp">0</div><div class="label">Indisponível</div></div>
+  <a id="maps-btn" href="#" target="_blank" rel="noopener" class="maps-btn" style="display:none">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+    Ver no Maps
+  </a>
 </div>
 
 <main>
@@ -213,6 +220,7 @@ let countdown = 15, timer;
 let _empNome = '';
 let _simParams = null;
 let _markerSize = 20;
+let _mapsUrl = null;
 
 const fmt  = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
 const fmt0 = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
@@ -558,10 +566,13 @@ async function carregar() {
       return;
     }
 
-    const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, atualizado_em } = resp.data;
+    const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, mapsUrl, atualizado_em } = resp.data;
     _empNome    = emp.nome + (emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : '');
     _simParams  = espelhoParams || null;
     _markerSize = markerSize || 20;
+    _mapsUrl    = mapsUrl || null;
+    const mapsBtn = document.getElementById('maps-btn');
+    if (mapsBtn) { mapsBtn.href = _mapsUrl || '#'; mapsBtn.style.display = _mapsUrl ? '' : 'none'; }
 
     document.title = `Espelho — ${emp.nome}`;
     document.getElementById('emp-nome').textContent  = _empNome;
