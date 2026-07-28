@@ -7815,7 +7815,7 @@ async function verUnidades(empId) {
               <td>${u.quadra||'—'}</td>
               <td><strong>${u.lote}</strong></td>
               <td>${u.area_m2?u.area_m2+' m²':'—'}</td>
-              <td style="color:var(--success)">${u.preco?fmt(u.preco):'—'}</td>
+              <td id="preco-cell-${u.id}" data-preco="${u.preco||''}" style="color:var(--success);cursor:${USUARIO.perfil!=='corretor'?'pointer':'default'}" ${USUARIO.perfil!=='corretor'?`onclick="editarPrecoUnidade(${u.id},${empId})" title="Clique para editar o preço"`:''}>${u.preco?fmt(u.preco):'—'}${USUARIO.perfil!=='corretor'?` <span style="font-size:10px;color:var(--text2);opacity:.6">✏️</span>`:''}</td>
               <td><span class="badge ${statusBadge[u.status]||'badge-gray'}">${statusLabel[u.status]||u.status}</span></td>
               <td style="white-space:nowrap">
                 ${u.status==='disponivel'?`<button class="btn-icon" title="Reservar" onclick="updateUnidadeStatus(${u.id},'reservado',${empId})">🟡 Reservar</button>`:''}
@@ -7835,6 +7835,32 @@ async function updateUnidadeStatus(unidadeId, status, empId) {
   const r = await put(`/api/unidades/${unidadeId}/status`, { status });
   if (!r.ok) return toast(r.error, 'error');
   toast(status==='reservado'?'Unidade reservada! 🟡':'Reserva liberada! ✅');
+  verUnidades(empId);
+}
+
+function editarPrecoUnidade(unidadeId, empId) {
+  const cell = document.getElementById(`preco-cell-${unidadeId}`);
+  if (!cell || cell.querySelector('input')) return;
+  const precoAtual = cell.dataset.preco || '';
+  cell.innerHTML = `
+    <input id="inp-preco-${unidadeId}" type="number" min="0" step="100" value="${precoAtual}"
+      style="width:120px;padding:3px 7px;border-radius:5px;border:1px solid var(--accent);background:var(--navy3);color:var(--text);font-size:13px"
+      onkeydown="if(event.key==='Enter')salvarPrecoUnidade(${unidadeId},${empId});if(event.key==='Escape')verUnidades(${empId});"
+      onblur="salvarPrecoUnidade(${unidadeId},${empId})">
+  `;
+  const inp = document.getElementById(`inp-preco-${unidadeId}`);
+  inp.focus(); inp.select();
+}
+
+async function salvarPrecoUnidade(unidadeId, empId) {
+  const inp = document.getElementById(`inp-preco-${unidadeId}`);
+  if (!inp) return;
+  const novoPreco = parseFloat(inp.value);
+  if (isNaN(novoPreco) || novoPreco < 0) { verUnidades(empId); return; }
+  inp.disabled = true;
+  const r = await put(`/api/unidades/${unidadeId}`, { preco: novoPreco });
+  if (!r.ok) { toast('Erro ao salvar preço', 'error'); verUnidades(empId); return; }
+  toast('Preço atualizado ✅');
   verUnidades(empId);
 }
 
