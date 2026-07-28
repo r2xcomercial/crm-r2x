@@ -3689,10 +3689,10 @@ app.get('/espelho/:slug', (req, res) => {
 // Diagnóstico público: verifica se o slug existe (sem expor dados sensíveis)
 app.get('/api/espelho-publico/:slug/ping', (req, res) => {
   try {
-    const emp = db.prepare("SELECT id, nome FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
+    const emp = db.prepare("SELECT id, nome, maps_url, drive_url FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
     if (!emp) return res.json({ ok: false, found: false, slug: req.params.slug });
     const cnt = db.prepare("SELECT COUNT(*) as n FROM unidades WHERE empreendimento_id=?").get(emp.id);
-    res.json({ ok: true, found: true, nome: emp.nome, unidades: cnt.n });
+    res.json({ ok: true, found: true, nome: emp.nome, unidades: cnt.n, maps_url: emp.maps_url, drive_url: emp.drive_url });
   } catch(e) {
     res.json({ ok: false, error: e.message });
   }
