@@ -30,12 +30,15 @@
   .drive-btn { display:flex; align-items:center; gap:7px; background:#1fa463; color:#fff; border-radius:10px; padding:14px 20px; font-size:13px; font-weight:700; text-decoration:none; white-space:nowrap; transition:background .15s; border:1px solid #178a52; }
   .drive-btn:hover { background:#178a52; }
   .drive-btn svg { flex-shrink:0; }
+  .social-btn { display:flex; align-items:center; gap:7px; background:#c13584; color:#fff; border-radius:10px; padding:14px 20px; font-size:13px; font-weight:700; text-decoration:none; white-space:nowrap; transition:background .15s; border:1px solid #9c2a6a; }
+  .social-btn:hover { background:#9c2a6a; }
+  .social-btn svg { flex-shrink:0; }
 
   main { padding: 0 24px 32px; }
 
   /* Mapa com overlay */
-  .mapa-outer { overflow: auto; width: 100%; -webkit-overflow-scrolling: touch; border-radius: 12px; }
-  .mapa-wrap { position: relative; display: inline-block; width: 100%; min-width: 100%; }
+  .mapa-outer { overflow: hidden; width: 100%; border-radius: 12px; touch-action: none; }
+  .mapa-wrap { position: relative; display: block; width: 100%; transform-origin: 0 0; will-change: transform; }
   .mapa-wrap img { width: 100%; display: block; border-radius: 12px; user-select: none; -webkit-user-drag: none; }
   .marcador {
     position: absolute; transform: translate(-50%, -50%);
@@ -215,6 +218,10 @@
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19H2l5-9h10l5 9z"/><path d="M7.5 14L12 6l4.5 8"/><path d="M2 19l5-9"/></svg>
     Material de divulgação
   </a>
+  <a id="social-btn" href="#" target="_blank" rel="noopener" class="social-btn" style="display:none">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+    Redes Sociais
+  </a>
 </div>
 
 <main>
@@ -230,6 +237,7 @@ let _simParams = null;
 let _markerSize = 20;
 let _mapsUrl = null;
 let _driveUrl = null;
+let _socialUrl = null;
 
 const fmt  = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
 const fmt0 = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
@@ -552,7 +560,7 @@ ${condsRows ? `
 </div>` : ''}
 
 <div class="footer">
-  <span>R2X CRM — Espelho de Vendas</span>
+  <span>R2X — Inteligência Comercial</span>
   <span>${_empNome}</span>
 </div>
 <div class="aviso">* Esta simulação é meramente informativa e sujeita a alteração. Consulte a equipe da R2X para obter as condições definitivas de compra.</div>
@@ -575,16 +583,19 @@ async function carregar() {
       return;
     }
 
-    const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, mapsUrl, driveUrl, atualizado_em } = resp.data;
+    const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, mapsUrl, driveUrl, socialUrl, atualizado_em } = resp.data;
     _empNome    = emp.nome + (emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : '');
     _simParams  = espelhoParams || null;
     _markerSize = markerSize || 20;
     _mapsUrl    = mapsUrl || null;
     _driveUrl   = driveUrl || null;
+    _socialUrl  = socialUrl || null;
     const mapsBtn = document.getElementById('maps-btn');
     if (mapsBtn) { mapsBtn.href = _mapsUrl || '#'; mapsBtn.style.display = _mapsUrl ? '' : 'none'; }
     const driveBtn = document.getElementById('drive-btn');
     if (driveBtn) { driveBtn.href = _driveUrl || '#'; driveBtn.style.display = _driveUrl ? '' : 'none'; }
+    const socialBtn = document.getElementById('social-btn');
+    if (socialBtn) { socialBtn.href = _socialUrl || '#'; socialBtn.style.display = _socialUrl ? '' : 'none'; }
 
     document.title = `Espelho — ${emp.nome}`;
     document.getElementById('emp-nome').textContent  = _empNome;
@@ -714,16 +725,17 @@ function ajustarMarcadores() {
   cont.querySelectorAll('.marcador').forEach(m => m.style.pointerEvents = 'auto');
 }
 
-let _mapaScale = 1;
+let _mapaScale = 1, _mapaTX = 0, _mapaTY = 0;
 
 function initMapaPinchZoom() {
   const outer = document.getElementById('mapa-outer');
   const wrap  = document.getElementById('mapa-wrap');
   if (!outer || !wrap) return;
-  _mapaScale = 1;
+  _mapaScale = 1; _mapaTX = 0; _mapaTY = 0;
+  wrap.style.transform = '';
 
-  let pinchDist0 = null, scale0 = 1;
-  let panStart = null, scrollStart = null;
+  let pinchDist0 = null, scale0 = 1, mid0 = null, tx0 = 0, ty0 = 0;
+  let panStart = null, panTX0 = 0, panTY0 = 0;
 
   function getDist(t) {
     return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
@@ -731,54 +743,67 @@ function initMapaPinchZoom() {
   function getMid(t) {
     return { x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 };
   }
-  function applyScale(newScale, midClient) {
-    const outerRect = outer.getBoundingClientRect();
-    const focusX = midClient.x - outerRect.left + outer.scrollLeft;
-    const focusY = midClient.y - outerRect.top  + outer.scrollTop;
-    const pctX   = focusX / wrap.offsetWidth;
-    const pctY   = focusY / wrap.offsetHeight;
-
-    _mapaScale = Math.max(1, Math.min(6, newScale));
-    wrap.style.width    = (_mapaScale * 100) + '%';
-    wrap.style.minWidth = _mapaScale > 1 ? '0' : '100%';
-    ajustarMarcadores();
-
-    outer.scrollLeft = pctX * wrap.offsetWidth  - (midClient.x - outerRect.left);
-    outer.scrollTop  = pctY * wrap.offsetHeight - (midClient.y - outerRect.top);
+  function clamp(tx, ty, s) {
+    const iW = outer.offsetWidth, iH = outer.offsetHeight;
+    return {
+      tx: Math.min(0, Math.max(iW * (1 - s), tx)),
+      ty: Math.min(0, Math.max(iH * (1 - s), ty))
+    };
+  }
+  function applyTransform() {
+    wrap.style.transform = `translate(${_mapaTX}px,${_mapaTY}px) scale(${_mapaScale})`;
   }
 
   outer.addEventListener('touchstart', e => {
     if (e.touches.length === 2) {
+      e.preventDefault();
       pinchDist0 = getDist(e.touches);
-      scale0 = _mapaScale;
+      scale0 = _mapaScale; mid0 = getMid(e.touches);
+      tx0 = _mapaTX; ty0 = _mapaTY;
       panStart = null;
-    } else if (e.touches.length === 1 && _mapaScale > 1) {
-      panStart    = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      scrollStart = { x: outer.scrollLeft, y: outer.scrollTop };
+    } else if (e.touches.length === 1) {
+      if (_mapaScale > 1) {
+        panStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        panTX0 = _mapaTX; panTY0 = _mapaTY;
+      }
+      pinchDist0 = null;
     }
-  }, { passive: true });
+  }, { passive: false });
 
   outer.addEventListener('touchmove', e => {
     if (e.touches.length === 2 && pinchDist0 !== null) {
       e.preventDefault();
-      const newScale = scale0 * (getDist(e.touches) / pinchDist0);
-      applyScale(newScale, getMid(e.touches));
+      const newScale = Math.max(1, Math.min(6, scale0 * (getDist(e.touches) / pinchDist0)));
+      const mid1 = getMid(e.touches);
+      const rect  = outer.getBoundingClientRect();
+      const focalLX = (mid0.x - rect.left - tx0) / scale0;
+      const focalLY = (mid0.y - rect.top  - ty0) / scale0;
+      const c = clamp(mid1.x - rect.left - newScale * focalLX,
+                      mid1.y - rect.top  - newScale * focalLY, newScale);
+      _mapaScale = newScale; _mapaTX = c.tx; _mapaTY = c.ty;
+      applyTransform();
     } else if (e.touches.length === 1 && panStart && _mapaScale > 1) {
       e.preventDefault();
-      outer.scrollLeft = scrollStart.x - (e.touches[0].clientX - panStart.x);
-      outer.scrollTop  = scrollStart.y - (e.touches[0].clientY - panStart.y);
+      const c = clamp(panTX0 + e.touches[0].clientX - panStart.x,
+                      panTY0 + e.touches[0].clientY - panStart.y, _mapaScale);
+      _mapaTX = c.tx; _mapaTY = c.ty;
+      applyTransform();
     }
   }, { passive: false });
 
   outer.addEventListener('touchend', e => {
-    if (e.touches.length < 2) pinchDist0 = null;
+    if (e.touches.length < 2) {
+      pinchDist0 = null;
+      // transição de pinch → pan: registra o dedo restante como início do pan
+      if (e.touches.length === 1 && _mapaScale > 1) {
+        panStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        panTX0 = _mapaTX; panTY0 = _mapaTY;
+      }
+    }
     if (e.touches.length === 0) panStart = null;
-    // Reset ao zoom mínimo (1×) se pinçar para fora
     if (_mapaScale <= 1.05) {
-      _mapaScale = 1;
-      wrap.style.width = '100%'; wrap.style.minWidth = '100%';
-      outer.scrollLeft = 0; outer.scrollTop = 0;
-      ajustarMarcadores();
+      _mapaScale = 1; _mapaTX = 0; _mapaTY = 0;
+      wrap.style.transform = '';
     }
   }, { passive: true });
 }

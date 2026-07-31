@@ -3389,7 +3389,12 @@ function openEmpModal(e = {}) {
       <div class="form-group">
         <label>📁 Link do Google Drive</label>
         <input id="f-drive-url" value="${e.drive_url||''}" placeholder="https://drive.google.com/drive/folders/...">
-        <div style="font-size:11px;color:var(--text2);margin-top:4px">Materiais de marketing para corretores.</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">Materiais de divulgação para corretores.</div>
+      </div>
+      <div class="form-group">
+        <label>📱 Rede Social (Instagram, etc.)</label>
+        <input id="f-social-url" value="${e.social_url||''}" placeholder="https://instagram.com/...">
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">Link da rede social do empreendimento ou incorporador.</div>
       </div>
       <div class="form-group"><label>Nº de Unidades</label><input id="f-units" type="number" value="${e.num_unidades||''}"></div>
       <div class="form-group"><label>VGV Estimado (R$)</label><input id="f-vgv" type="number" value="${e.vgv_estimado||''}"></div>
@@ -3550,6 +3555,7 @@ function openEmpModal(e = {}) {
       logo_base64: window._empLogoEdit !== undefined ? window._empLogoEdit : null,
       maps_url: v('f-maps-url')||null,
       drive_url: v('f-drive-url')||null,
+      social_url: v('f-social-url')||null,
       condicao_pagamento_padrao: [...document.querySelectorAll('#emp-cp-list .ecp-condicao')].map(cond => ({
         nome: cond.querySelector('.ecp-nome')?.value?.trim() || '',
         parcelas: [...cond.querySelectorAll('.emp-cp-row')].map(row => ({
@@ -4601,6 +4607,8 @@ async function renderCorretores(filter = '', cidadeFilter = '', imobFilter = '',
           <button id="sort-vendas" data-ativo="${sortByVendas?'1':'0'}" onclick="(function(){const s=document.getElementById('sort-vendas');const cidade=document.getElementById('filtro-cidade').value;const imob=document.getElementById('filtro-imob').value;const ativo=s.dataset.ativo==='1';renderCorretores('',cidade,imob,!ativo);})()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:${sortByVendas?'var(--accent)':'var(--navy3)'};color:${sortByVendas?'#fff':'var(--text1)'};font-size:13px;cursor:pointer">
             🏆 ${sortByVendas ? 'Ranking ativo' : 'Ordenar por vendas'}
           </button>
+          <button onclick="exportarCorretoresPDF()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;cursor:pointer" title="Exportar cadastro dos corretores em PDF">🖨️ PDF</button>
+          <button onclick="exportarCorretores()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;cursor:pointer" title="Exportar cadastro dos corretores em CSV">📊 CSV</button>
         </div>
       </div>
       <table>
@@ -12364,6 +12372,104 @@ async function renderComissoes() {
 }
 
 // ─── EXPORTAR EXCEL ───────────────────────────────────────────────────────────
+
+function exportarCorretoresPDF() {
+  const dados = currentData.corretores || [];
+  if (!dados.length) { toast('Nenhum corretor para exportar', 'error'); return; }
+
+  const fmtData = d => { if (!d) return '—'; const [y,m,day] = d.split('T')[0].split('-'); return `${day}/${m}/${y}`; };
+  const fmtAniv = d => { if (!d) return '—'; const p = d.split('-'); return p.length >= 2 ? `${p[2]||''}/${p[1]}` : d; };
+
+  const ativos   = dados.filter(c => c.ativo).length;
+  const inativos = dados.length - ativos;
+
+  const linhas = dados.map((c, i) => `
+    <tr>
+      <td style="color:#6b7280;text-align:center">${i+1}</td>
+      <td><strong>${c.nome||'—'}</strong></td>
+      <td>${c.cpf||'—'}</td>
+      <td>${c.creci||'—'}</td>
+      <td>${c.telefone||'—'}</td>
+      <td>${c.email||'—'}</td>
+      <td>${c.imobiliaria||'—'}</td>
+      <td>${c.cidade||'—'}${c.estado?'/'+c.estado:''}</td>
+      <td style="text-align:center">${fmtAniv(c.aniversario)}</td>
+      <td style="text-align:center"><span style="background:${c.ativo?'#dcfce7':'#fee2e2'};color:${c.ativo?'#166534':'#991b1b'};padding:2px 8px;border-radius:99px;font-size:9px;font-weight:700">${c.ativo?'Ativo':'Inativo'}</span></td>
+      <td style="text-align:center;white-space:nowrap">${fmtData(c.criado_em)}</td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><title>Cadastro de Corretores — R2X</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0 }
+  body { font-family:Arial,sans-serif; padding:16px; color:#111; font-size:12px }
+  @page { size:A4 landscape; margin:10mm }
+  @media print { .no-print { display:none } }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; padding-bottom:10px; border-bottom:2px solid #0D1B2E }
+  h1 { font-size:18px; font-weight:900; color:#0D1B2E }
+  .logo-sub { font-size:11px; color:#6b7280; margin-top:2px }
+  .stats { display:flex; gap:10px; margin-bottom:14px }
+  .stat { border:1px solid #e5e7eb; border-radius:6px; padding:6px 16px; text-align:center }
+  .stat .n { font-size:18px; font-weight:900; color:#0D1B2E }
+  .stat .l { font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:.5px }
+  table { width:100%; border-collapse:collapse }
+  th { background:#0D1B2E; color:#fff; padding:6px 8px; font-size:9px; font-weight:700; text-align:left; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap }
+  td { padding:5px 8px; font-size:11px; border-bottom:1px solid #e5e7eb }
+  tr:nth-child(even) td { background:#f9fafb }
+  .btn-print { position:fixed; bottom:20px; right:20px; background:#0D1B2E; color:#fff; border:none; border-radius:8px; padding:10px 20px; font-size:13px; font-weight:700; cursor:pointer }
+  .footer { margin-top:14px; font-size:10px; color:#9ca3af; text-align:center }
+</style></head><body>
+<div class="header">
+  <div>
+    <h1>👥 Cadastro de Corretores</h1>
+    <div class="logo-sub">R2X — Inteligência Comercial · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
+  </div>
+</div>
+<div class="stats">
+  <div class="stat"><div class="n">${dados.length}</div><div class="l">Total</div></div>
+  <div class="stat"><div class="n" style="color:#16a34a">${ativos}</div><div class="l">Ativos</div></div>
+  <div class="stat"><div class="n" style="color:#dc2626">${inativos}</div><div class="l">Inativos</div></div>
+</div>
+<table>
+  <thead><tr>
+    <th>#</th><th>Nome</th><th>CPF</th><th>CRECI</th><th>Telefone</th>
+    <th>E-mail</th><th>Imobiliária</th><th>Cidade/UF</th><th>Aniversário</th><th>Status</th><th>Cadastrado em</th>
+  </tr></thead>
+  <tbody>${linhas}</tbody>
+</table>
+<div class="footer">Documento gerado pelo sistema R2X — Inteligência Comercial · Apenas dados de cadastro · Sem informações financeiras ou de vendas</div>
+<button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+}
+
+function exportarCorretores() {
+  const dados = currentData.corretores || [];
+  if (!dados.length) { toast('Nenhum corretor para exportar', 'error'); return; }
+
+  const fmtData = d => { if (!d) return ''; const [y,m,day] = d.split('T')[0].split('-'); return `${day}/${m}/${y}`; };
+  const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
+  const cabecalho = ['Nome','CPF','CRECI','Telefone','E-mail','Imobiliária','Cidade','Estado','Aniversário','Status','Cadastrado em'];
+  const linhas = dados.map(c => [
+    c.nome, c.cpf, c.creci, c.telefone, c.email,
+    c.imobiliaria, c.cidade, c.estado, c.aniversario,
+    c.ativo ? 'Ativo' : 'Inativo',
+    fmtData(c.criado_em)
+  ].map(esc).join(';'));
+
+  const csv = '﻿' + [cabecalho.map(esc).join(';'), ...linhas].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `corretores_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+  toast('Cadastro exportado! 📊');
+}
 
 function exportarLeads() {
   window.open(`/api/exportar/leads?token=${TOKEN}`, '_blank');

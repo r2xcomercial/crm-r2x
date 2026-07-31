@@ -404,7 +404,7 @@ app.post("/api/empreendimentos", (req, res) => {
     comarca, matricula_registro, incorporacao_protocolo,
     vendedora_nome, vendedora_qualificacao,
     prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao,
-    condicao_pagamento_padrao, logo_base64, maps_url, drive_url } = req.body;
+    condicao_pagamento_padrao, logo_base64, maps_url, drive_url, social_url } = req.body;
   if (!nome) return err(res, "Nome obrigatório");
   const cpPadrao = condicao_pagamento_padrao && Array.isArray(condicao_pagamento_padrao) && condicao_pagamento_padrao.length > 0
     ? JSON.stringify(condicao_pagamento_padrao) : null;
@@ -413,14 +413,14 @@ app.post("/api/empreendimentos", (req, res) => {
      data_lancamento,data_inicio_vendas,observacoes,percentual_r2x,
      comarca,matricula_registro,incorporacao_protocolo,
      vendedora_nome,vendedora_qualificacao,prazo_entrega_meses,inicio_obra_previsto,valor_cub,
-     patrimonio_afetacao,condicao_pagamento_padrao,logo_base64,maps_url,drive_url)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+     patrimonio_afetacao,condicao_pagamento_padrao,logo_base64,maps_url,drive_url,social_url)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
       status||'prospecto', data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
       comarca||null, matricula_registro||null, incorporacao_protocolo||null,
       vendedora_nome||null, vendedora_qualificacao||null,
       prazo_entrega_meses||null, inicio_obra_previsto||null, valor_cub||null,
-      patrimonio_afetacao ? 1 : 0, cpPadrao, logo_base64||null, maps_url||null, drive_url||null);
+      patrimonio_afetacao ? 1 : 0, cpPadrao, logo_base64||null, maps_url||null, drive_url||null, social_url||null);
   ok(res, { id: r.lastInsertRowid });
 });
 
@@ -430,7 +430,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     comarca, matricula_registro, incorporacao_protocolo,
     vendedora_nome, vendedora_qualificacao,
     prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao,
-    condicao_pagamento_padrao, logo_base64, maps_url, drive_url } = req.body;
+    condicao_pagamento_padrao, logo_base64, maps_url, drive_url, social_url } = req.body;
   const cpPadrao = condicao_pagamento_padrao && Array.isArray(condicao_pagamento_padrao) && condicao_pagamento_padrao.length > 0
     ? JSON.stringify(condicao_pagamento_padrao) : null;
   db.prepare(`UPDATE empreendimentos SET
@@ -439,14 +439,14 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     comarca=?,matricula_registro=?,incorporacao_protocolo=?,
     vendedora_nome=?,vendedora_qualificacao=?,
     prazo_entrega_meses=?,inicio_obra_previsto=?,valor_cub=?,
-    patrimonio_afetacao=?,condicao_pagamento_padrao=?,logo_base64=?,maps_url=?,drive_url=?
+    patrimonio_afetacao=?,condicao_pagamento_padrao=?,logo_base64=?,maps_url=?,drive_url=?,social_url=?
     WHERE id=?`).run(
     cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
     status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
     comarca||null, matricula_registro||null, incorporacao_protocolo||null,
     vendedora_nome||null, vendedora_qualificacao||null,
     prazo_entrega_meses||null, inicio_obra_previsto||null, valor_cub||null,
-    patrimonio_afetacao ? 1 : 0, cpPadrao, logo_base64||null, maps_url||null, drive_url||null,
+    patrimonio_afetacao ? 1 : 0, cpPadrao, logo_base64||null, maps_url||null, drive_url||null, social_url||null,
     req.params.id);
   ok(res, {});
 });
@@ -3626,6 +3626,8 @@ try { db.exec("ALTER TABLE empreendimentos ADD COLUMN espelho_marker_size INTEGE
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN maps_url TEXT"); } catch(_) {}
 // Migration: link do Google Drive com materiais de marketing
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN drive_url TEXT"); } catch(_) {}
+// Migration: link de rede social do empreendimento ou incorporador
+try { db.exec("ALTER TABLE empreendimentos ADD COLUMN social_url TEXT"); } catch(_) {}
 
 // ─── ESPELHO DE VENDAS PÚBLICO ───────────────────────────────────────────────
 
@@ -3664,7 +3666,7 @@ app.put('/api/empreendimentos/:id/espelho-slug', autenticar, (req, res) => {
 
 // API pública — retorna dados do espelho sem autenticação
 app.get('/api/espelho-publico/:slug', (req, res) => {
-  const emp = db.prepare("SELECT id, nome, cidade, estado, tipo, espelho_params, espelho_marker_size, maps_url, drive_url FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
+  const emp = db.prepare("SELECT id, nome, cidade, estado, tipo, espelho_params, espelho_marker_size, maps_url, drive_url, social_url FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
   if (!emp) return res.status(404).json({ ok: false, error: 'Espelho não encontrado' });
   const mapa = db.prepare("SELECT svg_data FROM mapas WHERE empreendimento_id=?").get(emp.id);
   const units = db.prepare(`
@@ -3677,7 +3679,7 @@ app.get('/api/espelho-publico/:slug', (req, res) => {
     return acc;
   }, {});
   const espelhoParams = emp.espelho_params ? JSON.parse(emp.espelho_params) : null;
-  ok(res, { empreendimento: emp, imagem: mapa?.svg_data || null, units, resumo, espelhoParams, markerSize: emp.espelho_marker_size || 20, mapsUrl: emp.maps_url || null, driveUrl: emp.drive_url || null, atualizado_em: new Date().toISOString() });
+  ok(res, { empreendimento: emp, imagem: mapa?.svg_data || null, units, resumo, espelhoParams, markerSize: emp.espelho_marker_size || 20, mapsUrl: emp.maps_url || null, driveUrl: emp.drive_url || null, socialUrl: emp.social_url || null, atualizado_em: new Date().toISOString() });
 });
 
 // Rota pública da página de espelho (no-cache para sempre servir versão atual)
