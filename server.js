@@ -3682,10 +3682,44 @@ app.get('/api/espelho-publico/:slug', (req, res) => {
   ok(res, { empreendimento: emp, imagem: mapa?.svg_data || null, units, resumo, espelhoParams, markerSize: emp.espelho_marker_size || 20, mapsUrl: emp.maps_url || null, driveUrl: emp.drive_url || null, socialUrl: emp.social_url || null, atualizado_em: new Date().toISOString() });
 });
 
-// Rota pública da página de espelho (no-cache para sempre servir versão atual)
+// Rota pública da página de espelho — injeta meta tags OG para preview no WhatsApp/redes sociais
 app.get('/espelho/:slug', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  res.sendFile(path.join(__dirname, 'public', 'espelho-publico.html'));
+  try {
+    const slug = req.params.slug;
+    const emp = db.prepare("SELECT id, nome, cidade, estado FROM empreendimentos WHERE espelho_slug=?").get(slug);
+
+    let titleTag = '<title>Espelho de Vendas — R2X</title>';
+    let ogTags = '';
+    if (emp) {
+      const disp  = db.prepare("SELECT COUNT(*) as n FROM unidades WHERE empreendimento_id=? AND status='disponivel'").get(emp.id);
+      const total = db.prepare("SELECT COUNT(*) as n FROM unidades WHERE empreendimento_id=?").get(emp.id);
+      const local = [emp.cidade, emp.estado].filter(Boolean).join('/');
+      const desc  = [
+        disp.n  > 0 ? `${disp.n} lote${disp.n !== 1 ? 's' : ''} disponível${disp.n !== 1 ? 'is' : ''}` : null,
+        total.n > 0 ? `${total.n} no total` : null,
+        local || null
+      ].filter(Boolean).join(' · ');
+      const url = `${req.protocol}://${req.get('host')}/espelho/${slug}`;
+      titleTag = `<title>Espelho de Vendas — ${emp.nome}</title>`;
+      ogTags = `
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="${url}">
+  <meta property="og:title" content="Espelho de Vendas — ${emp.nome}">
+  <meta property="og:description" content="${desc}">
+  <meta property="og:site_name" content="R2X Inteligência Comercial">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Espelho de Vendas — ${emp.nome}">
+  <meta name="twitter:description" content="${desc}">`;
+    }
+
+    const html = fs.readFileSync(path.join(__dirname, 'public', 'espelho-publico.html'), 'utf8')
+      .replace('<title>Espelho de Vendas</title>', titleTag + ogTags);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch(e) {
+    res.sendFile(path.join(__dirname, 'public', 'espelho-publico.html'));
+  }
 });
 
 // Diagnóstico público: verifica se o slug existe (sem expor dados sensíveis)
