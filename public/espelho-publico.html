@@ -710,8 +710,12 @@ function ajustarMarcadores() {
   const h = img.offsetHeight || img.naturalHeight;
   if (!w || !h) return;
 
-  const sz = Math.round(Math.max(6, Math.min(120, _markerSize)));
-  const fs = Math.round(Math.max(4, Math.min(28,  _markerSize * 0.42)));
+  // Escala a bolinha proporcionalmente à largura exibida da imagem.
+  // Referência: tamanho configurado é adequado para ~900px de largura.
+  // Em telas menores (celular) reduz proporcionalmente; nunca aumenta além do configurado.
+  const displayScale = Math.min(1, w / 900);
+  const sz = Math.round(Math.max(10, Math.min(120, _markerSize * displayScale)));
+  const fs = Math.round(Math.max(5,  Math.min(28,  sz * 0.42)));
 
   const html = [];
   for (const u of (window._comPosicao || [])) {
