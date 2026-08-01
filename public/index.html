@@ -4631,6 +4631,7 @@ async function renderCorretores(filter = '', cidadeFilter = '', imobFilter = '',
                   : `<span class="badge badge-gray" style="cursor:pointer" onclick="criarLoginCorretor(${JSON.stringify(c).replace(/"/g,'&quot;')})">➕ Criar</span>`}
               </td>
               <td style="white-space:nowrap">
+                <button class="btn-icon" title="Copiar dados para WhatsApp" onclick="copiarCartaoCorretor(${c.id})" style="color:#25D366">📋</button>
                 <button class="btn-icon" title="Relatório do corretor" onclick="gerarRelatorioCorretor(${c.id})" style="color:var(--accent)">📄</button>
                 ${c.usuario_id ? `<button class="btn-icon" title="Ver como este corretor" onclick="abrirPreview(${c.usuario_id})" style="color:#a78bfa">👁️</button>` : ''}
                 <button class="btn-icon btn-edit" onclick="editCorretor(${c.id})">✏️</button>
@@ -10258,6 +10259,19 @@ async function gerarRelatorioCorretor(corretorId) {
   const dataEmissao = now.toLocaleDateString('pt-BR');
   const mesNome     = now.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
 
+  // Texto para compartilhar no WhatsApp (somente cadastro)
+  const textoWhats = [
+    `👤 *${c.nome}* — ${c.ativo ? 'Ativo' : 'Inativo'}`,
+    '',
+    c.creci       ? `📋 CRECI: ${c.creci}` : null,
+    c.cpf         ? `🪪 CPF: ${c.cpf}` : null,
+    c.imobiliaria ? `🏢 ${c.imobiliaria}` : null,
+    c.cidade      ? `📍 ${c.cidade}${c.estado?'/'+c.estado:''}` : null,
+    c.telefone    ? `📱 ${fmtPhone(c.telefone)}` : null,
+    c.email       ? `✉️ ${c.email}` : null,
+    c.aniversario ? `🎂 ${fmtDate(c.aniversario)}` : null,
+  ].filter(Boolean).join('\n');
+
   // Meta do mês
   const metaMes = metas[0] || null;
   const metaQtdPct  = metaMes?.meta_qtd  > 0 ? Math.min(100,Math.round((metaMes.real_qtd/metaMes.meta_qtd)*100))  : null;
@@ -10329,7 +10343,14 @@ async function gerarRelatorioCorretor(corretorId) {
         ${c.aniversario ? `<span>🎂 ${fmtDate(c.aniversario)}</span>` : ''}
       </div>
     </div>
+    <div style="flex-shrink:0">
+      <button id="btn-copiar" onclick="(function(b){navigator.clipboard.writeText(_cardTexto).then(function(){b.textContent='✅ Copiado!';b.style.background='#1a8a4a';setTimeout(function(){b.textContent='📋 Copiar para WhatsApp';b.style.background='#25D366';},2000)});})(this)"
+        style="background:#25D366;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap" class="no-print">
+        📋 Copiar para WhatsApp
+      </button>
+    </div>
   </div>
+  <script>var _cardTexto = ${JSON.stringify(textoWhats)};</script>
 
   <!-- KPIs -->
   <h2 class="section">📊 Desempenho Geral</h2>
@@ -12372,6 +12393,25 @@ async function renderComissoes() {
 }
 
 // ─── EXPORTAR EXCEL ───────────────────────────────────────────────────────────
+
+function copiarCartaoCorretor(id) {
+  const c = (currentData.corretores||[]).find(x => x.id === id);
+  if (!c) return;
+  const fmtPhone = t => t ? t.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') : '';
+  const fmtAniv  = d => { if (!d) return ''; const p = d.split('-'); return p.length >= 3 ? `${p[2]}/${p[1]}/${p[0]}` : d; };
+  const texto = [
+    `👤 *${c.nome}* — ${c.ativo ? 'Ativo' : 'Inativo'}`,
+    '',
+    c.creci       ? `📋 CRECI: ${c.creci}` : null,
+    c.cpf         ? `🪪 CPF: ${c.cpf}` : null,
+    c.imobiliaria ? `🏢 ${c.imobiliaria}` : null,
+    c.cidade      ? `📍 ${c.cidade}${c.estado?'/'+c.estado:''}` : null,
+    c.telefone    ? `📱 ${fmtPhone(c.telefone)}` : null,
+    c.email       ? `✉️ ${c.email}` : null,
+    c.aniversario ? `🎂 ${fmtAniv(c.aniversario)}` : null,
+  ].filter(Boolean).join('\n');
+  navigator.clipboard.writeText(texto).then(() => toast('Dados copiados! Cole no WhatsApp 📋'));
+}
 
 function exportarCorretoresPDF() {
   const dados = currentData.corretores || [];
