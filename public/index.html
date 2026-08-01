@@ -13835,7 +13835,8 @@ async function renderCorretorPainel(tab) {
     window._corretorAutoNavDone = true;
     const erEmp = await get('/api/empreendimentos');
     if (erEmp.ok) {
-      const ativos = (erEmp.data || []).filter(e => e.status === 'ativo' || e.status === 'lancamento' || !e.status);
+      currentData.emp = erEmp.data || [];
+      const ativos = currentData.emp.filter(e => e.status === 'ativo' || e.status === 'lancamento' || !e.status);
       if (ativos.length === 1) { verEspelho(ativos[0].id); return; }
     }
   }
