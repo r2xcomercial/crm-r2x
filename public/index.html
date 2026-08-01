@@ -8079,9 +8079,9 @@ async function verEspelhoImagem(empId, emp, mapaData) {
         </div>` : ''}
         <!-- Controles de zoom -->
         <div style="position:absolute;bottom:10px;right:10px;display:flex;align-items:center;gap:6px;z-index:10">
-          <button onclick="mapaZoom(-0.25)" title="Reduzir" style="width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;font-weight:bold;display:flex;align-items:center;justify-content:center;line-height:1">−</button>
+          <button onclick="mapaZoom(1/1.25)" title="Reduzir" style="width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;font-weight:bold;display:flex;align-items:center;justify-content:center;line-height:1">−</button>
           <span id="mapa-zoom-pct" style="padding:3px 8px;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;font-size:12px;min-width:44px;text-align:center">100%</span>
-          <button onclick="mapaZoom(0.25)" title="Ampliar" style="width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;font-weight:bold;display:flex;align-items:center;justify-content:center;line-height:1">+</button>
+          <button onclick="mapaZoom(1.25)" title="Ampliar" style="width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;font-weight:bold;display:flex;align-items:center;justify-content:center;line-height:1">+</button>
         </div>
         <!-- Dica scroll -->
         <div style="position:absolute;top:8px;right:8px;font-size:10px;color:rgba(255,255,255,.6);background:rgba(0,0,0,.35);padding:2px 7px;border-radius:4px;pointer-events:none">🖱️ Scroll = zoom</div>
@@ -8148,11 +8148,24 @@ async function verEspelhoImagem(empId, emp, mapaData) {
   // Click para posicionar unidades
   document.getElementById('mapa-zoom-wrap').addEventListener('click', onMapaClick);
 
-  // Zoom com scroll do mouse — centraliza no cursor
+  // Zoom com scroll do mouse — zoom focal no cursor (multiplicativo, suavizado)
+  let _wheelRAF = null;
+  let _wheelAccum = 0, _wheelClientX = 0, _wheelClientY = 0;
   document.getElementById('mapa-zoom-wrap').addEventListener('wheel', function(e) {
     e.preventDefault();
-    const delta = e.deltaY < 0 ? 0.15 : -0.15;
-    mapaZoom(delta, e.clientX, e.clientY);
+    let dy = e.deltaY;
+    if (e.deltaMode === 1) dy *= 20;
+    if (e.deltaMode === 2) dy *= 400;
+    _wheelAccum += dy;
+    _wheelClientX = e.clientX;
+    _wheelClientY = e.clientY;
+    if (!_wheelRAF) {
+      _wheelRAF = requestAnimationFrame(function() {
+        const factor = Math.pow(0.999, _wheelAccum);
+        mapaZoom(factor, _wheelClientX, _wheelClientY);
+        _wheelAccum = 0; _wheelRAF = null;
+      });
+    }
   }, { passive: false });
 
   // Pinch-to-zoom com dois dedos no celular
@@ -8183,10 +8196,8 @@ async function verEspelhoImagem(empId, emp, mapaData) {
       e.preventDefault();
       const newDist = touchDist(e.touches);
       const ratio   = newDist / _pinchDist;
-      // Converte ratio para delta incremental suavizado
-      const delta = (ratio - 1) * 0.6;
-      const mid   = touchMid(e.touches);
-      mapaZoom(delta, mid.x, mid.y);
+      const mid     = touchMid(e.touches);
+      mapaZoom(ratio, mid.x, mid.y);
       _pinchDist = newDist;
     }, { passive: false });
 
@@ -8219,33 +8230,35 @@ async function verEspelhoImagem(empId, emp, mapaData) {
 }
 
 // Função de zoom do mapa — escala o mapa-inner dentro do scroll container
-// clientX/clientY opcionais: quando fornecidos, mantém o ponto sob o cursor no lugar
-function mapaZoom(delta, clientX, clientY) {
+// factor: multiplicativo (>1 = ampliar, <1 = reduzir). clientX/clientY: focal point no cursor.
+function mapaZoom(factor, clientX, clientY) {
   const wrap = document.getElementById('mapa-zoom-wrap');
   const inner = document.getElementById('mapa-inner');
   if (!wrap || !inner) return;
 
-  let pctX, pctY;
+  // Captura posição do cursor como fração do conteúdo ANTES de mudar a escala
+  let focalX, focalY;
   if (clientX != null && clientY != null) {
     const rect = wrap.getBoundingClientRect();
-    const cursorXInContent = wrap.scrollLeft + (clientX - rect.left);
-    const cursorYInContent = wrap.scrollTop  + (clientY - rect.top);
-    pctX = cursorXInContent / inner.offsetWidth;
-    pctY = cursorYInContent / inner.offsetHeight;
+    focalX = (wrap.scrollLeft + clientX - rect.left) / inner.offsetWidth;
+    focalY = (wrap.scrollTop  + clientY - rect.top)  / inner.offsetHeight;
   }
 
-  _mapaZoomLevel = Math.max(0.1, Math.min(5, _mapaZoomLevel + delta));
-  inner.style.width = (_mapaZoomLevel >= 1 ? _mapaZoomLevel * 100 + '%' : _mapaZoomLevel * 100 + '%');
+  const newZoom = Math.max(0.1, Math.min(8, _mapaZoomLevel * factor));
+  _mapaZoomLevel = newZoom;
+  inner.style.width = (_mapaZoomLevel * 100) + '%';
   inner.style.minWidth = _mapaZoomLevel >= 1 ? '100%' : '0';
   const pct = document.getElementById('mapa-zoom-pct');
   if (pct) pct.textContent = Math.round(_mapaZoomLevel * 100) + '%';
-  renderMarkers();
 
-  if (pctX != null) {
+  // Ajusta scroll para manter ponto focal sob o cursor
+  if (focalX != null) {
     const rect = wrap.getBoundingClientRect();
-    wrap.scrollLeft = pctX * inner.offsetWidth  - (clientX - rect.left);
-    wrap.scrollTop  = pctY * inner.offsetHeight - (clientY - rect.top);
+    wrap.scrollLeft = focalX * inner.offsetWidth  - (clientX - rect.left);
+    wrap.scrollTop  = focalY * inner.offsetHeight - (clientY - rect.top);
   }
+
+  renderMarkers();
 }
 
 function mapaMarkerResize(val, empId) {
