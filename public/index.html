@@ -8148,6 +8148,42 @@ async function verEspelhoImagem(empId, emp, mapaData) {
   // Click para posicionar unidades
   document.getElementById('mapa-zoom-wrap').addEventListener('click', onMapaClick);
 
+  // Pan por clique+arraste — move o mapa em qualquer direção
+  (function() {
+    const wrap = document.getElementById('mapa-zoom-wrap');
+    let _panStart = null, _panScroll = null, _didPan = false;
+
+    wrap.addEventListener('mousedown', function(e) {
+      if (e.button !== 0) return;
+      _panStart = { x: e.clientX, y: e.clientY };
+      _panScroll = { left: wrap.scrollLeft, top: wrap.scrollTop };
+      _didPan = false;
+      wrap.style.cursor = 'grabbing';
+      wrap.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!_panStart) return;
+      const dx = e.clientX - _panStart.x;
+      const dy = e.clientY - _panStart.y;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) _didPan = true;
+      wrap.scrollLeft = _panScroll.left - dx;
+      wrap.scrollTop  = _panScroll.top  - dy;
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!_panStart) return;
+      _panStart = null;
+      wrap.style.cursor = 'crosshair';
+      wrap.style.userSelect = '';
+    });
+
+    // Suprimir click se foi arraste (evita posicionar unidade por engano)
+    wrap.addEventListener('click', function(e) {
+      if (_didPan) { _didPan = false; e.stopImmediatePropagation(); }
+    }, true);
+  })();
+
   // Zoom com scroll do mouse — zoom focal no cursor (multiplicativo, suavizado)
   let _wheelRAF = null;
   let _wheelAccum = 0, _wheelClientX = 0, _wheelClientY = 0;
