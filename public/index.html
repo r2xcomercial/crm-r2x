@@ -2982,12 +2982,13 @@ async function importarContrato(input) {
       }
     }
 
-    // Tenta encontrar corretor pelo nome
+    // Tenta encontrar corretor pelo nome (f-corretor é input hidden + typeahead)
     if (d.corretor) {
-      const corrSel = document.getElementById('f-corretor');
-      const opts = [...corrSel.options];
-      const match = opts.find(o => o.text.toLowerCase().includes(d.corretor.toLowerCase()));
-      if (match) corrSel.value = match.value;
+      const termo = d.corretor.toLowerCase();
+      const corrMatch = (currentData?.corretores || []).find(c =>
+        (c.nome||'').toLowerCase().includes(termo) || termo.includes((c.nome||'').toLowerCase())
+      );
+      if (corrMatch) selecionarCorretorVenda(corrMatch.id, corrMatch.nome);
     }
 
     // Seleciona o lead criado/encontrado pela IA
