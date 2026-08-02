@@ -184,6 +184,40 @@
   .loading { text-align: center; padding: 80px 24px; color: #64748b; }
   .erro    { text-align: center; padding: 60px 24px; color: #ef4444; }
 
+  /* Vista de prédio (building sales map) */
+  .predio-wrap { margin-top: 0; }
+  .predio-vso { margin-bottom: 16px; }
+  .predio-vso-bar { height: 7px; border-radius: 4px; background: #1e293b; overflow: hidden; display: flex; margin-bottom: 6px; }
+  .predio-vso-bar > div { height: 100%; transition: width .5s ease; }
+  .predio-vso-labels { display: flex; gap: 16px; font-size: 11px; flex-wrap: wrap; }
+  .predio-frame { border: 1px solid #334155; border-radius: 10px; overflow: hidden; }
+  .predio-andar { display: flex; align-items: stretch; border-bottom: 1px solid #1e293b; }
+  .predio-andar:last-child { border-bottom: none; }
+  .predio-label { width: 54px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 4px; background: #0f172a; border-right: 1px solid #1e293b; gap: 2px; }
+  .predio-num { font-size: 14px; font-weight: 700; color: #f1f5f9; font-variant-numeric: tabular-nums; }
+  .predio-tag { font-size: 9px; color: #475569; text-transform: uppercase; letter-spacing: .05em; }
+  .predio-units { flex: 1; display: flex; gap: 6px; padding: 8px 10px; align-items: center; flex-wrap: wrap; background: #0c1322; }
+  .predio-unit {
+    position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    width: 62px; height: 52px; border-radius: 7px; cursor: pointer; border: 1.5px solid transparent;
+    transition: transform .12s; flex-shrink: 0;
+  }
+  .predio-unit:hover { transform: translateY(-2px); z-index: 5; }
+  .predio-unit.disponivel  { background: #14532d; border-color: #22c55e; color: #4ade80; }
+  .predio-unit.reservado   { background: #78350f; border-color: #f59e0b; color: #fbbf24; }
+  .predio-unit.vendido     { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
+  .predio-unit.entregue    { background: #4c1d95; border-color: #a78bfa; color: #c4b5fd; }
+  .predio-unit.indisponivel { background: #1e293b; border-color: #475569; color: #64748b; }
+  .predio-unit-num  { font-size: 13px; font-weight: 700; line-height: 1; }
+  .predio-unit-area { font-size: 9px; opacity: .7; margin-top: 2px; }
+  .predio-unit .tip2 {
+    display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+    padding: 6px 10px; white-space: nowrap; font-size: 11px; z-index: 20;
+    pointer-events: none; line-height: 1.5; color: #e2e8f0;
+  }
+  .predio-unit:hover .tip2 { display: block; }
+
   @media (max-width: 600px) {
     header { padding: 12px 16px; }
     .resumo { padding: 12px 16px; gap: 8px; }
@@ -191,6 +225,10 @@
     .tile { width: 46px; height: 46px; }
     .tile .lote-num { font-size: 12px; }
     .sim-info-grid { grid-template-columns: 1fr; }
+    .predio-label { width: 44px; }
+    .predio-num { font-size: 12px; }
+    .predio-unit { width: 48px; height: 44px; }
+    .predio-unit-num { font-size: 11px; }
   }
 </style>
 </head>
@@ -663,35 +701,40 @@ async function carregar() {
       if (imagem) {
         html.push(`<div style="margin-bottom:20px"><img src="${imagem}" style="width:100%;max-width:1100px;border-radius:12px;display:block" alt="Mapa"></div>`);
       }
-      const quadras = {};
-      for (const u of units) {
-        const q = u.quadra || '—';
-        if (!quadras[q]) quadras[q] = [];
-        quadras[q].push(u);
-      }
-      html.push(`<div class="grade-section">`);
-      for (const [q, lotes] of Object.entries(quadras)) {
-        if (Object.keys(quadras).length > 1) {
-          html.push(`<div class="grade-titulo">${q !== '—' ? 'Quadra ' + q : 'Lotes'}</div>`);
+      const predioGroups = detectarPredio(units);
+      if (predioGroups) {
+        html.push(renderPredio(units, predioGroups));
+      } else {
+        const quadras = {};
+        for (const u of units) {
+          const q = u.quadra || '—';
+          if (!quadras[q]) quadras[q] = [];
+          quadras[q].push(u);
         }
-        html.push(`<div class="grade" style="margin-bottom:16px">`);
-        for (const u of lotes) {
-          const tipInfo = [
-            u.quadra ? `Quadra ${u.quadra}` : '',
-            `Lote ${u.lote}`,
-            u.area_m2 ? `${u.area_m2}m²` : '',
-            u.preco ? fmt0.format(u.preco) : '',
-            statusLabel(u.status)
-          ].filter(Boolean).join('<br>');
-          html.push(`<div class="tile ${u.status}" onclick="abrirSimulacao(${u.id})" title="Clique para simular">
-            <div class="lote-num">${u.lote}</div>
-            ${u.quadra ? `<div class="quadra">Q${u.quadra}</div>` : ''}
-            <div class="tip2">${tipInfo}</div>
-          </div>`);
+        html.push(`<div class="grade-section">`);
+        for (const [q, lotes] of Object.entries(quadras)) {
+          if (Object.keys(quadras).length > 1) {
+            html.push(`<div class="grade-titulo">${q !== '—' ? 'Quadra ' + q : 'Lotes'}</div>`);
+          }
+          html.push(`<div class="grade" style="margin-bottom:16px">`);
+          for (const u of lotes) {
+            const tipInfo = [
+              u.quadra ? `Quadra ${u.quadra}` : '',
+              `Lote ${u.lote}`,
+              u.area_m2 ? `${u.area_m2}m²` : '',
+              u.preco ? fmt0.format(u.preco) : '',
+              statusLabel(u.status)
+            ].filter(Boolean).join('<br>');
+            html.push(`<div class="tile ${u.status}" onclick="abrirSimulacao(${u.id})" title="Clique para simular">
+              <div class="lote-num">${u.lote}</div>
+              ${u.quadra ? `<div class="quadra">Q${u.quadra}</div>` : ''}
+              <div class="tip2">${tipInfo}</div>
+            </div>`);
+          }
+          html.push(`</div>`);
         }
         html.push(`</div>`);
       }
-      html.push(`</div>`);
       document.getElementById('conteudo').innerHTML = html.join('');
     }
 
@@ -736,6 +779,90 @@ function ajustarMarcadores() {
   cont.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none';
   cont.innerHTML = html.join('');
   cont.querySelectorAll('.marcador').forEach(m => m.style.pointerEvents = 'auto');
+}
+
+function detectarPredio(units) {
+  // Retorna grupos por andar se as unidades parecem apartamentos (ex: 401, 402, 501...)
+  // ou null se parece loteamento
+  const semQuadra = units.filter(u => !u.quadra || u.quadra === '0' || u.quadra === '');
+  if (semQuadra.length < units.length * 0.9) return null;
+
+  const nums = units.map(u => ({ u, n: parseInt(String(u.lote || '').trim(), 10) }))
+                     .filter(x => !isNaN(x.n));
+  if (nums.length < units.length * 0.85) return null;
+
+  const floorGroups = {};
+  for (const { u, n } of nums) {
+    if (n < 100 || n > 9999) return null;
+    const floor = Math.floor(n / 100);
+    const unit  = n % 100;
+    if (floor < 1 || floor > 60 || unit < 1 || unit > 50) return null;
+    if (!floorGroups[floor]) floorGroups[floor] = [];
+    floorGroups[floor].push(u);
+  }
+
+  const floors = Object.keys(floorGroups);
+  if (floors.length < 2) return null;
+
+  // Maioria dos andares deve ter pelo menos 2 unidades
+  const comMultiplos = floors.filter(f => floorGroups[f].length >= 2);
+  if (comMultiplos.length < Math.max(1, floors.length * 0.5)) return null;
+
+  return floorGroups;
+}
+
+function renderPredio(units, floorGroups) {
+  const floors = Object.keys(floorGroups).map(Number).sort((a, b) => b - a);
+  const tot  = units.length;
+  const vend = units.filter(u => u.status === 'vendido' || u.status === 'entregue').length;
+  const res  = units.filter(u => u.status === 'reservado').length;
+  const disp = units.filter(u => u.status === 'disponivel').length;
+  const topFloor = floors[0];
+
+  const html = [`<div class="predio-wrap">`,
+    `<div class="predio-vso">`,
+    `<div class="predio-vso-bar">`,
+    `<div style="width:${tot?vend/tot*100:0}%;background:#dc2626"></div>`,
+    `<div style="width:${tot?res/tot*100:0}%;background:#d97706"></div>`,
+    `<div style="width:${tot?disp/tot*100:0}%;background:#16a34a"></div>`,
+    `</div>`,
+    `<div class="predio-vso-labels">`,
+    `<span style="color:#fca5a5">${vend} vendido${vend!==1?'s':''}</span>`,
+    `<span style="color:#fbbf24">${res} reservado${res!==1?'s':''}</span>`,
+    `<span style="color:#4ade80">${disp} disponível${disp!==1?'is':''}</span>`,
+    `</div></div>`,
+    `<div class="predio-frame">`
+  ];
+
+  for (const floor of floors) {
+    const unitsOnFloor = (floorGroups[floor] || []).slice()
+      .sort((a, b) => parseInt(a.lote, 10) - parseInt(b.lote, 10));
+    const tag = floor === topFloor ? 'Cobertura' : 'Andar';
+
+    html.push(`<div class="predio-andar">
+      <div class="predio-label"><span class="predio-num">${floor}°</span><span class="predio-tag">${tag}</span></div>
+      <div class="predio-units">`);
+
+    for (const u of unitsOnFloor) {
+      const tipInfo = [
+        `Apto ${u.lote}`,
+        u.area_m2 ? `${u.area_m2}m²` : '',
+        u.preco && u.status === 'disponivel' ? fmt0.format(u.preco) : (u.preco ? 'Sob consulta' : ''),
+        statusLabel(u.status)
+      ].filter(Boolean).join('<br>');
+
+      html.push(`<div class="predio-unit ${u.status}" onclick="abrirSimulacao(${u.id})">
+        <div class="predio-unit-num">${u.lote}</div>
+        ${u.area_m2 ? `<div class="predio-unit-area">${u.area_m2}m²</div>` : ''}
+        <div class="tip2">${tipInfo}</div>
+      </div>`);
+    }
+
+    html.push(`</div></div>`);
+  }
+
+  html.push(`</div></div>`);
+  return html.join('\n');
 }
 
 let _mapaScale = 1, _mapaTX = 0, _mapaTY = 0;
