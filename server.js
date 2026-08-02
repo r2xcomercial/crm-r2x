@@ -4557,13 +4557,15 @@ async function extrairTextoDocx(buffer) {
 
 app.post('/api/vendas/extrair-contrato', uploadContrato.single('contrato'), async (req, res) => {
   if (!req.file) return err(res, 'Arquivo não enviado');
-  if (!openai) return err(res, 'Chave OpenAI não configurada no servidor');
+  if (!process.env.ANTHROPIC_API_KEY && !openai) return err(res, 'Nenhuma chave de IA configurada (ANTHROPIC_API_KEY ou OPENAI_API_KEY)');
 
   try {
     const mime = req.file.mimetype;
     const nome = req.file.originalname.toLowerCase();
     const ehImagem = IMAGENS_ACEITAS.includes(mime) ||
       ['.jpg','.jpeg','.png','.webp','.heic','.heif','.gif'].some(ext => nome.endsWith(ext));
+    const ehPdf = mime === 'application/pdf' || nome.endsWith('.pdf');
+    const ehDocx = nome.endsWith('.docx') || mime.includes('wordprocessingml');
 
     const promptSistema = `Você é um assistente especializado em contratos imobiliários brasileiros.
 Leia o documento e extraia todas as informações no formato JSON.
@@ -4576,61 +4578,111 @@ Retorne APENAS um objeto JSON válido com estes campos (use null se não encontr
   "comprador_email": "email do comprador",
   "comprador_cidade": "cidade do comprador",
   "comprador_estado": "UF do comprador (2 letras)",
-  "imovel": "identificação do imóvel (lote, quadra, unidade, bloco, apartamento etc)",
+  "imovel": "identificação APENAS do imóvel principal: ex 'Apartamento nº 603', 'Lote 42 Quadra 5'. NÃO inclua área, vaga ou hobby box.",
   "valor": número sem formatação (ex: 185000.00),
-  "data_venda": "data de assinatura/venda no formato YYYY-MM-DD",
+  "data_venda": "data de assinatura/venda no formato YYYY-MM-DD — se não houver data preenchida no contrato, retorne null",
   "empreendimento": "nome do empreendimento/loteamento/condomínio",
   "corretor": "nome do corretor/intermediário se mencionado",
   "valor_entrada": número sem formatação — valor total da entrada/ato/sinal (ex: 30000.00). Se não houver, null,
   "entrada_parcelas": array de objetos com as parcelas da entrada. Cada objeto: {"data": "YYYY-MM-DD", "valor": número}. Se a entrada for à vista, array com um único objeto. Se parcelada, um objeto por parcela. Se não houver entrada, null,
-  "observacoes": "outras informações relevantes em até 2 linhas"
+  "observacoes": "outras informações relevantes em até 2 linhas (ex: área do imóvel, vagas, indexação)"
 }
 
 IMPORTANTE sobre entrada_parcelas:
 - Procure por termos como: entrada, ato, sinal, parcelas de entrada, pagamento inicial, 1ª parcela, 2ª parcela etc.
 - Se encontrar datas de pagamento da entrada, inclua todas no array.
-- Se encontrar apenas o valor total sem datas, use a data da assinatura como data da parcela.`;
+- Se encontrar apenas o valor total sem datas, use a data da assinatura como data da parcela, ou null se não houver data.`;
 
-    let completion;
+    let respostaTexto;
 
-    if (ehImagem) {
-      // Visão direta: envia a imagem para GPT-4o que lê o texto visualmente
-      const mimeReal = mime.startsWith('image/') ? mime : 'image/jpeg';
+    if (ehPdf) {
+      // PDFs: usa Claude nativo com suporte a PDF (sem corte de texto)
+      if (!process.env.ANTHROPIC_API_KEY) return err(res, 'ANTHROPIC_API_KEY não configurada — necessária para leitura de PDF');
       const b64 = req.file.buffer.toString('base64');
-      completion = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        max_tokens: 1200,
-        temperature: 0,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'text', text: promptSistema },
-            { type: 'image_url', image_url: { url: `data:${mimeReal};base64,${b64}`, detail: 'high' } }
-          ]
-        }],
+      const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'pdfs-2024-09-25'
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1200,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+              { type: 'text', text: promptSistema }
+            ]
+          }]
+        })
       });
-    } else {
-      // Texto: extrai do PDF ou DOCX e envia como texto
-      let texto = '';
-      if (mime === 'application/pdf' || nome.endsWith('.pdf')) {
-        const parsed = await pdfParse(req.file.buffer);
-        texto = parsed.text;
-      } else if (nome.endsWith('.docx') || mime.includes('wordprocessingml')) {
-        texto = await extrairTextoDocx(req.file.buffer);
+      const claudeJson = await claudeResp.json();
+      if (!claudeResp.ok) return err(res, claudeJson.error?.message || 'Erro na API Claude');
+      respostaTexto = claudeJson.content?.[0]?.text || '{}';
+
+    } else if (ehImagem) {
+      // Imagens: usa GPT-4o se disponível, senão Claude vision
+      const b64 = req.file.buffer.toString('base64');
+      if (openai) {
+        const mimeReal = mime.startsWith('image/') ? mime : 'image/jpeg';
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          max_tokens: 1200,
+          temperature: 0,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: promptSistema },
+              { type: 'image_url', image_url: { url: `data:${mimeReal};base64,${b64}`, detail: 'high' } }
+            ]
+          }],
+        });
+        respostaTexto = completion.choices[0].message.content.trim();
       } else {
-        return err(res, 'Formato não suportado. Envie PDF, DOCX ou imagem (JPG, PNG, WEBP, HEIC).');
+        const mimeImg = mime.startsWith('image/') ? mime : 'image/jpeg';
+        const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 1200,
+            messages: [{ role: 'user', content: [
+              { type: 'image', source: { type: 'base64', media_type: mimeImg, data: b64 } },
+              { type: 'text', text: promptSistema }
+            ]}]
+          })
+        });
+        const claudeJson = await claudeResp.json();
+        if (!claudeResp.ok) return err(res, claudeJson.error?.message || 'Erro na API Claude');
+        respostaTexto = claudeJson.content?.[0]?.text || '{}';
       }
-      if (!texto || texto.length < 50) return err(res, 'Não foi possível extrair texto do arquivo');
-      const textoLimitado = texto.slice(0, 12000);
-      completion = await openai.chat.completions.create({
-        model: 'gpt-4.1-mini',
-        max_tokens: 1000,
-        temperature: 0,
-        messages: [{ role: 'user', content: `${promptSistema}\n\nCONTRATO:\n${textoLimitado}` }],
+
+    } else if (ehDocx) {
+      // DOCX: extrai texto completo e envia ao Claude
+      if (!process.env.ANTHROPIC_API_KEY) return err(res, 'ANTHROPIC_API_KEY não configurada');
+      const texto = await extrairTextoDocx(req.file.buffer);
+      if (!texto || texto.length < 50) return err(res, 'Não foi possível extrair texto do arquivo DOCX');
+      const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1200,
+          messages: [{ role: 'user', content: `${promptSistema}\n\nCONTRATO:\n${texto.slice(0, 40000)}` }]
+        })
       });
+      const claudeJson = await claudeResp.json();
+      if (!claudeResp.ok) return err(res, claudeJson.error?.message || 'Erro na API Claude');
+      respostaTexto = claudeJson.content?.[0]?.text || '{}';
+
+    } else {
+      return err(res, 'Formato não suportado. Envie PDF, DOCX ou imagem (JPG, PNG, WEBP, HEIC).');
     }
 
-    const resposta = completion.choices[0].message.content.trim();
+    const resposta = respostaTexto.trim();
 
     // Extrai o JSON da resposta
     const jsonMatch = resposta.match(/\{[\s\S]*\}/);
