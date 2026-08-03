@@ -296,6 +296,36 @@ app.get("/api/dashboard", (req, res) => {
     LIMIT 15
   `).all();
 
+  // VSO por empreendimento (apenas com unidades cadastradas)
+  const vso_empreendimentos = db.prepare(`
+    SELECT e.id, e.nome,
+      COUNT(u.id) as total,
+      SUM(CASE WHEN u.status IN ('vendido','entregue') THEN 1 ELSE 0 END) as vendido,
+      SUM(CASE WHEN u.status = 'reservado'             THEN 1 ELSE 0 END) as reservado,
+      SUM(CASE WHEN u.status = 'disponivel'            THEN 1 ELSE 0 END) as disponivel
+    FROM empreendimentos e
+    LEFT JOIN unidades u ON u.empreendimento_id = e.id
+    GROUP BY e.id
+    HAVING COUNT(u.id) > 0
+    ORDER BY (SUM(CASE WHEN u.status IN ('vendido','entregue','reservado') THEN 1 ELSE 0 END) * 1.0 / COUNT(u.id)) DESC
+  `).all();
+
+  // Funil detalhado com todos os estágios (para calcular taxa de conversão no front-end)
+  const funil_detalhado = db.prepare(`
+    SELECT status, COUNT(*) as n FROM leads GROUP BY status
+  `).all();
+
+  // Vendas por mês (12 meses)
+  const vendas_12meses = db.prepare(`
+    SELECT strftime('%Y-%m', data_venda) as mes,
+      COUNT(*) as qtd,
+      COALESCE(SUM(valor), 0) as vgv
+    FROM vendas
+    WHERE status='ativo' AND data_venda IS NOT NULL
+      AND data_venda >= date('now','-11 months','start of month')
+    GROUP BY 1 ORDER BY 1
+  `).all();
+
   // Aniversários hoje e esta semana
   const aniversarios_hoje = db.prepare(`
     SELECT nome, telefone, 'lead' as tipo FROM leads
@@ -308,17 +338,105 @@ app.get("/api/dashboard", (req, res) => {
     WHERE strftime('%m-%d', aniversario) = strftime('%m-%d','now') AND aniversario IS NOT NULL
   `).all();
 
+  // ── Novos indicadores de mercado imobiliário (VSO, ticket médio, distrato, ciclo, CAC, origem) ──
+
+  // Ticket médio geral e do mês
+  const ticket_medio = db.prepare(`
+    SELECT COALESCE(AVG(valor),0) as media FROM vendas WHERE status='ativo'
+  `).get().media;
+  const ticket_medio_mes = db.prepare(`
+    SELECT COALESCE(AVG(valor),0) as media FROM vendas
+    WHERE status='ativo' AND strftime('%Y-%m', data_venda) = strftime('%Y-%m','now')
+  `).get().media;
+
+  // Taxa de distrato: distratos / (vendas ativas + distratos)
+  const distrato_stats = db.prepare(`
+    SELECT
+      SUM(CASE WHEN status='ativo'    THEN 1 ELSE 0 END) as ativas,
+      SUM(CASE WHEN status='distrato' THEN 1 ELSE 0 END) as distratos
+    FROM vendas
+  `).get();
+  const taxa_distrato = (distrato_stats.ativas + distrato_stats.distratos) > 0
+    ? (distrato_stats.distratos / (distrato_stats.ativas + distrato_stats.distratos)) * 100
+    : 0;
+
+  // Ciclo médio de venda: dias entre criação do lead e a data da venda (só leads vinculados a venda ativa)
+  const ciclo_medio_dias = db.prepare(`
+    SELECT AVG(julianday(v.data_venda) - julianday(l.criado_em)) as media
+    FROM vendas v
+    JOIN leads l ON l.id = v.lead_id
+    WHERE v.status='ativo' AND v.data_venda IS NOT NULL AND l.criado_em IS NOT NULL
+  `).get().media || 0;
+
+  // Leads por origem, com taxa de conversão por canal
+  const leads_por_origem = db.prepare(`
+    SELECT
+      COALESCE(NULLIF(TRIM(origem), ''), 'não informado') as origem,
+      COUNT(*) as total,
+      SUM(CASE WHEN status='vendido' THEN 1 ELSE 0 END) as convertidos
+    FROM leads
+    GROUP BY 1
+    ORDER BY total DESC
+  `).all().map(o => ({ ...o, taxa_conversao: o.total > 0 ? (o.convertidos / o.total) * 100 : 0 }));
+
+  // CAC aproximado: gasto de marketing (financeiro_saidas categoria='marketing') no mês / leads e vendas do mês
+  const gasto_marketing_mes = db.prepare(`
+    SELECT COALESCE(SUM(valor),0) as total FROM financeiro_saidas
+    WHERE categoria='marketing' AND strftime('%Y-%m', COALESCE(data_pagamento, criado_em)) = strftime('%Y-%m','now')
+  `).get().total;
+  const leads_novos_mes_cac = db.prepare(`
+    SELECT COUNT(*) as n FROM leads WHERE strftime('%Y-%m', criado_em) = strftime('%Y-%m','now')
+  `).get().n;
+  const vendas_qtd_mes = db.prepare(`
+    SELECT COUNT(*) as n FROM vendas WHERE status='ativo' AND strftime('%Y-%m', data_venda) = strftime('%Y-%m','now')
+  `).get().n;
+  const cac_por_lead  = leads_novos_mes_cac > 0 ? gasto_marketing_mes / leads_novos_mes_cac : 0;
+  const cac_por_venda = vendas_qtd_mes > 0 ? gasto_marketing_mes / vendas_qtd_mes : 0;
+
+  // Taxa de conversão geral do funil (vendido / total de leads)
+  const total_leads_funil = funil_detalhado.reduce((s,f) => s + f.n, 0);
+  const vendidos_funil = funil_detalhado.filter(f => f.status === 'vendido').reduce((s,f) => s + f.n, 0);
+  const taxa_conversao_geral = total_leads_funil > 0 ? (vendidos_funil / total_leads_funil) * 100 : 0;
+
+  // Ranking de corretores com ticket médio e taxa de conversão (leads atendidos x vendidos)
+  const ranking_corretores_completo = db.prepare(`
+    SELECT c.id, c.nome,
+      COUNT(DISTINCT v.id) as qtd_vendas,
+      COALESCE(SUM(v.valor),0) as vgv,
+      (SELECT COUNT(*) FROM leads WHERE corretor_id = c.id) as leads_atendidos
+    FROM corretores c
+    LEFT JOIN vendas v ON v.corretor_id = c.id AND v.status = 'ativo'
+    WHERE c.ativo = 1
+    GROUP BY c.id
+    HAVING qtd_vendas > 0 OR leads_atendidos > 0
+    ORDER BY vgv DESC
+  `).all().map(r => ({
+    ...r,
+    ticket_medio: r.qtd_vendas > 0 ? r.vgv / r.qtd_vendas : 0,
+    taxa_conversao: r.leads_atendidos > 0 ? (r.qtd_vendas / r.leads_atendidos) * 100 : 0,
+  }));
+
   ok(res, {
-    kpis: { leads_total, leads_novos, vendas_mes, vendas_total, entradas_pendentes, clientes_total, corretores_ativos, corretores_total, corretores_com_vendas, empreendimentos },
+    kpis: {
+      leads_total, leads_novos, vendas_mes, vendas_total, entradas_pendentes, clientes_total,
+      corretores_ativos, corretores_total, corretores_com_vendas, empreendimentos,
+      ticket_medio, ticket_medio_mes, taxa_distrato, ciclo_medio_dias,
+      cac_por_lead, cac_por_venda, gasto_marketing_mes, taxa_conversao_geral,
+    },
     aniversarios_mes,
     aniversarios_hoje,
     proximos_lancamentos,
     funil,
+    funil_detalhado,
     ranking_vgv,
     ranking_qtd,
+    ranking_corretores_completo,
     leads_esquecidos,
     followups_vencidos,
     followups_hoje,
+    vso_empreendimentos,
+    vendas_12meses,
+    leads_por_origem,
   });
   } catch(e) {
     console.error('[dashboard]', e.message);

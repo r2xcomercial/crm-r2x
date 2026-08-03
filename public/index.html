@@ -653,26 +653,94 @@ async function renderDashboard() {
     return;
   }
   const { data } = dashR;
-  const { kpis, aniversarios_mes, aniversarios_hoje, proximos_lancamentos, funil, leads_esquecidos, followups_vencidos, followups_hoje } = data;
+  const { kpis, aniversarios_mes, aniversarios_hoje, proximos_lancamentos, funil, funil_detalhado, ranking_vgv, ranking_corretores_completo, leads_por_origem, leads_esquecidos, followups_vencidos, followups_hoje, vso_empreendimentos, vendas_12meses } = data;
 
   document.getElementById('badge-leads').textContent = kpis.leads_novos;
 
-  const statusLabel = { novo:'Captado', qualificado:'Qualificado', com_corretor:'Distribuído', visitou:'Atend./Visita', proposta:'Proposta', reserva:'Reserva', vendido:'Venda', sem_venda:'Sem venda', perdido:'Sem venda' };
-  const statusColors = { novo:'#00C4B4', qualificado:'#38BDF8', com_corretor:'#60A5FA', visitou:'#A78BFA', proposta:'#FBBF24', reserva:'#F97316', vendido:'#22C55E', sem_venda:'#EF4444', perdido:'#EF4444' };
-
-  // Agrupa vendas por mês (últimos 6 meses)
-  const vendas = vendasR.data || [];
-  const meses = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(); d.setMonth(d.getMonth() - i);
-    meses.push({ label: d.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}), key: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` });
+  // VGV 12 meses: preenche meses sem venda com zero
+  const v12map = {};
+  (vendas_12meses || []).forEach(m => { v12map[m.mes] = m; });
+  const meses12 = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    meses12.push({ label: d.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}), vgv: v12map[key]?.vgv||0, qtd: v12map[key]?.qtd||0 });
   }
-  const vendasPorMes = meses.map(m => vendas.filter(v => v.data_venda?.startsWith(m.key) && v.status==='ativo').reduce((s,v) => s+v.valor,0));
 
   // Entradas por status
   const entradas = finR.data || [];
   const recebido = entradas.filter(e => e.status==='recebido').reduce((s,e) => s+e.valor, 0);
   const pendente = entradas.filter(e => e.status==='pendente').reduce((s,e) => s+e.valor, 0);
+
+  // Funil de conversão: contagem cumulativa por etapa
+  const fuilMap = {};
+  (funil_detalhado || []).forEach(f => { fuilMap[f.status] = (fuilMap[f.status]||0) + f.n; });
+  const fstages = [
+    { label:'Captado',     statuses:['novo','qualificado','com_corretor','visitou','proposta','reserva','vendido','perdido','sem_venda'], color:'#00C4B4' },
+    { label:'Qualificado', statuses:['qualificado','com_corretor','visitou','proposta','reserva','vendido'], color:'#38BDF8' },
+    { label:'Visitou',     statuses:['visitou','proposta','reserva','vendido'], color:'#A78BFA' },
+    { label:'Proposta',    statuses:['proposta','reserva','vendido'], color:'#FBBF24' },
+    { label:'Vendido',     statuses:['vendido','reserva'], color:'#22C55E' },
+  ].map(s => ({ ...s, n: s.statuses.reduce((sum,st) => sum+(fuilMap[st]||0), 0) }));
+  const fMax = fstages[0]?.n || 1;
+  const funilHTML = fstages.map((s, i) => {
+    const pct = fMax ? Math.round((s.n / fMax) * 100) : 0;
+    const conv = i > 0 && fstages[i-1].n ? Math.round((s.n / fstages[i-1].n) * 100) : null;
+    return `
+      ${conv !== null ? `<div style="font-size:11px;color:var(--text2);text-align:center;padding:2px 0 1px">↓ ${conv}% converteram</div>` : ''}
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:88px;text-align:right;font-size:12px;color:var(--text2);flex-shrink:0">${s.label}</div>
+        <div style="flex:1;height:26px;background:var(--navy3);border-radius:4px;overflow:hidden;position:relative">
+          <div style="height:100%;width:${pct}%;background:${s.color};border-radius:4px;transition:.6s"></div>
+          <div style="position:absolute;inset:0;display:flex;align-items:center;padding-left:8px;font-size:12px;font-weight:700;color:#fff;text-shadow:0 0 4px rgba(0,0,0,.7)">${s.n}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // VSO por empreendimento
+  const vsoHTML = (vso_empreendimentos||[]).map(e => {
+    const total = e.total || 1;
+    const pctV = Math.round((e.vendido / total) * 100);
+    const pctR = Math.round((e.reservado / total) * 100);
+    const pctD = Math.round((e.disponivel / total) * 100);
+    const vso = pctV + pctR;
+    const cor = vso >= 80 ? '#22C55E' : vso >= 50 ? '#F59E0B' : '#94A3B8';
+    return `
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+          <span style="font-size:13px;font-weight:600">${e.nome||'—'}</span>
+          <span style="font-size:11px;color:var(--text2)">${e.vendido}/${e.total} und · VSO <strong style="color:${cor}">${vso}%</strong></span>
+        </div>
+        <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--navy3)">
+          ${pctV ? `<div style="width:${pctV}%;background:#22C55E" title="Vendido: ${e.vendido}"></div>` : ''}
+          ${pctR ? `<div style="width:${pctR}%;background:#F97316" title="Reservado: ${e.reservado}"></div>` : ''}
+          ${pctD ? `<div style="width:${pctD}%;background:#475569" title="Disponível: ${e.disponivel}"></div>` : ''}
+        </div>
+        <div style="display:flex;gap:12px;margin-top:3px">
+          ${e.vendido ? `<span style="font-size:10px;color:#22C55E">■ Vendido ${e.vendido}</span>` : ''}
+          ${e.reservado ? `<span style="font-size:10px;color:#F97316">■ Reservado ${e.reservado}</span>` : ''}
+          ${e.disponivel ? `<span style="font-size:10px;color:#94A3B8">■ Disponível ${e.disponivel}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  // Ranking de corretores por VGV
+  const rankMax = ranking_vgv?.[0]?.vgv || 1;
+  const rankHTML = (ranking_vgv||[]).slice(0,5).map((r, i) => {
+    const pct = Math.round((r.vgv / rankMax) * 100);
+    const medal = ['🥇','🥈','🥉'][i] || `#${i+1}`;
+    return `
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">
+          <span style="font-size:13px;font-weight:600">${medal} ${r.nome||'—'}</span>
+          <span style="font-size:12px;color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums">${fmt(r.vgv)}</span>
+        </div>
+        <div style="height:5px;background:var(--navy3);border-radius:3px;overflow:hidden">
+          <div style="height:5px;width:${pct}%;background:var(--accent);border-radius:3px"></div>
+        </div>
+        <div style="font-size:10px;color:var(--text2);margin-top:2px">${r.qtd} ${r.qtd===1?'venda':'vendas'}</div>
+      </div>`;
+  }).join('') || '<div style="color:var(--text2);font-size:13px">Nenhum dado ainda</div>';
 
   document.getElementById('content').innerHTML = `
     <div class="kpi-grid">
@@ -684,18 +752,87 @@ async function renderDashboard() {
       ${kpi('👥', 'Corretores Ativos', kpis.corretores_ativos, '')}
     </div>
 
+    <div class="kpi-grid" style="margin-top:12px">
+      ${kpi('📐', 'Ticket Médio', fmt(kpis.ticket_medio), `${fmt(kpis.ticket_medio_mes)} no mês`)}
+      ${kpi('📉', 'Taxa de Distrato', `${kpis.taxa_distrato.toFixed(1)}%`, 'sobre vendas + distratos')}
+      ${kpi('⏱️', 'Ciclo Médio de Venda', `${Math.round(kpis.ciclo_medio_dias)} dias`, 'do lead à venda')}
+      ${kpi('🔁', 'Conversão Geral', `${kpis.taxa_conversao_geral.toFixed(1)}%`, 'leads → vendas')}
+      ${kpi('💸', 'CAC por Lead', fmt(kpis.cac_por_lead), `${fmt(kpis.gasto_marketing_mes)} em mkt/mês`)}
+      ${kpi('🎯', 'CAC por Venda', fmt(kpis.cac_por_venda), 'custo de aquisição')}
+    </div>
+
     <div class="dash-row" style="margin-bottom:20px">
-      <div class="mini-card">
-        <h4>📈 VGV Vendido — Últimos 6 meses</h4>
-        <div style="position:relative;height:180px;margin-top:12px">
+      <div class="mini-card" style="flex:1.5">
+        <h4>📈 VGV — Últimos 12 meses</h4>
+        <div style="position:relative;height:200px;margin-top:12px">
           <canvas id="chart-vendas"></canvas>
         </div>
       </div>
       <div class="mini-card">
-        <h4>🎯 Funil de Leads</h4>
-        <div style="position:relative;height:180px;margin-top:12px">
-          <canvas id="chart-funil"></canvas>
+        <h4>🎯 Funil de Conversão</h4>
+        <div style="margin-top:14px">${funilHTML}</div>
+      </div>
+    </div>
+
+    <div class="dash-row" style="margin-bottom:20px">
+      <div class="mini-card">
+        <h4>🏗️ VSO por Empreendimento — Velocidade de Vendas</h4>
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:12px;max-height:280px;overflow-y:auto">
+          ${vso_empreendimentos && vso_empreendimentos.length ? vso_empreendimentos.map(v => {
+            const total = v.total || 0;
+            const vso = total > 0 ? ((v.vendido + v.reservado) / total) * 100 : 0;
+            const pctVendido = total > 0 ? (v.vendido / total) * 100 : 0;
+            const pctReservado = total > 0 ? (v.reservado / total) * 100 : 0;
+            return `<div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                <span style="font-weight:600">${v.nome}</span>
+                <span style="color:var(--text2)">VSO ${vso.toFixed(0)}% · ${v.vendido}/${total} un.</span>
+              </div>
+              <div style="height:10px;border-radius:5px;overflow:hidden;background:var(--navy3);display:flex">
+                <div style="width:${pctVendido}%;background:#22C55E"></div>
+                <div style="width:${pctReservado}%;background:#F97316"></div>
+              </div>
+            </div>`;
+          }).join('') : '<div style="color:var(--text2);font-size:13px">Cadastre unidades nos empreendimentos para ver o VSO</div>'}
         </div>
+      </div>
+      <div class="mini-card">
+        <h4>🏆 Ranking de Corretores</h4>
+        <div style="margin-top:8px;max-height:280px;overflow-y:auto">
+          <table style="width:100%;font-size:12px">
+            <thead><tr style="color:var(--text2)"><th style="text-align:left;padding:4px 0">Corretor</th><th style="text-align:right">Vendas</th><th style="text-align:right">VGV</th><th style="text-align:right">Ticket médio</th><th style="text-align:right">Conversão</th></tr></thead>
+            <tbody>
+              ${ranking_corretores_completo && ranking_corretores_completo.length ? ranking_corretores_completo.slice(0,8).map(r => `
+                <tr style="border-top:1px solid var(--border)">
+                  <td style="padding:6px 0;font-weight:500">${r.nome}</td>
+                  <td style="text-align:right">${r.qtd_vendas}</td>
+                  <td style="text-align:right">${fmt(r.vgv)}</td>
+                  <td style="text-align:right">${fmt(r.ticket_medio)}</td>
+                  <td style="text-align:right">${r.taxa_conversao.toFixed(0)}%</td>
+                </tr>`).join('') : `<tr><td style="color:var(--text2);padding:8px 0">Nenhuma venda registrada ainda</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="mini-card" style="margin-bottom:20px">
+      <h4>📊 Leads por Origem — Volume e Taxa de Conversão</h4>
+      <div style="margin-top:8px">
+        <table style="width:100%;font-size:12px">
+          <thead><tr style="color:var(--text2)"><th style="text-align:left;padding:4px 0">Origem</th><th style="text-align:right">Leads</th><th style="text-align:right">Convertidos</th><th style="text-align:right">Taxa de conversão</th></tr></thead>
+          <tbody>
+            ${leads_por_origem && leads_por_origem.length ? leads_por_origem.map(o => `
+              <tr style="border-top:1px solid var(--border)">
+                <td style="padding:6px 0;font-weight:500;text-transform:capitalize">${o.origem}</td>
+                <td style="text-align:right">${o.total}</td>
+                <td style="text-align:right">${o.convertidos}</td>
+                <td style="text-align:right">
+                  <span style="font-weight:600;color:${o.taxa_conversao>=15?'#22C55E':o.taxa_conversao>=5?'#FBBF24':'#EF4444'}">${o.taxa_conversao.toFixed(1)}%</span>
+                </td>
+              </tr>`).join('') : `<tr><td style="color:var(--text2);padding:8px 0">Sem leads cadastrados</td></tr>`}
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -827,27 +964,21 @@ async function renderDashboard() {
 
   const chartDefaults = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#94A3B8', font: { size: 11 } } } } };
 
-  // Gráfico VGV por mês
+  // Gráfico VGV por mês (12 meses) + linha de quantidade
   _dashCharts.vendas = new Chart(document.getElementById('chart-vendas'), {
     type: 'bar',
     data: {
-      labels: meses.map(m => m.label),
-      datasets: [{ label: 'VGV (R$)', data: vendasPorMes, backgroundColor: 'rgba(0,196,180,0.7)', borderColor: '#00C4B4', borderWidth: 1, borderRadius: 4 }]
+      labels: meses12.map(m => m.label),
+      datasets: [
+        { label: 'VGV (R$)', data: meses12.map(m => m.vgv), backgroundColor: 'rgba(0,196,180,0.7)', borderColor: '#00C4B4', borderWidth: 1, borderRadius: 4, yAxisID: 'y' },
+        { label: 'Vendas', data: meses12.map(m => m.qtd), type: 'line', borderColor: '#FBBF24', backgroundColor: 'rgba(251,191,36,0.08)', pointBackgroundColor: '#FBBF24', pointRadius: 3, tension: 0.3, yAxisID: 'y2' }
+      ]
     },
     options: { ...chartDefaults, scales: {
-      x: { ticks: { color: '#94A3B8', font:{size:10} }, grid: { color: '#243650' } },
-      y: { ticks: { color: '#94A3B8', font:{size:10}, callback: v => v>=1000000?`${(v/1000000).toFixed(1)}M`:v>=1000?`${(v/1000).toFixed(0)}k`:v }, grid: { color: '#243650' } }
+      x: { ticks: { color:'#94A3B8', font:{size:10} }, grid: { color:'#243650' } },
+      y: { position:'left', ticks: { color:'#94A3B8', font:{size:10}, callback: v => v>=1000000?`${(v/1000000).toFixed(1)}M`:v>=1000?`${(v/1000).toFixed(0)}k`:v }, grid: { color:'#243650' } },
+      y2: { position:'right', ticks: { color:'#FBBF24', font:{size:10}, stepSize:1 }, grid: { drawOnChartArea:false } }
     }}
-  });
-
-  // Gráfico Funil (rosca)
-  _dashCharts.funil = new Chart(document.getElementById('chart-funil'), {
-    type: 'doughnut',
-    data: {
-      labels: funil.map(f => statusLabel[f.status]||f.status),
-      datasets: [{ data: funil.map(f => f.n), backgroundColor: funil.map(f => statusColors[f.status]||'#94A3B8'), borderWidth: 0 }]
-    },
-    options: { ...chartDefaults, cutout: '65%' }
   });
 
   // Gráfico Financeiro (rosca)
