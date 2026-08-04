@@ -3015,17 +3015,17 @@ app.get("/api/financeiro/entradas", (req, res) => {
 });
 
 app.post("/api/financeiro/entradas", (req, res) => {
-  const { empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num, parcela_total, tem_nf_propria, nf_numero, nf_data } = req.body;
+  const { empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num, parcela_total, tem_nf_propria, nf_numero, nf_data, conta_id } = req.body;
   if (!descricao || !valor) return err(res, "Descrição e valor obrigatórios");
   const nfFlag = tem_nf_propria === false || tem_nf_propria === 0 || tem_nf_propria === '0' ? 0 : 1;
-  const r = db.prepare(`INSERT INTO financeiro_entradas (empreendimento_id,venda_id,descricao,tipo,valor,data_prevista,data_recebimento,status,observacoes,parcela_num,parcela_total,tem_nf_propria,nf_numero,nf_data) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, data_recebimento, status || 'pendente', observacoes, parcela_num||null, parcela_total||null, nfFlag, nf_numero||null, nf_data||null);
+  const r = db.prepare(`INSERT INTO financeiro_entradas (empreendimento_id,venda_id,descricao,tipo,valor,data_prevista,data_recebimento,status,observacoes,parcela_num,parcela_total,tem_nf_propria,nf_numero,nf_data,conta_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, data_recebimento, status || 'pendente', observacoes, parcela_num||null, parcela_total||null, nfFlag, nf_numero||null, nf_data||null, conta_id||null);
   ok(res, { id: r.lastInsertRowid });
 });
 
 app.put("/api/financeiro/entradas/:id", (req, res) => {
-  const { empreendimento_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num, parcela_total, tem_nf_propria, nf_numero, nf_data } = req.body;
+  const { empreendimento_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num, parcela_total, tem_nf_propria, nf_numero, nf_data, conta_id } = req.body;
   const nfFlag = tem_nf_propria === false || tem_nf_propria === 0 || tem_nf_propria === '0' ? 0 : 1;
-  db.prepare(`UPDATE financeiro_entradas SET empreendimento_id=?,descricao=?,tipo=?,valor=?,data_prevista=?,data_recebimento=?,status=?,observacoes=?,parcela_num=?,parcela_total=?,tem_nf_propria=?,nf_numero=?,nf_data=? WHERE id=?`).run(empreendimento_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num||null, parcela_total||null, nfFlag, nf_numero||null, nf_data||null, req.params.id);
+  db.prepare(`UPDATE financeiro_entradas SET empreendimento_id=?,descricao=?,tipo=?,valor=?,data_prevista=?,data_recebimento=?,status=?,observacoes=?,parcela_num=?,parcela_total=?,tem_nf_propria=?,nf_numero=?,nf_data=?,conta_id=? WHERE id=?`).run(empreendimento_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num||null, parcela_total||null, nfFlag, nf_numero||null, nf_data||null, conta_id||null, req.params.id);
   ok(res, {});
 });
 
@@ -3256,15 +3256,15 @@ app.get("/api/financeiro/saidas", (req, res) => {
 });
 
 app.post("/api/financeiro/saidas", (req, res) => {
-  const { empreendimento_id, descricao, categoria, valor, data_pagamento, status, recorrente, observacoes } = req.body;
+  const { empreendimento_id, descricao, categoria, valor, data_pagamento, status, recorrente, observacoes, conta_id } = req.body;
   if (!descricao || !valor) return err(res, "Descrição e valor obrigatórios");
-  const r = db.prepare(`INSERT INTO financeiro_saidas (empreendimento_id,descricao,categoria,valor,data_pagamento,status,recorrente,observacoes) VALUES (?,?,?,?,?,?,?,?)`).run(empreendimento_id, descricao, categoria, valor, data_pagamento, status || 'pendente', recorrente ? 1 : 0, observacoes);
+  const r = db.prepare(`INSERT INTO financeiro_saidas (empreendimento_id,descricao,categoria,valor,data_pagamento,status,recorrente,observacoes,conta_id) VALUES (?,?,?,?,?,?,?,?,?)`).run(empreendimento_id, descricao, categoria, valor, data_pagamento, status || 'pendente', recorrente ? 1 : 0, observacoes, conta_id||null);
   ok(res, { id: r.lastInsertRowid });
 });
 
 app.put("/api/financeiro/saidas/:id", (req, res) => {
-  const { empreendimento_id, descricao, categoria, valor, data_pagamento, status, recorrente, observacoes } = req.body;
-  db.prepare(`UPDATE financeiro_saidas SET empreendimento_id=?,descricao=?,categoria=?,valor=?,data_pagamento=?,status=?,recorrente=?,observacoes=? WHERE id=?`).run(empreendimento_id, descricao, categoria, valor, data_pagamento, status, recorrente ? 1 : 0, observacoes, req.params.id);
+  const { empreendimento_id, descricao, categoria, valor, data_pagamento, status, recorrente, observacoes, conta_id } = req.body;
+  db.prepare(`UPDATE financeiro_saidas SET empreendimento_id=?,descricao=?,categoria=?,valor=?,data_pagamento=?,status=?,recorrente=?,observacoes=?,conta_id=? WHERE id=?`).run(empreendimento_id, descricao, categoria, valor, data_pagamento, status, recorrente ? 1 : 0, observacoes, conta_id||null, req.params.id);
   ok(res, {});
 });
 
