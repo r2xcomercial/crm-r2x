@@ -1531,6 +1531,34 @@ Redija apenas o(s) texto(s) das cláusulas, sem introdução nem rodapé.`;
 });
 
 // Atualiza status de uma unidade (disponivel / reservado / vendido / indisponivel)
+app.post("/api/empreendimentos/:id/unidades", (req, res) => {
+  const empId = parseInt(req.params.id);
+  const emp = db.prepare("SELECT tipo FROM empreendimentos WHERE id=?").get(empId);
+  if (!emp) return err(res, "Empreendimento não encontrado", 404);
+  const { quadra, lote, lote_fim, area_m2, preco } = req.body;
+  if (!lote && lote !== 0) return err(res, "Lote/unidade obrigatório");
+  const insert = db.prepare("INSERT INTO unidades (empreendimento_id,quadra,lote,area_m2,preco,status) VALUES (?,?,?,?,?,?)");
+  let inseridas = 0;
+  const loteInicio = parseInt(lote);
+  const loteFim = lote_fim !== undefined && lote_fim !== '' ? parseInt(lote_fim) : NaN;
+  if (!isNaN(loteFim) && !isNaN(loteInicio) && lote_fim !== '') {
+    if (loteInicio > loteFim) return err(res, "Lote inicial maior que lote final");
+    if (loteFim - loteInicio > 999) return err(res, "Intervalo máximo de 1000 unidades por vez");
+    db.transaction(() => {
+      for (let i = loteInicio; i <= loteFim; i++) {
+        insert.run(empId, quadra || null, String(i), parseFloat(area_m2) || null, parseFloat(preco) || null, 'disponivel');
+        inseridas++;
+      }
+    })();
+  } else {
+    insert.run(empId, quadra || null, String(lote).trim(), parseFloat(area_m2) || null, parseFloat(preco) || null, 'disponivel');
+    inseridas = 1;
+  }
+  const stats = db.prepare("SELECT COUNT(*) as total, COALESCE(SUM(preco),0) as vgv FROM unidades WHERE empreendimento_id=?").get(empId);
+  db.prepare("UPDATE empreendimentos SET num_unidades=?, vgv_estimado=? WHERE id=?").run(stats.total, stats.vgv, empId);
+  ok(res, { inseridas, total: stats.total, vgv: stats.vgv });
+});
+
 app.put("/api/unidades/:id/status", (req, res) => {
   const { status } = req.body;
   if (!['disponivel','reservado','vendido','indisponivel'].includes(status)) return err(res, "Status inválido");

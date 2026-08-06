@@ -3666,6 +3666,71 @@ function openEmpModal(e = {}) {
           <button type="button" onclick="uploadUnidades(${e.id})" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap">⬆️ Importar</button>
         </div>
         <div id="upload-status" style="font-size:12px;color:var(--text2);margin-top:6px"></div>
+      </div>
+      <div class="form-group span2" style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
+        <label>🏗️ Adicionar Unidades pela Planta Urbanística</label>
+        <div style="font-size:12px;color:var(--text2);margin:6px 0 12px;line-height:1.6">
+          Cadastre unidades diretamente, sem precisar de tabela de preços. Ideal para registrar o empreendimento antes de ter os valores definidos.
+        </div>
+        ${e.tipo !== 'predio' && e.tipo !== 'comercial' ? `
+        <div style="display:grid;grid-template-columns:100px 1fr 1fr 130px 130px auto;gap:8px;align-items:end">
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Quadra</div>
+            <input type="text" id="nu-quadra" placeholder="ex: 1" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Lote (início)</div>
+            <input type="text" id="nu-lote" placeholder="ex: 1" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Lote final (intervalo)</div>
+            <input type="text" id="nu-lote-fim" placeholder="ex: 20 (opcional)" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Área m² (opcional)</div>
+            <input type="number" id="nu-area" placeholder="ex: 250" step="0.01" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Preço (opcional)</div>
+            <input type="number" id="nu-preco" placeholder="ex: 150000" step="0.01" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <button type="button" onclick="adicionarUnidadesPlanta(${e.id})" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap;height:34px">+ Adicionar</button>
+          </div>
+        </div>` : `
+        <div style="display:grid;grid-template-columns:120px 130px 1fr 120px 140px auto;gap:8px;align-items:end">
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Andar</div>
+            <input type="text" id="nu-quadra" placeholder="ex: 4" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Nº Apartamento</div>
+            <input type="text" id="nu-lote" placeholder="ex: 401" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Tipologia (opcional)</div>
+            <input type="text" id="nu-tipologia" placeholder="ex: 2 dorms, Studio…" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Área m² (opcional)</div>
+            <input type="number" id="nu-area" placeholder="ex: 65" step="0.01" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Preço (opcional)</div>
+            <input type="number" id="nu-preco" placeholder="ex: 450000" step="0.01" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <button type="button" onclick="adicionarUnidadesPlanta(${e.id})" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap;height:34px">+ Adicionar</button>
+          </div>
+        </div>`}
+        <div id="nu-status" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
+        <div id="nu-lista-wrap" style="margin-top:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span id="nu-count" style="font-size:12px;color:var(--text2)">Carregando unidades…</span>
+            <button type="button" onclick="limparUnidadesDisp(${e.id})" style="font-size:11px;padding:3px 10px;background:rgba(239,68,68,.12);color:var(--danger);border:1px solid rgba(239,68,68,.3);border-radius:5px;cursor:pointer">🗑️ Apagar todas disponíveis</button>
+          </div>
+          <div id="nu-lista" style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
+        </div>
       </div>` : '<div class="form-group span2" style="font-size:12px;color:var(--text2)">💡 Salve o empreendimento primeiro para importar a tabela de unidades.</div>'}
     </div>
   `, async () => {
@@ -3707,6 +3772,7 @@ function openEmpModal(e = {}) {
     toast(e.id ? 'Atualizado!' : 'Empreendimento criado!');
     await carregarDados(); closeModal(); renderEmpreendimentos();
   });
+  if (e.id) setTimeout(() => renderNuLista(e.id), 0);
 }
 
 function addEmpCondicao(nome = '', parcelas = []) {
@@ -4652,6 +4718,72 @@ async function baixarBackup() {
   } catch(e) {
     toast('Falha ao baixar backup', 'error');
   }
+}
+
+async function renderNuLista(empId) {
+  const lista = document.getElementById('nu-lista');
+  const count = document.getElementById('nu-count');
+  if (!lista || !count) return;
+  const r = await get(`/api/empreendimentos/${empId}/unidades`);
+  if (!r.ok) return;
+  const rows = r.data || [];
+  count.textContent = `${rows.length} unidade${rows.length !== 1 ? 's' : ''} cadastrada${rows.length !== 1 ? 's' : ''}`;
+  if (!rows.length) { lista.innerHTML = '<div style="font-size:12px;color:var(--text2);padding:8px 0">Nenhuma unidade cadastrada ainda.</div>'; return; }
+  lista.innerHTML = rows.map(u => {
+    const quad = u.quadra ? `Q${u.quadra} ` : '';
+    const label = `${quad}${u.lote}`;
+    const area = u.area_m2 ? ` · ${u.area_m2.toLocaleString('pt-BR')} m²` : '';
+    const preco = u.preco ? ` · R$ ${u.preco.toLocaleString('pt-BR', {minimumFractionDigits:2,maximumFractionDigits:2})}` : '';
+    const statusColor = u.status === 'disponivel' ? '#22c55e' : u.status === 'vendido' ? '#ef4444' : '#f59e0b';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--navy2);border-radius:6px;font-size:12px">
+      <span style="flex:1;color:var(--text1);font-weight:600">${label}</span>
+      <span style="color:var(--text2)">${area}${preco}</span>
+      <span style="font-size:10px;padding:2px 6px;border-radius:10px;background:${statusColor}22;color:${statusColor}">${u.status}</span>
+      <button type="button" onclick="excluirUnidadePlanta(${u.id},${empId})" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:4px;padding:2px 6px;cursor:pointer;font-size:11px" title="Excluir">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function adicionarUnidadesPlanta(empId) {
+  const status = document.getElementById('nu-status');
+  const quadra = document.getElementById('nu-quadra')?.value?.trim() || '';
+  const lote = document.getElementById('nu-lote')?.value?.trim() || '';
+  const loteFim = document.getElementById('nu-lote-fim')?.value?.trim() || '';
+  const tipologia = document.getElementById('nu-tipologia')?.value?.trim() || '';
+  const area = document.getElementById('nu-area')?.value || '';
+  const preco = document.getElementById('nu-preco')?.value || '';
+  if (!lote) { status.style.color = 'var(--danger)'; status.textContent = '⚠️ Informe o lote ou número do apartamento.'; return; }
+  status.style.color = 'var(--text2)'; status.textContent = '⏳ Salvando...';
+  const loteFinal = tipologia ? `${lote} - ${tipologia}` : lote;
+  const body = { quadra: quadra || null, lote: loteFinal, area_m2: area || null, preco: preco || null };
+  if (loteFim) body.lote_fim = loteFim;
+  const r = await post(`/api/empreendimentos/${empId}/unidades`, body);
+  if (!r.ok) { status.style.color = 'var(--danger)'; status.textContent = '❌ ' + r.error; return; }
+  status.style.color = 'var(--success)';
+  const n = r.data.inseridas;
+  status.textContent = `✅ ${n} unidade${n !== 1 ? 's' : ''} adicionada${n !== 1 ? 's' : ''}! Total: ${r.data.total}`;
+  document.getElementById('nu-lote').value = '';
+  if (document.getElementById('nu-lote-fim')) document.getElementById('nu-lote-fim').value = '';
+  if (document.getElementById('nu-tipologia')) document.getElementById('nu-tipologia').value = '';
+  document.getElementById('nu-area').value = '';
+  document.getElementById('nu-preco').value = '';
+  const fUnits = document.getElementById('f-units');
+  const fVgv = document.getElementById('f-vgv');
+  if (fUnits) fUnits.value = r.data.total || '';
+  if (fVgv && r.data.vgv) fVgv.value = r.data.vgv || '';
+  await renderNuLista(empId);
+}
+
+async function excluirUnidadePlanta(unidadeId, empId) {
+  const r = await del(`/api/unidades/${unidadeId}`);
+  if (!r.ok) { toast(r.error, 'error'); return; }
+  await renderNuLista(empId);
+}
+
+async function limparUnidadesDisp(empId) {
+  if (!confirm('Apagar todas as unidades com status "disponível"? Esta ação não pode ser desfeita.')) return;
+  await del(`/api/empreendimentos/${empId}/unidades`);
+  await renderNuLista(empId);
 }
 
 async function uploadUnidades(empId) {
