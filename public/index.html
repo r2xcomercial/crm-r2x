@@ -732,6 +732,36 @@ async function renderDashboard() {
   }).join('') || '<div style="color:var(--text2);font-size:13px">Nenhum dado ainda</div>';
 
   document.getElementById('content').innerHTML = `
+    ${aniversarios_hoje && aniversarios_hoje.length ? `
+    <div style="margin-bottom:20px;border-radius:14px;overflow:hidden;
+      background:linear-gradient(120deg,rgba(0,196,180,.18) 0%,rgba(0,196,180,.06) 100%);
+      border:1.5px solid rgba(0,196,180,.55);
+      box-shadow:0 0 32px rgba(0,196,180,.12)">
+      <div style="display:flex;align-items:center;gap:16px;padding:14px 20px;flex-wrap:wrap">
+        <div style="font-size:32px;line-height:1;flex-shrink:0">🎂</div>
+        <div style="flex:1;min-width:180px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--accent);font-weight:700;margin-bottom:2px">
+            Aniversário${aniversarios_hoje.length > 1 ? 's' : ''} de Hoje
+          </div>
+          <div style="font-size:15px;font-weight:700;color:var(--text1)">
+            ${aniversarios_hoje.map(a => a.nome || '—').join(' · ')}
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">
+            ${aniversarios_hoje.map(a => a.tipo === 'corretor' ? 'Corretor' : a.tipo === 'cliente' ? 'Incorporador' : 'Lead').join(' · ')}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${aniversarios_hoje.map(a => {
+            const tel = (a.telefone||'').replace(/\D/g,'');
+            const msg = encodeURIComponent(`Feliz Aniversário ${a.nome ? a.nome.split(' ')[0] : ''}! Que Deus continue abençoando você e sua família! Muitas felicidades, saúde e vendas! 🎉🎂`);
+            return tel ? `<a href="https://wa.me/55${tel}?text=${msg}" target="_blank"
+              style="background:#25D366;color:#fff;border-radius:8px;padding:7px 16px;text-decoration:none;font-size:13px;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:6px">
+              🎉 Parabenizar${aniversarios_hoje.length > 1 ? ' ' + a.nome.split(' ')[0] : ''}
+            </a>` : '';
+          }).join('')}
+        </div>
+      </div>
+    </div>` : ''}
     <div class="kpi-grid">
       ${kpi('🎯', 'Leads Novos', kpis.leads_novos, `${kpis.leads_total} total`)}
       ${kpi('🏆', 'Vendas no Mês', fmt(kpis.vendas_mes), `${kpis.vendas_total} negócios ativos`)}
@@ -878,21 +908,6 @@ async function renderDashboard() {
       </div>
     </div>
 
-    ${aniversarios_hoje && aniversarios_hoje.length ? `
-    <div class="mini-card" style="margin-bottom:20px;border-color:rgba(0,196,180,.5);background:rgba(0,196,180,.05)">
-      <h4 style="color:var(--accent)">🎂 Aniversários HOJE (${aniversarios_hoje.length})</h4>
-      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
-        ${aniversarios_hoje.map(a => {
-          const tel = (a.telefone||'').replace(/\D/g,'');
-          const msg = encodeURIComponent(`Feliz Aniversário ${a.nome ? a.nome.split(' ')[0] : ''}! Que Deus continue abençoando você e sua família! Muitas felicidades, saúde e vendas! 🎉🎂`);
-          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-            <div style="font-size:20px">🎂</div>
-            <div style="flex:1;font-size:13px;font-weight:600">${a.nome||'—'} <span style="font-size:11px;color:var(--text2);font-weight:400">${a.tipo==='corretor'?'Corretor':a.tipo==='cliente'?'Incorporador':'Lead'}</span></div>
-            ${tel ? `<a href="https://wa.me/55${tel}?text=${msg}" target="_blank" style="background:#25D366;color:#fff;border-radius:6px;padding:4px 12px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap">🎉 Parabenizar</a>` : ''}
-          </div>`;
-        }).join('')}
-      </div>
-    </div>` : ''}
 
     ${followups_hoje && followups_hoje.length ? `
     <div class="mini-card" style="margin-bottom:20px;border-color:rgba(0,153,204,.4);background:rgba(0,153,204,.05)">
