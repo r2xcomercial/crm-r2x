@@ -522,6 +522,10 @@ function navigate(page) {
   if (currentPage === 'painel' && page !== 'painel' && _painelInterval) {
     clearInterval(_painelInterval); _painelInterval = null;
   }
+  // Para SSE e polling da Débora ao sair
+  if (currentPage === 'debora' && page !== 'debora') {
+    pararPollingDebora();
+  }
   currentPage = page;
   closeSidebar();
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -2372,7 +2376,11 @@ async function renderVendas(filter = '') {
               <td>${v.corretor_nome||'—'}</td>
               <td>${v.empreendimento_nome||'—'}</td>
               <td>${v.cliente_nome||'—'}</td>
-              <td><span class="badge ${v.status==='ativo'?'badge-green':'badge-red'}">${v.status}</span></td>
+              <td>
+                ${v.status === 'distrato'
+                  ? `<span class="badge badge-red">distrato</span>${v.distrato_data ? `<div style="font-size:10px;color:var(--text2);margin-top:2px">${fmtDate(v.distrato_data)}</div>` : ''}`
+                  : `<span class="badge ${v.status==='ativo'?'badge-green':'badge-yellow'}">${v.status}</span>`}
+              </td>
               <td style="white-space:nowrap">
                 ${v.comissao_corretor_pct ? `
                   <div style="font-size:12px;color:var(--text2)">${v.comissao_corretor_pct}% = <strong style="color:var(--warning)">${fmt(v.comissao_corretor_valor)}</strong></div>
@@ -2385,9 +2393,14 @@ async function renderVendas(filter = '') {
               <td style="white-space:nowrap">
                 ${v.percentual_r2x ? `
                   <div style="font-size:12px;color:var(--text2)">${v.percentual_r2x}% = <strong style="color:var(--accent)">${fmt(v.comissao_r2x || v.valor * v.percentual_r2x / 100)}</strong></div>
+                  ${v.status === 'distrato' && v.distrato_comissao_r2x ? `<div style="font-size:10px;margin-top:2px"><span class="badge ${v.distrato_comissao_r2x==='retida'?'badge-green':'badge-red'}">${v.distrato_comissao_r2x==='retida'?'✅ Retida':'❌ Não recebida'}</span></div>` : ''}
                 ` : '<span style="color:var(--text2);font-size:12px">—</span>'}
               </td>
-              <td><button class="btn-icon btn-edit" onclick="editVenda(${v.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteVenda(${v.id})">🗑️</button></td>
+              <td style="white-space:nowrap">
+                ${v.status !== 'distrato' ? `<button class="btn-icon" title="Lançar Distrato" onclick="abrirDistrato(${v.id},'${(v.lead_nome||'').replace(/'/g,'')}')" style="color:#f87171;font-size:15px">🚫</button>` : ''}
+                <button class="btn-icon btn-edit" onclick="editVenda(${v.id})">✏️</button>
+                <button class="btn-icon btn-delete" onclick="deleteVenda(${v.id})">🗑️</button>
+              </td>
             </tr>
           `).join('') : '<tr class="empty-row"><td colspan="11">Nenhuma venda registrada</td></tr>'}
         </tbody>
@@ -3183,6 +3196,53 @@ async function importarContrato(input) {
   input.value = '';
 }
 async function deleteVenda(id) { if(!confirm('Excluir esta venda?')) return; await del(`/api/vendas/${id}`); toast('Venda excluída'); renderVendas(); }
+
+function abrirDistrato(vendaId, leadNome) {
+  const hoje = new Date().toISOString().slice(0, 10);
+  openModal('🚫 Lançar Distrato', `
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:14px 16px">
+        <div style="font-size:13px;font-weight:700;color:#f87171;margin-bottom:4px">⚠️ Atenção — esta ação é irreversível</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.6">
+          A venda de <strong style="color:var(--text1)">${leadNome || 'cliente'}</strong> será marcada como distrato.
+          A unidade voltará a ficar <strong>disponível</strong> para venda e o lead retornará ao status <strong>sem venda</strong>.
+        </div>
+      </div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group">
+          <label>Data do Distrato *</label>
+          <input type="date" id="dt-data" value="${hoje}" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+        </div>
+        <div class="form-group">
+          <label>Comissão R2X</label>
+          <select id="dt-comissao" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+            <option value="nao_recebida">❌ Não recebida (não houve repasse)</option>
+            <option value="retida">✅ Retida (comissão mantida)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Motivo / Observações (opcional)</label>
+        <textarea id="dt-motivo" rows="3" placeholder="Ex: inadimplência, desistência do comprador, problema financeiro…"
+          style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;resize:vertical;box-sizing:border-box"></textarea>
+      </div>
+    </div>
+  `, async () => {
+    const data = document.getElementById('dt-data')?.value;
+    if (!data) return toast('Informe a data do distrato', 'error');
+    const body = {
+      distrato_data: data,
+      distrato_comissao_r2x: document.getElementById('dt-comissao')?.value || 'nao_recebida',
+      distrato_motivo: document.getElementById('dt-motivo')?.value?.trim() || null,
+    };
+    const r = await post(`/api/vendas/${vendaId}/distrato`, body);
+    if (!r.ok) return toast(r.error, 'error');
+    toast('Distrato lançado — unidade liberada');
+    await carregarDados();
+    closeModal();
+    renderVendas();
+  }, { saveLabel: '🚫 Confirmar Distrato' });
+}
 
 // ─── CLIENTES ────────────────────────────────────────────────────────────────
 
@@ -7972,6 +8032,34 @@ async function openFollowupModal(lead) {
     </div>
   `).join('') : '<div style="color:var(--text2);font-size:13px;padding:12px 0">Nenhum contato registrado ainda</div>';
 
+  // Conversa WhatsApp com a Débora
+  let conversaHtml = '';
+  if (lead.conversa_whatsapp) {
+    try {
+      const msgs = JSON.parse(lead.conversa_whatsapp);
+      if (msgs && msgs.length > 0) {
+        const msgHtml = msgs.map(m => {
+          const isUser = m.role === 'user';
+          const isRamon = m.content?.startsWith('[RAMON]');
+          const label = isUser ? '👤' : isRamon ? '🙋 Ramon' : '🤖 Débora';
+          const bg = isUser ? 'var(--navy3)' : isRamon ? 'rgba(245,158,11,.12)' : 'rgba(0,196,180,.1)';
+          const align = isUser ? 'flex-start' : 'flex-end';
+          const hora = m.ts ? new Date(m.ts).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+          const texto = (m.content || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          return `<div style="display:flex;flex-direction:column;align-items:${align};margin-bottom:8px;max-width:85%">
+            <div style="font-size:10px;color:var(--text2);margin-bottom:2px;padding:0 4px">${label}${hora ? ' · '+hora : ''}</div>
+            <div style="background:${bg};padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;word-break:break-word;text-align:left">${texto}</div>
+          </div>`;
+        }).join('');
+        conversaHtml = `
+          <div style="margin-bottom:16px">
+            <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🤖 Conversa com a Débora</div>
+            <div style="max-height:220px;overflow-y:auto;background:var(--navy);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column">${msgHtml}</div>
+          </div>`;
+      }
+    } catch(_) {}
+  }
+
   // WhatsApp templates
   const primeiroNome = (lead.nome||'').split(' ')[0] || 'cliente';
   const tel = (lead.telefone||'').replace(/\D/g,'');
@@ -8003,6 +8091,7 @@ async function openFollowupModal(lead) {
 
   document.getElementById('modal-title').textContent = `📞 Follow-up — ${lead.nome||'Lead'}`;
   document.getElementById('modal-body').innerHTML = `
+    ${conversaHtml}
     <div style="margin-bottom:16px">
       <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Histórico de Contatos</div>
       <div style="max-height:180px;overflow-y:auto">${timelineHtml}</div>
@@ -10947,16 +11036,19 @@ function toast(msg, type = 'success') {
 
 // ─── DÉBORA — PAINEL DE MONITORAMENTO ────────────────────────────────────────
 
-const CHATBOT_URL = 'https://chatbot-whatsapp-r2x-production.up.railway.app';
-const PAINEL_TOKEN = 'r2x@painel2026';
 let deboraSSE = null;
 let deboraNumeroAtivo = null;
 let deboraConversas = [];
+let _deboraPollingTimer = null;
+let _deboraReconectTimer = null;
+let _deboraReconectDelay = 3000;
 
+// Todas as chamadas passam pelo proxy do CRM — sem CORS, sem token exposto
 function deboraApi(method, path, body) {
-  return fetch(`${CHATBOT_URL}${path}`, {
+  const crmPath = path.replace('/painel/', '/api/debora/');
+  return fetch(crmPath, {
     method,
-    headers: { 'Content-Type': 'application/json', 'X-Painel-Token': PAINEL_TOKEN },
+    headers: { 'Content-Type': 'application/json', 'x-crm-token': TOKEN },
     body: body ? JSON.stringify(body) : undefined,
   }).then(async r => {
     const data = await r.json();
@@ -11015,6 +11107,7 @@ async function renderDebora() {
 
   await Promise.all([carregarConversasDebora(), carregarStatsDebora()]);
   iniciarSSEDebora();
+  iniciarPollingDebora();
 }
 
 async function carregarConversasDebora() {
@@ -11066,20 +11159,29 @@ function renderListaDebora() {
     const chips = [c.empreendimento, c.cidade].filter(Boolean).map(v =>
       `<span style="font-size:10px;background:var(--navy);border:1px solid var(--border);padding:1px 6px;border-radius:8px;color:var(--text2)">${v}</span>`
     ).join('');
+    const tsRelativo = c.ultima_ts ? fmtTsRelativo(c.ultima_ts) : '';
+    const scoreColor = !c.score ? 'var(--text2)' : c.score >= 60 ? '#22c55e' : c.score >= 30 ? '#f59e0b' : 'var(--text2)';
+    const ativo = deboraNumeroAtivo === c.numero;
     return `
     <div onclick="abrirConversaDebora('${c.numero}')" id="deb-item-${c.numero}"
-      style="padding:10px 16px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);transition:background .15s;${deboraNumeroAtivo===c.numero?'background:rgba(0,196,180,.1);':''}">
+      style="padding:10px 16px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);transition:background .15s;${ativo?'background:rgba(0,196,180,.08);border-left:3px solid var(--accent);':'border-left:3px solid transparent;'}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
-        <div style="font-weight:600;font-size:13px;color:${c.pausado?'#fbbf24':'var(--text)'}">
+        <div style="font-weight:600;font-size:13px;color:${c.pausado?'#fbbf24':'var(--text)'};flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
           ${c.nome || fmtTel(c.numero)}
         </div>
-        ${c.pausado
-          ? '<span style="font-size:10px;background:rgba(245,158,11,.15);color:#fbbf24;padding:1px 6px;border-radius:8px;font-weight:600">VOCÊ</span>'
-          : '<span style="font-size:10px;background:rgba(0,196,180,.1);color:var(--accent);padding:1px 6px;border-radius:8px">IA</span>'}
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;margin-left:6px">
+          ${c.score ? `<span style="font-size:10px;color:${scoreColor};font-weight:700">${c.score}</span>` : ''}
+          ${c.pausado
+            ? '<span style="font-size:10px;background:rgba(245,158,11,.15);color:#fbbf24;padding:1px 6px;border-radius:8px;font-weight:600">VOCÊ</span>'
+            : '<span style="font-size:10px;background:rgba(0,196,180,.1);color:var(--accent);padding:1px 6px;border-radius:8px">IA</span>'}
+        </div>
       </div>
       ${chips ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:3px">${chips}</div>` : ''}
-      <div style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px">${c.ultima_msg || '—'}</div>
-      <div style="font-size:10px;color:var(--text2);margin-top:2px;opacity:.7">${fmtTel(c.numero)} · ${c.total} msgs</div>
+      <div style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px">${c.ultima_msg || '—'}</div>
+      <div style="display:flex;justify-content:space-between;margin-top:2px">
+        <span style="font-size:10px;color:var(--text2);opacity:.6">${c.total} msgs</span>
+        ${tsRelativo ? `<span style="font-size:10px;color:var(--text2);opacity:.6">${tsRelativo}</span>` : ''}
+      </div>
     </div>`;
   }).join('');
 }
@@ -11096,16 +11198,36 @@ async function abrirConversaDebora(numero) {
     const r = await deboraApi('GET', `/painel/conversa/${numero}`);
     renderChatDebora(r);
   } catch(e) {
-    if (e.status === 404) {
-      area.innerHTML = `
-        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--text2);padding:40px;text-align:center">
-          <div style="font-size:32px">💬</div>
-          <div style="font-weight:600;color:var(--text)">Conversa não encontrada</div>
-          <div style="font-size:12px;max-width:280px;line-height:1.6">Este lead ainda não iniciou conversa com a Débora, ou o histórico foi resetado.</div>
-        </div>`;
-    } else {
-      area.innerHTML = `<div style="color:var(--danger);padding:24px;font-size:13px">⚠️ Erro ao carregar conversa: ${e.message}</div>`;
-    }
+    // Fallback: tenta carregar a conversa salva no CRM
+    try {
+      const tel = numero.replace(/\D/g,'').replace(/^55/,'');
+      const crmData = await get(`/api/leads/por-telefone/${tel}`);
+      if (crmData.data?.conversa_whatsapp) {
+        const historico = JSON.parse(crmData.data.conversa_whatsapp);
+        renderChatDebora({
+          numero,
+          perfil: {
+            nome: crmData.data.nome,
+            cidade: crmData.data.cidade,
+            objetivo: crmData.data.objetivo,
+            tipo: crmData.data.tipo,
+            faixa_investimento: crmData.data.faixa_investimento,
+            empreendimento_interesse: crmData.data.empreendimento_interesse,
+          },
+          pausado: false,
+          historico,
+          _fromCRM: true,
+        });
+        return;
+      }
+    } catch(_) {}
+
+    area.innerHTML = `
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--text2);padding:40px;text-align:center">
+        <div style="font-size:32px">💬</div>
+        <div style="font-weight:600;color:var(--text)">Conversa não encontrada</div>
+        <div style="font-size:12px;max-width:280px;line-height:1.6">Este lead ainda não iniciou conversa com a Débora, ou o histórico foi resetado.</div>
+      </div>`;
   }
 }
 
@@ -11179,6 +11301,17 @@ function renderChatDebora(dados) {
   if (msgs) msgs.scrollTop = msgs.scrollHeight;
 }
 
+function fmtTsRelativo(ts) {
+  if (!ts) return '';
+  const ms = ts < 1e12 ? ts * 1000 : ts;
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return 'agora';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}min`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
+  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d`;
+  return new Date(ms).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' });
+}
+
 function fmtMsgTs(ts) {
   if (!ts) return '';
   // API pode enviar em segundos (Unix) ou milissegundos — converte se necessário
@@ -11197,7 +11330,6 @@ function fmtMsgTs(ts) {
 function renderMensagensDebora(historico) {
   if (!historico || !historico.length) return `<div style="text-align:center;color:var(--text2);font-size:13px">Sem mensagens ainda</div>`;
   // Log temporário para identificar campos de timestamp disponíveis
-  if (historico.length) console.log('[Débora] campos da mensagem:', Object.keys(historico[0]), historico[0]);
   let lastDate = null;
   return historico.map(m => {
     const isUser = m.role === 'user';
@@ -11245,9 +11377,10 @@ async function enviarMensagemDebora(numero) {
   const input = document.getElementById('deb-input');
   const msg = input?.value?.trim();
   if (!msg) return;
-  input.value = '';
+  input.disabled = true;
   try {
     await deboraApi('POST', '/painel/enviar', { numero, mensagem: msg });
+    input.value = '';
     // Atualiza o chat localmente sem recarregar tudo
     const msgs = document.getElementById('deb-msgs');
     if (msgs) {
@@ -11260,25 +11393,33 @@ async function enviarMensagemDebora(numero) {
       msgs.scrollTop = msgs.scrollHeight;
     }
   } catch(e) {
-    toast('Erro ao enviar mensagem', 'error');
+    toast(e.message || 'Erro ao enviar mensagem', 'error');
+    // Mantém o texto no input para o usuário tentar novamente
+  } finally {
+    input.disabled = false;
+    input.focus();
   }
 }
 
 function iniciarSSEDebora() {
-  if (deboraSSE) deboraSSE.close();
+  if (deboraSSE) { deboraSSE.close(); deboraSSE = null; }
+  if (_deboraReconectTimer) { clearTimeout(_deboraReconectTimer); _deboraReconectTimer = null; }
+
   try {
-    deboraSSE = new EventSource(`${CHATBOT_URL}/painel/stream?token=${PAINEL_TOKEN}`);
+    deboraSSE = new EventSource(`/api/debora/stream?token=${TOKEN}`);
+
     deboraSSE.onopen = () => {
+      _deboraReconectDelay = 3000; // reseta backoff ao conectar
       const el = document.getElementById('deb-status');
-      if (el) el.textContent = '● Online';
+      if (el) { el.textContent = '● Online'; el.style.color = 'var(--success)'; }
+      carregarConversasDebora(); // atualiza lista logo ao conectar
     };
+
     deboraSSE.onmessage = (e) => {
       try {
         const ev = JSON.parse(e.data);
         if (ev.tipo === 'mensagem') {
-          // Atualiza lista de conversas
           carregarConversasDebora();
-          // Se for a conversa aberta, adiciona a mensagem no chat
           if (ev.numero === deboraNumeroAtivo) {
             const msgs = document.getElementById('deb-msgs');
             if (msgs) {
@@ -11316,11 +11457,38 @@ function iniciarSSEDebora() {
         }
       } catch {}
     };
+
     deboraSSE.onerror = () => {
       const el = document.getElementById('deb-status');
-      if (el) el.textContent = '● Reconectando...';
+      if (el) { el.textContent = '● Reconectando...'; el.style.color = 'var(--warning,#f59e0b)'; }
+      if (deboraSSE) { deboraSSE.close(); deboraSSE = null; }
+      // Tenta reconectar com backoff exponencial (máx 30s)
+      _deboraReconectTimer = setTimeout(() => {
+        _deboraReconectDelay = Math.min(_deboraReconectDelay * 2, 30000);
+        iniciarSSEDebora();
+      }, _deboraReconectDelay);
     };
-  } catch {}
+  } catch {
+    _deboraReconectTimer = setTimeout(iniciarSSEDebora, _deboraReconectDelay);
+  }
+}
+
+function iniciarPollingDebora() {
+  pararPollingDebora();
+  // Atualiza a lista a cada 20 segundos independentemente do SSE
+  _deboraPollingTimer = setInterval(() => {
+    if (document.getElementById('deb-conversas-lista')) {
+      carregarConversasDebora();
+    } else {
+      pararPollingDebora();
+    }
+  }, 20000);
+}
+
+function pararPollingDebora() {
+  if (_deboraPollingTimer) { clearInterval(_deboraPollingTimer); _deboraPollingTimer = null; }
+  if (_deboraReconectTimer) { clearTimeout(_deboraReconectTimer); _deboraReconectTimer = null; }
+  if (deboraSSE) { deboraSSE.close(); deboraSSE = null; }
 }
 
 // ─── DÉBORA: STATS ────────────────────────────────────────────────────────────

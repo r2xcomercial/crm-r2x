@@ -2191,8 +2191,14 @@ app.delete('/api/visitas/:id', (req, res) => {
 
 // Webhook para receber leads do chatbot WhatsApp
 app.post("/api/leads/whatsapp", (req, res) => {
-  const { telefone, nome, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, tipo, score, resumo } = req.body;
+  const { telefone, nome, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, tipo, score, resumo, historico } = req.body;
   if (!telefone) return err(res, "Telefone obrigatório");
+
+  // Serializa o histórico de conversa (últimas 30 mensagens) para armazenar
+  const conversa_whatsapp = historico && historico.length > 0
+    ? JSON.stringify(historico.slice(-30))
+    : null;
+
   const existente = db.prepare("SELECT id, status FROM leads WHERE telefone=?").get(telefone);
   if (existente) {
     let novoStatus = existente.status;
@@ -2203,17 +2209,27 @@ app.post("/api/leads/whatsapp", (req, res) => {
       faixa_investimento=COALESCE(?,faixa_investimento), prazo=COALESCE(?,prazo),
       empreendimento_interesse=COALESCE(?,empreendimento_interesse),
       tipo=COALESCE(?,tipo), score=COALESCE(?,score), resumo=COALESCE(?,resumo),
+      conversa_whatsapp=COALESCE(?,conversa_whatsapp),
       status=?, atualizado_em=CURRENT_TIMESTAMP WHERE id=?`)
       .run(nome||null, email||null, cidade||null, objetivo||null, faixa_investimento||null, prazo||null,
            empreendimento_interesse||null, tipo||null, scoreAjustado||null, resumo||null,
-           novoStatus, existente.id);
+           conversa_whatsapp, novoStatus, existente.id);
     return ok(res, { id: existente.id, atualizado: true });
   }
   const r = db.prepare(`INSERT INTO leads
-    (nome,email,telefone,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,tipo,score,resumo,status,origem)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,'novo','whatsapp')`)
-    .run(nome, email||null, telefone, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, tipo||null, score||0, resumo||null);
+    (nome,email,telefone,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,tipo,score,resumo,conversa_whatsapp,status,origem)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'novo','whatsapp')`)
+    .run(nome, email||null, telefone, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, tipo||null, score||0, resumo||null, conversa_whatsapp);
   ok(res, { id: r.lastInsertRowid, criado: true });
+});
+
+// GET /api/leads/por-telefone/:telefone — busca lead e conversa whatsapp pelo número
+app.get("/api/leads/por-telefone/:telefone", (req, res) => {
+  let tel = req.params.telefone.replace(/\D/g, '');
+  if (!tel.startsWith('55')) tel = '55' + tel;
+  const lead = db.prepare("SELECT id, nome, score, resumo, conversa_whatsapp, objetivo, cidade, empreendimento_interesse, tipo, faixa_investimento FROM leads WHERE telefone=? OR telefone=?").get(tel, tel.replace(/^55/, ''));
+  if (!lead) return res.status(404).json({ erro: 'Lead não encontrado' });
+  ok(res, lead);
 });
 
 // ─── VENDAS ───────────────────────────────────────────────────────────────────
@@ -2998,6 +3014,41 @@ app.put("/api/vendas/:id", (req, res) => {
   // Recalcula comissão (cria, atualiza ou remove dependendo do estado)
   const comissao = sincronizarComissaoVenda(req.params.id);
   ok(res, { comissao_r2x: comissao });
+});
+
+app.post("/api/vendas/:id/distrato", (req, res) => {
+  const vendaId = parseInt(req.params.id);
+  const { distrato_data, distrato_motivo, distrato_comissao_r2x } = req.body;
+  const v = db.prepare("SELECT id, lead_id, status FROM vendas WHERE id=?").get(vendaId);
+  if (!v) return err(res, "Venda não encontrada", 404);
+  if (v.status === 'distrato') return err(res, "Venda já está em distrato");
+
+  const hoje = distrato_data || new Date().toISOString().slice(0, 10);
+
+  db.transaction(() => {
+    // Marca a venda como distrato
+    db.prepare(`UPDATE vendas SET status='distrato', distrato_data=?, distrato_motivo=?, distrato_comissao_r2x=? WHERE id=?`)
+      .run(hoje, distrato_motivo || null, distrato_comissao_r2x || null, vendaId);
+
+    // Devolve todas as unidades para disponível
+    const unids = db.prepare("SELECT unidade_id FROM venda_unidades WHERE venda_id=?").all(vendaId);
+    for (const { unidade_id: uid } of unids) {
+      db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(uid);
+    }
+
+    // Libera vaga de garagem
+    const vaga = db.prepare("SELECT vaga_id FROM vendas WHERE id=?").get(vendaId);
+    if (vaga?.vaga_id) {
+      db.prepare("UPDATE vagas_garagem SET status='disponivel', venda_id=NULL WHERE id=?").run(vaga.vaga_id);
+    }
+
+    // Atualiza status do lead para sem_venda
+    if (v.lead_id) {
+      db.prepare("UPDATE leads SET status='sem_venda', score=0 WHERE id=?").run(v.lead_id);
+    }
+  })();
+
+  ok(res, { distrato_data: hoje });
 });
 
 app.delete("/api/vendas/:id", (req, res) => {
@@ -3974,8 +4025,12 @@ try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN nf_arquivo TEXT'); } c
 try { db.exec('ALTER TABLE leads ADD COLUMN motivo_perda TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN motivo_perda_outro TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN atribuido_em DATETIME'); } catch(_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN conversa_whatsapp TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vendas ADD COLUMN permuta TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vendas ADD COLUMN comissao_corretor_detalhes TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE vendas ADD COLUMN distrato_data TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE vendas ADD COLUMN distrato_motivo TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE vendas ADD COLUMN distrato_comissao_r2x TEXT'); } catch(_) {}
 
 // Tabela de compradores adicionais (cônjuge, sócio, condomínio)
 db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (
@@ -7072,6 +7127,99 @@ app.delete('/api/empreendimentos/:id/unidades/bulk', autenticar, (req, res) => {
   ).run(empId, ...ids);
   const stats = db.prepare('SELECT COUNT(*) as total, COALESCE(SUM(preco),0) as vgv FROM unidades WHERE empreendimento_id=?').get(empId);
   ok(res, { deletados: info.changes, total_restante: stats.total });
+});
+
+// ─── PROXY DÉBORA IA (evita CORS no browser) ──────────────────────────────────
+const CHATBOT_BASE = 'https://chatbot-whatsapp-r2x-production.up.railway.app';
+const CHATBOT_TOKEN = process.env.PAINEL_TOKEN || 'r2x@painel2026';
+
+async function chatbotReq(path, opts = {}) {
+  return fetch(`${CHATBOT_BASE}${path}`, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'X-Painel-Token': CHATBOT_TOKEN, ...(opts.headers || {}) },
+  });
+}
+
+app.get('/api/debora/conversas', async (req, res) => {
+  try {
+    const r = await chatbotReq('/painel/conversas');
+    res.status(r.status).json(await r.json());
+  } catch(e) { res.status(502).json({ erro: 'Chatbot indisponível' }); }
+});
+
+app.get('/api/debora/stats', async (req, res) => {
+  try {
+    const r = await chatbotReq('/painel/stats');
+    res.status(r.status).json(await r.json());
+  } catch(e) { res.status(502).json({ erro: 'Chatbot indisponível' }); }
+});
+
+app.get('/api/debora/conversa/:numero', async (req, res) => {
+  try {
+    const r = await chatbotReq(`/painel/conversa/${req.params.numero}`);
+    res.status(r.status).json(await r.json());
+  } catch(e) { res.status(502).json({ erro: 'Chatbot indisponível' }); }
+});
+
+app.post('/api/debora/assumir/:numero', async (req, res) => {
+  try {
+    const r = await chatbotReq(`/painel/assumir/${req.params.numero}`, { method: 'POST' });
+    res.status(r.status).json(await r.json());
+  } catch(e) { res.status(502).json({ erro: 'Chatbot indisponível' }); }
+});
+
+app.post('/api/debora/enviar', async (req, res) => {
+  try {
+    const r = await chatbotReq('/painel/enviar', { method: 'POST', body: JSON.stringify(req.body) });
+    res.status(r.status).json(await r.json());
+  } catch(e) { res.status(502).json({ erro: 'Chatbot indisponível' }); }
+});
+
+app.get('/api/debora/broadcast', async (req, res) => {
+  try {
+    const r = await chatbotReq('/painel/broadcast', { method: 'POST', body: JSON.stringify(req.body) });
+    res.status(r.status).json(await r.json());
+  } catch(e) { res.status(502).json({ erro: 'Chatbot indisponível' }); }
+});
+
+app.post('/api/debora/broadcast', async (req, res) => {
+  try {
+    const r = await chatbotReq('/painel/broadcast', { method: 'POST', body: JSON.stringify(req.body) });
+    res.status(r.status).json(await r.json());
+  } catch(e) { res.status(502).json({ erro: 'Chatbot indisponível' }); }
+});
+
+// SSE proxy — mantém conexão viva e repassa eventos do chatbot ao browser
+app.get('/api/debora/stream', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  let upstream;
+  try {
+    upstream = await chatbotReq('/painel/stream', { headers: { Accept: 'text/event-stream' } });
+  } catch(e) {
+    res.write(`data: ${JSON.stringify({ tipo: 'erro', mensagem: 'Chatbot indisponível' })}\n\n`);
+    return res.end();
+  }
+
+  const reader = upstream.body.getReader();
+  const decoder = new TextDecoder();
+
+  const pump = async () => {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(decoder.decode(value, { stream: true }));
+      }
+    } catch (_) {}
+    res.end();
+  };
+
+  pump();
+  req.on('close', () => reader.cancel().catch(() => {}));
 });
 
 // ─── ROLLBACK TEMPORÁRIO ──────────────────────────────────────────────────────
