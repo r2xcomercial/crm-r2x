@@ -452,6 +452,25 @@
     <div class="nav-section">Portal do Incorporador</div>
     <div class="nav-item active" onclick="navigate('incorporador-painel')"><span class="icon">🏗️</span> Meus Empreendimentos</div>
   </nav>
+  <!-- Nav gestor (operacional — sem financeiro) -->
+  <nav id="nav-gestor" style="display:none">
+    <div class="nav-section">Principal</div>
+    <div class="nav-item active" onclick="navigate('dashboard')"><span class="icon">📊</span> Dashboard</div>
+    <div class="nav-item" onclick="navigate('calendario')"><span class="icon">📅</span> Calendário</div>
+    <div class="nav-item" onclick="navigate('painel')"><span class="icon">🚀</span> Painel de Lançamento</div>
+    <div class="nav-section">Comercial</div>
+    <div class="nav-item" onclick="navigate('debora')"><span class="icon">🤖</span> Débora IA</div>
+    <div class="nav-item" onclick="navigate('leads')"><span class="icon">🎯</span> Leads <span class="nav-badge" id="badge-leads-g">0</span></div>
+    <div class="nav-item" onclick="navigate('kanban')"><span class="icon">📋</span> Kanban</div>
+    <div class="nav-item" onclick="navigate('ranking')"><span class="icon">⭐</span> Ranking</div>
+    <div class="nav-section">Cadastros</div>
+    <div class="nav-item" onclick="navigate('clientes')"><span class="icon">🏢</span> Incorporadores</div>
+    <div class="nav-item" onclick="navigate('empreendimentos')"><span class="icon">🏗️</span> Empreendimentos</div>
+    <div class="nav-item" onclick="navigate('corretores')"><span class="icon">👥</span> Corretores</div>
+    <div class="nav-section">Eventos</div>
+    <div class="nav-item" onclick="navigate('eventos')"><span class="icon">🎪</span> Eventos</div>
+    <div class="nav-item" onclick="navigate('calculadora')" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px"><span class="icon">🧮</span> Calculadora</div>
+  </nav>
   <div id="sidebar-user" style="padding:12px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--text2)">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div>
@@ -553,6 +572,13 @@ async function renderPage(page) {
       `<div style="text-align:center;padding:80px;color:var(--danger)">⛔ Acesso não autorizado</div>`;
     return;
   }
+  // Gestor: bloqueia seções financeiras e de vendas
+  const GESTOR_BLOQUEADO = ['financeiro','caixa','relatorios','gestao-pessoal','usuarios','vendas'];
+  if (USUARIO.perfil === 'gestor' && GESTOR_BLOQUEADO.includes(page)) {
+    document.getElementById('content').innerHTML =
+      `<div style="text-align:center;padding:80px;color:var(--text2)">🔒 Esta seção é restrita à diretoria.<br><span style="font-size:13px;margin-top:8px;display:block">Entre em contato com Ramon ou Silvia.</span></div>`;
+    return;
+  }
   const c = document.getElementById('content');
   c.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text2)">Carregando...</div>`;
   try {
@@ -638,8 +664,10 @@ const del = p => api('DELETE', p);
 let _dashCharts = {};
 
 async function renderDashboard() {
+  const isGestor = USUARIO.perfil === 'gestor';
   const [dashR, vendasR, finR] = await Promise.all([
-    get('/api/dashboard'), get('/api/vendas'), get('/api/financeiro/entradas')
+    get('/api/dashboard'), get('/api/vendas'),
+    isGestor ? Promise.resolve({ ok: true, data: [] }) : get('/api/financeiro/entradas')
   ]);
   if (!dashR.ok || !dashR.data) {
     document.getElementById('content').innerHTML = `<div style="text-align:center;padding:60px;color:var(--danger)">⚠️ ${dashR.error || 'Erro ao carregar dashboard'}</div>`;
@@ -648,7 +676,8 @@ async function renderDashboard() {
   const { data } = dashR;
   const { kpis, aniversarios_mes, aniversarios_hoje, proximos_lancamentos, funil, funil_detalhado, ranking_vgv, ranking_corretores_completo, leads_por_origem, leads_esquecidos, followups_vencidos, followups_hoje, vso_empreendimentos, vendas_12meses } = data;
 
-  document.getElementById('badge-leads').textContent = kpis.leads_novos;
+  const _bl = kpis.leads_novos;
+  ['badge-leads','badge-leads-g'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = _bl; });
 
   // VGV 12 meses: preenche meses sem venda com zero
   const v12map = {};
@@ -769,7 +798,7 @@ async function renderDashboard() {
     <div class="kpi-grid">
       ${kpi('🎯', 'Leads Novos', kpis.leads_novos, `${kpis.leads_total} total`)}
       ${kpi('🏆', 'Vendas no Mês', fmt(kpis.vendas_mes), `${kpis.vendas_total} negócios ativos`)}
-      ${kpi('💰', 'Recebíveis Pendentes', fmt(kpis.entradas_pendentes), 'a receber')}
+      ${!isGestor ? kpi('💰', 'Recebíveis Pendentes', fmt(kpis.entradas_pendentes), 'a receber') : ''}
       ${kpi('🏗️', 'Empreendimentos', kpis.empreendimentos, '')}
       ${kpi('🏢', 'Incorporadores', kpis.clientes_total, 'loteadores/incorporadores')}
       ${kpi('👥', 'Corretores Ativos', kpis.corretores_ativos, '')}
@@ -780,8 +809,8 @@ async function renderDashboard() {
       ${kpi('📉', 'Taxa de Distrato', `${kpis.taxa_distrato.toFixed(1)}%`, 'sobre vendas + distratos')}
       ${kpi('⏱️', 'Ciclo Médio de Venda', `${Math.round(kpis.ciclo_medio_dias)} dias`, 'do lead à venda')}
       ${kpi('🔁', 'Conversão Geral', `${kpis.taxa_conversao_geral.toFixed(1)}%`, 'leads → vendas')}
-      ${kpi('💸', 'CAC por Lead', fmt(kpis.cac_por_lead), `${fmt(kpis.gasto_marketing_mes)} em mkt/mês`)}
-      ${kpi('🎯', 'CAC por Venda', fmt(kpis.cac_por_venda), 'custo de aquisição')}
+      ${!isGestor ? kpi('💸', 'CAC por Lead', fmt(kpis.cac_por_lead), `${fmt(kpis.gasto_marketing_mes)} em mkt/mês`) : ''}
+      ${!isGestor ? kpi('🎯', 'CAC por Venda', fmt(kpis.cac_por_venda), 'custo de aquisição') : ''}
     </div>
 
     <div class="dash-row" style="margin-bottom:20px">
@@ -1017,8 +1046,7 @@ window._leadsFiltros = window._leadsFiltros || { status:'', corretor_id:'', empr
 async function renderLeads(filter = '') {
   const [lr, cr, er] = await Promise.all([get('/api/leads'), get('/api/corretores'), get('/api/empreendimentos')]);
   leadsData = lr.data; corretoresData = cr.data; empData = er.data;
-  document.getElementById('badge-leads').textContent = leadsData.filter(l => l.status==='novo').length;
-
+  { const _n = leadsData.filter(l => l.status==='novo').length; ['badge-leads','badge-leads-g'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = _n; }); }
   const fl = window._leadsFiltros;
   const statusColors = { novo:'badge-accent', qualificado:'badge-blue', com_corretor:'badge-blue', visitou:'badge-purple', proposta:'badge-yellow', reserva:'badge-orange', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
 
@@ -1912,7 +1940,7 @@ const KANBAN_NEXT = {
 async function renderKanban(filter = '') {
   const [lr, cr, er] = await Promise.all([get('/api/leads'), get('/api/corretores'), get('/api/empreendimentos')]);
   leadsData = lr.data; corretoresData = cr.data; empData = er.data;
-  document.getElementById('badge-leads').textContent = leadsData.filter(l => l.status === 'novo').length || '';
+  { const _n = leadsData.filter(l => l.status === 'novo').length || ''; ['badge-leads','badge-leads-g'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = _n; }); }
 
   const leads = filter ? leadsData.filter(l => (l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter)) : leadsData;
 
@@ -12610,23 +12638,33 @@ function initUsuarioUI() {
   const navIncorporador= document.getElementById('nav-incorporador');
   if (nomeEl) nomeEl.textContent = USUARIO.nome || 'Usuário';
   if (perfilEl) perfilEl.textContent = USUARIO.perfil || '';
+  const navGestor = document.getElementById('nav-gestor');
   if (USUARIO.perfil === 'corretor') {
     // Corretor vê apenas o nav simplificado
     if (navAdmin)        navAdmin.style.display = 'none';
     if (navCorretor)     navCorretor.style.display = 'block';
     if (navIncorporador) navIncorporador.style.display = 'none';
+    if (navGestor)       navGestor.style.display = 'none';
   } else if (USUARIO.perfil === 'incorporador') {
     // Incorporador vê apenas o portal dele
     if (navAdmin)        navAdmin.style.display = 'none';
     if (navCorretor)     navCorretor.style.display = 'none';
     if (navIncorporador) navIncorporador.style.display = 'block';
+    if (navGestor)       navGestor.style.display = 'none';
     // Esconde busca e botão adicionar (irrelevante para incorporador)
     const searchBox  = document.getElementById('search-box');
     const addBtn     = document.getElementById('add-btn');
     if (searchBox)  searchBox.style.display  = 'none';
     if (addBtn)     addBtn.style.display     = 'none';
+  } else if (USUARIO.perfil === 'gestor') {
+    // Gestor vê nav operacional (sem financeiro)
+    if (navAdmin)        navAdmin.style.display = 'none';
+    if (navCorretor)     navCorretor.style.display = 'none';
+    if (navIncorporador) navIncorporador.style.display = 'none';
+    if (navGestor)       navGestor.style.display = 'block';
   } else {
     if (navUsuarios && USUARIO.perfil === 'admin') navUsuarios.style.display = 'flex';
+    if (navGestor)       navGestor.style.display = 'none';
   }
 
   // Banner de preview (aba aberta via "Ver como")

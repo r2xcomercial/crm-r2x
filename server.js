@@ -61,6 +61,17 @@ app.use((req, res, next) => {
   next();
 });
 
+// Gestor: sem acesso a financeiro, caixa (pluggy), relatórios nem gestão de vendas
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+  if (req.usuario?.perfil !== 'gestor') return next();
+  const bloqueioPath = ['/api/financeiro', '/api/pluggy', '/api/relatorios'].some(p => req.path.startsWith(p));
+  if (bloqueioPath) return err(res, 'Acesso restrito à diretoria financeira', 403);
+  // Bloqueia criação/edição/exclusão de vendas (gestão de vendas é da diretoria)
+  if (req.path.startsWith('/api/vendas') && req.method !== 'GET') return err(res, 'Gestão de vendas restrita à diretoria', 403);
+  next();
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 // Rotas sem extensão → arquivos HTML correspondentes
