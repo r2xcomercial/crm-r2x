@@ -559,7 +559,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     comarca, matricula_registro, incorporacao_protocolo,
     vendedora_nome, vendedora_qualificacao,
     prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao,
-    condicao_pagamento_padrao, logo_base64, maps_url, drive_url, social_url } = req.body;
+    condicao_pagamento_padrao, logo_base64, maps_url, drive_url, social_url, fase_lancamento } = req.body;
   const cpPadrao = condicao_pagamento_padrao && Array.isArray(condicao_pagamento_padrao) && condicao_pagamento_padrao.length > 0
     ? JSON.stringify(condicao_pagamento_padrao) : null;
   db.prepare(`UPDATE empreendimentos SET
@@ -568,7 +568,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     comarca=?,matricula_registro=?,incorporacao_protocolo=?,
     vendedora_nome=?,vendedora_qualificacao=?,
     prazo_entrega_meses=?,inicio_obra_previsto=?,valor_cub=?,
-    patrimonio_afetacao=?,condicao_pagamento_padrao=?,logo_base64=?,maps_url=?,drive_url=?,social_url=?
+    patrimonio_afetacao=?,condicao_pagamento_padrao=?,logo_base64=?,maps_url=?,drive_url=?,social_url=?,fase_lancamento=?
     WHERE id=?`).run(
     cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
     status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
@@ -576,6 +576,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     vendedora_nome||null, vendedora_qualificacao||null,
     prazo_entrega_meses||null, inicio_obra_previsto||null, valor_cub||null,
     patrimonio_afetacao ? 1 : 0, cpPadrao, logo_base64||null, maps_url||null, drive_url||null, social_url||null,
+    fase_lancamento||null,
     req.params.id);
   ok(res, {});
 });
@@ -4030,6 +4031,7 @@ try { db.exec('ALTER TABLE empreendimentos ADD COLUMN valor_cub REAL'); } catch(
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN patrimonio_afetacao INTEGER DEFAULT 0'); } catch(_) {}
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN condicao_pagamento_padrao TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN logo_base64 TEXT'); } catch(_) {}
+try { db.exec("ALTER TABLE empreendimentos ADD COLUMN fase_lancamento TEXT DEFAULT 'aquecimento'"); } catch(_) {}
 try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN pluggy_transaction_id TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN cliente_id INTEGER'); } catch(_) {}
 try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN nf_arquivo TEXT'); } catch(_) {}
@@ -4181,6 +4183,49 @@ app.post('/api/leads/importar', upload.single('arquivo'), (req, res) => {
 });
 
 // ─── PAINEL DE LANÇAMENTO ─────────────────────────────────────────────────────
+
+// ─── PAINEL GERAL — TODOS OS LANÇAMENTOS ─────────────────────────────────────
+
+app.get('/api/painel/todos', (req, res) => {
+  const emps = db.prepare(`
+    SELECT e.*, c.razao_social as cliente_nome
+    FROM empreendimentos e
+    LEFT JOIN clientes c ON c.id = e.cliente_id
+    WHERE e.num_unidades > 0
+    ORDER BY e.data_lancamento DESC
+  `).all();
+  const result = emps.map(emp => {
+    const stats = db.prepare('SELECT status, COUNT(*) as n FROM unidades WHERE empreendimento_id=? GROUP BY status').all(emp.id);
+    const total     = stats.reduce((s, u) => s + u.n, 0);
+    const vendidas  = stats.find(u => u.status === 'vendido')?.n   || 0;
+    const reservadas= stats.find(u => u.status === 'reservado')?.n || 0;
+    const vgv_total = db.prepare("SELECT COALESCE(SUM(valor),0) as v FROM vendas WHERE empreendimento_id=? AND status='ativo'").get(emp.id).v;
+    const hoje      = db.prepare("SELECT COUNT(*) as n, COALESCE(SUM(valor),0) as v FROM vendas WHERE empreendimento_id=? AND status='ativo' AND date(data_venda)=date('now')").get(emp.id);
+    const top = db.prepare(`
+      SELECT c.nome, COUNT(v.id) as vendas, COALESCE(SUM(v.valor),0) as vgv
+      FROM vendas v JOIN corretores c ON c.id=v.corretor_id
+      WHERE v.empreendimento_id=? AND v.status='ativo'
+      GROUP BY c.id ORDER BY vendas DESC LIMIT 3
+    `).all(emp.id);
+    return {
+      ...emp,
+      unidades_total: total, unidades_vendidas: vendidas,
+      unidades_reservadas: reservadas, unidades_disponiveis: total - vendidas - reservadas,
+      vso: total > 0 ? parseFloat(((vendidas / total) * 100).toFixed(1)) : 0,
+      vgv_total, vendas_hoje: hoje.n, vgv_hoje: hoje.v,
+      top_corretores: top,
+    };
+  });
+  ok(res, result);
+});
+
+app.put('/api/empreendimentos/:id/fase', (req, res) => {
+  const { fase } = req.body;
+  const validas = ['aquecimento','ancoragem','treinamento','represamento','lancamento','pos_lancamento'];
+  if (!validas.includes(fase)) return err(res, 'Fase inválida');
+  db.prepare('UPDATE empreendimentos SET fase_lancamento=? WHERE id=?').run(fase, parseInt(req.params.id));
+  ok(res, {});
+});
 
 app.get('/api/painel/:id', (req, res) => {
   const empId = parseInt(req.params.id);

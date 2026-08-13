@@ -523,6 +523,15 @@ let currentData = {};
 let _painelInterval = null;
 let _painelEmpId = null;
 
+const FASES_LANCAMENTO = [
+  { id: 'aquecimento',   label: 'Aquecimento',   icon: '🔥', color: '#F97316', rgb: '249,115,22'  },
+  { id: 'ancoragem',     label: 'Ancoragem',      icon: '⚓', color: '#8B5CF6', rgb: '139,92,246'  },
+  { id: 'treinamento',   label: 'Treinamento',    icon: '🎓', color: '#3B82F6', rgb: '59,130,246'  },
+  { id: 'represamento',  label: 'Represamento',   icon: '💧', color: '#06B6D4', rgb: '6,182,212'   },
+  { id: 'lancamento',    label: 'Lançamento',     icon: '🚀', color: '#00C4B4', rgb: '0,196,180'   },
+  { id: 'pos_lancamento',label: 'Pós-Lançamento', icon: '🎯', color: '#22C55E', rgb: '34,197,94'   },
+];
+
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
 
 function toggleSidebar() {
@@ -2213,118 +2222,152 @@ async function verificarDuplicidadeLeadRapido(tel) {
 // ─── PAINEL DE LANÇAMENTO ─────────────────────────────────────────────────────
 
 async function renderPainel() {
-  // Para refresh automático anterior se existir
   if (_painelInterval) { clearInterval(_painelInterval); _painelInterval = null; }
 
-  const er = await get('/api/empreendimentos');
-  const emps = (er.data || []).filter(e => e.num_unidades > 0);
+  const r = await get('/api/painel/todos');
+  if (!r.ok) {
+    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:24px">Erro ao carregar painel</div>`;
+    return;
+  }
+  const emps = r.data || [];
 
-  if (!_painelEmpId && emps.length > 0) _painelEmpId = emps[0].id;
+  if (emps.length === 0) {
+    document.getElementById('content').innerHTML = `<div style="text-align:center;padding:80px;color:var(--text2)">Nenhum empreendimento com unidades cadastradas</div>`;
+    return;
+  }
 
-  const selectHtml = `
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap">
-      <select id="painel-emp-sel" onchange="_painelEmpId=parseInt(this.value);loadPainelData()" style="padding:8px 14px;border-radius:8px;font-size:14px;background:var(--navy3);border:1px solid var(--border);color:var(--text)">
-        ${emps.map(e => `<option value="${e.id}" ${e.id===_painelEmpId?'selected':''}>${e.nome}</option>`).join('')}
-        ${emps.length===0 ? '<option value="">Nenhum empreendimento com unidades</option>' : ''}
-      </select>
-      <div style="font-size:12px;color:var(--text2)" id="painel-updated">Atualiza a cada 60s</div>
-      <button onclick="loadPainelData()" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--accent);cursor:pointer;font-size:13px">🔄 Atualizar</button>
+  // ── Kanban de fases ──────────────────────────────────────────────────────────
+  const kanbanHtml = FASES_LANCAMENTO.map(f => {
+    const nesta = emps.filter(e => (e.fase_lancamento || 'aquecimento') === f.id);
+    const badges = nesta.map(e => `
+      <div onclick="document.getElementById('emp-card-${e.id}')?.scrollIntoView({behavior:'smooth',block:'nearest'})"
+        style="background:rgba(${f.rgb},.14);border:1px solid rgba(${f.rgb},.38);border-radius:6px;
+               padding:5px 8px;margin-bottom:5px;cursor:pointer;transition:opacity .15s"
+        onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
+        <div style="font-size:12px;font-weight:600;color:var(--text)">${e.nome}</div>
+        <div style="font-size:10px;color:var(--text2)">VSO ${e.vso}% · ${e.unidades_disponiveis} disp.</div>
+      </div>`).join('') || `<div style="color:var(--text2);font-size:11px;padding:2px 0">—</div>`;
+    return `
+      <div style="background:var(--card);border:1px solid var(--border);border-top:3px solid ${f.color};
+                  border-radius:12px;padding:12px;min-width:150px">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px">
+          <span style="font-size:20px;line-height:1">${f.icon}</span>
+          <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text)">${f.label}</div>
+            <div style="font-size:10px;color:var(--text2)">${nesta.length} emp.</div>
+          </div>
+        </div>
+        ${badges}
+      </div>`;
+  }).join('');
+
+  // ── Cards de empreendimentos ─────────────────────────────────────────────────
+  const cardsHtml = emps.map(e => {
+    const fase = FASES_LANCAMENTO.find(f => f.id === (e.fase_lancamento || 'aquecimento')) || FASES_LANCAMENTO[0];
+    const vsoColor = e.vso >= 75 ? '#22C55E' : e.vso >= 40 ? '#F59E0B' : '#00C4B4';
+    const pctV = e.unidades_total > 0 ? (e.unidades_vendidas / e.unidades_total * 100).toFixed(1) : 0;
+    const pctR = e.unidades_total > 0 ? (e.unidades_reservadas / e.unidades_total * 100).toFixed(1) : 0;
+
+    const faseSelector = FASES_LANCAMENTO.map(f => {
+      const ativa = (e.fase_lancamento || 'aquecimento') === f.id;
+      return `<button onclick="mudarFasePainel(${e.id},'${f.id}')" title="${f.label}"
+        style="padding:4px 9px;border-radius:16px;border:1px solid ${ativa ? f.color : 'var(--border)'};
+               background:${ativa ? `rgba(${f.rgb},.22)` : 'transparent'};
+               color:${ativa ? f.color : 'var(--text2)'};
+               font-size:11px;font-weight:${ativa ? '700' : '400'};
+               cursor:pointer;white-space:nowrap;transition:all .15s">
+        ${f.icon} ${f.label}
+      </button>`;
+    }).join('');
+
+    const topCorretores = (e.top_corretores || []).slice(0,3).map((c,i) =>
+      `<span style="font-size:11px;color:var(--text2)">${['🥇','🥈','🥉'][i]} ${c.nome} <strong style="color:var(--text)">(${c.vendas})</strong></span>`
+    ).join('  ');
+
+    return `
+      <div id="emp-card-${e.id}" style="background:var(--card);border:1px solid var(--border);
+            border-left:4px solid ${fase.color};border-radius:14px;padding:20px;
+            display:flex;flex-direction:column;gap:14px">
+
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">
+          <div style="min-width:0">
+            <div style="font-size:16px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.nome}</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:2px">
+              ${[e.tipo, e.cidade, e.cliente_nome].filter(Boolean).join(' · ')}
+            </div>
+          </div>
+          <div style="background:rgba(${fase.rgb},.18);border:1px solid rgba(${fase.rgb},.45);
+                      color:${fase.color};border-radius:20px;padding:4px 12px;font-size:11px;
+                      font-weight:700;white-space:nowrap;flex-shrink:0">
+            ${fase.icon} ${fase.label}
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${faseSelector}</div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+          ${_painelMetric(e.vso+'%', 'VSO', vsoColor)}
+          ${_painelMetric(fmt(e.vgv_total), 'VGV Vendido', 'var(--success)')}
+          ${_painelMetric(e.unidades_vendidas+'/'+e.unidades_total, 'Vendidas/Total', 'var(--text)')}
+          ${_painelMetric(e.unidades_disponiveis, 'Disponíveis', 'var(--accent)')}
+        </div>
+
+        <div>
+          <div style="height:8px;background:var(--navy3);border-radius:4px;overflow:hidden;display:flex">
+            ${pctV > 0 ? `<div style="width:${pctV}%;background:#22C55E;transition:.6s" title="Vendido"></div>` : ''}
+            ${pctR > 0 ? `<div style="width:${pctR}%;background:#F97316;transition:.6s" title="Reservado"></div>` : ''}
+          </div>
+          <div style="display:flex;gap:12px;margin-top:4px;flex-wrap:wrap">
+            <span style="font-size:10px;color:#22C55E">■ Vendido ${e.unidades_vendidas}</span>
+            ${e.unidades_reservadas > 0 ? `<span style="font-size:10px;color:#F97316">■ Reservado ${e.unidades_reservadas}</span>` : ''}
+            <span style="font-size:10px;color:#94A3B8">■ Disponível ${e.unidades_disponiveis}</span>
+            ${e.vendas_hoje > 0 ? `<span style="font-size:10px;color:#F59E0B;font-weight:700">⚡ ${e.vendas_hoje} venda${e.vendas_hoje!==1?'s':''} hoje · ${fmt(e.vgv_hoje)}</span>` : ''}
+          </div>
+        </div>
+
+        ${topCorretores ? `<div style="display:flex;gap:16px;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--border)">${topCorretores}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  document.getElementById('content').innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:18px">
+      <div style="font-size:13px;color:var(--text2)">${emps.length} lançamento${emps.length!==1?'s':''} ativo${emps.length!==1?'s':''}</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:12px;color:var(--text2)" id="painel-updated">Atualizado às ${new Date().toLocaleTimeString('pt-BR')}</span>
+        <button onclick="renderPainel()" style="padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--accent);cursor:pointer;font-size:13px">🔄 Atualizar</button>
+      </div>
     </div>
-    <div id="painel-content"><div style="text-align:center;padding:40px;color:var(--text2)">Carregando...</div></div>
+
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.9px;color:var(--text2);font-weight:700;margin-bottom:10px">Fase do Lançamento</div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:28px;overflow-x:auto">
+      ${kanbanHtml}
+    </div>
+
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.9px;color:var(--text2);font-weight:700;margin-bottom:12px">Lançamentos</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px">
+      ${cardsHtml}
+    </div>
   `;
-  document.getElementById('content').innerHTML = selectHtml;
-  if (_painelEmpId) await loadPainelData();
-  // Auto-refresh a cada 60s
-  _painelInterval = setInterval(() => { if (currentPage === 'painel' && _painelEmpId) loadPainelData(); }, 60000);
+
+  _painelInterval = setInterval(() => { if (currentPage === 'painel') renderPainel(); }, 60000);
+}
+
+function _painelMetric(value, label, color) {
+  return `<div style="background:var(--navy3);border-radius:8px;padding:10px;text-align:center">
+    <div style="font-size:15px;font-weight:800;color:${color};font-variant-numeric:tabular-nums">${value}</div>
+    <div style="font-size:9px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-top:2px">${label}</div>
+  </div>`;
+}
+
+async function mudarFasePainel(empId, novaFase) {
+  const r = await put(`/api/empreendimentos/${empId}/fase`, { fase: novaFase });
+  if (!r.ok) return toast(r.error, 'error');
+  await renderPainel();
 }
 
 async function loadPainelData() {
-  if (!_painelEmpId) return;
-  const r = await get(`/api/painel/${_painelEmpId}`);
-  if (!r.ok) return;
-  const d = r.data;
-  const { empreendimento: emp, unidades, vso, vgv_total, vgv_mes, vendas_hoje, vgv_hoje, top_corretores, ultimas_vendas } = d;
-
-  // VSO gauge via SVG circle
-  const R = 48, C = 2 * Math.PI * R;
-  const dash = (C * vso / 100).toFixed(1);
-  const vsoColor = vso >= 75 ? '#22C55E' : vso >= 40 ? '#F59E0B' : '#00C4B4';
-
-  const painelHtml = `
-    <div class="painel-grid">
-      <div class="painel-card">
-        <div class="vso-gauge">
-          <svg width="120" height="120" viewBox="0 0 120 120">
-            <circle cx="60" cy="60" r="${R}" fill="none" stroke="var(--navy3)" stroke-width="10"/>
-            <circle cx="60" cy="60" r="${R}" fill="none" stroke="${vsoColor}" stroke-width="10"
-              stroke-dasharray="${dash} ${C.toFixed(1)}" stroke-linecap="round" style="transition:stroke-dasharray .6s"/>
-          </svg>
-          <div class="vso-pct" style="color:${vsoColor}">${vso}%</div>
-        </div>
-        <div class="painel-label">VSO — Velocidade de Vendas</div>
-      </div>
-
-      <div class="painel-card">
-        <div class="painel-big" style="color:var(--danger)">${unidades.vendidas}</div>
-        <div class="painel-label">Unidades Vendidas</div>
-        <div style="margin-top:8px;font-size:13px;color:var(--text2)">${unidades.reservadas} reservadas · ${unidades.disponiveis} disponíveis · ${unidades.total} total</div>
-      </div>
-
-      <div class="painel-card">
-        <div class="painel-big" style="color:var(--success)">${fmt(vgv_total)}</div>
-        <div class="painel-label">VGV Vendido Total</div>
-        <div style="margin-top:8px;font-size:13px;color:var(--text2)">Mês: ${fmt(vgv_mes)}</div>
-      </div>
-
-      <div class="painel-card">
-        <div class="painel-big" style="color:var(--accent)">${vendas_hoje}</div>
-        <div class="painel-label">Vendas Hoje</div>
-        <div style="margin-top:8px;font-size:13px;color:var(--text2)">${fmt(vgv_hoje)}</div>
-      </div>
-    </div>
-
-    <div class="dash-row">
-      <div class="mini-card">
-        <h4>🏆 Ranking Corretores</h4>
-        <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
-          ${top_corretores.length ? top_corretores.map((c,i) => `
-            <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
-              <div style="font-size:16px;width:24px;text-align:center">${i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`}</div>
-              <div style="flex:1">
-                <div style="font-weight:600;font-size:13px">${c.nome}</div>
-                ${c.imobiliaria ? `<div style="font-size:11px;color:var(--text2)">${c.imobiliaria}</div>` : ''}
-              </div>
-              <div style="text-align:right">
-                <div style="font-weight:700;color:var(--success);font-size:13px">${fmt(c.vgv)}</div>
-                <div style="font-size:11px;color:var(--text2)">${c.vendas} venda${c.vendas!==1?'s':''}</div>
-              </div>
-            </div>
-          `).join('') : '<div style="color:var(--text2);font-size:13px;padding:8px 0">Nenhuma venda ainda</div>'}
-        </div>
-      </div>
-
-      <div class="mini-card">
-        <h4>📋 Últimas Vendas</h4>
-        <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;max-height:320px;overflow-y:auto">
-          ${ultimas_vendas.length ? ultimas_vendas.map(v => `
-            <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
-              <div style="font-size:11px;color:var(--text2);min-width:60px">${fmtDate(v.data_venda)}</div>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.lead_nome||v.imovel||'—'}</div>
-                <div style="font-size:11px;color:var(--text2)">${v.corretor_nome||'—'}${v.imovel ? ' · ' + v.imovel : ''}</div>
-              </div>
-              <div style="font-weight:700;color:var(--success);font-size:13px;white-space:nowrap">${fmt(v.valor)}</div>
-            </div>
-          `).join('') : '<div style="color:var(--text2);font-size:13px;padding:8px 0">Nenhuma venda</div>'}
-        </div>
-      </div>
-    </div>
-    <div style="text-align:right;font-size:11px;color:var(--text2);margin-top:8px">${emp.nome} — atualizado ${new Date().toLocaleTimeString('pt-BR')}</div>
-  `;
-
-  document.getElementById('painel-content').innerHTML = painelHtml;
-  const upd = document.getElementById('painel-updated');
-  if (upd) upd.textContent = `Atualizado às ${new Date().toLocaleTimeString('pt-BR')}`;
+  // Mantido para compatibilidade com referências existentes; redireciona para renderPainel
+  await renderPainel();
 }
 
 // ─── VENDAS ───────────────────────────────────────────────────────────────────
