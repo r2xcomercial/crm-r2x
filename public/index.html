@@ -436,6 +436,8 @@
     <div class="nav-item" onclick="navigate('caixa')"><span class="icon">🏦</span> Caixa</div>
     <div class="nav-item" onclick="navigate('relatorios')"><span class="icon">📈</span> Relatórios</div>
     <div class="nav-item" onclick="navigate('gestao-pessoal')"><span class="icon">🧘</span> Gestão Pessoal</div>
+    <div class="nav-section">Empresa</div>
+    <div class="nav-item" onclick="navigate('processos')"><span class="icon">🏛️</span> Processos e Pessoas</div>
     <div class="nav-item" onclick="navigate('calculadora')" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px"><span class="icon">🧮</span> Calculadora</div>
     <div id="nav-usuarios" class="nav-item" onclick="navigate('usuarios')" style="display:none"><span class="icon">👤</span> Usuários</div>
     <div class="nav-item" onclick="baixarBackup()" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px;color:var(--text2)"><span class="icon">💾</span> Backup do Banco</div>
@@ -469,6 +471,8 @@
     <div class="nav-item" onclick="navigate('corretores')"><span class="icon">👥</span> Corretores</div>
     <div class="nav-section">Eventos</div>
     <div class="nav-item" onclick="navigate('eventos')"><span class="icon">🎪</span> Eventos</div>
+    <div class="nav-section">Empresa</div>
+    <div class="nav-item" onclick="navigate('processos')"><span class="icon">🏛️</span> Processos e Pessoas</div>
     <div class="nav-item" onclick="navigate('calculadora')" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px"><span class="icon">🧮</span> Calculadora</div>
   </nav>
   <div id="sidebar-user" style="padding:12px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--text2)">
@@ -570,7 +574,8 @@ const pageTitles = {
   financeiro: 'Financeiro', caixa: 'Caixa & Conferência Bancária', relatorios: 'Relatórios', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
   painel: 'Painel de Lançamento', usuarios: 'Usuários do Sistema', calculadora: 'Calculadora de Financiamento',
   'corretor-painel': 'Meu Painel', 'incorporador-painel': 'Portal do Incorporador',
-  eventos: 'Eventos de Lançamento', 'gestao-pessoal': 'Gestão Pessoal'
+  eventos: 'Eventos de Lançamento', 'gestao-pessoal': 'Gestão Pessoal',
+  processos: 'Processos e Pessoas'
 };
 const addablePages = ['leads','vendas','clientes','empreendimentos','corretores','financeiro','calendario','usuarios','eventos'];
 
@@ -612,6 +617,7 @@ async function renderPage(page) {
       case 'incorporador-painel': await renderIncorporadorPainel(); break;
       case 'eventos': await renderEventos(); break;
       case 'gestao-pessoal': await renderGestaoPessoal(); break;
+      case 'processos': await renderProcessos(); break;
     }
   } catch(e) {
     c.innerHTML = `<div style="color:var(--danger);padding:24px">Erro ao carregar: ${e.message}</div>`;
@@ -16946,6 +16952,292 @@ document.addEventListener('wheel', function(e) {
   e.preventDefault();
   card.scrollLeft += e.deltaX;
 }, { passive: false });
+
+// ─── PROCESSOS E PESSOAS ───────────────────────────────────────────────────
+let _procTab = 'organograma';
+
+async function renderProcessos(tab) {
+  if (tab) _procTab = tab;
+  const r = await get('/api/org');
+  const nodes = r.ok ? r.data : [];
+
+  const tabs = [
+    { id: 'organograma', label: '🏛️ Organograma', icon: '🏛️' },
+    { id: 'metodo', label: '🚀 Método R2X', icon: '🚀' },
+  ];
+
+  document.getElementById('content').innerHTML = `
+    <div style="padding:24px;max-width:1400px;margin:0 auto">
+      <div style="display:flex;gap:8px;margin-bottom:24px;border-bottom:1px solid var(--border);padding-bottom:0">
+        ${tabs.map(t => `<button onclick="renderProcessos('${t.id}')" style="padding:10px 20px;border:none;background:none;cursor:pointer;font-size:14px;font-weight:600;color:${_procTab===t.id?'var(--accent)':'var(--text2)'};border-bottom:${_procTab===t.id?'2px solid var(--accent)':'2px solid transparent'};margin-bottom:-1px;transition:all .2s">${t.label}</button>`).join('')}
+      </div>
+      <div id="proc-content"></div>
+    </div>`;
+
+  if (_procTab === 'organograma') _renderOrgTab(nodes);
+  else _renderMetodoTab();
+}
+
+function _renderOrgTab(nodes) {
+  const isAdmin = USUARIO.perfil === 'admin';
+  const internos = nodes.filter(n => n.tipo !== 'externo');
+  const externos = nodes.filter(n => n.tipo === 'externo');
+
+  function buildTree(parentId, list) {
+    return list.filter(n => n.parent_id == parentId).sort((a,b) => a.ordem - b.ordem);
+  }
+
+  function nodeCard(n, depth=0) {
+    const resp = (() => { try { return JSON.parse(n.responsabilidades||'[]'); } catch(_) { return []; } })();
+    const bgColor = n.tipo === 'diretoria' ? 'var(--navy2)' : n.tipo === 'externo' ? 'rgba(45,74,107,0.3)' : 'var(--card)';
+    const borderColor = n.tipo === 'diretoria' ? 'var(--accent)' : n.tipo === 'externo' ? '#2D4A6B' : 'var(--border)';
+    const children = buildTree(n.id, internos.concat(externos));
+
+    return `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:0">
+        <div class="org-node" style="background:${bgColor};border:1.5px solid ${borderColor};border-radius:10px;padding:12px 16px;min-width:180px;max-width:220px;text-align:center;cursor:pointer;transition:box-shadow .2s;position:relative"
+          onclick="_orgNodeDetail(${n.id})">
+          <div style="font-weight:700;font-size:${n.tipo==='diretoria'?'15':'13'}px;color:${n.tipo==='diretoria'?'var(--accent)':'var(--text)'}">${n.nome}</div>
+          ${n.cargo ? `<div style="font-size:11px;color:var(--text2);margin-top:3px;line-height:1.3">${n.cargo}</div>` : ''}
+          ${n.foco ? `<div style="font-size:10px;color:var(--accent);margin-top:6px;opacity:.8">${n.foco}</div>` : ''}
+          ${isAdmin ? `<button onclick="event.stopPropagation();_orgEdit(${n.id})" style="position:absolute;top:6px;right:6px;background:none;border:none;font-size:12px;cursor:pointer;color:var(--text2);opacity:.5" title="Editar">✏️</button>` : ''}
+        </div>
+        ${children.length > 0 ? `
+          <div style="width:1px;height:20px;background:var(--border)"></div>
+          <div style="display:flex;gap:20px;align-items:flex-start;position:relative">
+            ${children.length > 1 ? `<div style="position:absolute;top:0;left:calc(50%/2);right:calc(50%/2);height:1px;background:var(--border);width:100%"></div>` : ''}
+            ${children.map(child => `
+              <div style="display:flex;flex-direction:column;align-items:center">
+                <div style="width:1px;height:20px;background:var(--border)"></div>
+                ${nodeCard(child, depth+1)}
+              </div>`).join('')}
+          </div>` : ''}
+      </div>`;
+  }
+
+  const roots = buildTree(null, internos);
+  const extRoots = buildTree(null, externos);
+
+  document.getElementById('proc-content').innerHTML = `
+    <div style="margin-bottom:32px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div>
+          <h3 style="margin:0;font-size:16px;color:var(--text)">Organograma Interno</h3>
+          <p style="margin:4px 0 0;font-size:12px;color:var(--text2)">Estrutura societária e equipe interna da R2X</p>
+        </div>
+        ${isAdmin ? `<button onclick="_orgAdd()" style="padding:8px 16px;border-radius:8px;background:var(--accent);color:var(--navy);border:none;font-weight:700;font-size:13px;cursor:pointer">+ Adicionar</button>` : ''}
+      </div>
+
+      <div style="overflow-x:auto;padding-bottom:16px">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:0;min-width:600px">
+          ${roots.map(r => nodeCard(r)).join(`<div style="height:20px"></div>`)}
+        </div>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);padding-top:24px">
+      <h3 style="margin:0 0 6px;font-size:16px;color:var(--text)">Ecossistema Externo</h3>
+      <p style="margin:0 0 20px;font-size:12px;color:var(--text2)">Parceiros especializados — não integram a hierarquia interna da R2X</p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        ${extRoots.map(extRoot => {
+          const extChildren = buildTree(extRoot.id, externos);
+          return `
+            <div style="background:rgba(45,74,107,0.15);border:1px solid #2D4A6B;border-radius:10px;padding:16px;min-width:160px;cursor:pointer" onclick="_orgNodeDetail(${extRoot.id})">
+              <div style="font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;font-weight:600">${extRoot.nome}</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                ${extChildren.map(c => `
+                  <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;cursor:pointer" onclick="event.stopPropagation();_orgNodeDetail(${c.id})">
+                    <div style="font-weight:600;font-size:12px;color:var(--text)">${c.nome}</div>
+                    <div style="font-size:11px;color:var(--text2);margin-top:2px">${c.cargo}</div>
+                    ${isAdmin ? `<button onclick="event.stopPropagation();_orgEdit(${c.id})" style="background:none;border:none;font-size:11px;cursor:pointer;color:var(--text2);padding:0;margin-top:4px">✏️ editar</button>` : ''}
+                  </div>`).join('')}
+              </div>
+              ${isAdmin ? `<button onclick="event.stopPropagation();_orgEdit(${extRoot.id})" style="background:none;border:none;font-size:11px;cursor:pointer;color:var(--text2);padding:0;margin-top:8px">✏️ editar grupo</button>` : ''}
+            </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+async function _orgNodeDetail(id) {
+  const r = await get('/api/org');
+  if (!r.ok) return;
+  const n = r.data.find(x => x.id === id);
+  if (!n) return;
+  const resp = (() => { try { return JSON.parse(n.responsabilidades||'[]'); } catch(_) { return []; } })();
+  const isAdmin = USUARIO.perfil === 'admin';
+  openModal(n.nome, `
+    <div style="line-height:1.6">
+      ${n.cargo ? `<div style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--accent);margin-bottom:12px;font-weight:600">${n.cargo}</div>` : ''}
+      ${n.missao ? `<div style="margin-bottom:16px"><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Missão</div><div style="font-size:13px;color:var(--text)">${n.missao}</div></div>` : ''}
+      ${resp.length > 0 ? `<div style="margin-bottom:16px"><div style="font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Responsabilidades</div><ul style="margin:0;padding-left:18px">${resp.map(r => `<li style="font-size:13px;color:var(--text);margin-bottom:4px">${r}</li>`).join('')}</ul></div>` : ''}
+      ${n.foco ? `<div style="background:rgba(0,196,180,0.08);border-left:3px solid var(--accent);padding:10px 14px;border-radius:0 8px 8px 0;font-size:12px;color:var(--accent)">Foco: ${n.foco}</div>` : ''}
+    </div>`,
+    isAdmin ? async () => { _orgEdit(id); } : null,
+    { saveLabel: isAdmin ? '✏️ Editar' : null, cancelLabel: 'Fechar' }
+  );
+}
+
+async function _orgEdit(id) {
+  closeModal();
+  const r = await get('/api/org');
+  if (!r.ok) return;
+  const all = r.data;
+  const n = id ? all.find(x => x.id === id) : null;
+  const resp = n ? (() => { try { return JSON.parse(n.responsabilidades||'[]'); } catch(_) { return []; } })() : [];
+
+  const parentOptions = all.filter(x => x.id !== id).map(x =>
+    `<option value="${x.id}" ${n?.parent_id===x.id?'selected':''}>${x.nome} (${x.cargo||x.tipo})</option>`
+  ).join('');
+
+  openModal(n ? `Editar: ${n.nome}` : 'Novo Nó', `
+    <div class="form-group"><label>Nome *</label><input id="on-nome" value="${n?.nome||''}" placeholder="Nome da pessoa ou grupo"/></div>
+    <div class="form-group"><label>Cargo / Função</label><input id="on-cargo" value="${n?.cargo||''}" placeholder="Ex: Sócio | Diretor Comercial"/></div>
+    <div class="form-group"><label>Tipo</label>
+      <select id="on-tipo">
+        <option value="interno" ${n?.tipo==='interno'?'selected':''}>Interno</option>
+        <option value="diretoria" ${n?.tipo==='diretoria'?'selected':''}>Diretoria</option>
+        <option value="externo" ${n?.tipo==='externo'?'selected':''}>Externo / Parceiro</option>
+      </select></div>
+    <div class="form-group"><label>Reporta a</label>
+      <select id="on-parent"><option value="">— Topo (sem superior) —</option>${parentOptions}</select></div>
+    <div class="form-group"><label>Missão da função</label><textarea id="on-missao" rows="3" placeholder="Descreva a missão deste cargo...">${n?.missao||''}</textarea></div>
+    <div class="form-group"><label>Responsabilidades (uma por linha)</label><textarea id="on-resp" rows="6" placeholder="Uma responsabilidade por linha">${resp.join('\n')}</textarea></div>
+    <div class="form-group"><label>Foco (resumo em palavras-chave)</label><input id="on-foco" value="${n?.foco||''}" placeholder="Ex: negócios · estratégia · crescimento"/></div>
+    <div class="form-group"><label>Ordem de exibição</label><input id="on-ordem" type="number" value="${n?.ordem||0}" min="0"/></div>
+    ${n ? `<div style="margin-top:8px"><button onclick="_orgDelete(${n.id})" style="background:none;border:1px solid var(--danger);color:var(--danger);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px">🗑️ Excluir este nó</button></div>` : ''}`,
+    async () => {
+      const body = {
+        nome: document.getElementById('on-nome').value.trim(),
+        cargo: document.getElementById('on-cargo').value.trim(),
+        tipo: document.getElementById('on-tipo').value,
+        parent_id: document.getElementById('on-parent').value ? parseInt(document.getElementById('on-parent').value) : null,
+        missao: document.getElementById('on-missao').value.trim(),
+        responsabilidades: document.getElementById('on-resp').value.split('\n').map(s=>s.trim()).filter(Boolean),
+        foco: document.getElementById('on-foco').value.trim(),
+        ordem: parseInt(document.getElementById('on-ordem').value)||0,
+      };
+      if (!body.nome) { toast('Nome é obrigatório','err'); return; }
+      const res = n ? await put(`/api/org/${n.id}`, body) : await post('/api/org', body);
+      if (res.ok) { toast(n ? 'Atualizado!' : 'Criado!'); renderProcessos('organograma'); }
+      else toast(res.error||'Erro','err');
+    }, { saveLabel: n ? 'Salvar alterações' : 'Criar' }
+  );
+}
+
+async function _orgAdd() { _orgEdit(null); }
+
+async function _orgDelete(id) {
+  if (!confirm('Excluir este nó do organograma?')) return;
+  closeModal();
+  const r = await del(`/api/org/${id}`);
+  if (r.ok) { toast('Excluído!'); renderProcessos('organograma'); }
+  else toast(r.error||'Erro','err');
+}
+
+function _renderMetodoTab() {
+  const FUNIL = [
+    { id:'marketing',    label:'Marketing',    icon:'📣', desc:'Munição: material de marketing — site, vídeos, plantas, peças comerciais. Base de posicionamento do produto.', cor:'#3B82F6', rgb:'59,130,246' },
+    { id:'aquecimento',  label:'Aquecimento',  icon:'🔥', desc:'Estruturação de corretores e parceiros. Apresentação do produto, regras e dinâmica comercial.', cor:'#F97316', rgb:'249,115,22' },
+    { id:'ancoragem',    label:'Ancoragem',    icon:'⚓', desc:'Posicionamento e precificação do produto. Definição de tabelas, condições e estratégia de preço.', cor:'#8B5CF6', rgb:'139,92,246' },
+    { id:'treinamento',  label:'Treinamento',  icon:'🎓', desc:'Meeting de capacitação da força de vendas. Alinhamento técnico, product training e simulações comerciais.', cor:'#06B6D4', rgb:'6,182,212' },
+    { id:'represamento', label:'Represamento', icon:'💧', desc:'Captação de leads (pré-cadastro) antes do evento. Geração de demanda e lista de interessados qualificados.', cor:'#00C4B4', rgb:'0,196,180' },
+    { id:'lancamento',   label:'Lançamento',   icon:'🚀', desc:'Evento de lançamento — digital ou presencial. Pico de vendas com todos os gatilhos ativados simultaneamente.', cor:'#22C55E', rgb:'34,197,94' },
+  ];
+
+  const FASES_EMP = [
+    [
+      { label:'Aquisição & Viabilidade', itens:['Prospecção de terreno/área/incorporadora','Análise de mercado, produto e VGV','Viabilidade técnica e financeira','Negociação e relacionamento','Due diligence jurídica e ambiental'], tipo:'incorporadora' },
+      { label:'Aprovações & Documentação', itens:['Projeto urbanístico/edilício','Aprovação do prefeitura','Registro no cartório/incorporação','Licença ambiental'], tipo:'incorporadora' },
+      { label:'Marketing & Pré-lançamento', itens:['Munição: material de marketing (site, vídeos, plantas)','Aquecimento: estruturação de corretores/parceiros','Ancoragem: posicionamento e precificação','Represamento: captação de leads (pré-cadastro)'], tipo:'r2x' },
+      { label:'Lançamento (Evento)', itens:['Tabela de vendas e condições','Evento de lançamento digital/presencial','Stand / decorado'], tipo:'r2x' },
+    ],[
+      { label:'Vendas & Comissionamento', itens:['CRM e atendimento de leads','Negociação e fechamento','Fechamento de comissões (corretores)'], tipo:'r2x' },
+      { label:'Obra & Infraestrutura', itens:['Terraplanagem/infraestrutura','Execução da obra','Cronograma físico-financeiro','Gestão de fornecedores/empreiteiras'], tipo:'incorporadora' },
+      { label:'Entrega & Pós-venda', itens:['Vistoria e entrega','Escritura/registro definitivo','Relacionamento pós-venda','Pesquisa de satisfação'], tipo:'incorporadora' },
+    ]
+  ];
+
+  const GATILHOS = [
+    { label:'Autoridade',   icon:'🏆', desc:'R2X e Ramon como referência no mercado. Cases de sucesso, resultados e posicionamento de especialista.', fase:'Marketing, Aquecimento' },
+    { label:'Prova Social', icon:'👥', desc:'Corretores engajados, clientes satisfeitos, depoimentos reais. "Todo mundo está comprando."', fase:'Aquecimento, Represamento' },
+    { label:'Escassez',     icon:'⏳', desc:'Unidades limitadas, tipologias exclusivas. Só existem X lotes disponíveis. Quando acaba, acabou.', fase:'Ancoragem, Lançamento' },
+    { label:'Urgência',     icon:'⚡', desc:'Condições especiais válidas apenas para o dia do lançamento. Preço de lançamento por tempo limitado.', fase:'Represamento, Lançamento' },
+    { label:'Antecipação',  icon:'🎯', desc:'Pré-cadastro, listas VIP, acesso antecipado. O lead sente que tem vantagem sobre quem não se inscreveu.', fase:'Represamento' },
+    { label:'Reciprocidade',icon:'🤝', desc:'Atendimento diferenciado, conteúdo exclusivo, presenteado. O lead se sente obrigado a corresponder.', fase:'Aquecimento, Evento' },
+  ];
+
+  document.getElementById('proc-content').innerHTML = `
+    <div style="max-width:1100px">
+
+      <!-- Conceito -->
+      <div style="background:linear-gradient(135deg,rgba(0,196,180,.12),rgba(30,58,95,.3));border:1px solid var(--accent);border-radius:14px;padding:20px 24px;margin-bottom:32px;display:flex;gap:20px;align-items:center">
+        <div style="font-size:48px;flex-shrink:0">🚀</div>
+        <div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);font-weight:700;margin-bottom:6px">Conceito Central do Método R2X</div>
+          <div style="font-size:16px;font-weight:700;color:var(--text);line-height:1.4">Gatilhos Mentais, estruturados e sincronizados com o objetivo de um <span style="color:var(--accent)">pico de vendas.</span></div>
+          <div style="font-size:13px;color:var(--text2);margin-top:6px">Funil comercial sequencial + 7 fases do ciclo completo + 6 gatilhos de persuasão aplicados na comunicação</div>
+        </div>
+      </div>
+
+      <!-- Funil -->
+      <div style="margin-bottom:32px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:700;margin-bottom:14px">Funil Comercial — Fluxo Sequencial</div>
+        <div style="display:flex;gap:0;overflow-x:auto;padding-bottom:8px">
+          ${FUNIL.map((f,i) => `
+            <div style="flex:1;min-width:130px;position:relative">
+              <div style="background:rgba(${f.rgb},.15);border:1.5px solid rgba(${f.rgb},.5);border-right:none;${i===FUNIL.length-1?'border-right:1.5px solid rgba('+f.rgb+',.5);':''}padding:16px 12px 14px;${i===0?'border-radius:10px 0 0 10px':''}${i===FUNIL.length-1?'border-radius:0 10px 10px 0':''}">
+                <div style="font-size:22px;margin-bottom:6px">${f.icon}</div>
+                <div style="font-size:12px;font-weight:700;color:rgb(${f.rgb})">${f.label}</div>
+                <div style="font-size:11px;color:var(--text2);margin-top:6px;line-height:1.4">${f.desc}</div>
+              </div>
+              ${i < FUNIL.length-1 ? `<div style="position:absolute;right:-10px;top:50%;transform:translateY(-50%);width:0;height:0;border-top:12px solid transparent;border-bottom:12px solid transparent;border-left:10px solid rgba(${f.rgb},.5);z-index:1"></div>` : ''}
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- Fases do empreendimento -->
+      <div style="margin-bottom:32px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:700">Ciclo Completo do Empreendimento</div>
+          <div style="display:flex;gap:8px">
+            <span style="font-size:11px;padding:3px 8px;border-radius:4px;background:rgba(0,196,180,.15);color:var(--accent);font-weight:600">R2X executa diretamente</span>
+            <span style="font-size:11px;padding:3px 8px;border-radius:4px;background:rgba(59,130,246,.1);color:#60A5FA;font-weight:600">Incorporadora responsável</span>
+          </div>
+        </div>
+        ${FASES_EMP.map(row => `
+          <div style="display:grid;grid-template-columns:repeat(${row.length},1fr);gap:12px;margin-bottom:12px">
+            ${row.map(fase => `
+              <div style="background:${fase.tipo==='r2x'?'rgba(0,196,180,.08)':'var(--navy3)'};border:1px solid ${fase.tipo==='r2x'?'rgba(0,196,180,.4)':'var(--border)'};border-radius:10px;padding:14px">
+                <div style="font-size:12px;font-weight:700;color:${fase.tipo==='r2x'?'var(--accent)':'var(--text2)'};margin-bottom:8px">${fase.label}</div>
+                <ul style="margin:0;padding-left:16px">
+                  ${fase.itens.map(it => `<li style="font-size:11px;color:var(--text2);margin-bottom:3px">${it}</li>`).join('')}
+                </ul>
+              </div>`).join('')}
+          </div>`).join('')}
+      </div>
+
+      <!-- Gatilhos -->
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:700;margin-bottom:14px">Gatilhos de Persuasão</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+          ${GATILHOS.map((g,i) => {
+            const colors = ['#F97316','#8B5CF6','#06B6D4','#EF4444','#00C4B4','#22C55E'];
+            const rgb = ['249,115,22','139,92,246','6,182,212','239,68,68','0,196,180','34,197,94'];
+            return `
+              <div style="background:rgba(${rgb[i]},.08);border:1px solid rgba(${rgb[i]},.3);border-radius:10px;padding:16px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <span style="font-size:20px">${g.icon}</span>
+                  <span style="font-weight:700;font-size:13px;color:rgb(${rgb[i]})">${g.label}</span>
+                </div>
+                <div style="font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:8px">${g.desc}</div>
+                <div style="font-size:10px;color:rgba(${rgb[i]},.8);font-weight:600;text-transform:uppercase;letter-spacing:.4px">📍 ${g.fase}</div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+}
 </script>
 </body>
 </html>

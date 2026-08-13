@@ -4032,6 +4032,43 @@ try { db.exec('ALTER TABLE empreendimentos ADD COLUMN patrimonio_afetacao INTEGE
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN condicao_pagamento_padrao TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE empreendimentos ADD COLUMN logo_base64 TEXT'); } catch(_) {}
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN fase_lancamento TEXT DEFAULT 'aquecimento'"); } catch(_) {}
+try { db.exec(`CREATE TABLE IF NOT EXISTS org_nodes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  parent_id INTEGER,
+  nome TEXT NOT NULL,
+  cargo TEXT DEFAULT '',
+  missao TEXT DEFAULT '',
+  responsabilidades TEXT DEFAULT '[]',
+  foco TEXT DEFAULT '',
+  tipo TEXT DEFAULT 'interno',
+  cor TEXT DEFAULT '#1E3A5F',
+  ordem INTEGER DEFAULT 0
+)`); } catch(_) {}
+// Seed organograma inicial se tabela vazia
+(function seedOrg() {
+  const count = db.prepare('SELECT COUNT(*) as n FROM org_nodes').get().n;
+  if (count > 0) return;
+  const ins = db.prepare(`INSERT INTO org_nodes (parent_id,nome,cargo,missao,responsabilidades,foco,tipo,cor,ordem) VALUES (?,?,?,?,?,?,?,?,?)`);
+  const root = ins.run(null,'R2X','Direção Societária','Aceleradora de Vendas Imobiliárias','[]','','diretoria','#0F2A4A',0);
+  const ramon = ins.run(root.lastInsertRowid,'Ramon','Sócio | Diretor Comercial e de Negócios',
+    'Gerar novos negócios, desenvolver relacionamentos estratégicos, construir a estratégia comercial dos empreendimentos e liderar os lançamentos da R2X.',
+    JSON.stringify(['Prospecção de novas incorporadoras e empreendimentos','Desenvolvimento de novos negócios e relacionamento com incorporadoras','Reuniões comerciais e apresentações','Análise de mercado, produto e VGV','Negociação das condições comerciais da R2X','Estratégia comercial dos empreendimentos e estratégia de lançamento','Posicionamento comercial e estratégia de precificação','Aprovação de tabelas e condições comerciais','Definição do formato dos lançamentos e condução comercial dos Meetings','Apoio em negociações complexas e relacionamentos estratégicos']),
+    'negócios · estratégia · relacionamento · lançamentos · crescimento','interno','#1E3A5F',0);
+  const silvia = ins.run(root.lastInsertRowid,'Silvia','Sócia | Diretora Administrativa Geral',
+    'Garantir o funcionamento administrativo, operacional e financeiro da R2X, mantendo controle sobre vendas, disponibilidade, recebimentos, pagamentos e informações gerenciais.',
+    JSON.stringify(['Receber informações, propostas e documentação dos compradores','Controlar reservas e encaminhar documentação às incorporadoras','Acompanhar contratos, assinaturas e pagamentos iniciais','Cadastrar clientes e lançar vendas no CRM','Atualizar status das unidades e disponibilidade','Acompanhar comissões e conferir com incorporadoras','Validar valores para faturamento e emissão de notas fiscais','Lançar contas a pagar e acompanhar fluxo de caixa','Organização administrativa e controles internos']),
+    'administração · vendas · CRM · financeiro · fiscal · controle · gestão','interno','#1E3A5F',1);
+  ins.run(root.lastInsertRowid,'Analista de Marketing e Operações Comerciais','Gestor Operacional',
+    'Apoiar Ramon e Silvia na execução do marketing, operações de eventos, lançamentos e gestão de leads no CRM.',
+    JSON.stringify(['Acompanhar Ramon e registrar reuniões, visitas, bastidores e lançamentos','Produzir conteúdo para posicionamento da R2X e de Ramon','Apoiar redes sociais, tráfego pago e campanhas','Organização operacional dos Meetings e lançamentos','Preparação dos eventos, materiais e apoio audiovisual','Receber leads no CRM e distribuir aos corretores (rodízio)','Acompanhar leads operacionalmente e cobrar retorno']),
+    'marketing · operações · leads · formação em lançamentos','interno','#B8860B',2);
+  // Externos
+  const ext = ins.run(null,'Ecossistema Externo','Parceiros Especializados','Estrutura externa de parceiros que apoiam a operação da R2X sem integrar a hierarquia interna.','[]','','externo','#2D4A6B',10);
+  ins.run(ext.lastInsertRowid,'Incorporadoras','Parceiro de Empreendimento','Origem dos projetos, viabilidade comercial e vínculo contratual.',JSON.stringify(['Origem dos projetos','Viabilidade técnica e financeira','Negociação e relacionamento','Vínculo comercial e contratual']),'','externo','#2D4A6B',0);
+  ins.run(ext.lastInsertRowid,'HAUS / Marketing','Parceiro de Marketing','Campanhas, materiais e apoio à comunicação dos lançamentos.',JSON.stringify(['Campanhas e materiais','Apoio à comunicação dos lançamentos']),'','externo','#2D4A6B',1);
+  ins.run(ext.lastInsertRowid,'Contador','Parceiro Fiscal/Contábil','Informações contábeis e acompanhamento fiscal.',JSON.stringify(['Informações contábeis','Acompanhamento fiscal']),'','externo','#2D4A6B',2);
+  ins.run(ext.lastInsertRowid,'Corretores Terceiros','100% Terceiros','Corretores externos parceiros. Não integram a hierarquia da R2X.',JSON.stringify(['Atendimento e negociação com compradores','Prospecção de clientes para os empreendimentos']),'','externo','#2D4A6B',3);
+})();
 try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN pluggy_transaction_id TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN cliente_id INTEGER'); } catch(_) {}
 try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN nf_arquivo TEXT'); } catch(_) {}
@@ -7294,6 +7331,31 @@ app.delete('/api/admin/rollback-unidades/:empId', autenticar, (req, res) => {
   const placeholders = ids.map(() => '?').join(',');
   const info = db.prepare(`DELETE FROM unidades WHERE empreendimento_id=? AND id IN (${placeholders})`).run(empId, ...ids);
   ok(res, { deletados: info.changes });
+});
+// ─── ORGANOGRAMA ──────────────────────────────────────────────────────────────
+app.get('/api/org', (req, res) => {
+  const nodes = db.prepare('SELECT * FROM org_nodes ORDER BY tipo, ordem, id').all();
+  ok(res, nodes);
+});
+app.post('/api/org', (req, res) => {
+  const { parent_id, nome, cargo, missao, responsabilidades, foco, tipo, cor, ordem } = req.body;
+  if (!nome) return err(res, 'Nome obrigatório');
+  const r = db.prepare(`INSERT INTO org_nodes (parent_id,nome,cargo,missao,responsabilidades,foco,tipo,cor,ordem)
+    VALUES (?,?,?,?,?,?,?,?,?)`).run(parent_id||null, nome, cargo||'', missao||'', JSON.stringify(responsabilidades||[]), foco||'', tipo||'interno', cor||'#1E3A5F', ordem||0);
+  ok(res, { id: r.lastInsertRowid });
+});
+app.put('/api/org/:id', (req, res) => {
+  const { nome, cargo, missao, responsabilidades, foco, tipo, cor, ordem, parent_id } = req.body;
+  db.prepare(`UPDATE org_nodes SET nome=?,cargo=?,missao=?,responsabilidades=?,foco=?,tipo=?,cor=?,ordem=?,parent_id=? WHERE id=?`)
+    .run(nome, cargo||'', missao||'', JSON.stringify(responsabilidades||[]), foco||'', tipo||'interno', cor||'#1E3A5F', ordem||0, parent_id||null, parseInt(req.params.id));
+  ok(res, {});
+});
+app.delete('/api/org/:id', (req, res) => {
+  const id = parseInt(req.params.id);
+  const children = db.prepare('SELECT COUNT(*) as n FROM org_nodes WHERE parent_id=?').get(id).n;
+  if (children > 0) return err(res, 'Remova os subordinados antes de excluir este nó');
+  db.prepare('DELETE FROM org_nodes WHERE id=?').run(id);
+  ok(res, {});
 });
 // ─────────────────────────────────────────────────────────────────────────────
 
