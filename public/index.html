@@ -2236,21 +2236,30 @@ async function renderPainel() {
     return;
   }
 
-  // ── Kanban de fases ──────────────────────────────────────────────────────────
+  // ── Kanban de fases (com drag-and-drop) ─────────────────────────────────────
   const kanbanHtml = FASES_LANCAMENTO.map(f => {
     const nesta = emps.filter(e => (e.fase_lancamento || 'aquecimento') === f.id);
     const badges = nesta.map(e => `
-      <div onclick="document.getElementById('emp-card-${e.id}')?.scrollIntoView({behavior:'smooth',block:'nearest'})"
+      <div draggable="true"
+        ondragstart="event.dataTransfer.setData('empId','${e.id}');event.dataTransfer.setData('fromFase','${f.id}');this.style.opacity='.35';this.style.cursor='grabbing'"
+        ondragend="this.style.opacity='1';this.style.cursor='grab'"
+        onclick="document.getElementById('emp-card-${e.id}')?.scrollIntoView({behavior:'smooth',block:'nearest'})"
         style="background:rgba(${f.rgb},.14);border:1px solid rgba(${f.rgb},.38);border-radius:6px;
-               padding:5px 8px;margin-bottom:5px;cursor:pointer;transition:opacity .15s"
-        onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
+               padding:5px 8px;margin-bottom:5px;cursor:grab;transition:opacity .15s;user-select:none">
         <div style="font-size:12px;font-weight:600;color:var(--text)">${e.nome}</div>
         <div style="font-size:10px;color:var(--text2)">VSO ${e.vso}% · ${e.unidades_disponiveis} disp.</div>
-      </div>`).join('') || `<div style="color:var(--text2);font-size:11px;padding:2px 0">—</div>`;
+      </div>`).join('') || `<div style="color:var(--text2);font-size:11px;padding:2px 0;pointer-events:none">—</div>`;
     return `
-      <div style="background:var(--card);border:1px solid var(--border);border-top:3px solid ${f.color};
-                  border-radius:12px;padding:12px;min-width:150px">
-        <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px">
+      <div data-fase="${f.id}"
+        ondragover="event.preventDefault();this.style.boxShadow='0 0 0 2px ${f.color}';this.style.background='rgba(${f.rgb},.14)'"
+        ondragleave="this.style.boxShadow='';this.style.background=''"
+        ondrop="this.style.boxShadow='';this.style.background='';
+                const _id=parseInt(event.dataTransfer.getData('empId'));
+                const _from=event.dataTransfer.getData('fromFase');
+                if(_from!=='${f.id}') mudarFasePainel(_id,'${f.id}')"
+        style="background:var(--card);border:1px solid var(--border);border-top:3px solid ${f.color};
+               border-radius:12px;padding:12px;min-width:150px;transition:background .15s,box-shadow .15s">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;pointer-events:none">
           <span style="font-size:20px;line-height:1">${f.icon}</span>
           <div>
             <div style="font-size:12px;font-weight:700;color:var(--text)">${f.label}</div>
@@ -3645,6 +3654,11 @@ function openEmpModal(e = {}) {
       <div class="form-group"><label>Status</label>
         <select id="f-status">${['prospecto','planejamento','pre_lancamento','lancamento','vendas','encerrado'].map(s => `<option value="${s}" ${e.status===s?'selected':''}>${s}</option>`).join('')}</select>
       </div>
+      <div class="form-group"><label>Fase do Lançamento (Painel)</label>
+        <select id="f-fase-lancamento">
+          ${FASES_LANCAMENTO.map(f => `<option value="${f.id}" ${(e.fase_lancamento||'aquecimento')===f.id?'selected':''}>${f.icon} ${f.label}</option>`).join('')}
+        </select>
+      </div>
       <div class="form-group span2"><label>Endereço</label><input id="f-end" value="${e.endereco||''}"></div>
       <div class="form-group"><label>Cidade</label><input id="f-cidade" value="${e.cidade||''}"></div>
       <div class="form-group"><label>Estado</label><input id="f-estado" value="${e.estado||''}" placeholder="SC" maxlength="2"></div>
@@ -3888,6 +3902,7 @@ function openEmpModal(e = {}) {
       maps_url: v('f-maps-url')||null,
       drive_url: v('f-drive-url')||null,
       social_url: v('f-social-url')||null,
+      fase_lancamento: v('f-fase-lancamento')||'aquecimento',
       condicao_pagamento_padrao: [...document.querySelectorAll('#emp-cp-list .ecp-condicao')].map(cond => ({
         nome: cond.querySelector('.ecp-nome')?.value?.trim() || '',
         parcelas: [...cond.querySelectorAll('.emp-cp-row')].map(row => ({
