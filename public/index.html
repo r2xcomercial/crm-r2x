@@ -7497,10 +7497,14 @@ async function iniciarImportacaoFatura(input) {
     // Monta a tabela de classificação
     content.style.display = 'block';
     content.innerHTML = `
-      <div style="margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-        ${d.vencimento ? `<span style="font-size:13px;color:var(--text2)">📅 Vencimento: <b style="color:var(--text1)">${fmtDate(d.vencimento)}</b></span>` : ''}
-        ${d.total ? `<span style="font-size:13px;color:var(--text2)">💳 Total fatura: <b style="color:var(--danger)">${fmt(d.total)}</b></span>` : ''}
-        <span style="font-size:13px;color:var(--text2)">${lancamentos.length} lançamentos extraídos</span>
+      <div style="background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.3);border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.5px">📅 Data de pagamento da fatura</span>
+          <input type="date" id="fatura-data-pgto" value="${d.vencimento||''}" style="padding:4px 8px;border-radius:6px;border:1px solid rgba(0,196,180,.4);background:var(--navy2);color:var(--text);font-size:13px;font-weight:600">
+        </div>
+        <span style="font-size:12px;color:var(--text2)">Todos os lançamentos serão registrados com esta data de saída do caixa</span>
+        ${d.total ? `<span style="font-size:13px;color:var(--text2);margin-left:auto">💳 Total: <b style="color:var(--danger)">${fmt(d.total)}</b></span>` : ''}
+        <span style="font-size:13px;color:var(--text2)">${lancamentos.length} lançamentos</span>
         <label style="font-size:13px;display:flex;align-items:center;gap:6px;margin-left:auto;cursor:pointer">
           <input type="checkbox" id="fatura-sel-todos" checked onchange="toggleTodosFatura(this.checked)"> Selecionar todos
         </label>
@@ -7568,6 +7572,7 @@ async function iniciarImportacaoFatura(input) {
 
     // Guarda dados no elemento para usar no submit
     content.dataset.lancamentos = JSON.stringify(lancamentos);
+    content.dataset.vencimento = d.vencimento || '';
 
   } catch(e) {
     const loading = document.getElementById('fatura-loading');
@@ -7609,6 +7614,9 @@ async function confirmarImportacaoFatura() {
   const content = document.getElementById('fatura-content');
   if (!content?.dataset.lancamentos) return;
 
+  // Data de pagamento: vencimento da fatura (editável pelo usuário no topo)
+  const dataPgto = document.getElementById('fatura-data-pgto')?.value || content.dataset.vencimento || null;
+
   const base = JSON.parse(content.dataset.lancamentos);
   const lancamentos = base.map((l, i) => {
     const chk = document.querySelector(`.fatura-chk[data-idx="${i}"]`);
@@ -7616,6 +7624,7 @@ async function confirmarImportacaoFatura() {
     const cat = document.querySelector(`.fatura-cat[data-idx="${i}"]`);
     return {
       ...l,
+      data: dataPgto || l.data,   // usa vencimento da fatura como data de saída do caixa
       incluir: chk?.checked || false,
       empreendimento_id: emp?.value || null,
       categoria: cat?.value || 'outro',
