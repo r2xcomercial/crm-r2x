@@ -6789,8 +6789,48 @@ function exportarDRE() {
 
 const TIPOS_ENTRADA = ['comissao_venda','fee_fixo_mensal','consultoria','bonus','outro'];
 const TIPOS_ENTRADA_LABEL = { comissao_venda:'Comissão Venda', fee_fixo_mensal:'Fee Fixo Mensal', consultoria:'Consultoria', bonus:'Bônus', outro:'Outro' };
-const CATEGORIAS_SAIDA = ['imposto','marketing','operacional','pessoal','evento','tecnologia','juridico','contabilidade','outro'];
-const CATEGORIAS_SAIDA_LABEL = { imposto:'🏛️ Impostos / Tributos', marketing:'Marketing', operacional:'Operacional', pessoal:'Pessoal', evento:'Evento', tecnologia:'Tecnologia', juridico:'Jurídico', contabilidade:'Contabilidade', outro:'Outro' };
+const CATEGORIAS_SAIDA = ['imposto','marketing','operacional','pessoal','evento','tecnologia','juridico','contabilidade','alimentacao','outro'];
+const CATEGORIAS_SAIDA_LABEL = { imposto:'🏛️ Impostos / Tributos', marketing:'📣 Marketing', operacional:'⚙️ Operacional', pessoal:'👤 Pessoal', evento:'🎪 Evento', tecnologia:'💻 Tecnologia', juridico:'⚖️ Jurídico', contabilidade:'📊 Contabilidade', alimentacao:'🍽️ Alimentação', outro:'📌 Outro' };
+
+// ─── CATEGORIZAÇÃO AUTOMÁTICA POR DESCRIÇÃO ───────────────────────────────────
+const _CATEG_REGRAS = [
+  { cat: 'alimentacao', palavras: [
+    'restaurante','restaurant','padaria','panificadora','panificação','panificacao',
+    'lanchonete','lancheria','lanches','lanche','cafeteria','cafe','café','coffee',
+    'pizzaria','pizza','hamburgueria','hamburguer','hambúrguer','burger','burguer',
+    'churrascaria','churrasco','sushi','temakeria','temaki','japonês','japones',
+    'doceria','confeitaria','sorveteria','sorvete','açougue','acougue','mercearia',
+    'rotisserie','bistrô','bistro','cantina','pizzas','gastronomia','gastro',
+    'ifood','i food','ubereats','uber eats','rappi','james delivery','delivery food',
+    'bob\\b','mcdonalds','mc donalds','mcdonald','subway','burguer king','burger king',
+    'kfc','outback','madero','giraffas','bobs','chilis','applebee','fridays',
+    'paçoquinha','açaí','acai','tapioca','coxinha','empada','salgados',
+  ]},
+  { cat: 'tecnologia', palavras: [
+    'netflix','spotify','amazon prime','apple.com/bill','google storage','google one',
+    'microsoft','dropbox','zoom','chatgpt','openai','notion','figma','github',
+    'aws ','azure','digital ocean','hostgator','godaddy','cloudflare',
+  ]},
+  { cat: 'marketing', palavras: [
+    'facebook ads','google ads','meta ads','tiktok ads','linkedin ads',
+    'instagram ads','youtube ads','pinterest ads',
+  ]},
+  { cat: 'imposto', palavras: [
+    'das ','simples nacional','irpj','csll','cofins','pis ','inss','fgts',
+    'receita federal','prefeitura','iptu','ipva','dpvat','municipal',
+  ]},
+];
+
+function inferirCategoria(descricao) {
+  if (!descricao) return 'outro';
+  const d = descricao.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  for (const regra of _CATEG_REGRAS) {
+    for (const p of regra.palavras) {
+      if (d.includes(p.normalize('NFD').replace(/[̀-ͯ]/g, ''))) return regra.cat;
+    }
+  }
+  return 'outro';
+}
 
 function openEntradaModal(e = {}) {
   const isNew = !e.id;
@@ -7511,8 +7551,8 @@ async function iniciarImportacaoFatura(input) {
                   </select>
                 </td>
                 <td style="padding:4px 6px">
-                  <select class="fatura-cat" data-idx="${i}" style="width:120px;padding:3px 5px;border-radius:5px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px">
-                    ${catOpts}
+                  <select class="fatura-cat" data-idx="${i}" style="width:130px;padding:3px 5px;border-radius:5px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px">
+                    ${CATEGORIAS_SAIDA.map(c => `<option value="${c}" ${inferirCategoria(l.descricao)===c?'selected':''}>${CATEGORIAS_SAIDA_LABEL[c]||c}</option>`).join('')}
                   </select>
                 </td>
               </tr>
