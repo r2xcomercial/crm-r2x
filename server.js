@@ -4069,6 +4069,20 @@ try { db.exec(`CREATE TABLE IF NOT EXISTS org_nodes (
   ins.run(ext.lastInsertRowid,'Contador','Parceiro Fiscal/Contábil','Informações contábeis e acompanhamento fiscal.',JSON.stringify(['Informações contábeis','Acompanhamento fiscal']),'','externo','#2D4A6B',2);
   ins.run(ext.lastInsertRowid,'Corretores Terceiros','100% Terceiros','Corretores externos parceiros. Não integram a hierarquia da R2X.',JSON.stringify(['Atendimento e negociação com compradores','Prospecção de clientes para os empreendimentos']),'','externo','#2D4A6B',3);
 })();
+try { db.exec('ALTER TABLE org_nodes ADD COLUMN responsabilidade_chave TEXT DEFAULT ""'); } catch(_) {}
+// Preenche responsabilidade_chave nos nós existentes que ainda não têm
+(function seedRespChave() {
+  const upd = db.prepare(`UPDATE org_nodes SET responsabilidade_chave=? WHERE nome=? AND (responsabilidade_chave IS NULL OR responsabilidade_chave='')`);
+  upd.run('Direção Societária · Crescimento e expansão da R2X · Decisões estratégicas', 'R2X');
+  upd.run('Desenvolvimento de Negócios · Estratégia Comercial e de Lançamento · Relacionamento com Incorporadoras', 'Ramon');
+  upd.run('Operações Comerciais · Gestão de Vendas e Disponibilidade · Financeiro e Administrativo', 'Silvia');
+  upd.run('Marketing e Conteúdo · Operações de Meetings e Lançamentos · Gestão de Leads no CRM', 'Analista de Marketing e Operações Comerciais');
+  upd.run('Parceiros externos especializados que apoiam a R2X sem integrar a hierarquia interna', 'Ecossistema Externo');
+  upd.run('Origem dos projetos · Viabilidade comercial · Vínculo contratual', 'Incorporadoras');
+  upd.run('Campanhas e materiais de marketing · Comunicação dos lançamentos', 'HAUS / Marketing');
+  upd.run('Informações contábeis · Acompanhamento fiscal e tributário', 'Contador');
+  upd.run('Atendimento e negociação com compradores · Prospecção de clientes', 'Corretores Terceiros');
+})();
 try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN pluggy_transaction_id TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN cliente_id INTEGER'); } catch(_) {}
 try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN nf_arquivo TEXT'); } catch(_) {}
@@ -7338,16 +7352,16 @@ app.get('/api/org', (req, res) => {
   ok(res, nodes);
 });
 app.post('/api/org', (req, res) => {
-  const { parent_id, nome, cargo, missao, responsabilidades, foco, tipo, cor, ordem } = req.body;
+  const { parent_id, nome, cargo, missao, responsabilidades, responsabilidade_chave, foco, tipo, cor, ordem } = req.body;
   if (!nome) return err(res, 'Nome obrigatório');
-  const r = db.prepare(`INSERT INTO org_nodes (parent_id,nome,cargo,missao,responsabilidades,foco,tipo,cor,ordem)
-    VALUES (?,?,?,?,?,?,?,?,?)`).run(parent_id||null, nome, cargo||'', missao||'', JSON.stringify(responsabilidades||[]), foco||'', tipo||'interno', cor||'#1E3A5F', ordem||0);
+  const r = db.prepare(`INSERT INTO org_nodes (parent_id,nome,cargo,missao,responsabilidades,responsabilidade_chave,foco,tipo,cor,ordem)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(parent_id||null, nome, cargo||'', missao||'', JSON.stringify(responsabilidades||[]), responsabilidade_chave||'', foco||'', tipo||'interno', cor||'#1E3A5F', ordem||0);
   ok(res, { id: r.lastInsertRowid });
 });
 app.put('/api/org/:id', (req, res) => {
-  const { nome, cargo, missao, responsabilidades, foco, tipo, cor, ordem, parent_id } = req.body;
-  db.prepare(`UPDATE org_nodes SET nome=?,cargo=?,missao=?,responsabilidades=?,foco=?,tipo=?,cor=?,ordem=?,parent_id=? WHERE id=?`)
-    .run(nome, cargo||'', missao||'', JSON.stringify(responsabilidades||[]), foco||'', tipo||'interno', cor||'#1E3A5F', ordem||0, parent_id||null, parseInt(req.params.id));
+  const { nome, cargo, missao, responsabilidades, responsabilidade_chave, foco, tipo, cor, ordem, parent_id } = req.body;
+  db.prepare(`UPDATE org_nodes SET nome=?,cargo=?,missao=?,responsabilidades=?,responsabilidade_chave=?,foco=?,tipo=?,cor=?,ordem=?,parent_id=? WHERE id=?`)
+    .run(nome, cargo||'', missao||'', JSON.stringify(responsabilidades||[]), responsabilidade_chave||'', foco||'', tipo||'interno', cor||'#1E3A5F', ordem||0, parent_id||null, parseInt(req.params.id));
   ok(res, {});
 });
 app.delete('/api/org/:id', (req, res) => {
