@@ -5379,6 +5379,7 @@ function renderFinTab() {
               💳 Importar Fatura
               <input type="file" accept=".pdf,.docx" style="display:none" onchange="iniciarImportacaoFatura(this)">
             </label>
+            <button onclick="corrigirDataImportacao()" style="background:var(--navy3);border:1px solid var(--border);color:var(--text2);border-radius:7px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap" title="Corrige a data de pagamento de lançamentos importados recentemente">🔧 Corrigir data</button>
             <button class="btn btn-primary" onclick="openSaidaModal()">+ Nova Saída</button>
           </div>
         </div>
@@ -7652,6 +7653,68 @@ async function confirmarImportacaoFatura() {
 
   toast(`✅ ${r.data.importados} lançamentos importados!${parcelas.length ? ` ${parcelas.length} parcelas detectadas.` : ''}`);
   renderFinanceiro();
+}
+
+// ── Correção de data de importação em lote ────────────────────────────────────
+async function corrigirDataImportacao() {
+  const r = await get('/api/financeiro/saidas/recentes?horas=72');
+  if (!r.ok) { toast('Erro ao buscar lançamentos recentes', 'err'); return; }
+  const items = r.data;
+
+  if (!items.length) {
+    toast('Nenhum lançamento importado nas últimas 72 horas.', 'info');
+    return;
+  }
+
+  const fmtMoeda = v => 'R$ ' + parseFloat(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
+  const fmtDt = s => s ? s.slice(0,10).split('-').reverse().join('/') : '—';
+
+  openModal('🔧 Corrigir data dos lançamentos importados', `
+    <div style="margin-bottom:14px">
+      <p style="font-size:13px;color:var(--text2);margin:0 0 12px">Selecione os lançamentos que precisam de correção e informe a data correta de pagamento da fatura.</p>
+      <div style="display:flex;align-items:center;gap:12px;background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.3);border-radius:8px;padding:10px 14px;flex-wrap:wrap">
+        <label style="font-size:13px;font-weight:700;color:var(--accent);white-space:nowrap">📅 Data correta de pagamento:</label>
+        <input type="date" id="corr-data" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(0,196,180,.4);background:var(--navy2);color:var(--text);font-size:13px;font-weight:600">
+        <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;margin-left:auto">
+          <input type="checkbox" id="corr-sel-todos" checked onchange="document.querySelectorAll('.corr-chk').forEach(c=>c.checked=this.checked)"> Selecionar todos
+        </label>
+      </div>
+    </div>
+    <div style="overflow-y:auto;max-height:380px">
+      <table style="font-size:12px;width:100%">
+        <thead style="position:sticky;top:0;background:var(--navy2)">
+          <tr>
+            <th style="padding:6px 4px;width:32px"></th>
+            <th style="padding:6px 8px;text-align:left">Descrição</th>
+            <th style="padding:6px 8px;text-align:left">Categoria</th>
+            <th style="padding:6px 8px;text-align:right">Valor</th>
+            <th style="padding:6px 8px;text-align:center">Data atual</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(it => `
+            <tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:4px;text-align:center"><input type="checkbox" class="corr-chk" data-id="${it.id}" checked></td>
+              <td style="padding:4px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(it.descricao||'').replace(/"/g,'&quot;')}">${it.descricao||'—'}</td>
+              <td style="padding:4px 8px;color:var(--text2)">${CATEGORIAS_SAIDA_LABEL[it.categoria]||it.categoria||'—'}</td>
+              <td style="padding:4px 8px;text-align:right;font-weight:700;color:var(--danger)">${fmtMoeda(it.valor)}</td>
+              <td style="padding:4px 8px;text-align:center;color:${it.data_pagamento?'var(--text2)':'var(--warning)'}">${fmtDt(it.data_pagamento)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:var(--text2)">Mostrando lançamentos criados nas últimas 72 horas (${items.length} encontrados).</div>`,
+    async () => {
+      const novaData = document.getElementById('corr-data')?.value;
+      if (!novaData) { toast('Informe a data correta', 'err'); return; }
+      const ids = [...document.querySelectorAll('.corr-chk:checked')].map(c => parseInt(c.dataset.id));
+      if (!ids.length) { toast('Selecione ao menos um lançamento', 'err'); return; }
+      const res = await post('/api/financeiro/saidas/corrigir-data', { ids, data_pagamento: novaData });
+      if (res.ok) { toast(`✅ ${res.data.atualizados} lançamentos corrigidos!`); renderFinanceiro(); }
+      else toast(res.error || 'Erro', 'err');
+    },
+    { saveLabel: '✅ Corrigir selecionados' }
+  );
 }
 
 // ── Multi-upload de faturas (novo fluxo) ──────────────────────────────────────

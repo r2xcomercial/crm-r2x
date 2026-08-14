@@ -3469,6 +3469,28 @@ app.post('/api/financeiro/importar-fatura', (req, res) => {
   ok(res, { importados });
 });
 
+// Retorna saídas importadas recentemente (últimas 72h, status=pago, sem empreendimento)
+app.get('/api/financeiro/saidas/recentes', (req, res) => {
+  const horas = parseInt(req.query.horas) || 72;
+  const rows = db.prepare(`
+    SELECT id, descricao, categoria, valor, data_pagamento, criado_em
+    FROM financeiro_saidas
+    WHERE datetime(criado_em) >= datetime('now', '-${horas} hours')
+    ORDER BY criado_em DESC
+  `).all();
+  ok(res, rows);
+});
+
+// Corrige data_pagamento em lote por lista de ids
+app.post('/api/financeiro/saidas/corrigir-data', (req, res) => {
+  const { ids, data_pagamento } = req.body;
+  if (!Array.isArray(ids) || !ids.length) return err(res, 'IDs obrigatórios');
+  if (!data_pagamento) return err(res, 'Data obrigatória');
+  const placeholders = ids.map(() => '?').join(',');
+  const info = db.prepare(`UPDATE financeiro_saidas SET data_pagamento=? WHERE id IN (${placeholders})`).run(data_pagamento, ...ids.map(Number));
+  ok(res, { atualizados: info.changes });
+});
+
 // ─── PARCELAS DO CARTÃO ────────────────────────────────────────────────────────
 
 // Salvar/atualizar parcelas detectadas numa fatura (deduplicação automática)
