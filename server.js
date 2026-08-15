@@ -595,6 +595,12 @@ app.put('/api/empreendimentos/:id/plano', autenticar, (req, res) => {
   ok(res, {});
 });
 
+app.put('/api/empreendimentos/:id/data-lancamento', autenticar, (req, res) => {
+  const { data_lancamento } = req.body;
+  db.prepare('UPDATE empreendimentos SET data_lancamento=? WHERE id=?').run(data_lancamento||null, req.params.id);
+  ok(res, {});
+});
+
 // ─── UNIDADES ─────────────────────────────────────────────────────────────────
 
 app.get("/api/empreendimentos/:id/unidades", (req, res) => {
