@@ -3691,15 +3691,41 @@ async function abrirPlanoLancamento(empId, empNome, dataLancamento) {
   overlay.innerHTML = `
     <style id="plano-print-style">
       @media print {
-        body > *:not(#plano-overlay) { display:none !important; }
-        #plano-overlay { position:static !important; overflow:visible !important; }
-        #plano-toolbar { display:none !important; }
-        .plano-page { box-shadow:none !important; margin:0 !important; }
         @page { size:A3 landscape; margin:9mm; }
         * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+        body > *:not(#plano-overlay) { display:none !important; }
+        #plano-overlay {
+          position:static !important;
+          overflow:visible !important;
+          height:auto !important;
+          display:block !important;
+        }
+        #plano-toolbar { display:none !important; }
+        #plano-scroll-wrap {
+          overflow:visible !important;
+          height:auto !important;
+          flex:none !important;
+          padding:0 !important;
+        }
+        .plano-page {
+          box-shadow:none !important;
+          border-radius:0 !important;
+          margin:0 !important;
+          width:100% !important;
+          min-width:unset !important;
+          padding:6mm 8mm !important;
+        }
         .p-card .card-resize { display:none !important; }
+        .p-card .card-del { display:none !important; }
         .plano-week-ctrl { display:none !important; }
-        input[type=date].plano-date-input { border:none !important; background:transparent !important; padding:0 !important; }
+        .p-label .addbtn { display:none !important; }
+        input[type=date].plano-date-input {
+          border:none !important;
+          background:transparent !important;
+          padding:0 !important;
+          color:#B8892B !important;
+          font-size:22px !important;
+        }
       }
     </style>
     <div id="plano-toolbar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:9px 16px;background:#0f1116;color:#edebe4;border-bottom:2px solid #a5842f;font-size:13px;flex-shrink:0">
@@ -3711,11 +3737,11 @@ async function abrirPlanoLancamento(empId, empNome, dataLancamento) {
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
         <span id="plano-save-status" style="font-size:11px;color:#7d838b"></span>
         <button onclick="_planoRestore()" style="background:#232830;border:1px solid #3a414a;color:#edebe4;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12px">↺ Restaurar padrão</button>
-        <button onclick="window.print()" style="background:#232830;border:1px solid #3a414a;color:#edebe4;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12px">⎙ Imprimir A3</button>
+        <button onclick="_planoImprimir()" style="background:#232830;border:1px solid #3a414a;color:#edebe4;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12px">⎙ Imprimir A3</button>
         <button onclick="fecharPlanoLancamento()" style="background:#b91c1c;border:1px solid #7f1d1d;color:#fff;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12px;font-weight:600">✕ Fechar</button>
       </div>
     </div>
-    <div style="overflow:auto;flex:1;padding:20px 24px">
+    <div id="plano-scroll-wrap" style="overflow:auto;flex:1;padding:20px 24px">
       <div class="plano-page" id="plano-page" style="width:1500px;min-width:1500px;background:#F6F5F2;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.5);padding:26px 30px 22px;color:#1A1E24;font-family:system-ui,sans-serif">
         <div id="plano-doc-head" style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid #1A1E24;padding-bottom:12px;margin-bottom:4px">
           <div>
@@ -4014,6 +4040,43 @@ function _planoRestore() {
   _planoScheduleSave();
 }
 
+
+function _planoImprimir() {
+  const overlay  = document.getElementById('plano-overlay');
+  const wrap     = document.getElementById('plano-scroll-wrap');
+  const page     = document.getElementById('plano-page');
+  if (!overlay || !wrap || !page) { window.print(); return; }
+
+  // Salva estilos originais
+  const saved = {
+    oPos:  overlay.style.position,   oOvf: overlay.style.overflow, oH: overlay.style.height, oDsp: overlay.style.display,
+    wOvf:  wrap.style.overflow,      wH:   wrap.style.height,      wFlex: wrap.style.flex,   wPad: wrap.style.padding,
+    pW:    page.style.width,         pMW:  page.style.minWidth,    pPad: page.style.padding,
+    pBR:   page.style.borderRadius,  pSh:  page.style.boxShadow,   pM: page.style.margin,
+  };
+
+  function expand() {
+    overlay.style.cssText += ';position:static!important;overflow:visible!important;height:auto!important;display:block!important';
+    wrap.style.cssText    += ';overflow:visible!important;height:auto!important;flex:none!important;padding:0!important';
+    page.style.cssText    += ';width:100%!important;min-width:unset!important;box-shadow:none!important;border-radius:0!important;margin:0!important;padding:6mm 8mm!important';
+  }
+
+  function restore() {
+    overlay.style.position     = saved.oPos;  overlay.style.overflow = saved.oOvf;
+    overlay.style.height       = saved.oH;    overlay.style.display  = saved.oDsp;
+    wrap.style.overflow        = saved.wOvf;  wrap.style.height      = saved.wH;
+    wrap.style.flex            = saved.wFlex; wrap.style.padding     = saved.wPad;
+    page.style.width           = saved.pW;    page.style.minWidth    = saved.pMW;
+    page.style.padding         = saved.pPad;  page.style.borderRadius= saved.pBR;
+    page.style.boxShadow       = saved.pSh;   page.style.margin      = saved.pM;
+    window.removeEventListener('afterprint', restore);
+  }
+
+  window.addEventListener('afterprint', restore);
+  expand();
+  // Pequeno delay para o browser re-renderizar o layout expandido antes de imprimir
+  setTimeout(() => window.print(), 80);
+}
 
 function _planoScheduleSave() {
   const p = window._plano;
