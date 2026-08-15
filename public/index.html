@@ -3578,6 +3578,7 @@ async function renderEmpreendimentos(filter = '') {
               <td style="white-space:nowrap">
                 ${e.num_unidades ? `<button class="btn-icon" title="Espelho de Vendas" onclick="verEspelho(${e.id})">🏠</button>` : ''}
                 ${e.tipo === 'predio' ? `<button class="btn-icon" title="Vagas de Garagem" onclick="verVagas(${e.id})" style="color:#60a5fa">🅿️</button>` : ''}
+                <button class="btn-icon" title="Plano de Lançamento" onclick="abrirPlanoLancamento(${e.id},'${(e.nome||'').replace(/'/g,"\\'")}','${e.data_lancamento||''}')" style="color:#f59e0b">📅</button>
                 <button class="btn-icon" title="Checklist de Marketing" onclick="verChecklist(${e.id})" style="color:#a78bfa">✅</button>
                 <button class="btn-icon" title="Gerar Contrato (.docx)" onclick="gerarContrato(${e.id})" style="color:var(--success)">📄</button>
                 <button class="btn-icon" title="Relatório gerencial" onclick="gerarRelatorio(${e.id})" style="color:var(--accent)">📊</button>
@@ -3616,6 +3617,416 @@ async function renderEmpreendimentos(filter = '') {
     </div>
   `;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PLANO DE LANÇAMENTO — Gantt editável por empreendimento
+// ══════════════════════════════════════════════════════════════════════════════
+
+const _PLANO_PHASES = [
+  {id:'mkt', num:'01', name:'Marketing',        sub:'Posicionamento e demanda (contínuo)',               color:'#2E5C6E'},
+  {id:'aqu', num:'02', name:'Aquecimento',      sub:'Presença e desejo no mercado',                      color:'#C77A2E'},
+  {id:'anc', num:'03', name:'Ancoragem',        sub:'Preço, valor e condições',                          color:'#6E4B73'},
+  {id:'tre', num:'04', name:'Treinamento',      sub:'Corretores prontos para vender',                    color:'#3B6B4A'},
+  {id:'rep', num:'05', name:'Represamento',     sub:'Fila, senhas e contagem regressiva',                color:'#A6462F'},
+  {id:'lan', num:'06', name:'Lançamento',       sub:'Abertura de vendas · D‑Day',                        color:'#B8892B'},
+  {id:'pos', num:'07', name:'Pós-Lançamento',   sub:'Ativação, follow-up e consolidação das vendas',     color:'#2E6B6B'},
+];
+
+const _PLANO_DEFAULT_CARDS = [
+  {p:'mkt', t:'Posicionamento e identidade visual',  s:0, span:2},
+  {p:'mkt', t:'Landing page + captação de leads',    s:0, span:2},
+  {p:'mkt', t:'Tráfego pago e gestão de redes',      s:1, span:9},
+  {p:'aqu', t:'Visita às imobiliárias',              s:1, span:2},
+  {p:'aqu', t:'Gravação do vídeo teaser',            s:1, span:1},
+  {p:'aqu', t:'Entrevista em rádio / podcast',       s:2, span:1},
+  {p:'aqu', t:'Divulgação do vídeo teaser',          s:3, span:2},
+  {p:'aqu', t:'Participação em eventos',             s:2, span:2},
+  {p:'aqu', t:'Panfletagem e ações de rua',          s:3, span:2},
+  {p:'anc', t:'Tabela de preços',                    s:3, span:1},
+  {p:'anc', t:'Ancoragem de valores',                s:4, span:1},
+  {p:'anc', t:'Condições de pagamento',              s:3, span:1},
+  {p:'anc', t:'Material de vendas',                  s:4, span:2},
+  {p:'tre', t:'Convite para o meeting',              s:5, span:1},
+  {p:'tre', t:'Lembrete do meeting',                 s:6, span:1},
+  {p:'tre', t:'Meeting de treinamento (corretores)', s:6, span:1},
+  {p:'rep', t:'Captação de interessados',            s:4, span:3},
+  {p:'rep', t:'Pré-cadastro / senhas',               s:5, span:2},
+  {p:'rep', t:'Fila de prioridade',                  s:6, span:1},
+  {p:'rep', t:'Contagem regressiva',                 s:6, span:2},
+  {p:'lan', t:'Evento presencial OU abertura online',s:7, span:1},
+  {p:'lan', t:'Data · hora · sistema utilizado',     s:7, span:1},
+  {p:'pos', t:'Follow-up com compradores',           s:8, span:2},
+  {p:'pos', t:'Reativação de leads perdidos',        s:8, span:2},
+  {p:'pos', t:'Relatório de resultados',             s:9, span:1},
+];
+
+window._plano = { empId:null, empNome:'', weeks:10, launchDate:null, cards:[], saveTimer:null, editMode:true };
+
+async function abrirPlanoLancamento(empId, empNome, dataLancamento) {
+  const r = await get(`/api/empreendimentos/${empId}/plano`);
+  const saved = r.data?.plano;
+
+  const p = window._plano;
+  p.empId = empId;
+  p.empNome = empNome;
+  p.editMode = true;
+
+  if (saved) {
+    p.weeks = saved.weeks || 10;
+    p.launchDate = saved.launchDate || null;
+    p.cards = JSON.parse(JSON.stringify(saved.cards || _PLANO_DEFAULT_CARDS));
+  } else {
+    p.weeks = 10;
+    p.launchDate = dataLancamento ? dataLancamento.slice(0,10) : null;
+    p.cards = JSON.parse(JSON.stringify(_PLANO_DEFAULT_CARDS));
+  }
+
+  // Criar overlay
+  let overlay = document.getElementById('plano-overlay');
+  if (overlay) overlay.remove();
+  overlay = document.createElement('div');
+  overlay.id = 'plano-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:8000;background:#1c1f26;overflow:auto;display:flex;flex-direction:column';
+
+  overlay.innerHTML = `
+    <style id="plano-print-style">
+      @media print {
+        body > *:not(#plano-overlay) { display:none !important; }
+        #plano-overlay { position:static !important; overflow:visible !important; }
+        #plano-toolbar { display:none !important; }
+        .plano-page { box-shadow:none !important; margin:0 !important; }
+        @page { size:A3 landscape; margin:9mm; }
+        * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+        .p-card .card-ctl { display:none !important; }
+        .p-card { margin-top:4px !important; }
+        .p-card .card-resize { display:none !important; }
+      }
+    </style>
+    <div id="plano-toolbar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;background:#0f1116;color:#edebe4;border-bottom:2px solid #a5842f;font-size:13px;flex-shrink:0">
+      <div style="font-family:system-ui;font-weight:700;font-size:18px;color:#e7ce86;letter-spacing:.4px">R2X <span style="color:#edebe4;font-weight:400">· Plano de Lançamento</span></div>
+      <div style="padding:0 12px;border-left:1px solid #2c3138;display:flex;align-items:center;gap:8px">
+        <span style="color:#9aa0a8;font-size:11px;text-transform:uppercase;letter-spacing:.6px">Lançamento</span>
+        <input type="date" id="plano-launch-date" value="${p.launchDate||''}" style="background:#1e2330;border:1px solid #3a414a;color:#edebe4;border-radius:6px;padding:5px 8px;font-size:12px">
+      </div>
+      <div style="padding:0 12px;border-left:1px solid #2c3138;display:flex;align-items:center;gap:8px">
+        <span style="color:#9aa0a8;font-size:11px;text-transform:uppercase;letter-spacing:.6px">Semanas</span>
+        <button onclick="_planoSetWeeks(-1)" style="background:#232830;border:1px solid #3a414a;color:#edebe4;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px;font-weight:700">–</button>
+        <span id="plano-week-num" style="min-width:20px;text-align:center;font-weight:600;color:#e7ce86">${p.weeks}</span>
+        <button onclick="_planoSetWeeks(1)" style="background:#232830;border:1px solid #3a414a;color:#edebe4;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px;font-weight:700">+</button>
+      </div>
+      <div style="padding:0 12px;border-left:1px solid #2c3138;display:flex;align-items:center;gap:8px">
+        <button id="plano-edit-btn" onclick="_planoToggleEdit()" style="background:#232830;border:1px solid #3a414a;color:#edebe4;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12px;font-weight:500">✎ Edição: ON</button>
+        <span style="color:#7d838b;font-size:11px;font-style:italic">Arraste os cartões · Puxe a borda direita para esticar</span>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <span id="plano-save-status" style="font-size:11px;color:#7d838b"></span>
+        <button onclick="_planoRestore()" style="background:#232830;border:1px solid #3a414a;color:#edebe4;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12px">↺ Restaurar padrão</button>
+        <button onclick="window.print()" style="background:#232830;border:1px solid #3a414a;color:#edebe4;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12px">⎙ Imprimir A3</button>
+        <button onclick="fecharPlanoLancamento()" style="background:#b91c1c;border:1px solid #7f1d1d;color:#fff;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12px;font-weight:600">✕ Fechar</button>
+      </div>
+    </div>
+    <div style="overflow:auto;flex:1;padding:20px 24px">
+      <div class="plano-page" id="plano-page" style="width:1500px;min-width:1500px;background:#F6F5F2;border-radius:8px;box-shadow:0 12px 40px rgba(0,0,0,.5);padding:26px 30px 22px;color:#1A1E24;font-family:system-ui,sans-serif">
+        <div id="plano-doc-head" style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2.5px solid #1A1E24;padding-bottom:12px;margin-bottom:4px">
+          <div>
+            <div style="font-weight:700;font-size:12px;letter-spacing:3px;color:#a5842f;text-transform:uppercase;margin-bottom:2px">Processo de Lançamento Imobiliário</div>
+            <div style="font-weight:700;font-size:36px;line-height:.95;letter-spacing:.5px;font-family:system-ui">
+              <span style="color:#a5842f">R2X</span> · <span contenteditable="true" style="outline:none;border-bottom:1px dashed #a5842f" id="plano-emp-name">${empNome}</span>
+            </div>
+          </div>
+          <div style="text-align:right;font-size:12px;color:#4A5058;line-height:1.6">
+            <div>Incorporadora: <span contenteditable="true" style="outline:none" id="plano-incorp">—</span></div>
+            <div>Cidade/UF: <span contenteditable="true" style="outline:none" id="plano-cidade">—</span></div>
+            <div id="plano-dday" style="font-weight:700;font-size:24px;color:#1A1E24;letter-spacing:1px">D-DAY: <b style="color:#B8892B">—</b></div>
+          </div>
+        </div>
+        <div id="plano-grid" style="margin-top:8px"></div>
+        <div id="plano-footer" style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:10px;border-top:1.5px solid #1A1E24;font-size:11px;color:#4A5058">
+          <div id="plano-legend" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center"></div>
+          <div style="font-weight:600;letter-spacing:1px;color:#1A1E24">R2X Inteligência Comercial · Aceleração de Lançamentos</div>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  document.getElementById('plano-launch-date').addEventListener('change', e => {
+    window._plano.launchDate = e.target.value || null;
+    _planoRender();
+    _planoScheduleSave();
+  });
+
+  _planoRender();
+}
+
+function fecharPlanoLancamento() {
+  const overlay = document.getElementById('plano-overlay');
+  if (overlay) overlay.remove();
+}
+
+function _planoFmtDate(d) { return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); }
+function _planoWeekDate(i) {
+  const p = window._plano;
+  if (!p.launchDate) return null;
+  const d = new Date(p.launchDate + 'T00:00:00');
+  d.setDate(d.getDate() - (p.weeks - 1 - i) * 7);
+  return d;
+}
+
+function _planoRender() {
+  const p = window._plano;
+  document.getElementById('plano-week-num').textContent = p.weeks;
+
+  // D-Day
+  const ddEl = document.querySelector('#plano-dday b');
+  if (ddEl) ddEl.textContent = p.launchDate ? _planoFmtDate(new Date(p.launchDate+'T00:00:00')) : '—';
+
+  const grid = document.getElementById('plano-grid');
+  if (!grid) return;
+
+  const labelW = 155;
+  const colsStyle = `${labelW}px repeat(${p.weeks}, minmax(0,1fr))`;
+
+  // ── Cabeçalho de semanas
+  let headHtml = `<div style="display:grid;grid-template-columns:${colsStyle};border-bottom:1px solid #E1DDD4;margin-bottom:0">`;
+  headHtml += `<div style="display:flex;align-items:center;justify-content:center;padding:7px 6px;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:#4A5058">Linha do tempo</div>`;
+  for (let i = 0; i < p.weeks; i++) {
+    const isLaunch = i === p.weeks - 1;
+    const dmin = (p.weeks - 1 - i) * 7;
+    const wd = _planoWeekDate(i);
+    headHtml += `<div style="text-align:center;padding:5px 2px 7px;border-left:1px solid #E1DDD4;${isLaunch?'background:linear-gradient(180deg,rgba(184,137,43,.16),rgba(184,137,43,.03))':''}">
+      <div style="font-weight:700;font-size:14px;color:${isLaunch?'#B8892B':'#1A1E24'}">SEM ${i+1}</div>
+      <div style="font-size:11px;color:#4A5058">${wd ? _planoFmtDate(wd) : '—'}</div>
+      <div style="font-size:9.5px;letter-spacing:.5px;color:${isLaunch?'#B8892B':'#9a9488'};text-transform:uppercase;font-weight:${isLaunch?'600':'400'}">${isLaunch?'D‑0 · LANÇAMENTO':'D‑'+dmin}</div>
+    </div>`;
+  }
+  headHtml += '</div>';
+
+  // ── Faixas de fase
+  let phasesHtml = '';
+  _PLANO_PHASES.forEach(ph => {
+    const cards = p.cards.filter(c => c.p === ph.id);
+    const rows = Math.max(cards.length, 1);
+
+    phasesHtml += `<div class="plano-phase" data-phase="${ph.id}" style="display:grid;grid-template-columns:${colsStyle};grid-auto-rows:minmax(30px,auto);border-bottom:1px solid #E1DDD4;position:relative">`;
+
+    // Label
+    phasesHtml += `<div style="grid-column:1;grid-row:1/span ${rows};display:flex;flex-direction:column;justify-content:center;gap:2px;padding:10px 12px 10px 14px;background:${ph.color};color:#fff;position:relative">
+      <div style="font-size:11px;font-weight:700;opacity:.75;letter-spacing:2px">FASE ${ph.num}</div>
+      <div style="font-size:17px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;line-height:.98">${ph.name}</div>
+      <div style="font-size:9.5px;opacity:.9;margin-top:2px;line-height:1.25">${ph.sub}</div>
+      ${p.editMode ? `<button onclick="_planoAddCard('${ph.id}')" style="margin-top:6px;align-self:flex-start;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:5px;font-size:10.5px;font-weight:600;padding:3px 7px;cursor:pointer">+ Ação</button>` : ''}
+    </div>`;
+
+    // Weeklines (guias)
+    for (let i = 0; i < p.weeks; i++) {
+      const isLaunch = i === p.weeks - 1;
+      phasesHtml += `<div class="plano-wl" data-week="${i}" data-phase="${ph.id}" style="grid-column:${i+2};grid-row:1/span ${rows};border-left:1px solid #E1DDD4;${isLaunch?'background:rgba(184,137,43,.06)':''}"></div>`;
+    }
+
+    // Cartões
+    cards.forEach((c, idx) => {
+      const gidx = p.cards.indexOf(c);
+      const start = Math.min(Math.max(c.s, 0), p.weeks - 1);
+      const span  = Math.min(Math.max(c.span, 1), p.weeks - start);
+      phasesHtml += `<div class="p-card ${p.editMode?'p-card-edit':''}"
+        draggable="${p.editMode}"
+        data-idx="${gidx}"
+        style="grid-column:${start+2}/span ${span};grid-row:${idx+1};
+          margin:${p.editMode?'18px':'4px'} 5px 4px;padding:4px 22px 4px 8px;border-radius:6px;
+          font-size:11px;line-height:1.22;font-weight:500;color:#1A1E24;
+          background:#fff;border:1px solid #E1DDD4;border-left:4px solid ${ph.color};
+          position:relative;min-height:24px;display:flex;align-items:center;
+          box-shadow:0 1px 2px rgba(0,0,0,.05);cursor:${p.editMode?'grab':'default'};
+          overflow:visible;user-select:none">
+        ${p.editMode ? `<div class="card-ctl" style="position:absolute;top:-18px;left:0;right:0;display:flex;gap:2px;z-index:5;background:#0f1116;padding:2px 3px;border-radius:7px;box-shadow:0 2px 8px rgba(0,0,0,.3)">
+          <button onclick="_planoMv(${gidx},-1)" title="◄" style="width:22px;height:22px;border:none;border-radius:5px;background:#3a414a;color:#edebe4;cursor:pointer;font-size:12px">◄</button>
+          <button onclick="_planoMv(${gidx},1)" title="►" style="width:22px;height:22px;border:none;border-radius:5px;background:#3a414a;color:#edebe4;cursor:pointer;font-size:12px">►</button>
+          <button onclick="_planoDur(${gidx},-1)" title="–" style="width:22px;height:22px;border:none;border-radius:5px;background:#3a414a;color:#edebe4;cursor:pointer;font-size:14px;font-weight:700">–</button>
+          <button onclick="_planoDur(${gidx},1)" title="+" style="width:22px;height:22px;border:none;border-radius:5px;background:#3a414a;color:#edebe4;cursor:pointer;font-size:14px;font-weight:700">+</button>
+          <button onclick="_planoDelCard(${gidx})" title="✕" style="width:22px;height:22px;border:none;border-radius:5px;background:#7f1d1d;color:#fff;cursor:pointer;font-size:13px;font-weight:700">✕</button>
+        </div>` : ''}
+        <span contenteditable="${p.editMode}" style="outline:none;flex:1;padding-right:2px;${p.editMode?'border-bottom:1px dashed rgba(0,0,0,.2)':''}" data-idx="${gidx}">${c.t}</span>
+        ${p.editMode ? `<div class="card-resize" data-idx="${gidx}" title="Arrastar para esticar" style="position:absolute;right:0;top:0;bottom:0;width:18px;cursor:ew-resize;display:flex;align-items:center;justify-content:center;color:rgba(0,0,0,.3);font-size:10px;user-select:none">⋮</div>` : ''}
+      </div>`;
+    });
+
+    phasesHtml += '</div>';
+  });
+
+  // Legenda
+  const legHtml = _PLANO_PHASES.map(ph =>
+    `<span style="display:flex;align-items:center;gap:5px"><span style="width:11px;height:11px;border-radius:3px;background:${ph.color};display:inline-block"></span>${ph.num} ${ph.name}</span>`
+  ).join('');
+
+  grid.innerHTML = headHtml + phasesHtml;
+  document.getElementById('plano-legend').innerHTML = legHtml;
+
+  // Drag-and-drop: arrastar cartão entre semanas
+  _planoInitDrag();
+}
+
+function _planoInitDrag() {
+  const p = window._plano;
+  if (!p.editMode) return;
+
+  // Edição de texto ao blur
+  document.querySelectorAll('#plano-grid [contenteditable][data-idx]').forEach(el => {
+    el.addEventListener('blur', e => {
+      const idx = parseInt(e.target.dataset.idx);
+      if (!isNaN(idx) && p.cards[idx]) {
+        p.cards[idx].t = e.target.textContent.trim();
+        _planoScheduleSave();
+      }
+    });
+    el.addEventListener('mousedown', e => e.stopPropagation()); // não iniciar drag ao editar
+  });
+
+  // Resize handle — arrastar borda direita para esticar span
+  document.querySelectorAll('#plano-grid .card-resize').forEach(handle => {
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = parseInt(handle.dataset.idx);
+      const card = p.cards[idx];
+      if (!card) return;
+
+      // Calcular largura de cada coluna de semana
+      const grid = document.getElementById('plano-grid');
+      const phases = grid.querySelectorAll('.plano-phase');
+      const firstPhase = phases[0];
+      if (!firstPhase) return;
+      const wls = firstPhase.querySelectorAll('.plano-wl');
+      if (!wls.length) return;
+      const colW = wls[0].getBoundingClientRect().width;
+      const startX = e.clientX;
+      const startSpan = card.span;
+
+      function onMove(ev) {
+        const dx = ev.clientX - startX;
+        const dWeeks = Math.round(dx / colW);
+        const newSpan = Math.min(Math.max(startSpan + dWeeks, 1), p.weeks - card.s);
+        if (newSpan !== card.span) {
+          card.span = newSpan;
+          _planoRender();
+          _planoScheduleSave();
+        }
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+
+  // HTML5 Drag: mover cartão para outra semana na mesma fase
+  let dragIdx = null;
+  let dragPhase = null;
+
+  document.querySelectorAll('#plano-grid .p-card').forEach(cardEl => {
+    cardEl.addEventListener('dragstart', e => {
+      dragIdx = parseInt(cardEl.dataset.idx);
+      dragPhase = p.cards[dragIdx]?.p;
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    cardEl.addEventListener('dragend', () => { dragIdx = null; dragPhase = null; });
+  });
+
+  document.querySelectorAll('#plano-grid .plano-wl').forEach(wl => {
+    wl.addEventListener('dragover', e => {
+      if (dragIdx === null) return;
+      if (wl.dataset.phase !== dragPhase) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+    wl.addEventListener('drop', e => {
+      e.preventDefault();
+      if (dragIdx === null) return;
+      const card = p.cards[dragIdx];
+      if (!card || wl.dataset.phase !== card.p) return;
+      const newStart = parseInt(wl.dataset.week);
+      card.s = Math.min(Math.max(newStart, 0), p.weeks - card.span);
+      _planoRender();
+      _planoScheduleSave();
+    });
+  });
+}
+
+function _planoAddCard(phaseId) {
+  window._plano.cards.push({ p: phaseId, t: 'Nova ação', s: 0, span: 1 });
+  _planoRender();
+  _planoScheduleSave();
+}
+
+function _planoDelCard(idx) {
+  window._plano.cards.splice(idx, 1);
+  _planoRender();
+  _planoScheduleSave();
+}
+
+function _planoMv(idx, dir) {
+  const p = window._plano;
+  const c = p.cards[idx];
+  c.s = Math.min(Math.max(c.s + dir, 0), p.weeks - c.span);
+  _planoRender();
+  _planoScheduleSave();
+}
+
+function _planoDur(idx, dir) {
+  const p = window._plano;
+  const c = p.cards[idx];
+  c.span = Math.min(Math.max(c.span + dir, 1), p.weeks - c.s);
+  _planoRender();
+  _planoScheduleSave();
+}
+
+function _planoSetWeeks(dir) {
+  const p = window._plano;
+  p.weeks = Math.min(Math.max(p.weeks + dir, 4), 16);
+  p.cards.forEach(c => {
+    if (c.s >= p.weeks) c.s = p.weeks - 1;
+    if (c.s + c.span > p.weeks) c.span = p.weeks - c.s;
+  });
+  _planoRender();
+  _planoScheduleSave();
+}
+
+function _planoToggleEdit() {
+  const p = window._plano;
+  p.editMode = !p.editMode;
+  const btn = document.getElementById('plano-edit-btn');
+  if (btn) btn.textContent = `✎ Edição: ${p.editMode ? 'ON' : 'OFF'}`;
+  _planoRender();
+}
+
+function _planoRestore() {
+  if (!confirm('Restaurar o plano padrão? Todas as edições serão perdidas.')) return;
+  const p = window._plano;
+  p.weeks = 10;
+  p.launchDate = null;
+  p.cards = JSON.parse(JSON.stringify(_PLANO_DEFAULT_CARDS));
+  const ldEl = document.getElementById('plano-launch-date');
+  if (ldEl) ldEl.value = '';
+  _planoRender();
+  _planoScheduleSave();
+}
+
+function _planoScheduleSave() {
+  const p = window._plano;
+  const statusEl = document.getElementById('plano-save-status');
+  if (statusEl) statusEl.textContent = 'Salvando...';
+  clearTimeout(p.saveTimer);
+  p.saveTimer = setTimeout(async () => {
+    const planoPayload = { weeks: p.weeks, launchDate: p.launchDate, cards: p.cards };
+    const r = await put(`/api/empreendimentos/${p.empId}/plano`, { plano: planoPayload });
+    if (statusEl) statusEl.textContent = r.ok ? '✓ Salvo' : '⚠ Erro';
+    if (statusEl) setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+  }, 1200);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 
 function openEmpModal(e = {}) {
   window._empLogoEdit = e.logo_base64 || null;

@@ -495,6 +495,7 @@ app.delete("/api/clientes/:id", (req, res) => {
 });
 
 // ─── EMPREENDIMENTOS ──────────────────────────────────────────────────────────
+try { db.exec(`ALTER TABLE empreendimentos ADD COLUMN plano_json TEXT DEFAULT NULL`); } catch(_) {}
 
 // Lucratividade por empreendimento (receitas - despesas)
 app.get("/api/empreendimentos/lucratividade", (req, res) => {
@@ -578,6 +579,19 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     patrimonio_afetacao ? 1 : 0, cpPadrao, logo_base64||null, maps_url||null, drive_url||null, social_url||null,
     fase_lancamento||null,
     req.params.id);
+  ok(res, {});
+});
+
+app.get('/api/empreendimentos/:id/plano', autenticar, (req, res) => {
+  const row = db.prepare('SELECT plano_json FROM empreendimentos WHERE id=?').get(req.params.id);
+  if (!row) return err(res, 'Não encontrado', 404);
+  ok(res, { plano: row.plano_json ? JSON.parse(row.plano_json) : null });
+});
+
+app.put('/api/empreendimentos/:id/plano', autenticar, (req, res) => {
+  const { plano } = req.body;
+  if (!plano) return err(res, 'Plano obrigatório');
+  db.prepare('UPDATE empreendimentos SET plano_json=? WHERE id=?').run(JSON.stringify(plano), req.params.id);
   ok(res, {});
 });
 
