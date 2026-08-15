@@ -3632,6 +3632,10 @@ const _PLANO_PHASES = [
   {id:'pos', num:'07', name:'Pós-Lançamento',   sub:'Ativação, follow-up e consolidação das vendas',     color:'#2E6B6B'},
 ];
 
+// Semanas fixas após o D-Day (sempre visíveis, não contam no total pré-lançamento)
+const _PLANO_POST_WEEKS = 2;
+
+// Padrão: 10 semanas pré + D-Day (col 9) + 2 pós = 12 colunas totais
 const _PLANO_DEFAULT_CARDS = [
   {p:'mkt', t:'Posicionamento e identidade visual',  s:0, span:2},
   {p:'mkt', t:'Landing page + captação de leads',    s:0, span:2},
@@ -3653,14 +3657,14 @@ const _PLANO_DEFAULT_CARDS = [
   {p:'rep', t:'Pré-cadastro / senhas',               s:5, span:2},
   {p:'rep', t:'Fila de prioridade',                  s:6, span:1},
   {p:'rep', t:'Contagem regressiva',                 s:6, span:2},
-  {p:'lan', t:'Evento presencial OU abertura online',s:7, span:1},
-  {p:'lan', t:'Data · hora · sistema utilizado',     s:7, span:1},
-  {p:'pos', t:'Follow-up com compradores',           s:8, span:2},
-  {p:'pos', t:'Reativação de leads perdidos',        s:8, span:2},
-  {p:'pos', t:'Relatório de resultados',             s:9, span:1},
+  {p:'lan', t:'Evento presencial OU abertura online',s:9, span:1},
+  {p:'lan', t:'Data · hora · sistema utilizado',     s:9, span:1},
+  {p:'pos', t:'Follow-up com compradores',           s:10, span:2},
+  {p:'pos', t:'Reativação de leads perdidos',        s:10, span:2},
+  {p:'pos', t:'Relatório de resultados',             s:11, span:1},
 ];
 
-window._plano = { empId:null, empNome:'', weeks:10, launchDate:null, cards:[], saveTimer:null, editMode:true };
+window._plano = { empId:null, empNome:'', weeks:12, launchDate:null, cards:[], saveTimer:null, editMode:true };
 
 async function abrirPlanoLancamento(empId, empNome, dataLancamento) {
   const r = await get(`/api/empreendimentos/${empId}/plano`);
@@ -3672,11 +3676,11 @@ async function abrirPlanoLancamento(empId, empNome, dataLancamento) {
   p.editMode = true;
 
   if (saved) {
-    p.weeks = saved.weeks || 10;
+    p.weeks = saved.weeks || 12;
     p.launchDate = saved.launchDate || null;
     p.cards = JSON.parse(JSON.stringify(saved.cards || _PLANO_DEFAULT_CARDS));
   } else {
-    p.weeks = 10;
+    p.weeks = 12;
     p.launchDate = dataLancamento ? dataLancamento.slice(0,10) : null;
     p.cards = JSON.parse(JSON.stringify(_PLANO_DEFAULT_CARDS));
   }
@@ -3786,11 +3790,14 @@ function fecharPlanoLancamento() {
 }
 
 function _planoFmtDate(d) { return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0'); }
+function _planoLaunchCol() { return window._plano.weeks - 1 - _PLANO_POST_WEEKS; }
+
 function _planoWeekDate(i) {
   const p = window._plano;
   if (!p.launchDate) return null;
+  const launchCol = _planoLaunchCol();
   const d = new Date(p.launchDate + 'T00:00:00');
-  d.setDate(d.getDate() - (p.weeks - 1 - i) * 7);
+  d.setDate(d.getDate() + (i - launchCol) * 7); // negativo = antes, positivo = depois
   return d;
 }
 
@@ -3814,14 +3821,24 @@ function _planoRender() {
       <button onclick="_planoSetWeeks(1)" title="Mais semanas" style="width:20px;height:20px;border:1px solid #C4A24C;border-radius:4px;background:rgba(196,162,76,.12);color:#a5842f;cursor:pointer;font-size:13px;font-weight:700;line-height:1;padding:0">+</button>
     </div>
   </div>`;
+  const launchCol = _planoLaunchCol();
   for (let i = 0; i < p.weeks; i++) {
-    const isLaunch = i === p.weeks - 1;
-    const dmin = (p.weeks - 1 - i) * 7;
+    const isLaunch  = i === launchCol;
+    const isPost    = i > launchCol;
+    const dDiff     = (i - launchCol) * 7; // negativo antes, positivo depois
     const wd = _planoWeekDate(i);
-    headHtml += `<div style="text-align:center;padding:5px 2px 7px;border-left:1px solid #E1DDD4;${isLaunch?'background:linear-gradient(180deg,rgba(184,137,43,.16),rgba(184,137,43,.03))':''}">
-      <div style="font-weight:700;font-size:14px;color:${isLaunch?'#B8892B':'#1A1E24'}">SEM ${i+1}</div>
+    let bg = '', numColor = '#1A1E24', tagColor = '#9a9488', tagText = 'D‑' + Math.abs(dDiff), tagWeight = '400';
+    if (isLaunch) {
+      bg = 'background:linear-gradient(180deg,rgba(184,137,43,.18),rgba(184,137,43,.04))';
+      numColor = '#B8892B'; tagColor = '#B8892B'; tagText = 'D‑0 · LANÇAMENTO'; tagWeight = '700';
+    } else if (isPost) {
+      bg = 'background:linear-gradient(180deg,rgba(46,107,107,.12),rgba(46,107,107,.03))';
+      numColor = '#2E6B6B'; tagColor = '#2E6B6B'; tagText = 'D+' + dDiff; tagWeight = '600';
+    }
+    headHtml += `<div style="text-align:center;padding:5px 2px 7px;border-left:1px solid #E1DDD4;${bg}">
+      <div style="font-weight:700;font-size:14px;color:${numColor}">SEM ${i+1}</div>
       <div style="font-size:11px;color:#4A5058">${wd ? _planoFmtDate(wd) : '—'}</div>
-      <div style="font-size:9.5px;letter-spacing:.5px;color:${isLaunch?'#B8892B':'#9a9488'};text-transform:uppercase;font-weight:${isLaunch?'600':'400'}">${isLaunch?'D‑0 · LANÇAMENTO':'D‑'+dmin}</div>
+      <div style="font-size:9.5px;letter-spacing:.5px;color:${tagColor};text-transform:uppercase;font-weight:${tagWeight}">${tagText}</div>
     </div>`;
   }
   headHtml += '</div>';
@@ -3844,8 +3861,10 @@ function _planoRender() {
 
     // Weeklines (guias)
     for (let i = 0; i < p.weeks; i++) {
-      const isLaunch = i === p.weeks - 1;
-      phasesHtml += `<div class="plano-wl" data-week="${i}" data-phase="${ph.id}" style="grid-column:${i+2};grid-row:1/span ${rows};border-left:1px solid #E1DDD4;${isLaunch?'background:rgba(184,137,43,.06)':''}"></div>`;
+      const isLaunch = i === launchCol;
+      const isPost   = i > launchCol;
+      const wlBg = isLaunch ? 'background:rgba(184,137,43,.07)' : isPost ? 'background:rgba(46,107,107,.06)' : '';
+      phasesHtml += `<div class="plano-wl" data-week="${i}" data-phase="${ph.id}" style="grid-column:${i+2};grid-row:1/span ${rows};border-left:1px solid #E1DDD4;${wlBg}"></div>`;
     }
 
     // Cartões
@@ -4011,7 +4030,8 @@ function _planoDur(idx, dir) {
 
 function _planoSetWeeks(dir) {
   const p = window._plano;
-  p.weeks = Math.min(Math.max(p.weeks + dir, 4), 16);
+  // Mínimo: 4 pré-lançamento + D-Day + 2 pós = 7 colunas; máximo: 16+2+2=20
+  p.weeks = Math.min(Math.max(p.weeks + dir, 4 + 1 + _PLANO_POST_WEEKS), 16 + 1 + _PLANO_POST_WEEKS);
   p.cards.forEach(c => {
     if (c.s >= p.weeks) c.s = p.weeks - 1;
     if (c.s + c.span > p.weeks) c.span = p.weeks - c.s;
@@ -4031,7 +4051,7 @@ function _planoToggleEdit() {
 function _planoRestore() {
   if (!confirm('Restaurar o plano padrão? Todas as edições serão perdidas.')) return;
   const p = window._plano;
-  p.weeks = 10;
+  p.weeks = 12;
   p.launchDate = null;
   p.cards = JSON.parse(JSON.stringify(_PLANO_DEFAULT_CARDS));
   const ldEl = document.getElementById('plano-launch-date');
