@@ -3741,6 +3741,7 @@ async function abrirPlanoLancamento(empId, empNome, dataLancamento) {
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
         <span id="plano-save-status" style="font-size:11px;color:#7d838b"></span>
         <button onclick="_planoRestore()" style="background:#232830;border:1px solid #3a414a;color:#edebe4;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12px">↺ Restaurar padrão</button>
+        <button onclick="_planoImprimirA4()" style="background:#1e6b3a;border:1px solid #155228;color:#fff;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12px;font-weight:600" title="Gera PDF A4 paisagem para enviar no WhatsApp">📱 PDF A4</button>
         <button onclick="_planoImprimir()" style="background:#232830;border:1px solid #3a414a;color:#edebe4;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12px">⎙ Imprimir A3</button>
         <button onclick="fecharPlanoLancamento()" style="background:#b91c1c;border:1px solid #7f1d1d;color:#fff;border-radius:6px;padding:5px 11px;cursor:pointer;font-size:12px;font-weight:600">✕ Fechar</button>
       </div>
@@ -4060,6 +4061,85 @@ function _planoRestore() {
   _planoScheduleSave();
 }
 
+
+function _planoImprimirA4() {
+  // Primeiro expande os containers para renderizar todo o conteúdo
+  const overlay = document.getElementById('plano-overlay');
+  const wrap    = document.getElementById('plano-scroll-wrap');
+  const page    = document.getElementById('plano-page');
+  if (!overlay || !wrap || !page) return;
+
+  const saved = {
+    oPos: overlay.style.position, oOvf: overlay.style.overflow, oH: overlay.style.height, oDsp: overlay.style.display,
+    wOvf: wrap.style.overflow,    wH:   wrap.style.height,      wFlex: wrap.style.flex,   wPad: wrap.style.padding,
+    pW:   page.style.width,       pMW:  page.style.minWidth,    pPad: page.style.padding,
+    pBR:  page.style.borderRadius,pSh:  page.style.boxShadow,   pM:   page.style.margin,
+  };
+
+  // Expande tudo temporariamente para medir o tamanho real do conteúdo
+  overlay.style.cssText += ';position:static!important;overflow:visible!important;height:auto!important;display:block!important';
+  wrap.style.cssText    += ';overflow:visible!important;height:auto!important;flex:none!important;padding:0!important';
+  page.style.cssText    += ';width:100%!important;min-width:unset!important;box-shadow:none!important;border-radius:0!important;margin:0!important;padding:0!important';
+
+  function restore() {
+    overlay.style.position=saved.oPos; overlay.style.overflow=saved.oOvf; overlay.style.height=saved.oH; overlay.style.display=saved.oDsp;
+    wrap.style.overflow=saved.wOvf;    wrap.style.height=saved.wH;        wrap.style.flex=saved.wFlex;   wrap.style.padding=saved.wPad;
+    page.style.width=saved.pW;         page.style.minWidth=saved.pMW;     page.style.padding=saved.pPad;
+    page.style.borderRadius=saved.pBR; page.style.boxShadow=saved.pSh;    page.style.margin=saved.pM;
+  }
+
+  // Aguarda o browser reflow para medir as dimensões reais
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const natW = page.scrollWidth  || 1500;
+    const natH = page.scrollHeight || 1100;
+
+    // Área imprimível A4 paisagem com 8mm de margem em cada lado (em px a 96dpi)
+    const A4W = Math.round((297 - 16) * 96 / 25.4); // ≈ 1063px
+    const A4H = Math.round((210 - 16) * 96 / 25.4); // ≈  732px
+
+    // Fator de escala para caber em 1 página A4
+    const scale = Math.min(A4W / natW, A4H / natH);
+    const pct   = Math.floor(scale * 100); // ex: 68
+
+    const pageHtml = page.outerHTML;
+    restore(); // restaura antes de abrir nova janela
+
+    const win = window.open('', '_blank');
+    if (!win) { alert('Permita popups para gerar o PDF A4.'); return; }
+
+    win.document.write(`<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8">
+<title>Plano de Lançamento · R2X</title>
+<style>
+  @page { size: A4 landscape; margin: 8mm; }
+  *, *::before, *::after { box-sizing: border-box; -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }
+  html, body { margin:0; padding:0; background:#F6F5F2; }
+  body { zoom: ${pct}%; }
+  /* Firefox — zoom não é suportado */
+  @supports not (zoom: 1) {
+    body { transform: scale(${scale.toFixed(4)}); transform-origin: top left; width: ${Math.round(100/scale)}%; }
+  }
+  .plano-page {
+    width: ${natW}px !important; min-width: unset !important;
+    background: #F6F5F2; padding: 20px 24px;
+    box-shadow: none !important; border-radius: 0 !important; margin: 0 !important;
+    font-family: system-ui, -apple-system, sans-serif; color: #1A1E24;
+  }
+  .plano-week-ctrl, .card-del, .card-resize, .p-label .addbtn { display: none !important; }
+  input[type=date] { border: none !important; background: transparent !important; padding: 0 !important; color: #B8892B !important; font-weight: 700; font-size: inherit; }
+  [contenteditable] { outline: none !important; border-bottom: none !important; }
+</style>
+</head><body>
+${pageHtml}
+<script>
+  window.addEventListener('load', function() {
+    setTimeout(function() { window.print(); }, 400);
+  });
+</script>
+</body></html>`);
+    win.document.close();
+  }));
+}
 
 function _planoImprimir() {
   const overlay  = document.getElementById('plano-overlay');
