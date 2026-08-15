@@ -4131,11 +4131,11 @@ function _planoImprimirA4() {
 </style>
 </head><body>
 ${pageHtml}
-<script>
+<${'script'}>
   window.addEventListener('load', function() {
     setTimeout(function() { window.print(); }, 400);
   });
-</script>
+</${'script'}>
 </body></html>`);
     win.document.close();
   }));
