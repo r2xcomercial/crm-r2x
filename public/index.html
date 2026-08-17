@@ -3635,36 +3635,64 @@ const _PLANO_PHASES = [
 // Semanas fixas após o D-Day (sempre visíveis, não contam no total pré-lançamento)
 const _PLANO_POST_WEEKS = 2;
 
-// Padrão: 10 semanas pré + D-Day (col 9) + 2 pós = 12 colunas totais
+// Padrão: 11 semanas pré + D-Day (col 10 = SEM 11) + 2 pós = 13 colunas totais
+// Baseado no plano do Germânia Loteamento
 const _PLANO_DEFAULT_CARDS = [
-  {p:'mkt', t:'Posicionamento e identidade visual',  s:0, span:2},
-  {p:'mkt', t:'Landing page + captação de leads',    s:0, span:2},
-  {p:'mkt', t:'Tráfego pago e gestão de redes',      s:1, span:9},
-  {p:'aqu', t:'Visita às imobiliárias',              s:1, span:2},
-  {p:'aqu', t:'Gravação do vídeo teaser',            s:1, span:1},
-  {p:'aqu', t:'Entrevista em rádio / podcast',       s:2, span:1},
-  {p:'aqu', t:'Divulgação do vídeo teaser',          s:3, span:2},
-  {p:'aqu', t:'Participação em eventos',             s:2, span:2},
-  {p:'aqu', t:'Panfletagem e ações de rua',          s:3, span:2},
-  {p:'anc', t:'Tabela de preços',                    s:3, span:1},
-  {p:'anc', t:'Ancoragem de valores',                s:4, span:1},
-  {p:'anc', t:'Condições de pagamento',              s:3, span:1},
-  {p:'anc', t:'Material de vendas',                  s:4, span:2},
-  {p:'tre', t:'Convite para o meeting',              s:5, span:1},
-  {p:'tre', t:'Lembrete do meeting',                 s:6, span:1},
-  {p:'tre', t:'Meeting de treinamento (corretores)', s:6, span:1},
-  {p:'rep', t:'Captação de interessados',            s:4, span:3},
-  {p:'rep', t:'Pré-cadastro / senhas',               s:5, span:2},
-  {p:'rep', t:'Fila de prioridade',                  s:6, span:1},
-  {p:'rep', t:'Contagem regressiva',                 s:6, span:2},
-  {p:'lan', t:'Evento presencial OU abertura online',s:9, span:1},
-  {p:'lan', t:'Data · hora · sistema utilizado',     s:9, span:1},
-  {p:'pos', t:'Follow-up com compradores',           s:10, span:2},
-  {p:'pos', t:'Reativação de leads perdidos',        s:10, span:2},
-  {p:'pos', t:'Relatório de resultados',             s:11, span:1},
+  // ── MARKETING
+  {p:'mkt', t:'Posicionamento e identidade visual',                                     s:0,  span:2},
+  {p:'mkt', t:'Pesquisa de mercado',                                                    s:0,  span:1},
+  {p:'mkt', t:'Tráfego pago e gestão de redes sociais',                                s:1,  span:10},
+  {p:'mkt', t:'Captação e edição de vídeos',                                           s:3,  span:2},
+  {p:'mkt', t:'Captação e edição do vídeo institucional',                              s:4,  span:2},
+
+  // ── AQUECIMENTO
+  {p:'aqu', t:'Criação de materiais offline (Folder, Book, Outdoor, Cartaz, Flyer…)',  s:3,  span:2},
+  {p:'aqu', t:'Participação em feira / evento local',                                  s:4,  span:1},
+  {p:'aqu', t:'Divulgação vídeo teaser 01',                                            s:5,  span:1},
+  {p:'aqu', t:'Panfletagem e ações de rua',                                            s:5,  span:1},
+  {p:'aqu', t:'Visita às imobiliárias',                                                s:5,  span:1},
+  {p:'aqu', t:'Entrevista em rádio / podcast',                                         s:6,  span:1},
+  {p:'aqu', t:'Divulgação do vídeo teaser com branding',                               s:6,  span:1},
+  {p:'aqu', t:'Divulgação do vídeo teaser com o incorporador',                         s:7,  span:1},
+  {p:'aqu', t:'Divulgação do vídeo teaser sobre o bairro / região',                   s:7,  span:2},
+  {p:'aqu', t:'Captação e edição de vídeo das ações intermediárias',                  s:7,  span:2},
+  {p:'aqu', t:'Participação em eventos do público-alvo',                               s:8,  span:2},
+  {p:'aqu', t:'Ação de divulgação no comércio local',                                  s:9,  span:1},
+  {p:'aqu', t:'Entrega do vídeo institucional',                                        s:10, span:1},
+
+  // ── ANCORAGEM
+  {p:'anc', t:'Condições de pagamento',                                                s:5,  span:1},
+  {p:'anc', t:'Tabela de preços',                                                      s:5,  span:2},
+  {p:'anc', t:'Ancoragem de valores',                                                  s:6,  span:1},
+  {p:'anc', t:'Definição de campanha de vendas / metas / premiações',                 s:5,  span:1},
+
+  // ── TREINAMENTO
+  {p:'tre', t:'Convite para o meeting',                                                s:7,  span:1},
+  {p:'tre', t:'Lembrete do meeting',                                                   s:8,  span:1},
+  {p:'tre', t:'Leitura e preparação do material do meeting',                           s:9,  span:1},
+  {p:'tre', t:'Meeting de treinamento (corretores)',                                   s:9,  span:1},
+  {p:'tre', t:'Divulgação do vídeo after meeting',                                     s:9,  span:2},
+
+  // ── REPRESAMENTO
+  {p:'rep', t:'Captação de interessados',                                              s:8,  span:2},
+  {p:'rep', t:'Pré-cadastro / senhas',                                                 s:9,  span:1},
+  {p:'rep', t:'Contagem regressiva',                                                   s:9,  span:2},
+  {p:'rep', t:'Divulgação do vídeo gatilho Escassez',                                  s:10, span:1},
+  {p:'rep', t:'Divulgação do vídeo gatilho Manada',                                    s:10, span:2},
+  {p:'rep', t:'Divulgação do vídeo gatilho Urgência',                                  s:10, span:2},
+  {p:'rep', t:'Divulgação do vídeo gatilho Antecipação',                               s:10, span:1},
+
+  // ── LANÇAMENTO
+  {p:'lan', t:'Evento presencial OU abertura online',                                  s:10, span:1},
+  {p:'lan', t:'Hora e sistema de vendas utilizado',                                    s:10, span:1},
+
+  // ── PÓS-LANÇAMENTO
+  {p:'pos', t:'Follow-up com compradores',                                             s:11, span:2},
+  {p:'pos', t:'Reativação de leads perdidos',                                          s:11, span:2},
+  {p:'pos', t:'Relatório de resultados',                                               s:12, span:1},
 ];
 
-window._plano = { empId:null, empNome:'', weeks:12, launchDate:null, cards:[], saveTimer:null, editMode:true };
+window._plano = { empId:null, empNome:'', weeks:13, launchDate:null, cards:[], saveTimer:null, editMode:true };
 
 async function abrirPlanoLancamento(empId, empNome, dataLancamento) {
   const r = await get(`/api/empreendimentos/${empId}/plano`);
@@ -3676,11 +3704,11 @@ async function abrirPlanoLancamento(empId, empNome, dataLancamento) {
   p.editMode = true;
 
   if (saved) {
-    p.weeks = saved.weeks || 12;
+    p.weeks = saved.weeks || 13;
     p.launchDate = saved.launchDate || null;
     p.cards = JSON.parse(JSON.stringify(saved.cards || _PLANO_DEFAULT_CARDS));
   } else {
-    p.weeks = 12;
+    p.weeks = 13;
     p.launchDate = dataLancamento ? dataLancamento.slice(0,10) : null;
     p.cards = JSON.parse(JSON.stringify(_PLANO_DEFAULT_CARDS));
   }
@@ -4052,7 +4080,7 @@ function _planoToggleEdit() {
 function _planoRestore() {
   if (!confirm('Restaurar o plano padrão? Todas as edições serão perdidas.')) return;
   const p = window._plano;
-  p.weeks = 12;
+  p.weeks = 13;
   p.launchDate = null;
   p.cards = JSON.parse(JSON.stringify(_PLANO_DEFAULT_CARDS));
   const ldEl = document.getElementById('plano-launch-date');
