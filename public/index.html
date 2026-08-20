@@ -18485,38 +18485,544 @@ let _intChart = null;
 async function renderInteligencia() {
   document.getElementById('page-title').textContent = '🔬 Inteligência de Empreendimentos';
   const c = document.getElementById('content');
-  const { data: estudos } = await get('/api/inteligencia/estudos');
-
   c.innerHTML = `
-  <div style="padding:24px;max-width:1100px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-      <div>
-        <div style="font-size:20px;font-weight:700;color:var(--text)">Estudos de Viabilidade</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:2px">Motor financeiro + pesquisa de mercado para empreendimentos R2X</div>
-      </div>
-      <button class="topbar-btn" onclick="intNovoEstudo()">+ Novo Estudo</button>
+  <div style="padding:32px 28px;max-width:960px">
+    <div style="margin-bottom:32px">
+      <div style="font-size:22px;font-weight:800;color:var(--text);letter-spacing:-.3px">Inteligência de Empreendimentos</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:4px">Escolha o caminho de análise para começar</div>
     </div>
 
-    ${!estudos.length ? `
-      <div style="text-align:center;padding:60px;color:var(--text2);border:1px dashed var(--border);border-radius:12px">
-        <div style="font-size:40px;margin-bottom:12px">🔬</div>
-        <div style="font-size:15px;font-weight:600;margin-bottom:8px">Nenhum estudo ainda</div>
-        <div style="font-size:12px">Crie um estudo para começar a analisar a viabilidade de um empreendimento.</div>
-      </div>` : `
-    <div style="display:flex;flex-direction:column;gap:10px">
-      ${estudos.map(e => `
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 20px;display:flex;align-items:center;gap:16px;cursor:pointer" onclick="intAbrirEstudo(${e.id})">
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:700;font-size:15px;color:var(--text)">${e.nome}</div>
-            <div style="font-size:12px;color:var(--text2);margin-top:3px">${e.emp_nome ? `📍 ${e.emp_nome} · ` : ''}${e.n_cenarios} cenário${e.n_cenarios!==1?'s':''} · atualizado ${e.atualizado_em.slice(0,10)}</div>
-            ${e.descricao ? `<div style="font-size:12px;color:var(--text2);margin-top:2px">${e.descricao}</div>` : ''}
-          </div>
-          <span style="background:${e.status==='aprovado'?'rgba(34,197,94,.15)':e.status==='rascunho'?'rgba(148,163,184,.1)':'rgba(245,158,11,.15)'};color:${e.status==='aprovado'?'#22C55E':e.status==='rascunho'?'var(--text2)':'#F59E0B'};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;text-transform:uppercase">${e.status}</span>
-          <button class="btn-icon" onclick="event.stopPropagation();intAbrirEstudo(${e.id})" style="background:var(--accent);color:var(--navy);padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700">Abrir</button>
-          <button class="btn-icon" onclick="event.stopPropagation();intDeletarEstudo(${e.id},'${e.nome.replace(/'/g,"\\'")}')">🗑</button>
-        </div>`).join('')}
-    </div>`}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+      <!-- Caminho 1: Analisar Nova Área -->
+      <div onclick="renderIntAnaliseArea()" style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:28px 26px;cursor:pointer;transition:border-color .2s,transform .15s;position:relative;overflow:hidden"
+        onmouseover="this.style.borderColor='rgba(0,196,180,.5)';this.style.transform='translateY(-2px)'"
+        onmouseout="this.style.borderColor='var(--border)';this.style.transform=''">
+        <div style="font-size:36px;margin-bottom:14px">🗺️</div>
+        <div style="font-size:17px;font-weight:800;color:var(--text);margin-bottom:6px">Analisar Nova Área</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:18px">
+          Tenho uma área ou terreno e quero saber <strong style="color:var(--text)">qual tipo de empreendimento</strong> mais se encaixa.
+          Envie o print do Google Earth, endereço e dados da região — a IA analisa e recomenda o produto ideal.
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:20px">
+          ${['📍 Localização + print do Google Earth','🏙 Dados da cidade e região','🤖 IA recomenda tipo de empreendimento','📊 Pesquisa de mercado da área'].map(t=>`
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)"><span style="color:var(--accent)">✓</span>${t}</div>`).join('')}
+        </div>
+        <div style="background:var(--accent);color:var(--navy);font-size:13px;font-weight:700;padding:10px 20px;border-radius:8px;display:inline-block">Analisar área →</div>
+      </div>
+
+      <!-- Caminho 2: Preparar Lançamento -->
+      <div onclick="renderIntLancamento()" style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:28px 26px;cursor:pointer;transition:border-color .2s,transform .15s;position:relative;overflow:hidden"
+        onmouseover="this.style.borderColor='rgba(139,92,246,.5)';this.style.transform='translateY(-2px)'"
+        onmouseout="this.style.borderColor='var(--border)';this.style.transform=''">
+        <div style="font-size:36px;margin-bottom:14px">🚀</div>
+        <div style="font-size:17px;font-weight:800;color:var(--text);margin-bottom:6px">Preparar Lançamento</div>
+        <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:18px">
+          Tenho o <strong style="color:var(--text)">projeto pronto</strong> com planta urbanística e quero inteligência de mercado para o lançamento: preço ideal por m², corretores, condições de pagamento e subsídios para montar a melhor tabela.
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:20px">
+          ${['📐 Importar planta urbanística real','💰 Faixa de preço/m² ideal para o produto','👥 Corretores e imobiliárias da região','💳 Condições de pagamento praticadas no mercado','📋 Subsídios para montar tabela de vendas'].map(t=>`
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)"><span style="color:#A78BFA">✓</span>${t}</div>`).join('')}
+        </div>
+        <div style="background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.4);color:#C4B5FD;font-size:13px;font-weight:700;padding:10px 20px;border-radius:8px;display:inline-block">Preparar lançamento →</div>
+      </div>
+    </div>
+
+    <!-- Estudos salvos (histórico) -->
+    <div id="int-historico-area" style="margin-top:32px"></div>
   </div>`;
+
+  // Carrega histórico de estudos
+  const { data: estudos } = await get('/api/inteligencia/estudos');
+  const hist = document.getElementById('int-historico-area');
+  if (hist && estudos?.length) {
+    hist.innerHTML = `
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:10px">Estudos anteriores</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${estudos.map(e=>`
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:13px">${e.nome}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:1px">${e.emp_nome?`📍 ${e.emp_nome} · `:''}${e.n_cenarios} cenário${e.n_cenarios!==1?'s':''} · ${e.atualizado_em.slice(0,10)}</div>
+        </div>
+        <button onclick="intAbrirEstudo(${e.id})" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer">Abrir</button>
+        <button onclick="intDeletarEstudo(${e.id},'${e.nome.replace(/'/g,"\\'")}',true)" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:14px">🗑</button>
+      </div>`).join('')}
+    </div>`;
+  }
+}
+
+// ─── CAMINHO 1: Analisar Nova Área ───────────────────────────────────────────
+function renderIntAnaliseArea() {
+  document.getElementById('page-title').textContent = '🗺️ Analisar Nova Área';
+  const c = document.getElementById('content');
+  c.innerHTML = `
+  <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
+    <!-- Header -->
+    <div style="background:var(--navy2);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:12px;flex-shrink:0">
+      <button onclick="renderInteligencia()" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:4px">←</button>
+      <div>
+        <div style="font-size:15px;font-weight:700">Analisar Nova Área</div>
+        <div style="font-size:11px;color:var(--text2)">A IA analisa a área e recomenda o tipo de empreendimento ideal</div>
+      </div>
+    </div>
+
+    <div style="flex:1;overflow-y:auto;padding:20px 24px">
+      <div style="display:grid;grid-template-columns:380px 1fr;gap:20px;align-items:start;max-width:1100px">
+
+        <!-- Formulário de entrada -->
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:14px">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2)">Dados da Área</div>
+
+          <!-- Upload imagem -->
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px">Print do Google Earth ou foto da área</label>
+            <div id="ia-drop" style="border:2px dashed var(--accent);border-radius:8px;padding:20px;text-align:center;cursor:pointer"
+              onclick="document.getElementById('ia-file').click()"
+              ondragover="event.preventDefault();this.style.background='rgba(0,196,180,.08)'"
+              ondragleave="this.style.background=''"
+              ondrop="event.preventDefault();this.style.background='';_iaSetFile(event.dataTransfer.files[0])">
+              <div style="font-size:28px;margin-bottom:6px">🛰️</div>
+              <div style="font-size:12px;font-weight:600;color:var(--accent)">Arraste ou clique para selecionar</div>
+              <div style="font-size:10px;color:var(--text2);margin-top:3px">JPG, PNG, PDF · Até 20 MB</div>
+              <div id="ia-filename" style="margin-top:6px;font-size:11px;color:var(--success)"></div>
+              <input id="ia-file" type="file" accept=".jpg,.jpeg,.png,.pdf,.webp" style="display:none" onchange="_iaSetFile(this.files[0])">
+            </div>
+          </div>
+
+          <div>
+            <label style="font-size:11px;color:var(--text2)">Endereço / Localização *</label>
+            <input id="ia-end" class="modal-input" placeholder="ex: Rodovia SC-407, km 12, São José - SC" style="width:100%">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:11px;color:var(--text2)">Cidade / Estado *</label>
+              <input id="ia-cidade" class="modal-input" placeholder="ex: São José - SC" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text2)">Área estimada (ha)</label>
+              <input id="ia-area" class="modal-input" type="number" placeholder="ex: 15" style="width:100%">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2)">Zoneamento / Informações adicionais</label>
+            <textarea id="ia-notas" class="modal-input" rows="3" placeholder="Ex: Zoneamento ZR-2, área de 15 ha, próximo ao centro, acesso pela SC-407..." style="width:100%;resize:vertical"></textarea>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2)">Perfil do público-alvo (opcional)</label>
+            <select id="ia-publico" class="modal-input" style="width:100%">
+              <option value="">-- Não sei ainda --</option>
+              <option>Classe média / residencial popular</option>
+              <option>Classe média alta / residencial</option>
+              <option>Alta renda / premium</option>
+              <option>Industrial / logístico</option>
+              <option>Comercial</option>
+              <option>Misto</option>
+            </select>
+          </div>
+
+          <button onclick="intAnalisarArea()" style="width:100%;background:var(--accent);color:var(--navy);border:none;padding:12px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">🤖 Analisar com IA</button>
+        </div>
+
+        <!-- Resultado -->
+        <div id="ia-resultado">
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:32px;text-align:center;color:var(--text2)">
+            <div style="font-size:36px;margin-bottom:12px">🛰️</div>
+            <div style="font-size:14px;font-weight:600;margin-bottom:6px">Preencha os dados à esquerda</div>
+            <div style="font-size:12px;line-height:1.6">A IA vai analisar a localização, terreno e mercado regional<br>para recomendar o tipo de empreendimento mais adequado.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>`;
+}
+
+window._iaFile = null;
+function _iaSetFile(f) {
+  if (!f) return;
+  window._iaFile = f;
+  const nm = document.getElementById('ia-filename');
+  if (nm) nm.textContent = `✓ ${f.name} (${(f.size/1024/1024).toFixed(1)} MB)`;
+}
+
+async function intAnalisarArea() {
+  const cidade = document.getElementById('ia-cidade').value.trim();
+  const endereco = document.getElementById('ia-end').value.trim();
+  if (!cidade || !endereco) { alert('Cidade e endereço são obrigatórios'); return; }
+
+  const res = document.getElementById('ia-resultado');
+  if (res) res.innerHTML = `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:32px;text-align:center;color:var(--text2)"><div style="font-size:28px;margin-bottom:12px">🤖</div><div style="font-size:14px;font-weight:600">Analisando a área com IA...</div><div style="font-size:12px;margin-top:6px">Isso pode levar 20–40 segundos. Aguarde.</div></div>`;
+
+  const fd = new FormData();
+  if (window._iaFile) fd.append('imagem', window._iaFile);
+  fd.append('cidade', cidade);
+  fd.append('endereco', endereco);
+  fd.append('area_ha', document.getElementById('ia-area').value || '');
+  fd.append('notas', document.getElementById('ia-notas').value || '');
+  fd.append('publico', document.getElementById('ia-publico').value || '');
+
+  try {
+    const r = await fetch('/api/inteligencia/analisar-area', {
+      method: 'POST',
+      headers: { 'x-crm-token': TOKEN },
+      body: fd
+    });
+    const data = await r.json();
+    if (!data.ok) { if(res) res.innerHTML = `<div style="color:var(--danger);padding:16px;background:var(--card);border-radius:10px">❌ ${data.error}</div>`; return; }
+    _renderResultadoArea(data.data, cidade, endereco);
+  } catch(e) {
+    if(res) res.innerHTML = `<div style="color:var(--danger);padding:16px;background:var(--card);border-radius:10px">Erro: ${e.message}</div>`;
+  }
+}
+
+function _renderResultadoArea(d, cidade, endereco) {
+  const res = document.getElementById('ia-resultado');
+  if (!res) return;
+
+  const scoreBg = s => s >= 8 ? 'rgba(34,197,94,.15)' : s >= 6 ? 'rgba(245,158,11,.15)' : 'rgba(239,68,68,.15)';
+  const scoreColor = s => s >= 8 ? '#22C55E' : s >= 6 ? '#F59E0B' : '#EF4444';
+
+  const secao = (titulo, conteudo) => `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:10px">${titulo}</div>
+      ${conteudo}
+    </div>`;
+
+  const tags = (arr, cor='var(--accent)') => arr?.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${arr.map(t=>`<span style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;padding:3px 10px;font-size:12px">${t}</span>`).join('')}</div>` : '';
+
+  res.innerHTML = `
+    <!-- Header: recomendação principal -->
+    <div style="background:linear-gradient(135deg,rgba(0,196,180,.1),rgba(0,196,180,.03));border:1px solid rgba(0,196,180,.35);border-radius:12px;padding:20px;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--accent);margin-bottom:6px">🤖 Recomendação da IA · ${cidade}</div>
+      <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:8px">${d.tipo_recomendado || '–'}</div>
+      <div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:14px">${d.justificativa || ''}</div>
+      ${d.score_viabilidade != null ? `
+      <div style="display:inline-flex;align-items:center;gap:8px;background:${scoreBg(d.score_viabilidade)};border-radius:8px;padding:8px 14px">
+        <span style="font-size:11px;color:var(--text2)">Viabilidade estimada</span>
+        <span style="font-size:22px;font-weight:800;color:${scoreColor(d.score_viabilidade)}">${d.score_viabilidade}/10</span>
+      </div>` : ''}
+    </div>
+
+    ${d.alternativas?.length ? secao('Alternativas consideradas', `
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${d.alternativas.map(a=>`<div style="display:flex;align-items:baseline;gap:10px"><span style="color:var(--accent);font-size:14px">▸</span><div><strong style="font-size:13px">${a.tipo}</strong><span style="font-size:12px;color:var(--text2);margin-left:8px">${a.motivo}</span></div></div>`).join('')}
+      </div>`) : ''}
+
+    ${d.analise_terreno ? secao('Análise do Terreno', `<div style="font-size:13px;color:var(--text);line-height:1.6">${d.analise_terreno}</div>`) : ''}
+
+    ${secao('Mercado Regional', `
+      <div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:10px">${d.potencial_mercado||''}</div>
+      ${d.preco_m2_estimado ? `<div style="background:var(--navy3);border-radius:8px;padding:12px;display:inline-flex;flex-direction:column;gap:2px"><span style="font-size:10px;color:var(--text2)">Faixa de preço estimada</span><span style="font-size:18px;font-weight:700;color:var(--accent);font-family:monospace">${d.preco_m2_estimado}</span></div>` : ''}
+    `)}
+
+    ${d.pontos_fortes?.length ? secao('Pontos Fortes da Área', tags(d.pontos_fortes)) : ''}
+    ${d.pontos_atencao?.length ? secao('⚠️ Pontos de Atenção', tags(d.pontos_atencao, '#F59E0B')) : ''}
+
+    ${d.proximos_passos?.length ? secao('Próximos Passos Recomendados', `
+      <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">
+        ${d.proximos_passos.map(p=>`<li style="font-size:13px;color:var(--text)">${p}</li>`).join('')}
+      </ol>`) : ''}
+
+    <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px 14px;font-size:11px;color:#F59E0B;line-height:1.5">
+      ⚠ Análise baseada em dados de treinamento da IA. Recomendamos validar com pesquisa de campo e consulta ao CRECI local.
+    </div>
+
+    <!-- Ação: continuar para preparar lançamento -->
+    <div style="margin-top:14px;padding:14px;background:var(--card);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div style="font-size:12px;color:var(--text2)">Decidiu o produto? Avance para preparar o lançamento.</div>
+      <button onclick="renderIntLancamento()" style="background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.4);color:#C4B5FD;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">🚀 Preparar Lançamento →</button>
+    </div>`;
+}
+
+// ─── CAMINHO 2: Preparar Lançamento ──────────────────────────────────────────
+async function renderIntLancamento() {
+  document.getElementById('page-title').textContent = '🚀 Preparar Lançamento';
+  const c = document.getElementById('content');
+  c.innerHTML = `
+  <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
+    <!-- Header -->
+    <div style="background:var(--navy2);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:12px;flex-shrink:0">
+      <button onclick="renderInteligencia()" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:4px">←</button>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:700">Preparar Lançamento</div>
+        <div style="font-size:11px;color:var(--text2)">Inteligência de mercado para o seu produto imobiliário</div>
+      </div>
+      <button onclick="abrirPlantaUrbanistica()" style="background:var(--navy3);color:var(--text);border:1px solid var(--border);padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer">🗺️ Planta paramétrica</button>
+    </div>
+
+    <div style="flex:1;overflow-y:auto;padding:20px 24px;max-width:1100px">
+
+      <!-- ETAPA 1: Planta -->
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div style="background:var(--accent);color:var(--navy);width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0">1</div>
+          <div>
+            <div style="font-size:13px;font-weight:700">Importar Planta Urbanística</div>
+            <div style="font-size:11px;color:var(--text2)">A IA lê a planta e extrai lotes, áreas, dimensões e dados do projeto</div>
+          </div>
+        </div>
+
+        <!-- Upload inline -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+          <div style="grid-column:1/-1">
+            <div id="il-drop" style="border:2px dashed var(--accent);border-radius:8px;padding:18px;text-align:center;cursor:pointer"
+              onclick="document.getElementById('il-file').click()"
+              ondragover="event.preventDefault();this.style.background='rgba(0,196,180,.08)'"
+              ondragleave="this.style.background=''"
+              ondrop="event.preventDefault();this.style.background='';_ilSetFile(event.dataTransfer.files[0])">
+              <div style="font-size:24px;margin-bottom:5px">📐</div>
+              <div style="font-size:12px;font-weight:600;color:var(--accent)">Arraste a planta ou clique para selecionar</div>
+              <div style="font-size:10px;color:var(--text2);margin-top:2px">PDF, JPG ou PNG · Até 30 MB</div>
+              <div id="il-filename" style="margin-top:5px;font-size:11px;color:#22C55E"></div>
+              <input id="il-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="_ilSetFile(this.files[0])">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2)">Cidade / Município *</label>
+            <input id="il-cidade" class="modal-input" placeholder="ex: Santo Amaro - SC" style="width:100%">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2)">Tipo de empreendimento</label>
+            <select id="il-tipo" class="modal-input" style="width:100%">
+              <option>lote residencial</option><option>lote industrial</option><option>lote comercial</option>
+              <option>condomínio horizontal</option><option>loteamento misto</option><option>outro</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:flex-end">
+            <button onclick="intAnalisarPlantaLancamento()" style="width:100%;background:var(--accent);color:var(--navy);border:none;padding:10px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">🔍 Ler planta com IA</button>
+          </div>
+        </div>
+
+        <!-- Resultado da leitura da planta -->
+        <div id="il-planta-resultado" style="display:none"></div>
+      </div>
+
+      <!-- ETAPA 2: Inteligência de Mercado -->
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="background:rgba(139,92,246,.2);color:#A78BFA;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0">2</div>
+            <div>
+              <div style="font-size:13px;font-weight:700">Inteligência de Mercado</div>
+              <div style="font-size:11px;color:var(--text2)">Preço/m², corretores, condições de pagamento e potencial da região</div>
+            </div>
+          </div>
+          <button onclick="intGerarInteligencia()" style="background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.4);color:#C4B5FD;padding:8px 18px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🤖 Gerar Inteligência de Mercado</button>
+        </div>
+        <div id="il-inteligencia-resultado">
+          <div style="font-size:12px;color:var(--text2);padding:8px 0">Importe a planta na etapa 1 e clique em "Gerar Inteligência de Mercado". Você também pode preencher cidade e tipo sem planta.</div>
+        </div>
+      </div>
+
+      <!-- ETAPA 3: Motor de Viabilidade -->
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px">
+        <div onclick="intToggleViabilidade()" style="padding:16px 20px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="background:rgba(245,158,11,.15);color:#F59E0B;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0">3</div>
+            <div>
+              <div style="font-size:13px;font-weight:700">Motor de Viabilidade Financeira</div>
+              <div style="font-size:11px;color:var(--text2)">VGV, TIR, VPL, fluxo de caixa e ponto de equilíbrio</div>
+            </div>
+          </div>
+          <span id="il-via-arrow" style="color:var(--text2);font-size:14px">▸</span>
+        </div>
+        <div id="il-viabilidade-body" style="display:none;padding:0 20px 20px;border-top:1px solid var(--border)">
+          <div style="padding-top:14px;font-size:12px;color:var(--text2)">
+            Crie um estudo de viabilidade para usar o motor financeiro completo com cenários, TIR e fluxo de caixa.
+          </div>
+          <div style="margin-top:12px;display:flex;gap:10px">
+            <button onclick="intNovoEstudo()" style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);color:#F59E0B;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">+ Criar estudo de viabilidade</button>
+            <button onclick="renderInteligencia()" style="background:none;border:1px solid var(--border);color:var(--text2);padding:8px 16px;border-radius:8px;font-size:12px;cursor:pointer">Ver estudos anteriores</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>`;
+}
+
+window._ilFile = null;
+window._ilPlantaDados = null;
+
+function _ilSetFile(f) {
+  if (!f) return;
+  window._ilFile = f;
+  const nm = document.getElementById('il-filename');
+  if (nm) nm.textContent = `✓ ${f.name} (${(f.size/1024/1024).toFixed(1)} MB)`;
+}
+
+function intToggleViabilidade() {
+  const body = document.getElementById('il-viabilidade-body');
+  const arr = document.getElementById('il-via-arrow');
+  const show = body.style.display === 'none';
+  body.style.display = show ? 'block' : 'none';
+  arr.textContent = show ? '▾' : '▸';
+}
+
+async function intAnalisarPlantaLancamento() {
+  const file = window._ilFile;
+  const cidade = document.getElementById('il-cidade').value.trim();
+  if (!cidade) { alert('Informe a cidade'); return; }
+  const tipo = document.getElementById('il-tipo').value;
+
+  const el = document.getElementById('il-planta-resultado');
+  el.style.display = 'block';
+  el.innerHTML = `<div style="padding:14px;text-align:center;color:var(--text2);font-size:12px">🔍 Lendo planta com IA... pode levar 20–40 segundos.</div>`;
+
+  const fd = new FormData();
+  if (file) fd.append('planta', file);
+  fd.append('cidade', cidade);
+  fd.append('tipo', tipo);
+
+  try {
+    const resp = await fetch('/api/inteligencia/analisar-planta', {
+      method: 'POST', headers: { 'x-crm-token': TOKEN }, body: fd
+    });
+    const r = await resp.json();
+    if (!r.ok) { el.innerHTML = `<div style="color:var(--danger);font-size:12px">❌ ${r.error}</div>`; return; }
+    window._ilPlantaDados = r.data;
+    window._ilPlantaDados._cidade = cidade;
+    window._ilPlantaDados._tipo = tipo;
+    _renderPlantaLancamento(r.data, cidade);
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--danger);font-size:12px">Erro: ${e.message}</div>`;
+  }
+}
+
+function _renderPlantaLancamento(d, cidade) {
+  const el = document.getElementById('il-planta-resultado');
+  if (!el) return;
+  const fld = (l, v, u='') => v != null ? `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="color:var(--text2)">${l}</span><strong>${v}${u}</strong></div>` : '';
+  const fha = v => v >= 10000 ? `${(v/10000).toFixed(2)} ha` : `${v?.toFixed(0)} m²`;
+
+  el.style.display = 'block';
+  el.innerHTML = `
+  <div style="background:rgba(0,196,180,.05);border:1px solid rgba(0,196,180,.25);border-radius:8px;padding:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <span style="font-size:11px;font-weight:700;color:var(--accent)">✓ Planta lida com sucesso</span>
+      ${d.confianca_lote_count ? `<span style="font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;background:${d.confianca_lote_count==='alta'?'rgba(34,197,94,.2)':'rgba(245,158,11,.2)'};color:${d.confianca_lote_count==='alta'?'#22C55E':'#F59E0B'}">confiança ${d.confianca_lote_count}</span>` : ''}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px">
+      <div>${fld('Total de lotes', d.total_lotes)}${fld('Nº de quadras', d.n_quadras)}${fld('Testada típica', d.lote_testada_m, 'm')}${fld('Profundidade', d.lote_profundidade_m, 'm')}${fld('Área média do lote', d.lote_area_media_m2, ' m²')}</div>
+      <div>${d.area_total_m2 ? fld('Área total', fha(d.area_total_m2)) : ''}${d.area_vendavel_m2 ? fld('Área vendável', fha(d.area_vendavel_m2)) : ''}${d.area_verde_m2 ? fld('Área verde', fha(d.area_verde_m2)) : ''}${d.area_institucional_m2 ? fld('Institucional', fha(d.area_institucional_m2)) : ''}</div>
+    </div>
+    ${d.observacoes_leitura ? `<div style="font-size:11px;color:var(--text2);font-style:italic;margin-top:8px">${d.observacoes_leitura}</div>` : ''}
+  </div>`;
+}
+
+async function intGerarInteligencia() {
+  const cidade = document.getElementById('il-cidade').value.trim() ||
+                 window._ilPlantaDados?._cidade || '';
+  if (!cidade) { alert('Informe a cidade na etapa 1'); return; }
+
+  const tipo = document.getElementById('il-tipo').value ||
+               window._ilPlantaDados?._tipo || 'lote residencial';
+  const d = window._ilPlantaDados;
+
+  const el = document.getElementById('il-inteligencia-resultado');
+  el.innerHTML = `<div style="padding:14px;text-align:center;color:var(--text2);font-size:12px">🤖 Gerando inteligência de mercado... aguarde 20–40 segundos.</div>`;
+
+  const r = await post('/api/inteligencia/inteligencia-lancamento', {
+    cidade, tipo,
+    dados_planta: d || null,
+    area_m2: d?.area_vendavel_m2 || null,
+    total_lotes: d?.total_lotes || null,
+    lote_area_media: d?.lote_area_media_m2 || null,
+  });
+
+  if (!r.ok) { el.innerHTML = `<div style="color:var(--danger);font-size:12px">❌ ${r.error}</div>`; return; }
+  _renderInteligenciaLancamento(r.data, cidade, tipo);
+}
+
+function _renderInteligenciaLancamento(d, cidade, tipo) {
+  const el = document.getElementById('il-inteligencia-resultado');
+  if (!el) return;
+
+  const secao = (ico, titulo, corpo) => `
+    <div style="background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text2);margin-bottom:8px">${ico} ${titulo}</div>
+      ${corpo}
+    </div>`;
+
+  const corretoresHTML = (d.corretores||[]).length ? `
+    <div style="overflow-x:auto">
+      <table style="width:100%;font-size:12px;border-collapse:collapse">
+        <thead><tr style="background:var(--card)">
+          <th style="padding:6px 10px;text-align:left;color:var(--text2)">#</th>
+          <th style="padding:6px 10px;text-align:left;color:var(--text2)">Nome / Imobiliária</th>
+          <th style="padding:6px 10px;text-align:left;color:var(--text2)">Especialidade</th>
+          <th style="padding:6px 10px;text-align:left;color:var(--text2)">Contato sugerido</th>
+          <th style="padding:6px 10px;text-align:left;color:var(--text2)">Relevância</th>
+        </tr></thead>
+        <tbody>${(d.corretores||[]).map((c,i)=>`
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:6px 10px;color:var(--text2)">${i+1}</td>
+            <td style="padding:6px 10px;font-weight:600">${c.nome}</td>
+            <td style="padding:6px 10px;color:var(--text2)">${c.especialidade||'–'}</td>
+            <td style="padding:6px 10px;color:var(--accent2)">${c.contato||'–'}</td>
+            <td style="padding:6px 10px;font-size:11px;color:var(--text2)">${c.relevancia||'–'}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <div style="font-size:10px;color:var(--text2);margin-top:6px">💡 Confirme contatos no <a href="https://www.creci-sc.gov.br" target="_blank" style="color:var(--accent2)">CRECI</a> da região antes de usar.</div>` : '<div style="font-size:12px;color:var(--text2)">Dados de corretores não disponíveis para esta região.</div>';
+
+  const condicoesHTML = (d.condicoes_pagamento||[]).length ?
+    `<div style="display:flex;flex-direction:column;gap:6px">${d.condicoes_pagamento.map(cc=>`
+      <div style="display:flex;gap:8px;align-items:baseline">
+        <span style="color:var(--accent);font-size:14px">•</span>
+        <span style="font-size:12px">${cc}</span>
+      </div>`).join('')}</div>` : '';
+
+  const tabelaHTML = (d.recomendacoes_tabela||[]).length ?
+    `<ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">${d.recomendacoes_tabela.map(t=>`<li style="font-size:12px;line-height:1.5">${t}</li>`).join('')}</ol>` : '';
+
+  el.innerHTML = `
+    <!-- Preços -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">
+      <div style="background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:12px">
+        <div style="font-size:10px;color:var(--text2)">R$/m² Mínimo estimado</div>
+        <div style="font-size:20px;font-weight:700;margin-top:2px;font-family:monospace">R$ ${d.preco_m2_min||'–'}</div>
+      </div>
+      <div style="background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.3);border-radius:8px;padding:12px">
+        <div style="font-size:10px;color:var(--text2)">R$/m² Ideal (mediana)</div>
+        <div style="font-size:20px;font-weight:700;margin-top:2px;color:var(--accent);font-family:monospace">R$ ${d.preco_m2_mediana||'–'}</div>
+        <div style="font-size:10px;color:var(--text2)">confiança: ${d.confianca||'–'}</div>
+      </div>
+      <div style="background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:12px">
+        <div style="font-size:10px;color:var(--text2)">R$/m² Máximo estimado</div>
+        <div style="font-size:20px;font-weight:700;margin-top:2px;font-family:monospace">R$ ${d.preco_m2_max||'–'}</div>
+      </div>
+    </div>
+    ${d.resumo_mercado ? `<div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:12px">${d.resumo_mercado}</div>` : ''}
+
+    ${secao('📊', 'Potencial da Região', `<div style="font-size:12px;line-height:1.6">${d.potencial_regiao||'–'}</div>${d.fatores?.length?`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">${d.fatores.map(f=>`<span style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:3px 10px;font-size:11px">${f}</span>`).join('')}</div>`:''}`)}
+
+    ${secao('👥', 'Corretores e Imobiliárias da Região', corretoresHTML)}
+
+    ${condicoesHTML ? secao('💳', 'Condições de Pagamento Praticadas no Mercado', condicoesHTML) : ''}
+
+    ${tabelaHTML ? secao('📋', 'Recomendações para Montar a Tabela de Vendas', tabelaHTML) : ''}
+
+    ${d.aviso ? `<div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px 14px;font-size:11px;color:#F59E0B;line-height:1.5;margin-top:4px">⚠ ${d.aviso}</div>` : ''}
+
+    ${d.preco_m2_mediana ? `
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="intCriarEstudoComPreco(${d.preco_m2_mediana})" style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);color:#F59E0B;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⚡ Criar estudo de viabilidade com R$ ${d.preco_m2_mediana}/m²</button>
+    </div>` : ''}`;
+}
+
+async function intCriarEstudoComPreco(preco) {
+  const nome = prompt('Nome do estudo de viabilidade:', 'Lançamento — Cenário Base');
+  if (!nome) return;
+  const r = await post('/api/inteligencia/estudos', { nome });
+  if (!r.ok) { alert(r.error); return; }
+  // Atualiza preço no cenário base
+  const { data } = await get(`/api/inteligencia/estudos/${r.data.id}`);
+  _intEstudo = data;
+  const cen = data.cenarios[0];
+  if (cen) await put(`/api/inteligencia/cenarios/${cen.id}`, { ...cen, preco_medio: preco });
+  intAbrirEstudo(r.data.id);
 }
 
 async function intNovoEstudo() {
@@ -18544,7 +19050,7 @@ async function intNovoEstudo() {
   });
 }
 
-async function intDeletarEstudo(id, nome) {
+async function intDeletarEstudo(id, nome, reload) {
   if (!confirm(`Excluir estudo "${nome}" e todos os cenários?`)) return;
   await del(`/api/inteligencia/estudos/${id}`);
   renderInteligencia();

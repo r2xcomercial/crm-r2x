@@ -7705,6 +7705,148 @@ Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
   }
 });
 
+// ─── Caminho 1: Analisar Nova Área (Google Earth + localização) ──────────────
+app.post('/api/inteligencia/analisar-area', autenticar, uploadPlanta.single('imagem'), async (req, res) => {
+  if (!anthropic) return err(res, 'ANTHROPIC_API_KEY não configurado');
+  const { cidade, endereco, area_ha, notas, publico } = req.body;
+  if (!cidade || !endereco) return err(res, 'cidade e endereco são obrigatórios');
+
+  const contextDados = [
+    `Localização: ${endereco}`,
+    `Cidade: ${cidade}`,
+    area_ha ? `Área estimada: ${area_ha} ha` : null,
+    publico ? `Público-alvo preferido: ${publico}` : null,
+    notas ? `Informações adicionais: ${notas}` : null,
+  ].filter(Boolean).join('\n');
+
+  const prompt = `Você é um especialista em incorporação imobiliária e inteligência de mercado no Brasil (foco Santa Catarina).
+
+Analise a área/terreno com os seguintes dados:
+${contextDados}
+${req.file ? 'Uma imagem do Google Earth/satélite da área foi anexada.' : ''}
+
+Com base nos dados fornecidos${req.file ? ' e na imagem' : ''}, responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
+{
+  "tipo_recomendado": "Tipo de empreendimento principal recomendado (ex: Loteamento Residencial de Médio Padrão)",
+  "score_viabilidade": (número de 1 a 10 indicando viabilidade geral),
+  "justificativa": "2-3 parágrafos explicando por que este tipo de empreendimento se encaixa nesta área",
+  "alternativas": [
+    {"tipo": "Tipo alternativo 1", "motivo": "por que também pode funcionar"},
+    {"tipo": "Tipo alternativo 2", "motivo": "por que também pode funcionar"}
+  ],
+  "analise_terreno": "Análise das características físicas do terreno visíveis na imagem: topografia, vegetação, acessos, vizinhança",
+  "potencial_mercado": "Análise do potencial de mercado da região: demanda, crescimento urbano, perfil socioeconômico, concorrência",
+  "preco_m2_estimado": "Faixa estimada de preço/m² para o produto recomendado (ex: R$ 180 a R$ 250/m²)",
+  "pontos_fortes": ["Ponto forte 1", "Ponto forte 2", "Ponto forte 3"],
+  "pontos_atencao": ["Atenção 1", "Atenção 2"],
+  "proximos_passos": ["Passo 1: ...", "Passo 2: ...", "Passo 3: ..."],
+  "aviso": "Análise baseada em dados da IA. Validar com pesquisa de campo, consulta à prefeitura e CRECI local antes de qualquer decisão."
+}`;
+
+  try {
+    const content = [];
+    if (req.file) {
+      const mime = req.file.mimetype;
+      if (mime === 'application/pdf') {
+        content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: req.file.buffer.toString('base64') } });
+      } else {
+        const imgMime = ['image/jpeg','image/png','image/webp','image/gif'].includes(mime) ? mime : 'image/jpeg';
+        content.push({ type: 'image', source: { type: 'base64', media_type: imgMime, data: req.file.buffer.toString('base64') } });
+      }
+    }
+    content.push({ type: 'text', text: prompt });
+
+    const msg = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 2500,
+      messages: [{ role: 'user', content }]
+    });
+    let text = msg.content[0].text.trim();
+    if (text.startsWith('```')) text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '');
+    const data = JSON.parse(text);
+    ok(res, data);
+  } catch(e) {
+    err(res, 'Erro na análise da área: ' + e.message);
+  }
+});
+
+// ─── Caminho 2: Inteligência de Lançamento (completa) ───────────────────────
+app.post('/api/inteligencia/inteligencia-lancamento', autenticar, async (req, res) => {
+  if (!anthropic) return err(res, 'ANTHROPIC_API_KEY não configurado');
+  const { cidade, tipo, dados_planta, area_m2, total_lotes, lote_area_media } = req.body;
+  if (!cidade) return err(res, 'cidade é obrigatória');
+
+  const contextPlanta = [];
+  if (dados_planta) {
+    const d = typeof dados_planta === 'string' ? JSON.parse(dados_planta) : dados_planta;
+    if (d.total_lotes) contextPlanta.push(`Total de lotes: ${d.total_lotes}`);
+    if (d.lote_area_media_m2) contextPlanta.push(`Área média dos lotes: ${d.lote_area_media_m2} m²`);
+    if (d.lote_testada_m && d.lote_profundidade_m) contextPlanta.push(`Testada × Profundidade: ${d.lote_testada_m}m × ${d.lote_profundidade_m}m`);
+    if (d.lote_area_minima_m2 && d.lote_area_maxima_m2) contextPlanta.push(`Faixa de área: ${d.lote_area_minima_m2}–${d.lote_area_maxima_m2} m²`);
+    if (d.area_vendavel_m2) contextPlanta.push(`Área vendável: ${(d.area_vendavel_m2/10000).toFixed(2)} ha`);
+    if (d.nome_empreendimento) contextPlanta.push(`Nome: ${d.nome_empreendimento}`);
+  } else {
+    if (total_lotes) contextPlanta.push(`Total de lotes: ${total_lotes}`);
+    if (lote_area_media) contextPlanta.push(`Área média dos lotes: ${lote_area_media} m²`);
+    if (area_m2) contextPlanta.push(`Área vendável: ${(area_m2/10000).toFixed(2)} ha`);
+  }
+
+  const prompt = `Você é um especialista em lançamentos imobiliários no Brasil, com expertise em Santa Catarina.
+
+Preciso de inteligência completa de mercado para o lançamento de um empreendimento:
+- Tipo: ${tipo || 'loteamento residencial'}
+- Localização: ${cidade}
+${contextPlanta.length ? `- Dados do produto:\n${contextPlanta.map(p=>`  • ${p}`).join('\n')}` : ''}
+
+Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
+{
+  "preco_m2_min": (número - menor preço praticado R$/m²),
+  "preco_m2_mediana": (número - preço ideal de lançamento R$/m²),
+  "preco_m2_max": (número - teto praticado no mercado R$/m²),
+  "confianca": "baixa|media|alta",
+  "resumo_mercado": "2-3 parágrafos sobre o mercado local, demanda atual, concorrência e tendências",
+  "potencial_regiao": "Análise detalhada do potencial da região: crescimento urbano, infraestrutura, emprego, perfil de compradores, eventos macro que afetam a demanda",
+  "fatores": ["fator1", "fator2", "fator3", "fator4", "fator5"] (fatores que afetam preço/absorção),
+  "corretores": [
+    {
+      "nome": "Nome da imobiliária ou corretor",
+      "especialidade": "tipo de imóvel que trabalha",
+      "atuacao": "bairros/cidades de atuação",
+      "contato": "telefone, site ou 'Buscar no CRECI-SC'",
+      "relevancia": "por que é relevante para este lançamento"
+    }
+  ] (liste 8 a 12 corretores/imobiliárias mais relevantes e ativos na região, ordenados por importância),
+  "condicoes_pagamento": [
+    "Descrição de condição 1 (ex: 20% de entrada + 36x no boleto + 60% na entrega das escrituras)",
+    "Descrição de condição 2",
+    "Descrição de condição 3",
+    "Descrição de condição 4"
+  ] (4 a 6 condições de pagamento comuns e competitivas no mercado local),
+  "recomendacoes_tabela": [
+    "Recomendação 1 para a tabela de vendas",
+    "Recomendação 2",
+    "Recomendação 3",
+    "Recomendação 4",
+    "Recomendação 5"
+  ] (5 a 8 recomendações práticas para montar a tabela: diferenciação por quadra/lote, escaladas de preço, bonificações, etc.),
+  "aviso": "Dados estimados com base em conhecimento até ${new Date().getFullYear()}. Validar com pesquisa de campo e corretores locais antes de fixar tabela."
+}`;
+
+  try {
+    const msg = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 3000,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    let text = msg.content[0].text.trim();
+    if (text.startsWith('```')) text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '');
+    const data = JSON.parse(text);
+    ok(res, { ...data, gerado_em: new Date().toISOString() });
+  } catch(e) {
+    err(res, 'Erro ao gerar inteligência: ' + e.message);
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => console.log(`CRM R2X rodando em http://localhost:${PORT}`));
