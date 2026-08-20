@@ -18590,6 +18590,24 @@ function renderIntAnaliseArea() {
             </div>
           </div>
 
+          <!-- Localização via mapa / Google Maps -->
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px">📍 Localização no mapa</label>
+            <div style="display:flex;gap:8px">
+              <input id="ia-gmaps-url" class="modal-input" style="flex:1;font-size:11px"
+                placeholder="Cole o link do Google Maps ou pesquise o endereço no mapa →"
+                oninput="_iaParseGmapsUrl(this.value)">
+              <button onclick="_iaAbrirMapaPicker()" style="background:rgba(0,196,180,.15);border:1px solid var(--accent);color:var(--accent);padding:7px 12px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">🗺️ Abrir mapa</button>
+            </div>
+            <div id="ia-mapa-preview" style="display:none;margin-top:8px;border-radius:8px;overflow:hidden;border:1px solid rgba(0,196,180,.3)">
+              <iframe id="ia-osm-frame" style="width:100%;height:160px;border:none" sandbox="allow-scripts allow-same-origin"></iframe>
+              <div id="ia-coords-bar" style="background:rgba(0,196,180,.08);padding:5px 10px;font-size:11px;color:var(--text2);display:flex;justify-content:space-between;align-items:center">
+                <span id="ia-coords-txt"></span>
+                <button onclick="document.getElementById('ia-mapa-preview').style.display='none'" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:13px">✕</button>
+              </div>
+            </div>
+          </div>
+
           <div>
             <label style="font-size:11px;color:var(--text2)">Endereço / Localização *</label>
             <input id="ia-end" class="modal-input" placeholder="ex: Rodovia SC-407, km 12, São José - SC" style="width:100%">
@@ -18639,6 +18657,187 @@ function renderIntAnaliseArea() {
 }
 
 window._iaFile = null;
+window._iaLat = null;
+window._iaLng = null;
+
+// ── Parse coordenadas de um link do Google Maps ───────────────────────────────
+function _iaParseGmapsUrl(url) {
+  if (!url) return;
+  // Formatos suportados:
+  // https://maps.google.com/.../@lat,lng,zoom
+  // https://www.google.com/maps/place/.../@lat,lng,...
+  // https://maps.google.com/?q=lat,lng
+  // https://www.google.com/maps?q=lat,lng
+  let lat, lng;
+
+  const atMatch = url.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+  if (atMatch) { lat = parseFloat(atMatch[1]); lng = parseFloat(atMatch[2]); }
+
+  if (!lat) {
+    const qMatch = url.match(/[?&]q=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (qMatch) { lat = parseFloat(qMatch[1]); lng = parseFloat(qMatch[2]); }
+  }
+  if (!lat) {
+    // Tenta pares de coordenadas genéricos no URL
+    const coords = url.match(/(-?\d{1,3}\.\d{4,}),(-?\d{1,3}\.\d{4,})/);
+    if (coords) { lat = parseFloat(coords[1]); lng = parseFloat(coords[2]); }
+  }
+
+  if (lat && lng && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+    _iaSetCoords(lat, lng);
+  }
+}
+
+function _iaSetCoords(lat, lng) {
+  window._iaLat = lat;
+  window._iaLng = lng;
+
+  // Mostra preview no OSM
+  const preview = document.getElementById('ia-mapa-preview');
+  const frame = document.getElementById('ia-osm-frame');
+  const txt = document.getElementById('ia-coords-txt');
+  if (preview) preview.style.display = 'block';
+  if (txt) txt.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  if (frame) {
+    // OpenStreetMap embed com marcador
+    frame.src = `https://www.openstreetmap.org/export/embed.html?bbox=${lng-.005},${lat-.005},${lng+.005},${lat+.005}&layer=mapnik&marker=${lat},${lng}`;
+  }
+
+  // Geocodificação reversa via Nominatim (OpenStreetMap, gratuito)
+  fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=pt-BR`, {
+    headers: { 'Accept-Language': 'pt-BR', 'User-Agent': 'R2X-CRM/1.0' }
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.address) return;
+    const a = data.address;
+    // Monta endereço
+    const partes = [a.road, a.suburb, a.city_district].filter(Boolean);
+    const endFull = [partes.join(', '), a.city || a.town || a.village, a.state].filter(Boolean).join(', ');
+    const cidade = [a.city || a.town || a.village, a.state_code || a.state].filter(Boolean).join(' - ');
+
+    const elEnd = document.getElementById('ia-end');
+    const elCid = document.getElementById('ia-cidade');
+    if (elEnd && !elEnd.value) elEnd.value = endFull || data.display_name?.split(',').slice(0,3).join(',').trim() || '';
+    else if (elEnd && endFull) elEnd.value = endFull;
+    if (elCid && cidade) { elCid.value = cidade; elCid.style.borderColor = 'var(--accent)'; }
+
+    const notas = document.getElementById('ia-notas');
+    if (notas && !notas.value) {
+      notas.value = `Coordenadas: ${lat.toFixed(6)}, ${lng.toFixed(6)}\n${data.display_name || ''}`;
+    }
+    if (txt) txt.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)} · ${a.city || a.town || ''}`;
+  })
+  .catch(() => {
+    // Sem geocoding, apenas preenche coordenadas nas notas
+    const notas = document.getElementById('ia-notas');
+    if (notas && !notas.value) notas.value = `Coordenadas: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  });
+}
+
+// ── Mapa picker em modal (Leaflet + OpenStreetMap) ────────────────────────────
+function _iaAbrirMapaPicker() {
+  openModal('📍 Selecionar Localização no Mapa', `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;gap:8px">
+        <input id="ia-map-search" class="modal-input" style="flex:1" placeholder="Pesquisar endereço ou cidade..." onkeydown="if(event.key==='Enter'){event.preventDefault();_iaMapSearch();}">
+        <button onclick="_iaMapSearch()" style="background:var(--accent);color:var(--navy);border:none;padding:8px 14px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">Buscar</button>
+      </div>
+      <div style="font-size:11px;color:var(--text2)">Clique no mapa para fixar a localização do terreno. Você também pode pesquisar pelo endereço acima.</div>
+      <div id="ia-leaflet-map" style="height:420px;border-radius:8px;overflow:hidden;border:1px solid var(--border)"></div>
+      <div id="ia-map-status" style="font-size:12px;color:var(--text2);min-height:18px"></div>
+    </div>`, () => {
+    // onSave: confirma localização selecionada
+    if (window._iaMapLat && window._iaMapLng) {
+      _iaSetCoords(window._iaMapLat, window._iaMapLng);
+      const u = document.getElementById('ia-gmaps-url');
+      if (u) u.value = `${window._iaMapLat.toFixed(6)}, ${window._iaMapLng.toFixed(6)}`;
+    }
+    // Destroi mapa Leaflet
+    if (window._iaLeafletMap) { window._iaLeafletMap.remove(); window._iaLeafletMap = null; }
+  }, { saveLabel: '✓ Confirmar localização' });
+
+  // Injeta Leaflet se ainda não carregado
+  const after = () => _iaIniciarLeaflet();
+  if (!window.L) {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    js.onload = () => setTimeout(after, 100);
+    document.head.appendChild(js);
+  } else {
+    setTimeout(after, 100);
+  }
+}
+
+window._iaLeafletMap = null;
+window._iaMapLat = null;
+window._iaMapLng = null;
+window._iaMapMarker = null;
+
+function _iaIniciarLeaflet() {
+  const el = document.getElementById('ia-leaflet-map');
+  if (!el || !window.L) return;
+
+  // Centro padrão: Brasil (ou última coordenada conhecida)
+  const lat0 = window._iaLat || -15.8;
+  const lng0 = window._iaLng || -47.9;
+  const zoom0 = window._iaLat ? 15 : 5;
+
+  const map = L.map('ia-leaflet-map').setView([lat0, lng0], zoom0);
+  window._iaLeafletMap = map;
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
+    maxZoom: 19
+  }).addTo(map);
+
+  // Marcador inicial se já tem coords
+  if (window._iaLat) {
+    window._iaMapLat = window._iaLat;
+    window._iaMapLng = window._iaLng;
+    window._iaMapMarker = L.marker([window._iaLat, window._iaLng]).addTo(map)
+      .bindPopup('📍 Localização selecionada').openPopup();
+  }
+
+  map.on('click', e => {
+    const { lat, lng } = e.latlng;
+    window._iaMapLat = lat;
+    window._iaMapLng = lng;
+    if (window._iaMapMarker) map.removeLayer(window._iaMapMarker);
+    window._iaMapMarker = L.marker([lat, lng]).addTo(map)
+      .bindPopup(`📍 ${lat.toFixed(6)}, ${lng.toFixed(6)}`).openPopup();
+    const st = document.getElementById('ia-map-status');
+    if (st) st.textContent = `✓ Marcado: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+  });
+}
+
+async function _iaMapSearch() {
+  const q = document.getElementById('ia-map-search')?.value.trim();
+  if (!q || !window._iaLeafletMap) return;
+  const st = document.getElementById('ia-map-status');
+  if (st) st.textContent = 'Buscando...';
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&accept-language=pt-BR`);
+    const data = await r.json();
+    if (!data.length) { if(st) st.textContent = 'Nenhum resultado encontrado.'; return; }
+    const { lat, lon, display_name } = data[0];
+    const lt = parseFloat(lat), lg = parseFloat(lon);
+    window._iaMapLat = lt;
+    window._iaMapLng = lg;
+    window._iaLeafletMap.setView([lt, lg], 15);
+    if (window._iaMapMarker) window._iaLeafletMap.removeLayer(window._iaMapMarker);
+    window._iaMapMarker = L.marker([lt, lg]).addTo(window._iaLeafletMap)
+      .bindPopup(`📍 ${display_name}`).openPopup();
+    if (st) st.textContent = `✓ ${display_name}`;
+  } catch(e) {
+    if (st) st.textContent = 'Erro na busca.';
+  }
+}
+
 function _iaSetFile(f) {
   if (!f) return;
   window._iaFile = f;
@@ -18661,6 +18860,9 @@ async function intAnalisarArea() {
   fd.append('area_ha', document.getElementById('ia-area').value || '');
   fd.append('notas', document.getElementById('ia-notas').value || '');
   fd.append('publico', document.getElementById('ia-publico').value || '');
+  if (window._iaLat && window._iaLng) {
+    fd.append('coordenadas', `${window._iaLat.toFixed(6)}, ${window._iaLng.toFixed(6)}`);
+  }
 
   try {
     const r = await fetch('/api/inteligencia/analisar-area', {

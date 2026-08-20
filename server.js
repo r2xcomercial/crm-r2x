@@ -7708,12 +7708,13 @@ Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
 // ─── Caminho 1: Analisar Nova Área (Google Earth + localização) ──────────────
 app.post('/api/inteligencia/analisar-area', autenticar, uploadPlanta.single('imagem'), async (req, res) => {
   if (!anthropic) return err(res, 'ANTHROPIC_API_KEY não configurado');
-  const { cidade, endereco, area_ha, notas, publico } = req.body;
+  const { cidade, endereco, area_ha, notas, publico, coordenadas } = req.body;
   if (!cidade || !endereco) return err(res, 'cidade e endereco são obrigatórios');
 
   const contextDados = [
     `Localização: ${endereco}`,
     `Cidade: ${cidade}`,
+    coordenadas ? `Coordenadas GPS: ${coordenadas}` : null,
     area_ha ? `Área estimada: ${area_ha} ha` : null,
     publico ? `Público-alvo preferido: ${publico}` : null,
     notas ? `Informações adicionais: ${notas}` : null,
