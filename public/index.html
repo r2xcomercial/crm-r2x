@@ -436,6 +436,8 @@
     <div class="nav-item" onclick="navigate('caixa')"><span class="icon">🏦</span> Caixa</div>
     <div class="nav-item" onclick="navigate('relatorios')"><span class="icon">📈</span> Relatórios</div>
     <div class="nav-item" onclick="navigate('gestao-pessoal')"><span class="icon">🧘</span> Gestão Pessoal</div>
+    <div class="nav-section">Inteligência</div>
+    <div class="nav-item" onclick="navigate('inteligencia')"><span class="icon">🔬</span> Inteligência de Empreend.</div>
     <div class="nav-section">Empresa</div>
     <div class="nav-item" onclick="navigate('processos')"><span class="icon">🏛️</span> Processos e Pessoas</div>
     <div class="nav-item" onclick="navigate('calculadora')" style="border-top:1px solid var(--border);margin-top:4px;padding-top:8px"><span class="icon">🧮</span> Calculadora</div>
@@ -618,6 +620,7 @@ async function renderPage(page) {
       case 'eventos': await renderEventos(); break;
       case 'gestao-pessoal': await renderGestaoPessoal(); break;
       case 'processos': await renderProcessos(); break;
+      case 'inteligencia': await renderInteligencia(); break;
     }
   } catch(e) {
     c.innerHTML = `<div style="color:var(--danger);padding:24px">Erro ao carregar: ${e.message}</div>`;
@@ -17962,6 +17965,690 @@ function _renderMetodoTab() {
       </div>
     </div>`;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MÓDULO: INTELIGÊNCIA DE EMPREENDIMENTOS
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── Motor de Cálculo (Submodule A) ─────────────────────────────────────────
+function _calcViabilidade(p) {
+  const { terreno, itbi_pct, area_vendavel, preco_medio, urbanizacao, projetos, overhead,
+          corretagem_pct, tributos_pct, entrada_pct, parcelamento_meses,
+          vendas_inicio, vendas_prazo, obras_inicio, obras_prazo, taxa_desconto } = p;
+
+  const VGV = area_vendavel * preco_medio;
+  const itbi = terreno * itbi_pct / 100;
+  const H = Math.max(
+    vendas_inicio + vendas_prazo + parcelamento_meses,
+    obras_inicio + obras_prazo,
+    6
+  ) + 1;
+
+  const cf = new Array(H + 1).fill(0);
+  const receipts = new Array(H + 1).fill(0);
+
+  cf[0] -= terreno + itbi;
+
+  const projMeses = Math.min(6, H + 1);
+  const projParcela = projetos / projMeses;
+  for (let t = 0; t < projMeses; t++) cf[t] -= projParcela;
+
+  const urbParcela = urbanizacao / obras_prazo;
+  for (let t = obras_inicio; t < obras_inicio + obras_prazo && t <= H; t++) cf[t] -= urbParcela;
+
+  const ovrParcela = overhead / (H + 1);
+  for (let t = 0; t <= H; t++) cf[t] -= ovrParcela;
+
+  const vendaMensal = VGV / vendas_prazo;
+  for (let s = vendas_inicio; s < vendas_inicio + vendas_prazo; s++) {
+    if (s > H) break;
+    cf[s] -= vendaMensal * corretagem_pct / 100;
+
+    const entrada = vendaMensal * entrada_pct / 100;
+    receipts[s] += entrada;
+
+    const saldo = vendaMensal * (1 - entrada_pct / 100);
+    const parcela = saldo / parcelamento_meses;
+    for (let k = 1; k <= parcelamento_meses; k++) {
+      if (s + k <= H) receipts[s + k] += parcela;
+    }
+  }
+
+  for (let t = 0; t <= H; t++) {
+    cf[t] += receipts[t];
+    cf[t] -= receipts[t] * tributos_pct / 100;
+  }
+
+  const acum = [];
+  let soma = 0;
+  for (let t = 0; t <= H; t++) { soma += cf[t]; acum.push(soma); }
+
+  const resultado = acum[H];
+  const margem = resultado / VGV;
+  const exposicao = Math.min(...acum);
+  const payback = acum.findIndex((v, i) => i > 0 && v >= 0 && acum[i-1] < 0);
+
+  const Ffix = terreno + itbi + urbanizacao + projetos + overhead;
+  const vrate = (corretagem_pct + tributos_pct) / 100;
+  const receita_eq = Ffix / (1 - vrate);
+  const pct_vgv_eq = receita_eq / VGV;
+
+  const r_anual = taxa_desconto / 100;
+  const r_mensal = Math.pow(1 + r_anual, 1/12) - 1;
+  const vpl = cf.reduce((acc, v, t) => acc + v / Math.pow(1 + r_mensal, t), 0);
+
+  const tir_anual = _irr(cf);
+
+  return { VGV, itbi, H, cf, acum, resultado, margem, exposicao, payback, Ffix, receita_eq, pct_vgv_eq, vpl, tir_anual, r_mensal };
+}
+
+function _irr(cf) {
+  function npv(r) { return cf.reduce((acc, v, t) => acc + v / Math.pow(1 + r, t), 0); }
+  let step = 0.005, rMin = -0.49, rMax = 1.5;
+  let prev = npv(rMin), prevR = rMin;
+  for (let r = rMin + step; r <= rMax; r += step) {
+    const cur = npv(r);
+    if (prev * cur < 0) {
+      let lo = prevR, hi = r;
+      for (let i = 0; i < 50; i++) {
+        const mid = (lo + hi) / 2;
+        if (npv(lo) * npv(mid) <= 0) hi = mid; else lo = mid;
+      }
+      const rMensal = (lo + hi) / 2;
+      return Math.pow(1 + rMensal, 12) - 1;
+    }
+    prev = cur; prevR = r;
+  }
+  return null;
+}
+
+function _leituraVia(kpis, taxa_desconto) {
+  const { resultado, VGV, margem, tir_anual, exposicao, payback, pct_vgv_eq } = kpis;
+  const tiaPct = tir_anual !== null ? tir_anual * 100 : null;
+  const marPct = margem * 100;
+  const msgs = [];
+  if (resultado < 0 || (tiaPct !== null && tiaPct < taxa_desconto)) {
+    msgs.push(`⚠️ <strong>Alerta:</strong> este estudo não remunera o capital à taxa de ${taxa_desconto}% a.a. — revise premissas antes de apresentar ao investidor.`);
+  } else if (marPct < 15) {
+    msgs.push(`⚠️ <strong>Margem apertada (${marPct.toFixed(1)}%):</strong> o retorno é positivo mas estreito — qualquer desvio de custo ou preço pode comprimir o resultado.`);
+  } else {
+    msgs.push(`✅ <strong>Viabilidade consistente (margem ${marPct.toFixed(1)}%):</strong> o projeto remunera o capital com folga à taxa exigida.`);
+  }
+  msgs.push(`💰 O incorporador precisa ter fôlego para dar um cheque de <strong>${_fmtM(Math.abs(exposicao))}</strong> — esta é a exposição máxima de caixa antes de o projeto se auto-financiar.`);
+  if (payback > 0) msgs.push(`📅 Payback de caixa estimado no mês ${payback}.`);
+  msgs.push(`📊 Ponto de equilíbrio em <strong>${(pct_vgv_eq*100).toFixed(1)}% do VGV</strong> — a partir deste volume vendido o projeto cobre custos fixos.`);
+  return msgs.join('<br><br>');
+}
+
+function _fmtM(v) {
+  if (Math.abs(v) >= 1e6) return `R$ ${(v/1e6).toFixed(2).replace('.',',')} mi`;
+  if (Math.abs(v) >= 1e3) return `R$ ${(v/1e3).toFixed(1).replace('.',',')} mil`;
+  return `R$ ${v.toFixed(0)}`;
+}
+function _fmtPct(v) { return v !== null ? `${(v*100).toFixed(1)}%` : 'n/d'; }
+function _fmtPctN(v) { return `${(v).toFixed(1)}%`; }
+
+// ─── Renderização principal ───────────────────────────────────────────────────
+let _intEstudo = null;
+let _intCenTab = 0;
+let _intChart = null;
+
+async function renderInteligencia() {
+  document.getElementById('page-title').textContent = '🔬 Inteligência de Empreendimentos';
+  const c = document.getElementById('content');
+  const { data: estudos } = await get('/api/inteligencia/estudos');
+
+  c.innerHTML = `
+  <div style="padding:24px;max-width:1100px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <div style="font-size:20px;font-weight:700;color:var(--text)">Estudos de Viabilidade</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">Motor financeiro + pesquisa de mercado para empreendimentos R2X</div>
+      </div>
+      <button class="topbar-btn" onclick="intNovoEstudo()">+ Novo Estudo</button>
+    </div>
+
+    ${!estudos.length ? `
+      <div style="text-align:center;padding:60px;color:var(--text2);border:1px dashed var(--border);border-radius:12px">
+        <div style="font-size:40px;margin-bottom:12px">🔬</div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:8px">Nenhum estudo ainda</div>
+        <div style="font-size:12px">Crie um estudo para começar a analisar a viabilidade de um empreendimento.</div>
+      </div>` : `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${estudos.map(e => `
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 20px;display:flex;align-items:center;gap:16px;cursor:pointer" onclick="intAbrirEstudo(${e.id})">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:15px;color:var(--text)">${e.nome}</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:3px">${e.emp_nome ? `📍 ${e.emp_nome} · ` : ''}${e.n_cenarios} cenário${e.n_cenarios!==1?'s':''} · atualizado ${e.atualizado_em.slice(0,10)}</div>
+            ${e.descricao ? `<div style="font-size:12px;color:var(--text2);margin-top:2px">${e.descricao}</div>` : ''}
+          </div>
+          <span style="background:${e.status==='aprovado'?'rgba(34,197,94,.15)':e.status==='rascunho'?'rgba(148,163,184,.1)':'rgba(245,158,11,.15)'};color:${e.status==='aprovado'?'#22C55E':e.status==='rascunho'?'var(--text2)':'#F59E0B'};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;text-transform:uppercase">${e.status}</span>
+          <button class="btn-icon" onclick="event.stopPropagation();intAbrirEstudo(${e.id})" style="background:var(--accent);color:var(--navy);padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700">Abrir</button>
+          <button class="btn-icon" onclick="event.stopPropagation();intDeletarEstudo(${e.id},'${e.nome.replace(/'/g,"\\'")}')">🗑</button>
+        </div>`).join('')}
+    </div>`}
+  </div>`;
+}
+
+async function intNovoEstudo() {
+  const emps = (await get('/api/empreendimentos')).data || [];
+  openModal('Novo Estudo de Viabilidade', `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div><label style="font-size:12px;color:var(--text2)">Nome do estudo *</label>
+        <input id="int-nome" class="modal-input" placeholder="ex: Germânia — Cenário Base" style="width:100%"></div>
+      <div><label style="font-size:12px;color:var(--text2)">Empreendimento vinculado (opcional)</label>
+        <select id="int-emp" class="modal-input" style="width:100%">
+          <option value="">-- nenhum --</option>
+          ${emps.map(e=>`<option value="${e.id}">${e.nome}</option>`).join('')}
+        </select></div>
+      <div><label style="font-size:12px;color:var(--text2)">Descrição</label>
+        <input id="int-desc" class="modal-input" placeholder="Opcional" style="width:100%"></div>
+    </div>`, async () => {
+    const nome = document.getElementById('int-nome').value.trim();
+    if (!nome) { alert('Nome obrigatório'); return false; }
+    const r = await post('/api/inteligencia/estudos', {
+      nome, descricao: document.getElementById('int-desc').value,
+      empreendimento_id: document.getElementById('int-emp').value || null
+    });
+    if (r.ok) intAbrirEstudo(r.data.id);
+    else alert(r.error);
+  });
+}
+
+async function intDeletarEstudo(id, nome) {
+  if (!confirm(`Excluir estudo "${nome}" e todos os cenários?`)) return;
+  await del(`/api/inteligencia/estudos/${id}`);
+  renderInteligencia();
+}
+
+async function intAbrirEstudo(id) {
+  const { data } = await get(`/api/inteligencia/estudos/${id}`);
+  _intEstudo = data;
+  _intCenTab = data.cenarios.findIndex(c=>c.nome==='base');
+  if (_intCenTab < 0) _intCenTab = 0;
+  _intRenderEstudo();
+}
+
+function _intRenderEstudo() {
+  const e = _intEstudo;
+  const c = document.getElementById('content');
+  const cen = e.cenarios[_intCenTab];
+
+  const kpis = _calcViabilidade({
+    terreno: cen.terreno, itbi_pct: cen.itbi_pct, area_vendavel: cen.area_vendavel,
+    preco_medio: cen.preco_medio, urbanizacao: cen.urbanizacao, projetos: cen.projetos,
+    overhead: cen.overhead, corretagem_pct: cen.corretagem_pct, tributos_pct: cen.tributos_pct,
+    entrada_pct: cen.entrada_pct, parcelamento_meses: cen.parcelamento_meses,
+    vendas_inicio: cen.vendas_inicio, vendas_prazo: cen.vendas_prazo,
+    obras_inicio: cen.obras_inicio, obras_prazo: cen.obras_prazo, taxa_desconto: cen.taxa_desconto
+  });
+
+  c.innerHTML = `
+  <div style="padding:0;display:flex;flex-direction:column;height:100%;overflow:hidden">
+    <!-- Header -->
+    <div style="background:var(--navy2);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:12px;flex-shrink:0">
+      <button onclick="renderInteligencia()" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:4px">←</button>
+      <div style="flex:1">
+        <div style="font-size:16px;font-weight:700">${e.nome}</div>
+        <div style="font-size:11px;color:var(--text2)">${e.emp_nome ? `📍 ${e.emp_nome} · ` : ''}${e.cenarios.length} cenários</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="intComparar()" style="background:var(--navy3);color:var(--text);border:1px solid var(--border);padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer">≡ Comparar</button>
+        <button onclick="intSalvarCenario()" style="background:var(--accent);color:var(--navy);border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">💾 Salvar</button>
+      </div>
+    </div>
+
+    <!-- Tabs de cenários -->
+    <div style="background:var(--card);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;gap:2px;flex-shrink:0">
+      ${e.cenarios.map((cn, i) => `
+        <div onclick="_intCenTab=${i};_intRenderEstudo()" style="padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid ${i===_intCenTab?'var(--accent)':'transparent'};color:${i===_intCenTab?'var(--accent)':'var(--text2)'};transition:all .15s">${cn.nome.charAt(0).toUpperCase()+cn.nome.slice(1)}</div>
+      `).join('')}
+      <button onclick="intNovoCenario()" style="margin-left:8px;background:none;border:1px dashed var(--border);color:var(--text2);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer">+ Cenário</button>
+    </div>
+
+    <!-- Corpo: inputs + KPIs -->
+    <div style="flex:1;overflow-y:auto;padding:20px 24px">
+      <div style="display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start">
+
+        <!-- Painel de entradas -->
+        <div id="int-inputs" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:14px">Entradas — ${cen.nome}</div>
+          ${_intInputsHTML(cen)}
+          <button onclick="intRecalcular()" style="width:100%;background:var(--accent);color:var(--navy);border:none;padding:10px;border-radius:8px;font-weight:700;cursor:pointer;margin-top:14px;font-size:13px">⚡ Calcular</button>
+          ${e.cenarios.length > 1 ? `<button onclick="intDeletarCenario(${cen.id})" style="width:100%;background:none;border:1px solid var(--danger);color:var(--danger);padding:7px;border-radius:8px;cursor:pointer;margin-top:8px;font-size:12px">Excluir este cenário</button>` : ''}
+        </div>
+
+        <!-- KPIs + Gráfico -->
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div id="int-kpis">${_intKpisHTML(kpis, cen.taxa_desconto)}</div>
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px">
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:12px">Fluxo de Caixa Acumulado (R$)</div>
+            <canvas id="int-chart" style="width:100%;height:220px"></canvas>
+          </div>
+          <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:16px">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#F59E0B;margin-bottom:8px">Leitura Automática</div>
+            <div id="int-leitura" style="font-size:13px;color:var(--text);line-height:1.6">${_leituraVia(kpis, cen.taxa_desconto)}</div>
+          </div>
+
+          <!-- Pesquisa de Mercado (Submódulo B) -->
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+            <div onclick="intTogglePesquisa()" style="padding:14px 18px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+              <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2)">🔍 Pesquisa de Mercado (Submódulo B)</div>
+              <span id="int-pesq-arrow" style="color:var(--text2);font-size:14px">▸</span>
+            </div>
+            <div id="int-pesquisa-body" style="display:none;padding:0 18px 18px">
+              ${_intPesquisaHTML(e)}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  _intRenderChart(kpis);
+  _intBindInputs();
+}
+
+function _intInputsHTML(cen) {
+  const row = (label, id, val, tipo='number', step='any', min='0') =>
+    `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <label style="font-size:12px;color:var(--text2);flex:1">${label}</label>
+      <input id="int-f-${id}" type="${tipo}" value="${val}" step="${step}" min="${min}"
+        style="width:130px;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:13px;text-align:right;font-family:monospace"
+        onchange="intRecalcular()">
+    </div>`;
+  return `
+    <div style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">Terreno</div>
+    ${row('Terreno (R$)','terreno',cen.terreno)}
+    ${row('ITBI (%)','itbi_pct',cen.itbi_pct,'number','0.1','0')}
+    <div style="font-size:11px;color:var(--accent);font-weight:600;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">Produto</div>
+    ${row('Área vendável (m²)','area_vendavel',cen.area_vendavel)}
+    ${row('Preço médio (R$/m²)','preco_medio',cen.preco_medio)}
+    <div style="font-size:11px;color:var(--accent);font-weight:600;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">Custos</div>
+    ${row('Urbanização (R$)','urbanizacao',cen.urbanizacao)}
+    ${row('Projetos/Licenças (R$)','projetos',cen.projetos)}
+    ${row('Overhead/Admin (R$)','overhead',cen.overhead)}
+    <div style="font-size:11px;color:var(--accent);font-weight:600;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">Receita e Tributação</div>
+    ${row('Corretagem (%)','corretagem_pct',cen.corretagem_pct,'number','0.5','0')}
+    ${row('Tributos (%)','tributos_pct',cen.tributos_pct,'number','0.5','0')}
+    <div style="font-size:11px;color:var(--accent);font-weight:600;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">Prazos</div>
+    ${row('Entrada (%)','entrada_pct',cen.entrada_pct,'number','1','0')}
+    ${row('Parcelamento (meses)','parcelamento_meses',cen.parcelamento_meses,'number','1','1')}
+    ${row('Vendas: início (mês)','vendas_inicio',cen.vendas_inicio,'number','1','0')}
+    ${row('Vendas: prazo (meses)','vendas_prazo',cen.vendas_prazo,'number','1','1')}
+    ${row('Obras: início (mês)','obras_inicio',cen.obras_inicio,'number','1','0')}
+    ${row('Obras: prazo (meses)','obras_prazo',cen.obras_prazo,'number','1','1')}
+    <div style="font-size:11px;color:var(--accent);font-weight:600;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">Desconto</div>
+    ${row('Taxa desconto a.a. (%)','taxa_desconto',cen.taxa_desconto,'number','0.5','0')}`;
+}
+
+function _intKpisHTML(k, taxa) {
+  const ok_color = k.resultado >= 0 && (k.tir_anual === null || k.tir_anual*100 >= taxa) ? '#22C55E' : '#EF4444';
+  const tirTxt = k.tir_anual !== null ? `${(k.tir_anual*100).toFixed(1)}%` : 'n/d';
+  const tds = [
+    ['VGV', _fmtM(k.VGV), 'Valor Geral de Vendas'],
+    ['Resultado', _fmtM(k.resultado), '= soma do fluxo líquido'],
+    ['Margem', _fmtPct(k.margem), '= Resultado / VGV'],
+    ['TIR a.a.', tirTxt, 'taxa interna de retorno anualizada'],
+    ['VPL', _fmtM(k.vpl), `@ ${taxa}% a.a.`],
+    ['Exposição máx.', _fmtM(k.exposicao), 'pico de aporte necessário'],
+    ['Payback', k.payback > 0 ? `mês ${k.payback}` : '–', 'primeiro mês acumulado ≥ 0'],
+    ['Eq. % VGV', _fmtPct(k.pct_vgv_eq), 'ponto de equilíbrio s/ custos fixos'],
+  ];
+  return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+    ${tds.map(([label,val,hint],i) => `
+      <div style="background:var(--card);border:1px solid ${i===0?'rgba(0,196,180,.3)':i===5?`rgba(${k.exposicao<-20e6?'239,68,68':'245,158,11'},.3)`:'var(--border)'};border-radius:8px;padding:12px">
+        <div style="font-size:10px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${label}</div>
+        <div style="font-size:${i===0?'17':'16'}px;font-weight:700;color:${i===1||i===2?ok_color:i===3?(k.tir_anual!==null&&k.tir_anual*100>=taxa?'#22C55E':'#EF4444'):i===5?'#F59E0B':'var(--text)'};font-family:monospace">${val}</div>
+        <div style="font-size:10px;color:var(--text2);margin-top:2px">${hint}</div>
+      </div>`).join('')}
+  </div>`;
+}
+
+function _intRenderChart(kpis) {
+  const el = document.getElementById('int-chart');
+  if (!el) return;
+  if (_intChart) { _intChart.destroy(); _intChart = null; }
+  const labels = kpis.acum.map((_, i) => `M${i}`);
+  _intChart = new Chart(el, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Fluxo Acumulado',
+        data: kpis.acum,
+        borderColor: '#00C4B4',
+        backgroundColor: (ctx) => {
+          const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 220);
+          g.addColorStop(0, 'rgba(0,196,180,.25)');
+          g.addColorStop(1, 'rgba(0,196,180,0)');
+          return g;
+        },
+        fill: true,
+        tension: 0.35,
+        pointRadius: 0,
+        borderWidth: 2,
+      }, {
+        label: 'Zero',
+        data: kpis.acum.map(() => 0),
+        borderColor: 'rgba(148,163,184,.3)',
+        borderDash: [4,4],
+        pointRadius: 0,
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: ctx => _fmtM(ctx.raw) }
+      }},
+      scales: {
+        x: { ticks: { color: '#94A3B8', font: { size: 10 }, maxTicksLimit: 12 }, grid: { color: 'rgba(255,255,255,.04)' } },
+        y: { ticks: { color: '#94A3B8', font: { size: 10 }, callback: v => _fmtM(v) }, grid: { color: 'rgba(255,255,255,.04)' } }
+      }
+    }
+  });
+}
+
+function _intBindInputs() {
+  // Already bound via onchange="intRecalcular()"
+}
+
+function _intGetInputs() {
+  const v = id => parseFloat(document.getElementById('int-f-'+id)?.value)||0;
+  const vi = id => parseInt(document.getElementById('int-f-'+id)?.value)||0;
+  return {
+    terreno: v('terreno'), itbi_pct: v('itbi_pct'), area_vendavel: v('area_vendavel'),
+    preco_medio: v('preco_medio'), urbanizacao: v('urbanizacao'), projetos: v('projetos'),
+    overhead: v('overhead'), corretagem_pct: v('corretagem_pct'), tributos_pct: v('tributos_pct'),
+    entrada_pct: v('entrada_pct'), parcelamento_meses: vi('parcelamento_meses'),
+    vendas_inicio: vi('vendas_inicio'), vendas_prazo: vi('vendas_prazo'),
+    obras_inicio: vi('obras_inicio'), obras_prazo: vi('obras_prazo'), taxa_desconto: v('taxa_desconto')
+  };
+}
+
+function intRecalcular() {
+  const p = _intGetInputs();
+  if (!p.area_vendavel || !p.vendas_prazo || !p.obras_prazo) return;
+  const kpis = _calcViabilidade(p);
+  document.getElementById('int-kpis').innerHTML = _intKpisHTML(kpis, p.taxa_desconto);
+  document.getElementById('int-leitura').innerHTML = _leituraVia(kpis, p.taxa_desconto);
+  _intRenderChart(kpis);
+}
+
+async function intSalvarCenario() {
+  const p = _intGetInputs();
+  const cen = _intEstudo.cenarios[_intCenTab];
+  const kpis = _calcViabilidade(p);
+  Object.assign(cen, p);
+  await put(`/api/inteligencia/cenarios/${cen.id}`, { nome: cen.nome, ...p, kpis_json: {
+    VGV: kpis.VGV, resultado: kpis.resultado, margem: kpis.margem,
+    exposicao: kpis.exposicao, tir_anual: kpis.tir_anual, vpl: kpis.vpl
+  }});
+  toast('Cenário salvo');
+}
+
+async function intNovoCenario() {
+  const nome = prompt('Nome do novo cenário (ex: "agressivo"):');
+  if (!nome) return;
+  const r = await post('/api/inteligencia/cenarios', { estudo_id: _intEstudo.id, nome });
+  if (!r.ok) { alert(r.error); return false; }
+  const { data } = await get(`/api/inteligencia/estudos/${_intEstudo.id}`);
+  _intEstudo = data;
+  _intCenTab = data.cenarios.findIndex(c => c.id === r.data.id);
+  _intRenderEstudo();
+}
+
+async function intDeletarCenario(id) {
+  if (!confirm('Excluir este cenário?')) return;
+  await del(`/api/inteligencia/cenarios/${id}`);
+  const { data } = await get(`/api/inteligencia/estudos/${_intEstudo.id}`);
+  _intEstudo = data;
+  _intCenTab = 0;
+  _intRenderEstudo();
+}
+
+function intComparar() {
+  const e = _intEstudo;
+  const rows = e.cenarios.map(cen => {
+    const p = { terreno:cen.terreno,itbi_pct:cen.itbi_pct,area_vendavel:cen.area_vendavel,preco_medio:cen.preco_medio,urbanizacao:cen.urbanizacao,projetos:cen.projetos,overhead:cen.overhead,corretagem_pct:cen.corretagem_pct,tributos_pct:cen.tributos_pct,entrada_pct:cen.entrada_pct,parcelamento_meses:cen.parcelamento_meses,vendas_inicio:cen.vendas_inicio,vendas_prazo:cen.vendas_prazo,obras_inicio:cen.obras_inicio,obras_prazo:cen.obras_prazo,taxa_desconto:cen.taxa_desconto };
+    return { cen, k: _calcViabilidade(p) };
+  });
+  const cols = rows.map(({cen,k}) => {
+    const tirOk = k.tir_anual !== null && k.tir_anual*100 >= cen.taxa_desconto;
+    return `<th style="padding:12px 16px;font-size:13px;font-weight:700;text-transform:capitalize">${cen.nome}</th>`;
+  });
+  const metricas = [
+    ['VGV', ({k}) => _fmtM(k.VGV), false],
+    ['Resultado', ({k,cen}) => _fmtM(k.resultado), true],
+    ['Margem', ({k}) => _fmtPct(k.margem), true],
+    ['TIR a.a.', ({k,cen}) => k.tir_anual!==null?`${(k.tir_anual*100).toFixed(1)}%`:'n/d', true],
+    ['VPL', ({k}) => _fmtM(k.vpl), true],
+    ['Exposição máx.', ({k}) => _fmtM(k.exposicao), false],
+    ['Payback', ({k}) => k.payback>0?`mês ${k.payback}`:'–', false],
+    ['Preço médio', ({cen}) => `R$ ${cen.preco_medio}/m²`, false],
+    ['Área vendável', ({cen}) => `${cen.area_vendavel.toLocaleString('pt-BR')} m²`, false],
+  ];
+  const trs = metricas.map(([label, fn, highlight]) =>
+    `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:10px 16px;font-size:12px;color:var(--text2)">${label}</td>
+      ${rows.map(r => `<td style="padding:10px 16px;font-size:13px;font-weight:600;text-align:center">${fn(r)}</td>`).join('')}
+    </tr>`).join('');
+  openModal(`Comparação — ${e.nome}`, `
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:var(--navy3)"><th style="padding:12px 16px;text-align:left;font-size:12px;color:var(--text2)">Métrica</th>${cols.join('')}</tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+    </div>`, null, { hideFooter: true });
+}
+
+// ─── Pesquisa de Mercado (Submódulo B) ───────────────────────────────────────
+function intTogglePesquisa() {
+  const body = document.getElementById('int-pesquisa-body');
+  const arr = document.getElementById('int-pesq-arrow');
+  const show = body.style.display === 'none';
+  body.style.display = show ? 'block' : 'none';
+  arr.textContent = show ? '▾' : '▸';
+}
+
+function _intPesquisaHTML(e) {
+  const comps = (e.comparaveis||[]).filter(c=>c.status!=='descartado');
+  const aprovados = comps.filter(c=>c.status==='aprovado');
+  const median = arr => { if(!arr.length)return null; const s=[...arr].sort((a,b)=>a-b); const m=Math.floor(s.length/2); return s.length%2?s[m]:(s[m-1]+s[m])/2; };
+  const med = median(aprovados.map(c=>c.preco_m2));
+  const mean = aprovados.length ? aprovados.reduce((a,c)=>a+c.preco_m2,0)/aprovados.length : null;
+
+  return `
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:160px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:12px">
+        <div style="font-size:10px;color:var(--text2);font-weight:600;text-transform:uppercase">Comparáveis aprovados</div>
+        <div style="font-size:22px;font-weight:700;margin-top:4px">${aprovados.length}</div>
+      </div>
+      <div style="flex:1;min-width:160px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:12px">
+        <div style="font-size:10px;color:var(--text2);font-weight:600;text-transform:uppercase">Mediana R$/m²</div>
+        <div style="font-size:22px;font-weight:700;margin-top:4px;color:var(--accent)">${med ? `R$ ${med.toFixed(0)}` : '–'}</div>
+        ${aprovados.length < 3 ? '<div style="font-size:10px;color:#F59E0B">⚠ baixa confiança (n < 3)</div>' : ''}
+      </div>
+      <div style="flex:1;min-width:160px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:12px">
+        <div style="font-size:10px;color:var(--text2);font-weight:600;text-transform:uppercase">Média R$/m²</div>
+        <div style="font-size:22px;font-weight:700;margin-top:4px">${mean ? `R$ ${mean.toFixed(0)}` : '–'}</div>
+      </div>
+      ${med ? `<button onclick="intAplicarPreco(${med.toFixed(0)})" style="align-self:center;background:rgba(0,196,180,.15);border:1px solid var(--accent);color:var(--accent);padding:8px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">↑ Aplicar mediana no cenário</button>` : ''}
+    </div>
+
+    <!-- Botões de ação -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <button onclick="intAddComparavel()" style="background:var(--accent);color:var(--navy);border:none;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">+ Adicionar comparável</button>
+      <button onclick="intPesquisaAI()" style="background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.4);color:#A78BFA;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">🤖 Pesquisa AI</button>
+    </div>
+
+    <!-- Tabela de comparáveis -->
+    ${comps.length ? `
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--navy3)">
+          <th style="padding:7px 10px;text-align:left;color:var(--text2)">Tipo</th>
+          <th style="padding:7px 10px;text-align:left;color:var(--text2)">Local</th>
+          <th style="padding:7px 10px;text-align:right;color:var(--text2)">Área m²</th>
+          <th style="padding:7px 10px;text-align:right;color:var(--text2)">Preço total</th>
+          <th style="padding:7px 10px;text-align:right;color:var(--text2)">R$/m²</th>
+          <th style="padding:7px 10px;text-align:left;color:var(--text2)">Fonte</th>
+          <th style="padding:7px 10px;text-align:left;color:var(--text2)">Status</th>
+          <th style="padding:7px 10px"></th>
+        </tr></thead>
+        <tbody>
+          ${comps.map(c => `<tr style="border-top:1px solid var(--border)">
+            <td style="padding:7px 10px">${c.tipo||'–'}</td>
+            <td style="padding:7px 10px">${[c.municipio,c.bairro].filter(Boolean).join(', ')||'–'}</td>
+            <td style="padding:7px 10px;text-align:right;font-family:monospace">${c.area_m2?.toLocaleString('pt-BR')}</td>
+            <td style="padding:7px 10px;text-align:right;font-family:monospace">${_fmtM(c.preco_total)}</td>
+            <td style="padding:7px 10px;text-align:right;font-family:monospace;color:var(--accent)">R$ ${c.preco_m2?.toFixed(0)}</td>
+            <td style="padding:7px 10px;max-width:100px;overflow:hidden;text-overflow:ellipsis">${c.url?`<a href="${c.url}" target="_blank" style="color:var(--accent2)">${c.fonte||'link'}</a>`:c.fonte||'–'}</td>
+            <td style="padding:7px 10px">
+              <select onchange="intStatusComp(${c.id},this.value)" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:11px;padding:3px">
+                ${['bruto','aprovado'].map(s=>`<option value="${s}" ${c.status===s?'selected':''}>${s}</option>`).join('')}
+              </select>
+            </td>
+            <td style="padding:7px 10px"><button onclick="intDelComp(${c.id})" style="background:none;border:none;color:var(--text2);cursor:pointer">🗑</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : `<div style="font-size:12px;color:var(--text2);padding:12px 0">Nenhum comparável cadastrado ainda.</div>`}
+    <div id="int-ai-resultado"></div>`;
+}
+
+function intAplicarPreco(preco) {
+  const el = document.getElementById('int-f-preco_medio');
+  if (el) { el.value = preco; intRecalcular(); }
+}
+
+function intAddComparavel() {
+  openModal('Adicionar Comparável', `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label style="font-size:11px;color:var(--text2)">Tipo</label>
+          <select id="ic-tipo" class="modal-input" style="width:100%">
+            <option>lote residencial</option><option>lote industrial</option><option>gleba</option><option>galpão</option><option>outro</option>
+          </select></div>
+        <div><label style="font-size:11px;color:var(--text2)">Município</label>
+          <input id="ic-mun" class="modal-input" placeholder="ex: Santo Amaro da Imperatriz" style="width:100%"></div>
+        <div><label style="font-size:11px;color:var(--text2)">Bairro / Região</label>
+          <input id="ic-bai" class="modal-input" style="width:100%"></div>
+        <div><label style="font-size:11px;color:var(--text2)">Área (m²) *</label>
+          <input id="ic-area" class="modal-input" type="number" style="width:100%"></div>
+        <div><label style="font-size:11px;color:var(--text2)">Preço total (R$) *</label>
+          <input id="ic-preco" class="modal-input" type="number" style="width:100%"></div>
+        <div><label style="font-size:11px;color:var(--text2)">Fonte</label>
+          <input id="ic-fonte" class="modal-input" placeholder="ex: ZAP Imóveis" style="width:100%"></div>
+      </div>
+      <div><label style="font-size:11px;color:var(--text2)">URL do anúncio</label>
+        <input id="ic-url" class="modal-input" placeholder="https://..." style="width:100%"></div>
+      <div><label style="font-size:11px;color:var(--text2)">Observações</label>
+        <input id="ic-obs" class="modal-input" style="width:100%"></div>
+    </div>`, async () => {
+    const area = parseFloat(document.getElementById('ic-area').value);
+    const preco = parseFloat(document.getElementById('ic-preco').value);
+    if (!area || !preco) { alert('Área e preço são obrigatórios'); return false; }
+    const r = await post('/api/inteligencia/comparaveis', {
+      estudo_id: _intEstudo.id,
+      tipo: document.getElementById('ic-tipo').value,
+      municipio: document.getElementById('ic-mun').value,
+      bairro: document.getElementById('ic-bai').value,
+      area_m2: area, preco_total: preco,
+      fonte: document.getElementById('ic-fonte').value,
+      url: document.getElementById('ic-url').value,
+      observacoes: document.getElementById('ic-obs').value,
+    });
+    if (!r.ok) { alert(r.error); return false; }
+    const { data } = await get(`/api/inteligencia/estudos/${_intEstudo.id}`);
+    _intEstudo = data;
+    document.getElementById('int-pesquisa-body').innerHTML = _intPesquisaHTML(_intEstudo);
+  });
+}
+
+async function intStatusComp(id, status) {
+  const comp = _intEstudo.comparaveis.find(c=>c.id===id);
+  if (!comp) return;
+  await put(`/api/inteligencia/comparaveis/${id}`, { ...comp, status });
+  comp.status = status;
+  document.getElementById('int-pesquisa-body').innerHTML = _intPesquisaHTML(_intEstudo);
+}
+
+async function intDelComp(id) {
+  if (!confirm('Excluir comparável?')) return;
+  await del(`/api/inteligencia/comparaveis/${id}`);
+  _intEstudo.comparaveis = _intEstudo.comparaveis.filter(c=>c.id!==id);
+  document.getElementById('int-pesquisa-body').innerHTML = _intPesquisaHTML(_intEstudo);
+}
+
+async function intPesquisaAI() {
+  const tipo = prompt('Tipo de empreendimento (ex: lote residencial, lote industrial, galpão):') || 'lote residencial';
+  const cidade = prompt('Cidade (ex: Santo Amaro da Imperatriz - SC):');
+  if (!cidade) return;
+  const area_min = prompt('Área mínima das unidades (m²):', '200') || '200';
+  const area_max = prompt('Área máxima das unidades (m²):', '1000') || '1000';
+
+  const el = document.getElementById('int-ai-resultado');
+  if (el) el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text2)">🤖 Pesquisando... aguarde.</div>`;
+
+  const r = await post('/api/inteligencia/pesquisa-ai', { tipo, cidade, area_min, area_max });
+  if (!r.ok) { if(el) el.innerHTML = `<div style="color:var(--danger);padding:12px">${r.error}</div>`; return; }
+  const d = r.data;
+
+  const corretoresList = (d.corretores||[]).map((cor,i) => `
+    <tr style="border-top:1px solid var(--border)">
+      <td style="padding:8px 10px;font-weight:600">${i+1}. ${cor.nome}</td>
+      <td style="padding:8px 10px;color:var(--text2)">${cor.especialidade}</td>
+      <td style="padding:8px 10px;color:var(--text2)">${cor.atuacao}</td>
+      <td style="padding:8px 10px;color:var(--accent2)">${cor.contato}</td>
+      <td style="padding:8px 10px;font-size:11px;color:var(--text2)">${cor.relevancia}</td>
+    </tr>`).join('');
+
+  if (el) el.innerHTML = `
+    <div style="margin-top:16px;background:var(--navy3);border:1px solid rgba(139,92,246,.4);border-radius:10px;padding:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;color:#A78BFA">🤖 Pesquisa AI — ${tipo} · ${cidade}</span>
+        <span style="background:rgba(245,158,11,.2);color:#F59E0B;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">NÃO VERIFICADO</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
+        <div style="background:var(--card);border-radius:8px;padding:12px">
+          <div style="font-size:10px;color:var(--text2)">R$/m² Mínimo</div>
+          <div style="font-size:20px;font-weight:700">R$ ${d.preco_m2_min}</div>
+        </div>
+        <div style="background:var(--card);border-radius:8px;padding:12px">
+          <div style="font-size:10px;color:var(--text2)">R$/m² Mediana</div>
+          <div style="font-size:20px;font-weight:700;color:var(--accent)">R$ ${d.preco_m2_mediana}</div>
+          <div style="font-size:10px;color:var(--text2)">confiança: ${d.confianca}</div>
+        </div>
+        <div style="background:var(--card);border-radius:8px;padding:12px">
+          <div style="font-size:10px;color:var(--text2)">R$/m² Máximo</div>
+          <div style="font-size:20px;font-weight:700">R$ ${d.preco_m2_max}</div>
+        </div>
+      </div>
+      <div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:14px">${d.resumo_mercado||''}</div>
+      ${d.fatores?.length ? `<div style="margin-bottom:14px"><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px">Fatores de preço</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${d.fatores.map(f=>`<span style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:4px 10px;font-size:12px">${f}</span>`).join('')}</div></div>` : ''}
+      ${corretoresList ? `<div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:8px">Corretores/Imobiliárias — por relevância</div>
+        <div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse">
+          <thead><tr style="background:var(--card)">
+            <th style="padding:6px 10px;text-align:left;color:var(--text2)">Nome</th>
+            <th style="padding:6px 10px;text-align:left;color:var(--text2)">Especialidade</th>
+            <th style="padding:6px 10px;text-align:left;color:var(--text2)">Atuação</th>
+            <th style="padding:6px 10px;text-align:left;color:var(--text2)">Contato</th>
+            <th style="padding:6px 10px;text-align:left;color:var(--text2)">Relevância</th>
+          </tr></thead>
+          <tbody>${corretoresList}</tbody>
+        </table></div>
+        <div style="font-size:11px;color:var(--text2);margin-top:6px">💡 Verifique atualização dos dados no <a href="https://www.creci-sc.gov.br" target="_blank" style="color:var(--accent2)">CRECI-SC</a></div>
+      </div>` : ''}
+      ${d.fontes_sugeridas?.length ? `<div style="font-size:11px;color:var(--text2)">📌 Fontes sugeridas: ${d.fontes_sugeridas.join(' · ')}</div>` : ''}
+      <div style="font-size:11px;color:#F59E0B;margin-top:8px;padding:8px;background:rgba(245,158,11,.08);border-radius:6px">⚠ ${d.aviso}</div>
+      ${d.preco_m2_mediana ? `<button onclick="intAplicarPreco(${d.preco_m2_mediana})" style="margin-top:12px;background:rgba(0,196,180,.15);border:1px solid var(--accent);color:var(--accent);padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">↑ Aplicar mediana no cenário (R$ ${d.preco_m2_mediana}/m²)</button>` : ''}
+    </div>`;
+}
+
 </script>
 </body>
 </html>

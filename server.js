@@ -11,8 +11,10 @@ const crypto = require("crypto");
 const db = require("./database");
 const OpenAI = require("openai");
 const pdfParse = require("pdf-parse");
+const Anthropic = require("@anthropic-ai/sdk");
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }); // 8 MB máx
 
@@ -7413,6 +7415,198 @@ app.delete('/api/org/:id', (req, res) => {
   db.prepare('DELETE FROM org_nodes WHERE id=?').run(id);
   ok(res, {});
 });
+// ─── INTELIGÊNCIA DE EMPREENDIMENTOS ──────────────────────────────────────────
+
+try { db.exec(`CREATE TABLE IF NOT EXISTS int_estudos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL,
+  descricao TEXT DEFAULT '',
+  empreendimento_id INTEGER REFERENCES empreendimentos(id),
+  usuario_id INTEGER,
+  status TEXT DEFAULT 'rascunho',
+  criado_em TEXT DEFAULT (datetime('now')),
+  atualizado_em TEXT DEFAULT (datetime('now'))
+)`); } catch(_) {}
+
+try { db.exec(`CREATE TABLE IF NOT EXISTS int_cenarios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  estudo_id INTEGER NOT NULL REFERENCES int_estudos(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL DEFAULT 'base',
+  terreno REAL DEFAULT 14800000,
+  itbi_pct REAL DEFAULT 2.5,
+  area_vendavel REAL DEFAULT 143379,
+  preco_medio REAL DEFAULT 263,
+  urbanizacao REAL DEFAULT 15000000,
+  projetos REAL DEFAULT 1500000,
+  overhead REAL DEFAULT 1000000,
+  corretagem_pct REAL DEFAULT 7,
+  tributos_pct REAL DEFAULT 4,
+  entrada_pct REAL DEFAULT 20,
+  parcelamento_meses INTEGER DEFAULT 36,
+  vendas_inicio INTEGER DEFAULT 6,
+  vendas_prazo INTEGER DEFAULT 24,
+  obras_inicio INTEGER DEFAULT 3,
+  obras_prazo INTEGER DEFAULT 12,
+  taxa_desconto REAL DEFAULT 12,
+  kpis_json TEXT,
+  criado_em TEXT DEFAULT (datetime('now')),
+  atualizado_em TEXT DEFAULT (datetime('now'))
+)`); } catch(_) {}
+
+try { db.exec(`CREATE TABLE IF NOT EXISTS int_comparaveis (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  estudo_id INTEGER REFERENCES int_estudos(id) ON DELETE CASCADE,
+  tipo TEXT,
+  municipio TEXT,
+  bairro TEXT,
+  area_m2 REAL,
+  preco_total REAL,
+  preco_m2 REAL,
+  fonte TEXT,
+  url TEXT,
+  data_coleta TEXT DEFAULT (date('now')),
+  status TEXT DEFAULT 'bruto',
+  observacoes TEXT,
+  criado_em TEXT DEFAULT (datetime('now'))
+)`); } catch(_) {}
+
+app.get('/api/inteligencia/estudos', autenticar, (req, res) => {
+  const rows = db.prepare(`
+    SELECT e.*, emp.nome as emp_nome,
+      (SELECT COUNT(*) FROM int_cenarios WHERE estudo_id=e.id) as n_cenarios
+    FROM int_estudos e
+    LEFT JOIN empreendimentos emp ON emp.id=e.empreendimento_id
+    ORDER BY e.atualizado_em DESC
+  `).all();
+  ok(res, rows);
+});
+
+app.post('/api/inteligencia/estudos', autenticar, (req, res) => {
+  const { nome, descricao, empreendimento_id } = req.body;
+  if (!nome) return err(res, 'Nome obrigatório');
+  const r = db.prepare(`INSERT INTO int_estudos (nome,descricao,empreendimento_id,usuario_id) VALUES (?,?,?,?)`)
+    .run(nome, descricao||'', empreendimento_id||null, req.usuario.id);
+  const id = r.lastInsertRowid;
+  for (const n of ['conservador','base','otimista'])
+    db.prepare(`INSERT INTO int_cenarios (estudo_id,nome) VALUES (?,?)`).run(id, n);
+  ok(res, { id });
+});
+
+app.get('/api/inteligencia/estudos/:id', autenticar, (req, res) => {
+  const e = db.prepare(`SELECT e.*,emp.nome as emp_nome FROM int_estudos e LEFT JOIN empreendimentos emp ON emp.id=e.empreendimento_id WHERE e.id=?`).get(parseInt(req.params.id));
+  if (!e) return err(res, 'Não encontrado', 404);
+  const cenarios = db.prepare(`SELECT * FROM int_cenarios WHERE estudo_id=? ORDER BY CASE nome WHEN 'conservador' THEN 0 WHEN 'base' THEN 1 WHEN 'otimista' THEN 2 ELSE 3 END, id`).all(e.id);
+  const comparaveis = db.prepare(`SELECT * FROM int_comparaveis WHERE estudo_id=? ORDER BY id DESC`).all(e.id);
+  ok(res, { ...e, cenarios, comparaveis });
+});
+
+app.put('/api/inteligencia/estudos/:id', autenticar, (req, res) => {
+  const { nome, descricao, empreendimento_id, status } = req.body;
+  db.prepare(`UPDATE int_estudos SET nome=?,descricao=?,empreendimento_id=?,status=?,atualizado_em=datetime('now') WHERE id=?`)
+    .run(nome, descricao||'', empreendimento_id||null, status||'rascunho', parseInt(req.params.id));
+  ok(res, {});
+});
+
+app.delete('/api/inteligencia/estudos/:id', autenticar, (req, res) => {
+  db.prepare('DELETE FROM int_estudos WHERE id=?').run(parseInt(req.params.id));
+  ok(res, {});
+});
+
+app.put('/api/inteligencia/cenarios/:id', autenticar, (req, res) => {
+  const f = req.body;
+  db.prepare(`UPDATE int_cenarios SET
+    nome=?,terreno=?,itbi_pct=?,area_vendavel=?,preco_medio=?,urbanizacao=?,projetos=?,overhead=?,
+    corretagem_pct=?,tributos_pct=?,entrada_pct=?,parcelamento_meses=?,
+    vendas_inicio=?,vendas_prazo=?,obras_inicio=?,obras_prazo=?,taxa_desconto=?,
+    kpis_json=?,atualizado_em=datetime('now') WHERE id=?`).run(
+    f.nome,f.terreno,f.itbi_pct,f.area_vendavel,f.preco_medio,f.urbanizacao,f.projetos,f.overhead,
+    f.corretagem_pct,f.tributos_pct,f.entrada_pct,f.parcelamento_meses,
+    f.vendas_inicio,f.vendas_prazo,f.obras_inicio,f.obras_prazo,f.taxa_desconto,
+    f.kpis_json ? JSON.stringify(f.kpis_json) : null,
+    parseInt(req.params.id)
+  );
+  db.prepare(`UPDATE int_estudos SET atualizado_em=datetime('now') WHERE id=(SELECT estudo_id FROM int_cenarios WHERE id=?)`).run(parseInt(req.params.id));
+  ok(res, {});
+});
+
+app.post('/api/inteligencia/cenarios', autenticar, (req, res) => {
+  const { estudo_id, nome } = req.body;
+  if (!estudo_id) return err(res, 'estudo_id obrigatório');
+  const r = db.prepare(`INSERT INTO int_cenarios (estudo_id,nome) VALUES (?,?)`).run(estudo_id, nome||'novo');
+  ok(res, { id: r.lastInsertRowid });
+});
+
+app.delete('/api/inteligencia/cenarios/:id', autenticar, (req, res) => {
+  db.prepare('DELETE FROM int_cenarios WHERE id=?').run(parseInt(req.params.id));
+  ok(res, {});
+});
+
+app.post('/api/inteligencia/comparaveis', autenticar, (req, res) => {
+  const { estudo_id, tipo, municipio, bairro, area_m2, preco_total, fonte, url, observacoes } = req.body;
+  if (!estudo_id || !preco_total || !area_m2) return err(res, 'estudo_id, preco_total e area_m2 são obrigatórios');
+  const preco_m2 = preco_total / area_m2;
+  const r = db.prepare(`INSERT INTO int_comparaveis (estudo_id,tipo,municipio,bairro,area_m2,preco_total,preco_m2,fonte,url,observacoes) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(estudo_id, tipo||'', municipio||'', bairro||'', area_m2, preco_total, preco_m2, fonte||'manual', url||'', observacoes||'');
+  ok(res, { id: r.lastInsertRowid, preco_m2 });
+});
+
+app.put('/api/inteligencia/comparaveis/:id', autenticar, (req, res) => {
+  const { tipo, municipio, bairro, area_m2, preco_total, fonte, url, status, observacoes } = req.body;
+  const preco_m2 = area_m2 ? preco_total / area_m2 : null;
+  db.prepare(`UPDATE int_comparaveis SET tipo=?,municipio=?,bairro=?,area_m2=?,preco_total=?,preco_m2=?,fonte=?,url=?,status=?,observacoes=? WHERE id=?`)
+    .run(tipo||'', municipio||'', bairro||'', area_m2, preco_total, preco_m2, fonte||'manual', url||'', status||'bruto', observacoes||'', parseInt(req.params.id));
+  ok(res, {});
+});
+
+app.delete('/api/inteligencia/comparaveis/:id', autenticar, (req, res) => {
+  db.prepare('DELETE FROM int_comparaveis WHERE id=?').run(parseInt(req.params.id));
+  ok(res, {});
+});
+
+app.post('/api/inteligencia/pesquisa-ai', autenticar, async (req, res) => {
+  if (!anthropic) return err(res, 'ANTHROPIC_API_KEY não configurado no servidor');
+  const { tipo, cidade, area_min, area_max, produto } = req.body;
+  if (!tipo || !cidade) return err(res, 'tipo e cidade são obrigatórios');
+  const prompt = `Você é um especialista em mercado imobiliário de Santa Catarina (Brasil), com foco em loteamentos e incorporações.
+
+Farei uma pesquisa de mercado para: **${tipo}** em **${cidade} - SC**, unidades de ${area_min||50}m² a ${area_max||500}m². ${produto ? `Produto: ${produto}.` : ''}
+
+Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
+{
+  "preco_m2_min": (número - menor preço praticado R$/m²),
+  "preco_m2_mediana": (número - mediana de mercado R$/m²),
+  "preco_m2_max": (número - maior preço praticado R$/m²),
+  "confianca": "baixa|media|alta",
+  "fatores": ["fator1", "fator2", "fator3"] (até 5 fatores que afetam o preço),
+  "resumo_mercado": "2-3 parágrafos sobre o mercado local, tendências, absorção, demanda",
+  "corretores": [
+    {
+      "nome": "Nome da imobiliária ou corretor",
+      "especialidade": "lotes residenciais / industrial / etc",
+      "atuacao": "bairros ou regiões de atuação",
+      "contato": "telefone ou site se conhecido, senão 'buscar no CRECI-SC'",
+      "relevancia": "por que é relevante para este produto"
+    }
+  ] (5 a 10 corretores/imobiliárias mais relevantes, ordenados por importância),
+  "fontes_sugeridas": ["lista de fontes públicas para verificar: portais imobiliários, prefeitura, CRECI, etc"],
+  "aviso": "Dados baseados em conhecimento até ${new Date().getFullYear()}. Validar com pesquisa de campo antes de usar em laudo."
+}`;
+
+  try {
+    const msg = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    let text = msg.content[0].text.trim();
+    if (text.startsWith('```')) text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '');
+    const data = JSON.parse(text);
+    ok(res, { ...data, status: 'nao_verificado', gerado_em: new Date().toISOString() });
+  } catch(e) {
+    err(res, 'Erro na pesquisa AI: ' + e.message);
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => console.log(`CRM R2X rodando em http://localhost:${PORT}`));
