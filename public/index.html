@@ -18736,9 +18736,18 @@ function _renderResultadoArea(d, cidade, endereco) {
 }
 
 // ─── CAMINHO 2: Preparar Lançamento ──────────────────────────────────────────
+window._ilEmps = [];
+
 async function renderIntLancamento() {
   document.getElementById('page-title').textContent = '🚀 Preparar Lançamento';
   const c = document.getElementById('content');
+
+  const { data: emps } = await get('/api/empreendimentos');
+  window._ilEmps = emps || [];
+  const empsOpts = emps?.length
+    ? emps.map(e => `<option value="${e.id}">${e.nome}${e.cidade ? ` · ${e.cidade}` : ''}</option>`).join('')
+    : '';
+
   c.innerHTML = `
   <div style="display:flex;flex-direction:column;height:100%;overflow:hidden">
     <!-- Header -->
@@ -18758,10 +18767,33 @@ async function renderIntLancamento() {
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
           <div style="background:var(--accent);color:var(--navy);width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0">1</div>
           <div>
-            <div style="font-size:13px;font-weight:700">Importar Planta Urbanística</div>
-            <div style="font-size:11px;color:var(--text2)">A IA lê a planta e extrai lotes, áreas, dimensões e dados do projeto</div>
+            <div style="font-size:13px;font-weight:700">Produto do Lançamento</div>
+            <div style="font-size:11px;color:var(--text2)">Vincule um empreendimento cadastrado <strong>ou</strong> preencha manualmente e importe a planta</div>
           </div>
         </div>
+
+        <!-- Vincular empreendimento cadastrado -->
+        ${empsOpts ? `
+        <div style="background:rgba(0,196,180,.06);border:1px solid rgba(0,196,180,.2);border-radius:8px;padding:14px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.6px">🔗 Vincular empreendimento cadastrado</span>
+            <span style="background:rgba(0,196,180,.15);color:var(--accent);font-size:9px;font-weight:700;padding:1px 7px;border-radius:8px">RÁPIDO</span>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <select id="il-emp-select" class="modal-input" style="flex:1" onchange="_ilVincularEmp(this.value)">
+              <option value="">-- Selecione um empreendimento --</option>
+              ${empsOpts}
+            </select>
+            <button onclick="_ilVincularEmp(document.getElementById('il-emp-select').value)" style="background:var(--accent);color:var(--navy);border:none;padding:8px 16px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Puxar dados →</button>
+          </div>
+          <div id="il-emp-info" style="margin-top:10px;display:none"></div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+          <span style="font-size:11px;color:var(--text2);font-weight:600">ou preencha manualmente</span>
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+        </div>` : ''}
 
         <!-- Upload inline -->
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
@@ -18772,7 +18804,7 @@ async function renderIntLancamento() {
               ondragleave="this.style.background=''"
               ondrop="event.preventDefault();this.style.background='';_ilSetFile(event.dataTransfer.files[0])">
               <div style="font-size:24px;margin-bottom:5px">📐</div>
-              <div style="font-size:12px;font-weight:600;color:var(--accent)">Arraste a planta ou clique para selecionar</div>
+              <div style="font-size:12px;font-weight:600;color:var(--accent)">Arraste a planta ou clique para selecionar <span style="font-weight:400;color:var(--text2)">(opcional se empreendimento vinculado)</span></div>
               <div style="font-size:10px;color:var(--text2);margin-top:2px">PDF, JPG ou PNG · Até 30 MB</div>
               <div id="il-filename" style="margin-top:5px;font-size:11px;color:#22C55E"></div>
               <input id="il-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="_ilSetFile(this.files[0])">
@@ -18844,6 +18876,63 @@ async function renderIntLancamento() {
 
 window._ilFile = null;
 window._ilPlantaDados = null;
+window._ilEmpVinculado = null;
+
+function _ilVincularEmp(id) {
+  const el = document.getElementById('il-emp-info');
+  if (!id) { if(el) el.style.display = 'none'; window._ilEmpVinculado = null; return; }
+
+  const emp = window._ilEmps.find(e => String(e.id) === String(id));
+  if (!emp) return;
+  window._ilEmpVinculado = emp;
+
+  // Auto-preenche campos
+  const setCidade = document.getElementById('il-cidade');
+  const setTipo = document.getElementById('il-tipo');
+  if (setCidade && emp.cidade) {
+    setCidade.value = emp.cidade + (emp.estado ? ` - ${emp.estado}` : '');
+    setCidade.style.borderColor = 'var(--accent)';
+  }
+  if (setTipo && emp.tipo) {
+    // Tenta mapear tipo do empreendimento para as opções do select
+    const tipoMap = {
+      'loteamento': 'lote residencial',
+      'loteamento residencial': 'lote residencial',
+      'loteamento industrial': 'lote industrial',
+      'loteamento comercial': 'lote comercial',
+      'condominio': 'condomínio horizontal',
+      'condomínio': 'condomínio horizontal',
+      'misto': 'loteamento misto',
+    };
+    const tipoNorm = emp.tipo.toLowerCase().trim();
+    const tipoOpt = tipoMap[tipoNorm] || emp.tipo.toLowerCase();
+    const opt = [...setTipo.options].find(o => o.value.toLowerCase().includes(tipoOpt.split(' ')[0]));
+    if (opt) setTipo.value = opt.value;
+  }
+
+  // Monta info do empreendimento
+  if (!el) return;
+  const fld = (l, v) => v ? `<div style="font-size:12px"><span style="color:var(--text2)">${l}:</span> <strong>${v}</strong></div>` : '';
+  const cpPadrao = emp.condicao_pagamento_padrao ? (() => {
+    try { const arr = JSON.parse(emp.condicao_pagamento_padrao); return Array.isArray(arr) ? arr : null; } catch { return null; }
+  })() : null;
+
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="background:var(--card);border:1px solid rgba(0,196,180,.3);border-radius:8px;padding:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px">✓ ${emp.nome} vinculado</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px 16px">
+        ${fld('Cidade', emp.cidade + (emp.estado ? ` - ${emp.estado}` : ''))}
+        ${fld('Tipo', emp.tipo)}
+        ${fld('Endereço', emp.endereco)}
+        ${fld('Unidades', emp.num_unidades)}
+        ${fld('VGV estimado', emp.vgv_estimado ? `R$ ${Number(emp.vgv_estimado).toLocaleString('pt-BR')}` : null)}
+        ${fld('Status', emp.status)}
+      </div>
+      ${cpPadrao?.length ? `<div style="margin-top:8px;font-size:11px;color:var(--text2)">💳 Condição padrão: ${cpPadrao.map(c=>c.descricao||JSON.stringify(c)).join(' · ')}</div>` : ''}
+      <div style="margin-top:8px;font-size:11px;color:var(--text2)">Cidade e tipo foram preenchidos automaticamente. Clique em <strong>Gerar Inteligência de Mercado</strong> na etapa 2.</div>
+    </div>`;
+}
 
 function _ilSetFile(f) {
   if (!f) return;
@@ -18912,23 +19001,37 @@ function _renderPlantaLancamento(d, cidade) {
 }
 
 async function intGerarInteligencia() {
-  const cidade = document.getElementById('il-cidade').value.trim() ||
-                 window._ilPlantaDados?._cidade || '';
-  if (!cidade) { alert('Informe a cidade na etapa 1'); return; }
+  const emp = window._ilEmpVinculado;
+  const cidade = document.getElementById('il-cidade')?.value.trim() ||
+                 emp?.cidade || window._ilPlantaDados?._cidade || '';
+  if (!cidade) { alert('Informe a cidade na etapa 1 ou vincule um empreendimento'); return; }
 
-  const tipo = document.getElementById('il-tipo').value ||
-               window._ilPlantaDados?._tipo || 'lote residencial';
+  const tipo = document.getElementById('il-tipo')?.value ||
+               emp?.tipo || window._ilPlantaDados?._tipo || 'lote residencial';
   const d = window._ilPlantaDados;
+
+  // Enriquece com dados do empreendimento vinculado se não houver planta
+  if (emp && !d) {
+    window._ilPlantaDados = {
+      _cidade: emp.cidade + (emp.estado ? ` - ${emp.estado}` : ''),
+      _tipo: emp.tipo,
+      _emp_nome: emp.nome,
+      num_unidades: emp.num_unidades || null,
+      vgv_estimado: emp.vgv_estimado || null,
+    };
+  }
 
   const el = document.getElementById('il-inteligencia-resultado');
   el.innerHTML = `<div style="padding:14px;text-align:center;color:var(--text2);font-size:12px">🤖 Gerando inteligência de mercado... aguarde 20–40 segundos.</div>`;
 
   const r = await post('/api/inteligencia/inteligencia-lancamento', {
     cidade, tipo,
-    dados_planta: d || null,
+    nome_empreendimento: emp?._emp_nome || emp?.nome || d?.nome_empreendimento || null,
+    dados_planta: d?.total_lotes ? d : null,
     area_m2: d?.area_vendavel_m2 || null,
-    total_lotes: d?.total_lotes || null,
+    total_lotes: d?.total_lotes || emp?.num_unidades || null,
     lote_area_media: d?.lote_area_media_m2 || null,
+    vgv_estimado: emp?.vgv_estimado || null,
   });
 
   if (!r.ok) { el.innerHTML = `<div style="color:var(--danger);font-size:12px">❌ ${r.error}</div>`; return; }

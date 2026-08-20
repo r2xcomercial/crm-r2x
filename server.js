@@ -7773,10 +7773,11 @@ Com base nos dados fornecidos${req.file ? ' e na imagem' : ''}, responda em JSON
 // ─── Caminho 2: Inteligência de Lançamento (completa) ───────────────────────
 app.post('/api/inteligencia/inteligencia-lancamento', autenticar, async (req, res) => {
   if (!anthropic) return err(res, 'ANTHROPIC_API_KEY não configurado');
-  const { cidade, tipo, dados_planta, area_m2, total_lotes, lote_area_media } = req.body;
+  const { cidade, tipo, dados_planta, area_m2, total_lotes, lote_area_media, nome_empreendimento, vgv_estimado } = req.body;
   if (!cidade) return err(res, 'cidade é obrigatória');
 
   const contextPlanta = [];
+  if (nome_empreendimento) contextPlanta.push(`Nome do empreendimento: ${nome_empreendimento}`);
   if (dados_planta) {
     const d = typeof dados_planta === 'string' ? JSON.parse(dados_planta) : dados_planta;
     if (d.total_lotes) contextPlanta.push(`Total de lotes: ${d.total_lotes}`);
@@ -7784,12 +7785,12 @@ app.post('/api/inteligencia/inteligencia-lancamento', autenticar, async (req, re
     if (d.lote_testada_m && d.lote_profundidade_m) contextPlanta.push(`Testada × Profundidade: ${d.lote_testada_m}m × ${d.lote_profundidade_m}m`);
     if (d.lote_area_minima_m2 && d.lote_area_maxima_m2) contextPlanta.push(`Faixa de área: ${d.lote_area_minima_m2}–${d.lote_area_maxima_m2} m²`);
     if (d.area_vendavel_m2) contextPlanta.push(`Área vendável: ${(d.area_vendavel_m2/10000).toFixed(2)} ha`);
-    if (d.nome_empreendimento) contextPlanta.push(`Nome: ${d.nome_empreendimento}`);
   } else {
-    if (total_lotes) contextPlanta.push(`Total de lotes: ${total_lotes}`);
-    if (lote_area_media) contextPlanta.push(`Área média dos lotes: ${lote_area_media} m²`);
+    if (total_lotes) contextPlanta.push(`Total de lotes / unidades: ${total_lotes}`);
+    if (lote_area_media) contextPlanta.push(`Área média das unidades: ${lote_area_media} m²`);
     if (area_m2) contextPlanta.push(`Área vendável: ${(area_m2/10000).toFixed(2)} ha`);
   }
+  if (vgv_estimado) contextPlanta.push(`VGV estimado: R$ ${Number(vgv_estimado).toLocaleString('pt-BR')}`);
 
   const prompt = `Você é um especialista em lançamentos imobiliários no Brasil, com expertise em Santa Catarina.
 
