@@ -99,6 +99,119 @@ const PORT = process.env.PORT || 4000;
 function ok(res, data) { res.json({ ok: true, data }); }
 function err(res, msg, code = 400) { res.status(code).json({ ok: false, error: msg }); }
 
+// ─── Busca de preços reais em ZAP Imóveis e Viva Real ───────────────────────
+
+const _estadosPorSigla = {
+  SC:'santa-catarina', PR:'parana', RS:'rio-grande-do-sul', SP:'sao-paulo',
+  RJ:'rio-de-janeiro', MG:'minas-gerais', BA:'bahia', GO:'goias',
+  DF:'distrito-federal', MT:'mato-grosso', MS:'mato-grosso-do-sul',
+  ES:'espirito-santo', CE:'ceara', PE:'pernambuco', MA:'maranhao',
+  PA:'para', AM:'amazonas', RN:'rio-grande-do-norte', PB:'paraiba',
+  AL:'alagoas', SE:'sergipe', PI:'piaui', RO:'rondonia', TO:'tocantins',
+  AC:'acre', AP:'amapa', RR:'roraima'
+};
+
+function _slugify(str) {
+  return String(str).toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-');
+}
+
+function _extrairEstado(cidade) {
+  const m = cidade.match(/[,\-]\s*([A-Z]{2})\s*$/);
+  return m ? m[1] : 'SC';
+}
+
+function _cidadeBase(cidade) {
+  return cidade.replace(/[,\-]?\s*[A-Z]{2}\s*$/, '').trim();
+}
+
+function _unitTypeZap(tipo) {
+  if (!tipo) return 'LOT,LotInCondominium';
+  const t = tipo.toLowerCase();
+  if (/apart/.test(t)) return 'APARTMENT';
+  if (/casa|sobrado|vila/.test(t)) return 'HOME';
+  if (/condo|loteamento fechado/.test(t)) return 'LOT,LotInCondominium';
+  return 'LOT,LotInCondominium';
+}
+
+async function _buscarPrecosImobiliarias(cidade, tipo) {
+  const estado = _extrairEstado(cidade);
+  const cidadeBase = _cidadeBase(cidade);
+  const estadoNome = _estadosPorSigla[estado] || _slugify(estado);
+  const cidadeSlug = _slugify(cidadeBase);
+  const unitTypes = _unitTypeZap(tipo);
+
+  const q = encodeURIComponent(`${cidadeBase}, ${estado}`);
+  const baseParams = `categoryPage=RESULT&listingType=USED&transactionType=SALE&unitTypes=${unitTypes}&size=36&from=0&q=${q}`;
+
+  const hdrsZap = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'pt-BR,pt;q=0.9',
+    'x-domain': 'www.zapimoveis.com.br',
+    'x-source': 'WEB',
+    'Origin': 'https://www.zapimoveis.com.br',
+    'Referer': `https://www.zapimoveis.com.br/venda/lotes-terrenos/${estadoNome}+${cidadeSlug}/`
+  };
+  const hdrsVr = {
+    ...hdrsZap,
+    'x-domain': 'www.vivareal.com.br',
+    'Origin': 'https://www.vivareal.com.br',
+    'Referer': `https://www.vivareal.com.br/venda/${estadoNome}/${cidadeSlug}/lote-terreno_lote/`
+  };
+
+  const ac = new AbortController();
+  const tmr = setTimeout(() => ac.abort(), 9000);
+
+  function _parseListing(l, fonte) {
+    if (!l) return null;
+    const areas = (l.usableAreas || l.totalAreas || []).map(Number).filter(n => n > 0);
+    const area = areas[0] || 0;
+    const pricing = (l.pricingInfos || []).find(p => p.businessType === 'SALE');
+    const preco = pricing?.price ? Number(pricing.price) : 0;
+    if (area < 50 || preco < 5000) return null;
+    const preco_m2 = Math.round(preco / area);
+    if (preco_m2 < 5 || preco_m2 > 100000) return null;
+    const bairro = l.address?.neighborhood || l.address?.city || cidadeBase;
+    return {
+      descricao: `${bairro} · ${area.toLocaleString('pt-BR')}m²`,
+      preco_m2, area_m2: area, preco_total: preco, fonte
+    };
+  }
+
+  const resultados = [];
+  try {
+    const [zapRes, vrRes] = await Promise.allSettled([
+      fetch(`https://glue-api.zapimoveis.com.br/v2/listings?${baseParams}`, { headers: hdrsZap, signal: ac.signal }),
+      fetch(`https://glue-api.vivareal.com.br/v2/listings?${baseParams}`, { headers: hdrsVr, signal: ac.signal })
+    ]);
+    for (const [settled, fonte] of [[zapRes, 'ZAP Imóveis'], [vrRes, 'Viva Real']]) {
+      if (settled.status !== 'fulfilled' || !settled.value.ok) continue;
+      try {
+        const json = await settled.value.json();
+        const listings = json?.search?.result?.listings || [];
+        for (const item of listings) {
+          const parsed = _parseListing(item.listing, fonte);
+          if (parsed) resultados.push(parsed);
+        }
+      } catch(_) {}
+    }
+  } catch(_) {
+    // timeout ou bloqueio — falha silenciosa
+  } finally {
+    clearTimeout(tmr);
+  }
+
+  // Remove duplicatas por preço/m² muito próximo (mesmo imóvel em ambos portais)
+  const vistos = new Set();
+  return resultados.filter(r => {
+    const key = `${r.area_m2}-${r.preco_total}`;
+    if (vistos.has(key)) return false;
+    vistos.add(key); return true;
+  }).slice(0, 40);
+}
+
 // Extrai e parseia JSON de respostas da IA de forma robusta
 function _parseAIJson(raw) {
   let text = raw.trim();
@@ -7733,6 +7846,10 @@ app.post('/api/inteligencia/analisar-area', autenticar, uploadPlanta.single('ima
   const { cidade, endereco, area_ha, notas, publico, coordenadas } = req.body;
   if (!cidade || !endereco) return err(res, 'cidade e endereco são obrigatórios');
 
+  // Busca preços reais nos portais imobiliários (paralelo ao processamento)
+  let precosReais = [];
+  try { precosReais = await _buscarPrecosImobiliarias(cidade, null); } catch(_) {}
+
   const contextDados = [
     `Localização: ${endereco}`,
     `Cidade: ${cidade}`,
@@ -7742,11 +7859,19 @@ app.post('/api/inteligencia/analisar-area', autenticar, uploadPlanta.single('ima
     notas ? `Informações adicionais: ${notas}` : null,
   ].filter(Boolean).join('\n');
 
+  const contextPrecos = precosReais.length > 0
+    ? `\n\n═══ DADOS REAIS DE MERCADO (ZAP Imóveis + Viva Real — ${new Date().toLocaleDateString('pt-BR')}) ═══
+${precosReais.map(p => `• ${p.descricao} → R$ ${p.preco_m2.toLocaleString('pt-BR')}/m² [${p.fonte}]`).join('\n')}
+
+INSTRUÇÕES: Use ESTES dados como fonte primária para o campo "preco_m2_estimado". Calcule a mediana e faixa real com base nos valores acima, não nos seus dados de treinamento.`
+    : `\n\nNota: Portais imobiliários não retornaram dados para esta cidade. Use seus dados de treinamento com cautela e sinalize baixa confiança.`;
+
   const prompt = `Você é um especialista em incorporação imobiliária e inteligência de mercado no Brasil (foco Santa Catarina).
 
 Analise a área/terreno com os seguintes dados:
 ${contextDados}
 ${req.file ? 'Uma imagem do Google Earth/satélite da área foi anexada.' : ''}
+${contextPrecos}
 
 Com base nos dados fornecidos${req.file ? ' e na imagem' : ''}, responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
 {
@@ -7759,11 +7884,11 @@ Com base nos dados fornecidos${req.file ? ' e na imagem' : ''}, responda em JSON
   ],
   "analise_terreno": "Análise das características físicas do terreno visíveis na imagem: topografia, vegetação, acessos, vizinhança",
   "potencial_mercado": "Análise do potencial de mercado da região: demanda, crescimento urbano, perfil socioeconômico, concorrência",
-  "preco_m2_estimado": "Faixa estimada de preço/m² para o produto recomendado (ex: R$ 180 a R$ 250/m²)",
+  "preco_m2_estimado": "Faixa de preço/m² baseada nos dados reais buscados (ex: R$ 180 a R$ 250/m²)",
   "pontos_fortes": ["Ponto forte 1", "Ponto forte 2", "Ponto forte 3"],
   "pontos_atencao": ["Atenção 1", "Atenção 2"],
   "proximos_passos": ["Passo 1: ...", "Passo 2: ...", "Passo 3: ..."],
-  "aviso": "Análise baseada em dados da IA. Validar com pesquisa de campo, consulta à prefeitura e CRECI local antes de qualquer decisão."
+  "aviso": "${precosReais.length > 0 ? `Estimativa de preço baseada em ${precosReais.length} anúncios reais do ZAP Imóveis e Viva Real coletados hoje. Validar condições de pagamento e absorção com corretores locais.` : 'Análise baseada em dados de treinamento da IA por falta de dados dos portais. Validar com pesquisa de campo e CRECI local.'}"
 }`;
 
   try {
@@ -7786,7 +7911,7 @@ Com base nos dados fornecidos${req.file ? ' e na imagem' : ''}, responda em JSON
     });
     let text = msg.content[0].text.trim();
     const data = _parseAIJson(text);
-    ok(res, data);
+    ok(res, { ...data, comparaveis_online: precosReais });
   } catch(e) {
     err(res, 'Erro na análise da área: ' + e.message);
   }
@@ -7797,6 +7922,10 @@ app.post('/api/inteligencia/inteligencia-lancamento', autenticar, async (req, re
   if (!anthropic) return err(res, 'ANTHROPIC_API_KEY não configurado');
   const { cidade, tipo, dados_planta, area_m2, total_lotes, lote_area_media, nome_empreendimento, vgv_estimado } = req.body;
   if (!cidade) return err(res, 'cidade é obrigatória');
+
+  // Busca preços reais nos portais
+  let precosReais = [];
+  try { precosReais = await _buscarPrecosImobiliarias(cidade, tipo); } catch(_) {}
 
   const contextPlanta = [];
   if (nome_empreendimento) contextPlanta.push(`Nome do empreendimento: ${nome_empreendimento}`);
@@ -7814,12 +7943,20 @@ app.post('/api/inteligencia/inteligencia-lancamento', autenticar, async (req, re
   }
   if (vgv_estimado) contextPlanta.push(`VGV estimado: R$ ${Number(vgv_estimado).toLocaleString('pt-BR')}`);
 
+  const contextPrecos = precosReais.length > 0
+    ? `\n\n═══ DADOS REAIS DE MERCADO (ZAP Imóveis + Viva Real — ${new Date().toLocaleDateString('pt-BR')}) ═══
+${precosReais.map(p => `• ${p.descricao} → R$ ${p.preco_m2.toLocaleString('pt-BR')}/m² [${p.fonte}]`).join('\n')}
+
+INSTRUÇÕES CRÍTICAS: Use ESTES dados como fonte primária para preco_m2_min, preco_m2_mediana e preco_m2_max. Calcule a mediana e percentis dos valores acima. Ajuste para lançamento (geralmente 5-15% acima do mercado secundário). Defina "confianca" como "alta" se houver 10+ anúncios, "media" se 3-9, "baixa" se menos de 3.`
+    : `\n\nNota: Portais imobiliários não retornaram dados para esta cidade hoje. Estime com dados de treinamento e defina confiança como "baixa".`;
+
   const prompt = `Você é um especialista em lançamentos imobiliários no Brasil, com expertise em Santa Catarina.
 
 Preciso de inteligência completa de mercado para o lançamento de um empreendimento:
 - Tipo: ${tipo || 'loteamento residencial'}
 - Localização: ${cidade}
 ${contextPlanta.length ? `- Dados do produto:\n${contextPlanta.map(p=>`  • ${p}`).join('\n')}` : ''}
+${contextPrecos}
 
 Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
 {
@@ -7863,7 +8000,7 @@ Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
     });
     let text = msg.content[0].text.trim();
     const data = _parseAIJson(text);
-    ok(res, { ...data, gerado_em: new Date().toISOString() });
+    ok(res, { ...data, gerado_em: new Date().toISOString(), comparaveis_online: precosReais });
   } catch(e) {
     err(res, 'Erro ao gerar inteligência: ' + e.message);
   }

@@ -18851,7 +18851,11 @@ async function intAnalisarArea() {
   if (!cidade || !endereco) { alert('Cidade e endereço são obrigatórios'); return; }
 
   const res = document.getElementById('ia-resultado');
-  if (res) res.innerHTML = `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:32px;text-align:center;color:var(--text2)"><div style="font-size:28px;margin-bottom:12px">🤖</div><div style="font-size:14px;font-weight:600">Analisando a área com IA...</div><div style="font-size:12px;margin-top:6px">Isso pode levar 20–40 segundos. Aguarde.</div></div>`;
+  if (res) res.innerHTML = `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:32px;text-align:center;color:var(--text2)">
+    <div style="font-size:28px;margin-bottom:12px">🔍</div>
+    <div style="font-size:14px;font-weight:600">Buscando preços em ZAP Imóveis e Viva Real...</div>
+    <div style="font-size:12px;margin-top:6px;color:var(--text2)">Depois a IA analisa os dados reais e a imagem. Aguarde 30–50 s.</div>
+  </div>`;
 
   const fd = new FormData();
   if (window._iaFile) fd.append('imagem', window._iaFile);
@@ -18916,8 +18920,31 @@ function _renderResultadoArea(d, cidade, endereco) {
     ${d.analise_terreno ? secao('Análise do Terreno', `<div style="font-size:13px;color:var(--text);line-height:1.6">${d.analise_terreno}</div>`) : ''}
 
     ${secao('Mercado Regional', `
-      <div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:10px">${d.potencial_mercado||''}</div>
-      ${d.preco_m2_estimado ? `<div style="background:var(--navy3);border-radius:8px;padding:12px;display:inline-flex;flex-direction:column;gap:2px"><span style="font-size:10px;color:var(--text2)">Faixa de preço estimada</span><span style="font-size:18px;font-weight:700;color:var(--accent);font-family:monospace">${d.preco_m2_estimado}</span></div>` : ''}
+      <div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:12px">${d.potencial_mercado||''}</div>
+      ${d.preco_m2_estimado ? `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <div style="background:var(--navy3);border-radius:8px;padding:12px 16px;display:inline-flex;flex-direction:column;gap:2px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:10px;color:var(--text2)">Faixa de preço</span>
+            ${d.comparaveis_online?.length ? `<span style="font-size:9px;background:rgba(0,196,180,.15);color:var(--accent);border:1px solid rgba(0,196,180,.3);border-radius:4px;padding:1px 6px;font-weight:700">📡 ${d.comparaveis_online.length} anúncios reais</span>` : `<span style="font-size:9px;background:rgba(245,158,11,.1);color:#F59E0B;border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:1px 6px">estimativa IA</span>`}
+          </div>
+          <span style="font-size:20px;font-weight:700;color:var(--accent);font-family:monospace">${d.preco_m2_estimado}</span>
+        </div>
+      </div>` : ''}
+      ${d.comparaveis_online?.length ? `
+      <details style="margin-top:4px">
+        <summary style="font-size:11px;color:var(--text2);cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:4px">
+          <span>▶</span> Ver ${d.comparaveis_online.length} anúncios encontrados em ZAP / Viva Real
+        </summary>
+        <div style="margin-top:8px;max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px">
+          ${d.comparaveis_online.map(c=>`
+          <div style="display:flex;align-items:center;gap:8px;background:var(--navy3);border-radius:6px;padding:6px 10px;font-size:12px">
+            <span style="flex:1;color:var(--text)">${c.descricao}</span>
+            <span style="font-family:monospace;font-weight:700;color:var(--accent);white-space:nowrap">R$ ${c.preco_m2.toLocaleString('pt-BR')}/m²</span>
+            <span style="font-size:10px;color:var(--text2);white-space:nowrap">${c.fonte}</span>
+          </div>`).join('')}
+        </div>
+      </details>` : ''}
     `)}
 
     ${d.pontos_fortes?.length ? secao('Pontos Fortes da Área', tags(d.pontos_fortes)) : ''}
@@ -19362,7 +19389,11 @@ async function intGerarInteligencia() {
   }
 
   const el = document.getElementById('il-inteligencia-resultado');
-  el.innerHTML = `<div style="padding:14px;text-align:center;color:var(--text2);font-size:12px">🤖 Gerando inteligência de mercado... aguarde 20–40 segundos.</div>`;
+  el.innerHTML = `<div style="padding:14px;text-align:center;color:var(--text2);font-size:12px">
+    <div style="font-size:20px;margin-bottom:8px">🔍</div>
+    <div style="font-weight:600;margin-bottom:4px">Buscando preços em ZAP Imóveis e Viva Real...</div>
+    <div>Depois a IA gera a inteligência de mercado com os dados reais. Aguarde 30–50 s.</div>
+  </div>`;
 
   const r = await post('/api/inteligencia/inteligencia-lancamento', {
     cidade, tipo,
@@ -19421,10 +19452,33 @@ function _renderInteligenciaLancamento(d, cidade, tipo) {
     `<ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">${d.recomendacoes_tabela.map(t=>`<li style="font-size:12px;line-height:1.5">${t}</li>`).join('')}</ol>` : '';
 
   el.innerHTML = `
+    <!-- Badge de fonte dos dados -->
+    ${d.comparaveis_online?.length ? `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;background:rgba(0,196,180,.06);border:1px solid rgba(0,196,180,.2);border-radius:8px;padding:8px 12px">
+      <span style="font-size:14px">📡</span>
+      <div style="flex:1">
+        <span style="font-size:12px;font-weight:700;color:var(--accent)">${d.comparaveis_online.length} anúncios reais</span>
+        <span style="font-size:11px;color:var(--text2)"> buscados hoje em ZAP Imóveis e Viva Real — preços calculados com base neles</span>
+      </div>
+      <details style="margin:0">
+        <summary style="font-size:11px;color:var(--accent);cursor:pointer;list-style:none;white-space:nowrap">Ver anúncios ▾</summary>
+        <div style="position:absolute;z-index:10;right:24px;background:var(--navy2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:6px;max-height:220px;overflow-y:auto;min-width:340px;max-width:500px;box-shadow:0 4px 20px rgba(0,0,0,.3)">
+          ${d.comparaveis_online.map(c=>`
+          <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+            <span style="flex:1;font-size:11px;color:var(--text)">${c.descricao}</span>
+            <span style="font-family:monospace;font-size:12px;font-weight:700;color:var(--accent);white-space:nowrap">R$ ${c.preco_m2.toLocaleString('pt-BR')}/m²</span>
+            <span style="font-size:10px;color:var(--text2);white-space:nowrap">${c.fonte}</span>
+          </div>`).join('')}
+        </div>
+      </details>
+    </div>` : `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:8px 12px">
+      <span style="font-size:11px;color:#F59E0B">⚠ Portais imobiliários não retornaram dados para esta cidade — preços estimados com dados de treinamento da IA</span>
+    </div>`}
     <!-- Preços -->
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">
       <div style="background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:12px">
-        <div style="font-size:10px;color:var(--text2)">R$/m² Mínimo estimado</div>
+        <div style="font-size:10px;color:var(--text2)">R$/m² Mínimo</div>
         <div style="font-size:20px;font-weight:700;margin-top:2px;font-family:monospace">R$ ${d.preco_m2_min||'–'}</div>
       </div>
       <div style="background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.3);border-radius:8px;padding:12px">
@@ -19433,7 +19487,7 @@ function _renderInteligenciaLancamento(d, cidade, tipo) {
         <div style="font-size:10px;color:var(--text2)">confiança: ${d.confianca||'–'}</div>
       </div>
       <div style="background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:12px">
-        <div style="font-size:10px;color:var(--text2)">R$/m² Máximo estimado</div>
+        <div style="font-size:10px;color:var(--text2)">R$/m² Máximo</div>
         <div style="font-size:20px;font-weight:700;margin-top:2px;font-family:monospace">R$ ${d.preco_m2_max||'–'}</div>
       </div>
     </div>
