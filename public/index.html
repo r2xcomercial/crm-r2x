@@ -19110,21 +19110,52 @@ function _renderInteligenciaLancamento(d, cidade, tipo) {
     ${d.aviso ? `<div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px 14px;font-size:11px;color:#F59E0B;line-height:1.5;margin-top:4px">⚠ ${d.aviso}</div>` : ''}
 
     ${d.preco_m2_mediana ? `
-    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-      <button onclick="intCriarEstudoComPreco(${d.preco_m2_mediana})" style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);color:#F59E0B;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">⚡ Criar estudo de viabilidade com R$ ${d.preco_m2_mediana}/m²</button>
+    <div style="margin-top:12px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:14px">
+      <div style="font-size:11px;font-weight:700;color:#F59E0B;margin-bottom:8px">⚡ Avançar para o Motor de Viabilidade</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.5">
+        Será criado um estudo com <strong style="color:var(--text)">R$ ${d.preco_m2_mediana}/m²</strong> como preço médio
+        ${window._ilPlantaDados?.area_vendavel_m2 ? ` · área vendável <strong style="color:var(--text)">${(window._ilPlantaDados.area_vendavel_m2/1000).toFixed(1)} mil m²</strong>` : ''}
+        ${window._ilEmpVinculado?.num_unidades && !window._ilPlantaDados?.area_vendavel_m2 ? ` · área estimada por ${window._ilEmpVinculado.num_unidades} unidades` : ''}
+        ${window._ilEmpVinculado?.vgv_estimado && !window._ilPlantaDados?.area_vendavel_m2 ? ` · VGV estimado R$ ${Number(window._ilEmpVinculado.vgv_estimado).toLocaleString('pt-BR')}` : ''}
+        ${!window._ilPlantaDados?.area_vendavel_m2 && !window._ilEmpVinculado?.num_unidades ? ' · demais campos com valores padrão (edite depois)' : ''}.
+      </div>
+      <button onclick="intCriarEstudoComPreco(${d.preco_m2_mediana})" style="background:rgba(245,158,11,.2);border:1px solid rgba(245,158,11,.4);color:#F59E0B;padding:9px 18px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">⚡ Criar estudo de viabilidade com R$ ${d.preco_m2_mediana}/m²</button>
     </div>` : ''}`;
 }
 
 async function intCriarEstudoComPreco(preco) {
-  const nome = prompt('Nome do estudo de viabilidade:', 'Lançamento — Cenário Base');
+  const emp = window._ilEmpVinculado;
+  const planta = window._ilPlantaDados;
+
+  const nomeDefault = emp?.nome ? `${emp.nome} — Viabilidade` : 'Lançamento — Cenário Base';
+  const nome = prompt('Nome do estudo de viabilidade:', nomeDefault);
   if (!nome) return;
-  const r = await post('/api/inteligencia/estudos', { nome });
+
+  const r = await post('/api/inteligencia/estudos', {
+    nome,
+    empreendimento_id: emp?.id || null
+  });
   if (!r.ok) { alert(r.error); return; }
-  // Atualiza preço no cenário base
+
   const { data } = await get(`/api/inteligencia/estudos/${r.data.id}`);
   _intEstudo = data;
   const cen = data.cenarios[0];
-  if (cen) await put(`/api/inteligencia/cenarios/${cen.id}`, { ...cen, preco_medio: preco });
+  if (!cen) { intAbrirEstudo(r.data.id); return; }
+
+  // Monta atualização do cenário com dados reais
+  const updates = { ...cen, preco_medio: preco };
+
+  // Área vendável: planta > estimativa por unidades
+  if (planta?.area_vendavel_m2) {
+    updates.area_vendavel = Math.round(planta.area_vendavel_m2);
+  } else if (emp?.num_unidades && planta?.lote_area_media_m2) {
+    updates.area_vendavel = Math.round(emp.num_unidades * planta.lote_area_media_m2);
+  } else if (emp?.vgv_estimado && preco > 0) {
+    // back-calcula área a partir do VGV estimado
+    updates.area_vendavel = Math.round(emp.vgv_estimado / preco);
+  }
+
+  await put(`/api/inteligencia/cenarios/${cen.id}`, updates);
   intAbrirEstudo(r.data.id);
 }
 
@@ -19244,7 +19275,8 @@ function _intRenderEstudo() {
     </div>
   </div>`;
 
-  _intRenderChart(kpis);
+  // Aguarda o canvas estar no DOM antes de renderizar o gráfico
+  requestAnimationFrame(() => { _intRenderChart(kpis); });
   _intBindInputs();
 }
 
