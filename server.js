@@ -17,6 +17,7 @@ const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPE
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }); // 8 MB máx
+const uploadPlanta = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } }); // 30 MB para plantas
 
 const app = express();
 app.use(cors());
@@ -7563,13 +7564,111 @@ app.delete('/api/inteligencia/comparaveis/:id', autenticar, (req, res) => {
   ok(res, {});
 });
 
+app.post('/api/inteligencia/analisar-planta', autenticar, uploadPlanta.single('planta'), async (req, res) => {
+  if (!anthropic) return err(res, 'ANTHROPIC_API_KEY não configurado no servidor');
+  if (!req.file) return err(res, 'Arquivo não enviado');
+
+  const { cidade, tipo, estudo_id } = req.body;
+  const mimeType = req.file.mimetype;
+  const b64 = req.file.buffer.toString('base64');
+
+  const allowedTypes = ['application/pdf','image/jpeg','image/jpg','image/png','image/webp'];
+  if (!allowedTypes.includes(mimeType)) return err(res, `Formato não suportado: ${mimeType}. Use PDF, JPG ou PNG.`);
+
+  const prompt = `Você é um especialista em leitura de plantas urbanísticas de loteamentos no Brasil (especialmente Santa Catarina).
+
+Analise esta planta urbanística de parcelamento de solo e extraia TODAS as informações visíveis.
+${cidade ? `Contexto: o empreendimento fica em ${cidade}.` : ''}
+${tipo ? `Tipo de produto esperado: ${tipo}.` : ''}
+
+Responda APENAS com JSON puro (sem markdown, sem explicação), neste formato exato:
+{
+  "nome_empreendimento": "nome do loteamento se visível no carimbo/título — null se não visível",
+  "municipio": "município/cidade/estado se visível na planta",
+  "total_lotes": número inteiro (conte os polígonos ou leia do quadro de áreas — null se impossível),
+  "lote_testada_m": número da testada/frente típica dos lotes em metros (null se não identificável),
+  "lote_profundidade_m": número da profundidade típica em metros (null se não identificável),
+  "lote_area_minima_m2": menor área de lote visível em m² (null se não identificável),
+  "lote_area_maxima_m2": maior área de lote visível em m² (null se não identificável),
+  "lote_area_media_m2": área média estimada dos lotes em m² (calcule se dimensões visíveis),
+  "area_total_m2": área total do loteamento em m² (do quadro de áreas ou carimbo — null se ausente),
+  "area_vendavel_m2": área total dos lotes (sem vias, verde, institucional) em m² (null se ausente),
+  "area_verde_m2": área verde total em m² (null se ausente),
+  "area_institucional_m2": área institucional em m² (null se ausente),
+  "area_vias_m2": área total de vias em m² (null se ausente),
+  "pct_verde": percentual área verde do total (null se ausente),
+  "pct_institucional": percentual área institucional do total (null se ausente),
+  "pct_vias": percentual vias do total (null se ausente),
+  "n_quadras": número de quadras identificadas (null se não identificável),
+  "via_principal_nome": nome da via principal de acesso se visível,
+  "vias_nomes": lista de nomes de ruas/avenidas visíveis (array de strings),
+  "escala": escala da planta se visível (ex: "1:1000", "1:2000"),
+  "data_projeto": data do projeto se visível no carimbo,
+  "responsavel_tecnico": nome do engenheiro/arquiteto responsável se visível,
+  "anotacoes_tecnicas": outras informações relevantes do carimbo ou da planta (string),
+  "confianca_lote_count": "baixa|media|alta",
+  "confianca_areas": "baixa|media|alta",
+  "observacoes_leitura": "comentários sobre dificuldades de leitura, qualidade da imagem, o que foi/não foi possível identificar"
+}`;
+
+  try {
+    let contentBlock;
+    if (mimeType === 'application/pdf') {
+      contentBlock = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } };
+    } else {
+      contentBlock = { type: 'image', source: { type: 'base64', media_type: mimeType, data: b64 } };
+    }
+
+    const msg = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: [contentBlock, { type: 'text', text: prompt }] }]
+    });
+
+    let text = msg.content[0].text.trim();
+    if (text.startsWith('```')) text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '');
+    const data = JSON.parse(text);
+
+    // Se tiver estudo_id, salvar os dados da planta no estudo (opcional)
+    if (estudo_id) {
+      try {
+        const colExists = db.prepare("PRAGMA table_info(int_estudos)").all().some(c => c.name === 'planta_json');
+        if (!colExists) db.exec('ALTER TABLE int_estudos ADD COLUMN planta_json TEXT');
+        db.prepare('UPDATE int_estudos SET planta_json=?, atualizado_em=datetime("now") WHERE id=?')
+          .run(JSON.stringify(data), parseInt(estudo_id));
+      } catch(_) {}
+    }
+
+    ok(res, { ...data, arquivo: req.file.originalname, tamanho_kb: Math.round(req.file.size/1024), analisado_em: new Date().toISOString() });
+  } catch(e) {
+    if (e instanceof SyntaxError) return err(res, 'A IA não conseguiu retornar JSON válido. Tente novamente ou use uma imagem mais clara.');
+    err(res, 'Erro na análise: ' + e.message);
+  }
+});
+
 app.post('/api/inteligencia/pesquisa-ai', autenticar, async (req, res) => {
   if (!anthropic) return err(res, 'ANTHROPIC_API_KEY não configurado no servidor');
-  const { tipo, cidade, area_min, area_max, produto } = req.body;
+  const { tipo, cidade, area_min, area_max, produto, dados_planta } = req.body;
   if (!tipo || !cidade) return err(res, 'tipo e cidade são obrigatórios');
+
+  // Contexto extra da planta importada
+  let contextPlanta = '';
+  if (dados_planta) {
+    const d = typeof dados_planta === 'string' ? JSON.parse(dados_planta) : dados_planta;
+    const partes = [];
+    if (d.total_lotes) partes.push(`Total de lotes: ${d.total_lotes}`);
+    if (d.lote_area_media_m2) partes.push(`Área média dos lotes: ${d.lote_area_media_m2}m²`);
+    if (d.lote_testada_m && d.lote_profundidade_m) partes.push(`Testada × Profundidade típica: ${d.lote_testada_m}m × ${d.lote_profundidade_m}m`);
+    if (d.lote_area_minima_m2 && d.lote_area_maxima_m2) partes.push(`Faixa de área: ${d.lote_area_minima_m2}m² a ${d.lote_area_maxima_m2}m²`);
+    if (d.area_vendavel_m2) partes.push(`Área vendável total: ${(d.area_vendavel_m2/1000).toFixed(1)} mil m²`);
+    if (d.n_quadras) partes.push(`Número de quadras: ${d.n_quadras}`);
+    if (d.nome_empreendimento) partes.push(`Nome do empreendimento: ${d.nome_empreendimento}`);
+    if (partes.length) contextPlanta = `\n\nDados reais da planta importada:\n${partes.join('\n')}\n\nUse estes dados para calibrar as estimativas de preço e as recomendações de corretores ao produto real.`;
+  }
+
   const prompt = `Você é um especialista em mercado imobiliário de Santa Catarina (Brasil), com foco em loteamentos e incorporações.
 
-Farei uma pesquisa de mercado para: **${tipo}** em **${cidade} - SC**, unidades de ${area_min||50}m² a ${area_max||500}m². ${produto ? `Produto: ${produto}.` : ''}
+Farei uma pesquisa de mercado para: **${tipo}** em **${cidade} - SC**, unidades de ${area_min||50}m² a ${area_max||500}m². ${produto ? `Produto: ${produto}.` : ''}${contextPlanta}
 
 Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
 {

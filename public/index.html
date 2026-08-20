@@ -18867,9 +18867,13 @@ function _intPesquisaHTML(e) {
       ${med ? `<button onclick="intAplicarPreco(${med.toFixed(0)})" style="align-self:center;background:rgba(0,196,180,.15);border:1px solid var(--accent);color:var(--accent);padding:8px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">↑ Aplicar mediana no cenário</button>` : ''}
     </div>
 
+    <!-- Importar Planta Real -->
+    <div id="int-planta-importada" style="margin-bottom:14px;display:none"></div>
+
     <!-- Botões de ação -->
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <button onclick="intAddComparavel()" style="background:var(--accent);color:var(--navy);border:none;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">+ Adicionar comparável</button>
+      <button onclick="intAddComparavel()" style="background:var(--accent);color:var(--navy);border:none;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">+ Comparável manual</button>
+      <button onclick="intImportarPlantaReal()" style="background:rgba(0,196,180,.12);border:1px solid rgba(0,196,180,.4);color:var(--accent);padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">📐 Importar planta real</button>
       <button onclick="intPesquisaAI()" style="background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.4);color:#A78BFA;padding:7px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">🤖 Pesquisa AI</button>
     </div>
 
@@ -18972,6 +18976,176 @@ async function intDelComp(id) {
   document.getElementById('int-pesquisa-body').innerHTML = _intPesquisaHTML(_intEstudo);
 }
 
+let _plantaImportada = null; // dados extraídos da planta real
+
+function intImportarPlantaReal() {
+  openModal('📐 Importar Planta Urbanística Real', `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <!-- Drag & drop area -->
+      <div id="ip-drop" style="border:2px dashed var(--accent);border-radius:10px;padding:28px;text-align:center;cursor:pointer;transition:background .2s"
+        onclick="document.getElementById('ip-file').click()"
+        ondragover="event.preventDefault();this.style.background='rgba(0,196,180,.1)'"
+        ondragleave="this.style.background=''"
+        ondrop="event.preventDefault();this.style.background='';_ipSetFile(event.dataTransfer.files[0])">
+        <div style="font-size:32px;margin-bottom:8px">📄</div>
+        <div style="font-size:14px;font-weight:600;color:var(--accent)">Arraste a planta ou clique para selecionar</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">PDF, JPG ou PNG · Até 30 MB</div>
+        <div id="ip-filename" style="margin-top:8px;font-size:12px;color:var(--success)"></div>
+        <input id="ip-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="_ipSetFile(this.files[0])">
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><label style="font-size:11px;color:var(--text2)">Cidade / Município *</label>
+          <input id="ip-cidade" class="modal-input" placeholder="ex: Santo Amaro da Imperatriz - SC" style="width:100%"></div>
+        <div><label style="font-size:11px;color:var(--text2)">Tipo de empreendimento *</label>
+          <select id="ip-tipo" class="modal-input" style="width:100%">
+            <option>lote residencial</option>
+            <option>lote industrial</option>
+            <option>lote comercial</option>
+            <option>condomínio horizontal</option>
+            <option>loteamento misto</option>
+            <option>outro</option>
+          </select></div>
+      </div>
+
+      <div style="background:rgba(0,196,180,.06);border:1px solid rgba(0,196,180,.2);border-radius:8px;padding:12px;font-size:12px;color:var(--text2);line-height:1.5">
+        🤖 <strong style="color:var(--accent)">Como funciona:</strong> A IA analisa a planta e extrai automaticamente: total de lotes, dimensões (testada × profundidade), área vendável, áreas públicas, nomes de ruas, escala e dados do carimbo. Você revisa e confirma antes de usar na pesquisa de mercado.
+      </div>
+    </div>`, async () => {
+    const file = window._ipFile;
+    if (!file) { alert('Selecione um arquivo de planta'); return false; }
+    const cidade = document.getElementById('ip-cidade').value.trim();
+    if (!cidade) { alert('Cidade é obrigatória'); return false; }
+    const tipo = document.getElementById('ip-tipo').value;
+
+    // Mostrar loading
+    const el = document.getElementById('int-planta-importada');
+    if (el) { el.style.display = 'block'; el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text2)">🔍 Analisando planta com IA... isso pode levar 20-40 segundos.</div>`; }
+
+    const fd = new FormData();
+    fd.append('planta', file);
+    fd.append('cidade', cidade);
+    fd.append('tipo', tipo);
+    fd.append('estudo_id', _intEstudo?.id || '');
+
+    try {
+      const resp = await fetch('/api/inteligencia/analisar-planta', {
+        method: 'POST',
+        headers: { 'x-crm-token': TOKEN },
+        body: fd
+      });
+      const r = await resp.json();
+      if (!r.ok) { if(el) el.innerHTML = `<div style="color:var(--danger);padding:12px">❌ ${r.error}</div>`; return false; }
+      _plantaImportada = r.data;
+      _plantaImportada._cidade = cidade;
+      _plantaImportada._tipo = tipo;
+      _renderPlantaImportada(r.data, cidade, tipo);
+    } catch(e) {
+      if(el) el.innerHTML = `<div style="color:var(--danger);padding:12px">Erro de conexão: ${e.message}</div>`;
+    }
+    return false; // não fechar modal automaticamente
+  }, { saveLabel: '📤 Analisar planta' });
+}
+
+window._ipFile = null;
+function _ipSetFile(file) {
+  if (!file) return;
+  window._ipFile = file;
+  const nm = document.getElementById('ip-filename');
+  if (nm) nm.textContent = `✓ ${file.name} (${(file.size/1024/1024).toFixed(1)} MB)`;
+}
+
+function _renderPlantaImportada(d, cidade, tipo) {
+  const el = document.getElementById('int-planta-importada');
+  if (!el) return;
+
+  const fld = (label, val, unit='') => val != null
+    ? `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <span style="color:var(--text2)">${label}</span>
+        <strong>${val}${unit}</strong>
+       </div>` : '';
+
+  const fmtHa = v => v >= 10000 ? `${(v/10000).toFixed(2)} ha` : `${v?.toFixed(0)} m²`;
+
+  el.style.display = 'block';
+  el.innerHTML = `
+  <div style="background:var(--card);border:1px solid rgba(0,196,180,.35);border-radius:10px;overflow:hidden">
+    <div style="background:rgba(0,196,180,.1);padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--accent)">📐 Planta Importada — IA extraiu</span>
+        ${d.confianca_lote_count ? `<span style="margin-left:10px;background:${d.confianca_lote_count==='alta'?'rgba(34,197,94,.2)':d.confianca_lote_count==='media'?'rgba(245,158,11,.2)':'rgba(239,68,68,.2)'};color:${d.confianca_lote_count==='alta'?'#22C55E':d.confianca_lote_count==='media'?'#F59E0B':'#EF4444'};font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700">confiança ${d.confianca_lote_count}</span>` : ''}
+      </div>
+      <button onclick="_plantaImportada=null;document.getElementById('int-planta-importada').style.display='none'" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:14px">✕ Limpar</button>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px;margin-bottom:10px">
+        <!-- Coluna esquerda -->
+        <div>
+          ${fld('Nome do empreendimento', d.nome_empreendimento || cidade)}
+          ${fld('Município', d.municipio || cidade)}
+          ${fld('Total de lotes', d.total_lotes)}
+          ${fld('Nº de quadras', d.n_quadras)}
+          ${fld('Escala', d.escala)}
+          ${fld('Data do projeto', d.data_projeto)}
+          ${fld('Responsável técnico', d.responsavel_tecnico)}
+        </div>
+        <!-- Coluna direita -->
+        <div>
+          ${fld('Testada típica', d.lote_testada_m, 'm')}
+          ${fld('Profundidade típica', d.lote_profundidade_m, 'm')}
+          ${fld('Área média do lote', d.lote_area_media_m2, 'm²')}
+          ${fld('Menor lote', d.lote_area_minima_m2, 'm²')}
+          ${fld('Maior lote', d.lote_area_maxima_m2, 'm²')}
+          ${d.area_total_m2 ? fld('Área total da gleba', fmtHa(d.area_total_m2)) : ''}
+          ${d.area_vendavel_m2 ? fld('Área vendável', `${fmtHa(d.area_vendavel_m2)} (${d.pct_vias ? (100-d.pct_vias-d.pct_verde-d.pct_institucional).toFixed(1) : '–'}%)`) : ''}
+          ${d.area_verde_m2 ? fld('Área verde', `${fmtHa(d.area_verde_m2)} (${d.pct_verde?.toFixed(1)}%)`) : ''}
+          ${d.area_institucional_m2 ? fld('Área institucional', `${fmtHa(d.area_institucional_m2)} (${d.pct_institucional?.toFixed(1)}%)`) : ''}
+        </div>
+      </div>
+
+      ${d.vias_nomes?.length ? `<div style="font-size:11px;color:var(--text2);margin-bottom:8px">🛣️ Vias: ${d.vias_nomes.join(' · ')}</div>` : ''}
+      ${d.observacoes_leitura ? `<div style="font-size:11px;color:var(--text2);font-style:italic;padding:8px;background:var(--navy3);border-radius:6px;margin-bottom:10px">${d.observacoes_leitura}</div>` : ''}
+
+      <!-- Ações rápidas -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        ${d.area_vendavel_m2 ? `<button onclick="intAplicarDadosPlanta()" style="background:rgba(0,196,180,.15);border:1px solid var(--accent);color:var(--accent);padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">↑ Atualizar Submódulo A com estes dados</button>` : ''}
+        <button onclick="intPesquisaAIComPlanta()" style="background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.4);color:#A78BFA;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer">🤖 Pesquisa de mercado com este produto</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function intAplicarDadosPlanta() {
+  const d = _plantaImportada;
+  if (!d) return;
+  // Atualizar campos do submódulo A visíveis na tela
+  const setVal = (id, val) => { const el = document.getElementById('int-f-'+id); if(el && val != null) el.value = val; };
+  if (d.area_vendavel_m2) setVal('area_vendavel', d.area_vendavel_m2.toFixed(0));
+  intRecalcular();
+  toast('Área vendável atualizada no Submódulo A');
+}
+
+async function intPesquisaAIComPlanta() {
+  const d = _plantaImportada;
+  if (!d) { intPesquisaAI(); return; }
+
+  const cidade = d._cidade || d.municipio || prompt('Cidade:');
+  if (!cidade) return;
+  const tipo = d._tipo || 'lote residencial';
+  const area_min = d.lote_area_minima_m2 || d.lote_area_media_m2 || 200;
+  const area_max = d.lote_area_maxima_m2 || d.lote_area_media_m2 || 1000;
+
+  const el = document.getElementById('int-ai-resultado');
+  if (el) el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text2)">🤖 Pesquisando mercado com dados reais da planta... aguarde.</div>`;
+
+  const r = await post('/api/inteligencia/pesquisa-ai', {
+    tipo, cidade, area_min, area_max,
+    produto: d.nome_empreendimento || '',
+    dados_planta: d
+  });
+  _renderResultadoPesquisaAI(r, tipo, cidade, d);
+}
+
 async function intPesquisaAI() {
   const tipo = prompt('Tipo de empreendimento (ex: lote residencial, lote industrial, galpão):') || 'lote residencial';
   const cidade = prompt('Cidade (ex: Santo Amaro da Imperatriz - SC):');
@@ -18983,6 +19157,11 @@ async function intPesquisaAI() {
   if (el) el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text2)">🤖 Pesquisando... aguarde.</div>`;
 
   const r = await post('/api/inteligencia/pesquisa-ai', { tipo, cidade, area_min, area_max });
+  _renderResultadoPesquisaAI(r, tipo, cidade, null);
+}
+
+function _renderResultadoPesquisaAI(r, tipo, cidade, dadosPlanta) {
+  const el = document.getElementById('int-ai-resultado');
   if (!r.ok) { if(el) el.innerHTML = `<div style="color:var(--danger);padding:12px">${r.error}</div>`; return; }
   const d = r.data;
 
@@ -18995,11 +19174,16 @@ async function intPesquisaAI() {
       <td style="padding:8px 10px;font-size:11px;color:var(--text2)">${cor.relevancia}</td>
     </tr>`).join('');
 
+  const plantaBadge = dadosPlanta
+    ? `<span style="background:rgba(0,196,180,.15);color:var(--accent);font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">📐 calibrado com planta real · ${dadosPlanta.total_lotes||'?'} lotes</span>`
+    : '';
+
   if (el) el.innerHTML = `
     <div style="margin-top:16px;background:var(--navy3);border:1px solid rgba(139,92,246,.4);border-radius:10px;padding:16px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <span style="font-size:11px;font-weight:700;text-transform:uppercase;color:#A78BFA">🤖 Pesquisa AI — ${tipo} · ${cidade}</span>
         <span style="background:rgba(245,158,11,.2);color:#F59E0B;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">NÃO VERIFICADO</span>
+        ${plantaBadge}
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
         <div style="background:var(--card);border-radius:8px;padding:12px">
