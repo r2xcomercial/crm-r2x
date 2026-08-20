@@ -17967,6 +17967,395 @@ function _renderMetodoTab() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// SUBMÓDULO C — PLANTA URBANÍSTICA PARAMÉTRICA
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _plantaCfg = null;
+let _plantaLayout = null;
+let _plantaZoom = 1;
+let _plantaMostrarLabels = true;
+
+function abrirPlantaUrbanistica() {
+  const estudo = _intEstudo;
+  if (!estudo) return;
+  const cen = estudo.cenarios[_intCenTab] || estudo.cenarios[0];
+
+  // Estimativa de area total a partir de areaVendavel do cenário ativo
+  const areaVendavel = cen.area_vendavel || 143379;
+
+  const overlayId = 'planta-overlay';
+  if (document.getElementById(overlayId)) document.getElementById(overlayId).remove();
+
+  const el = document.createElement('div');
+  el.id = overlayId;
+  el.style.cssText = 'position:fixed;inset:0;background:var(--navy);z-index:3000;display:flex;flex-direction:column;overflow:hidden';
+  el.innerHTML = `
+    <!-- Toolbar -->
+    <div style="background:var(--navy2);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0">
+      <button onclick="document.getElementById('planta-overlay').remove()" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px">✕</button>
+      <div style="font-weight:700;font-size:15px">🗺️ Planta Urbanística — ${estudo.nome}</div>
+      <div style="flex:1"></div>
+      <button onclick="_plantaZoom=Math.min(3,_plantaZoom+0.25);_plantaAplicarZoom()" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:16px">＋</button>
+      <span id="planta-zoom-label" style="font-size:12px;color:var(--text2);min-width:38px;text-align:center">100%</span>
+      <button onclick="_plantaZoom=Math.max(0.2,_plantaZoom-0.25);_plantaAplicarZoom()" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:16px">－</button>
+      <button onclick="_plantaMostrarLabels=!_plantaMostrarLabels;_plantaRenderizar()" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px">🏷️ Nºs</button>
+      <button onclick="_plantaExportarSVG()" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px">⬇ SVG</button>
+      <button onclick="_plantaImprimir()" style="background:var(--accent);color:var(--navy);border:none;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">🖨 Imprimir</button>
+    </div>
+
+    <div style="flex:1;display:flex;overflow:hidden">
+      <!-- Config sidebar -->
+      <div style="width:260px;background:var(--navy2);border-right:1px solid var(--border);overflow-y:auto;padding:16px;flex-shrink:0">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:12px">Configuração da Planta</div>
+
+        ${_plantaInputRow('Área vendável (m²)','area_vendavel', areaVendavel, 'Área total dos lotes a vender — do estudo')}
+        ${_plantaInputRow('Proporção W/H','prop_wh','1.5','Proporção largura÷altura do terreno')}
+        ${_plantaInputRow('Testada do lote (m)','lot_f','12','Frente mínima de cada lote')}
+        ${_plantaInputRow('Profundidade do lote (m)','lot_d','25','Profundidade de cada lote')}
+        ${_plantaInputRow('Via principal (m)','via_p','16','Largura da rua principal')}
+        ${_plantaInputRow('Via secundária (m)','via_s','12','Largura das ruas internas')}
+        ${_plantaInputRow('Lotes por bloco (testada)','lots_por_bloco','10','Quantidade de lotes na testada de cada quadra')}
+        ${_plantaInputRow('Área verde (%)','pct_verde','15','% do total — mínimo legal ~15%')}
+        ${_plantaInputRow('Área institucional (%)','pct_inst','5','% do total — mínimo legal ~5%')}
+
+        <button onclick="_plantaRenderizar()" style="width:100%;background:var(--accent);color:var(--navy);border:none;padding:10px;border-radius:8px;font-weight:700;cursor:pointer;margin-top:14px;font-size:13px">⚡ Gerar Planta</button>
+
+        <div id="planta-stats" style="margin-top:16px"></div>
+
+        <div style="margin-top:16px;padding:10px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px">
+          <div style="font-size:10px;color:#F59E0B;font-weight:700;margin-bottom:4px">⚠ ESTIMATIVA CONCEITUAL</div>
+          <div style="font-size:10px;color:var(--text2);line-height:1.5">Esta planta é uma projeção paramétrica para fins de comunicação e análise de viabilidade. Não substitui projeto urbanístico assinado por engenheiro ou arquiteto habilitado.</div>
+        </div>
+      </div>
+
+      <!-- Plan canvas -->
+      <div id="planta-canvas-wrap" style="flex:1;overflow:auto;background:#D8D0C0;padding:20px;display:flex;align-items:flex-start;justify-content:flex-start">
+        <div id="planta-svg-container" style="transform-origin:top left">
+          <div style="color:var(--text2);padding:60px;text-align:center;font-size:13px">Configure os parâmetros e clique em <strong>Gerar Planta</strong>.</div>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  _plantaZoom = 1;
+  setTimeout(_plantaRenderizar, 100);
+}
+
+function _plantaInputRow(label, id, val, hint) {
+  return `<div style="margin-bottom:10px">
+    <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">${label}</label>
+    <input id="pi-${id}" type="number" value="${val}" step="any"
+      style="width:100%;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:13px;font-family:monospace"
+      title="${hint}">
+  </div>`;
+}
+
+function _plantaLerCfg() {
+  const v = id => parseFloat(document.getElementById('pi-'+id)?.value) || 0;
+  return {
+    area_vendavel: v('area_vendavel'),
+    prop_wh: Math.max(0.5, v('prop_wh')),
+    lot_f: Math.max(5, v('lot_f')),
+    lot_d: Math.max(10, v('lot_d')),
+    via_p: Math.max(8, v('via_p')),
+    via_s: Math.max(6, v('via_s')),
+    lots_por_bloco: Math.max(2, Math.round(v('lots_por_bloco'))),
+    pct_verde: v('pct_verde') / 100,
+    pct_inst: v('pct_inst') / 100,
+  };
+}
+
+function _plantaGerar(cfg) {
+  const { area_vendavel, prop_wh, lot_f, lot_d, via_p, via_s, lots_por_bloco, pct_verde, pct_inst } = cfg;
+  const pctPublica = pct_verde + pct_inst;
+  const pctVias_est = 0.22; // estimativa típica de vias
+  const pctLotes = Math.max(0.35, 1 - pctPublica - pctVias_est);
+  const areaTotal = area_vendavel / pctLotes;
+
+  // Dimensões da gleba
+  const W = Math.sqrt(areaTotal * prop_wh);
+  const H = areaTotal / W;
+
+  // Dimensões reais dos blocos
+  const blockW = lots_por_bloco * lot_f;
+  // Número de colunas de blocos que cabem em W
+  const nBlocosX = Math.max(1, Math.floor((W + via_s) / (blockW + via_s)));
+  const nViasX = nBlocosX - 1; // vias entre blocos (não nas bordas)
+  const blockWReal = (W - nViasX * via_s) / nBlocosX;
+  const lotsPerRow = Math.max(1, Math.floor(blockWReal / lot_f));
+  const blockWFinal = lotsPerRow * lot_f;
+
+  // Reservar área pública no fundo
+  const areaPublica = areaTotal * pctPublica;
+  const hPublica = areaPublica / W;
+
+  // Bandas de quadras na altura disponível
+  const hDisp = H - via_p - hPublica;
+  const bandH = lot_d * 2 + via_s;
+  const nBandas = Math.max(1, Math.floor((hDisp + via_s) / bandH));
+
+  // Gerar elementos
+  const roads = [], lots = [], greens = [], insts = [], labels = [];
+  let lotNum = 1;
+
+  // Via principal (topo)
+  roads.push({ x:0, y:0, w:W, h:via_p, type:'principal' });
+  labels.push({ x:W/2, y:via_p/2, txt:'Rua Principal', fs:Math.min(6,via_p*0.35), anchor:'middle', bold:true });
+
+  // Vias verticais entre blocos
+  for (let bx = 1; bx < nBlocosX; bx++) {
+    const xR = bx * (blockWFinal + via_s) - via_s;
+    const hViaV = hDisp + via_s;
+    roads.push({ x:xR, y:via_p, w:via_s, h:hViaV, type:'secundaria' });
+    const letra = String.fromCharCode(64 + bx);
+    labels.push({ x:xR+via_s/2, y:via_p+hViaV*0.15, txt:`Av. ${letra}`, fs:Math.min(5,via_s*0.3), anchor:'middle', vert:true });
+  }
+
+  // Bandas
+  let y = via_p;
+  for (let by = 0; by < nBandas; by++) {
+    for (let bx = 0; bx < nBlocosX; bx++) {
+      const xBase = bx * (blockWFinal + via_s);
+      // Row 1 (frente para cima)
+      for (let lx = 0; lx < lotsPerRow; lx++) {
+        lots.push({ x:xBase+lx*lot_f, y, w:lot_f, h:lot_d, num:lotNum++ });
+      }
+      // Row 2 (frente para baixo — fundos com fundos)
+      for (let lx = 0; lx < lotsPerRow; lx++) {
+        lots.push({ x:xBase+lx*lot_f, y:y+lot_d, w:lot_f, h:lot_d, num:lotNum++, inv:true });
+      }
+    }
+    y += lot_d * 2;
+    // Via horizontal abaixo (exceto após última banda)
+    if (by < nBandas - 1) {
+      roads.push({ x:0, y, w:W, h:via_s, type:'secundaria' });
+      labels.push({ x:W*0.05, y:y+via_s*0.65, txt:`Rua ${by+2}`, fs:Math.min(4.5,via_s*0.32), anchor:'start' });
+      y += via_s;
+    }
+  }
+
+  // Área pública (abaixo das quadras)
+  const yPub = y;
+  const hPubReal = H - yPub;
+  if (hPubReal > 2) {
+    const wV = pctPublica > 0 ? W * pct_verde / pctPublica : W * 0.7;
+    const wI = W - wV;
+    if (wV > 2) {
+      greens.push({ x:0, y:yPub, w:wV, h:hPubReal });
+      labels.push({ x:wV/2, y:yPub+hPubReal/2, txt:'Área Verde', fs:Math.min(7,hPubReal*0.2), anchor:'middle', bold:true });
+    }
+    if (wI > 2) {
+      insts.push({ x:wV, y:yPub, w:wI, h:hPubReal });
+      labels.push({ x:wV+wI/2, y:yPub+hPubReal/2, txt:'Área Institucional', fs:Math.min(7,hPubReal*0.2), anchor:'middle', bold:true });
+    }
+  }
+
+  // Estatísticas
+  const totalLots = lots.length;
+  const areaLotesReal = totalLots * lot_f * lot_d;
+  const areaViasReal = roads.reduce((a,r) => a+r.w*r.h, 0);
+  const areaVerdeReal = greens.reduce((a,g) => a+g.w*g.h, 0);
+  const areaInstReal = insts.reduce((a,i) => a+i.w*i.h, 0);
+
+  return { roads, lots, greens, insts, labels, W, H, lot_f, lot_d,
+    totalLots, areaTotal, areaLotesReal, areaViasReal, areaVerdeReal, areaInstReal };
+}
+
+function _plantaRenderSVG(lay, showLabels, zoom) {
+  const { roads, lots, greens, insts, labels, W, H, lot_f, lot_d } = lay;
+  const s = zoom; // px per meter
+  const sw = (W * s).toFixed(1);
+  const sh = (H * s).toFixed(1);
+  const r = (v) => (v * s).toFixed(2);
+  const rect = (x, y, w, h, fill, stroke, sw2) =>
+    `<rect x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}" fill="${fill}" stroke="${stroke||'none'}" stroke-width="${sw2||0}"/>`;
+
+  let out = `<svg id="planta-svg" viewBox="0 0 ${sw} ${sh}" width="${sw}" height="${sh}" xmlns="http://www.w3.org/2000/svg" style="display:block;background:#E0D8C8;font-family:Arial,sans-serif">`;
+
+  // Fundo da gleba
+  out += rect(0, 0, W, H, '#F2EDE0', '#555', 2/s);
+
+  // Lotes
+  for (const l of lots) out += rect(l.x, l.y, l.w, l.h, '#FFFEF5', '#888', 0.4/s);
+
+  // Vias
+  for (const rd of roads) {
+    const fill = rd.type === 'principal' ? '#9E9E9E' : '#B4B4B4';
+    out += rect(rd.x, rd.y, rd.w, rd.h, fill, 'none', 0);
+  }
+  // Calçadas (bordas sutis das vias)
+  for (const rd of roads) {
+    out += `<rect x="${r(rd.x)}" y="${r(rd.y)}" width="${r(rd.w)}" height="${r(rd.h)}" fill="none" stroke="#787878" stroke-width="${(0.6/s).toFixed(2)}"/>`;
+  }
+
+  // Verde
+  for (const g of greens) out += rect(g.x, g.y, g.w, g.h, '#7CB87C', '#4A8A4A', 1/s);
+  // Institucional
+  for (const g of insts) out += rect(g.x, g.y, g.w, g.h, '#E8D44D', '#B8A020', 1/s);
+
+  // Numeração e dimensões dos lotes
+  if (showLabels) {
+    const fsLot = Math.min(lot_f * s * 0.35, 8);
+    if (fsLot >= 4) {
+      for (const l of lots) {
+        const cx = (l.x + l.w/2) * s;
+        // Número do lote (centro)
+        const cy = l.inv ? (l.y + l.h * 0.65) * s : (l.y + l.h * 0.35) * s;
+        out += `<text x="${cx.toFixed(1)}" y="${cy.toFixed(1)}" text-anchor="middle" font-size="${fsLot.toFixed(1)}px" fill="#333" font-weight="600">${l.num}</text>`;
+        // Área (abaixo do número)
+        if (fsLot >= 5.5) {
+          const area = (l.w * l.h).toFixed(0);
+          const ay = l.inv ? (l.y + l.h * 0.82) * s : (l.y + l.h * 0.55) * s;
+          out += `<text x="${cx.toFixed(1)}" y="${ay.toFixed(1)}" text-anchor="middle" font-size="${(fsLot*0.75).toFixed(1)}px" fill="#555">${area}m²</text>`;
+        }
+      }
+    }
+    // Dimensões dos lotes nas bordas
+    if (lot_f * s > 30) {
+      // Frente
+      const firstLot = lots[0];
+      if (firstLot) {
+        const x1 = firstLot.x * s, x2 = (firstLot.x + firstLot.w) * s;
+        const yy = (firstLot.y - 2/s) * s;
+        out += `<line x1="${x1.toFixed(1)}" y1="${yy.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${yy.toFixed(1)}" stroke="#C00" stroke-width="0.8"/>`;
+        out += `<text x="${((x1+x2)/2).toFixed(1)}" y="${(yy-1).toFixed(1)}" text-anchor="middle" font-size="${Math.min(5.5, lot_f*s*0.3).toFixed(1)}px" fill="#C00">${lot_f}m</text>`;
+      }
+    }
+    // Labels de vias e áreas públicas
+    for (const lb of labels) {
+      const x = (lb.x * s).toFixed(1);
+      const y = (lb.y * s).toFixed(1);
+      const fs = Math.max(3, lb.fs * s * 0.8);
+      const fw = lb.bold ? '700' : '500';
+      const transform = lb.vert ? ` transform="rotate(-90,${x},${y})"` : '';
+      out += `<text x="${x}" y="${y}" text-anchor="${lb.anchor||'start'}" font-size="${fs.toFixed(1)}px" fill="#444" font-weight="${fw}"${transform}>${lb.txt}</text>`;
+    }
+  }
+
+  // Seta Norte
+  const nx = W * s - 30, ny = 40;
+  out += `<g transform="translate(${nx.toFixed(0)},${ny.toFixed(0)})">
+    <circle r="18" fill="white" fill-opacity="0.8" stroke="#555" stroke-width="0.8"/>
+    <polygon points="0,-14 4,4 0,0 -4,4" fill="#333"/>
+    <polygon points="0,14 4,-4 0,0 -4,-4" fill="#999"/>
+    <text y="6" text-anchor="middle" font-size="10px" font-weight="700" fill="#333">N</text>
+  </g>`;
+
+  // Barra de escala
+  const scaleM = 50; // 50 metros
+  const scalePx = scaleM * s;
+  const sx = 20, sy = H * s - 20;
+  out += `<g>
+    <rect x="${sx}" y="${(sy-6).toFixed(1)}" width="${scalePx.toFixed(1)}" height="4" fill="#333"/>
+    <rect x="${sx}" y="${(sy-6).toFixed(1)}" width="${(scalePx/2).toFixed(1)}" height="4" fill="white"/>
+    <text x="${sx}" y="${(sy+6).toFixed(1)}" font-size="7px" fill="#333">0</text>
+    <text x="${(sx+scalePx/2).toFixed(1)}" y="${(sy+6).toFixed(1)}" text-anchor="middle" font-size="7px" fill="#333">25m</text>
+    <text x="${(sx+scalePx).toFixed(1)}" y="${(sy+6).toFixed(1)}" text-anchor="middle" font-size="7px" fill="#333">50m</text>
+  </g>`;
+
+  // Legenda
+  const lx = 20, ly = H * s - 80;
+  const legend = [
+    ['#FFFEF5','#888','Lote residencial'],
+    ['#9E9E9E','none','Via principal'],
+    ['#B4B4B4','none','Via secundária'],
+    ['#7CB87C','#4A8A4A','Área verde'],
+    ['#E8D44D','#B8A020','Área institucional'],
+  ];
+  out += `<rect x="${lx-4}" y="${(ly-12).toFixed(1)}" width="120" height="${(legend.length*14+16).toFixed(0)}" fill="white" fill-opacity="0.85" rx="3"/>`;
+  legend.forEach(([fill, stroke, txt], i) => {
+    const ry = ly + i * 14;
+    out += `<rect x="${lx}" y="${ry.toFixed(1)}" width="12" height="9" fill="${fill}" stroke="${stroke}" stroke-width="0.6"/>`;
+    out += `<text x="${lx+16}" y="${(ry+8).toFixed(1)}" font-size="7px" fill="#333">${txt}</text>`;
+  });
+
+  // Título do bloco
+  const tw = W * s, th = H * s;
+  out += `<rect x="${(tw-200).toFixed(0)}" y="${(th-48).toFixed(0)}" width="196" height="44" fill="white" fill-opacity="0.9" stroke="#555" stroke-width="0.8"/>`;
+  out += `<text x="${(tw-102).toFixed(0)}" y="${(th-32).toFixed(0)}" text-anchor="middle" font-size="8px" font-weight="700" fill="#333">${(_intEstudo?.nome||'').substring(0,28)}</text>`;
+  out += `<text x="${(tw-102).toFixed(0)}" y="${(th-20).toFixed(0)}" text-anchor="middle" font-size="6.5px" fill="#555">PLANTA ESQUEMÁTICA DE PARCELAMENTO</text>`;
+  out += `<text x="${(tw-102).toFixed(0)}" y="${(th-10).toFixed(0)}" text-anchor="middle" font-size="6px" fill="#888">Estimativa conceitual — R2X Inteligência Comercial</text>`;
+
+  out += '</svg>';
+  return out;
+}
+
+function _plantaRenderizar() {
+  const cfg = _plantaLerCfg();
+  if (!cfg.area_vendavel || !cfg.lot_f || !cfg.lot_d) return;
+  _plantaCfg = cfg;
+  _plantaLayout = _plantaGerar(cfg);
+  const lay = _plantaLayout;
+
+  // Calcular zoom inicial para caber na tela
+  const wrap = document.getElementById('planta-canvas-wrap');
+  if (wrap) {
+    const availW = wrap.clientWidth - 40;
+    const availH = wrap.clientHeight - 40;
+    const autoZoom = Math.min(availW / lay.W, availH / lay.H, 3);
+    _plantaZoom = Math.max(0.3, Math.round(autoZoom * 4) / 4);
+  }
+
+  const svg = _plantaRenderSVG(lay, _plantaMostrarLabels, _plantaZoom);
+  const cont = document.getElementById('planta-svg-container');
+  if (cont) cont.innerHTML = svg;
+
+  document.getElementById('planta-zoom-label').textContent = Math.round(_plantaZoom * 100) + '%';
+  _plantaRenderStats(lay, cfg);
+}
+
+function _plantaAplicarZoom() {
+  if (!_plantaLayout) return;
+  document.getElementById('planta-zoom-label').textContent = Math.round(_plantaZoom * 100) + '%';
+  const svg = _plantaRenderSVG(_plantaLayout, _plantaMostrarLabels, _plantaZoom);
+  const cont = document.getElementById('planta-svg-container');
+  if (cont) cont.innerHTML = svg;
+}
+
+function _plantaRenderStats(lay, cfg) {
+  const el = document.getElementById('planta-stats');
+  if (!el) return;
+  const fmtHa = v => v >= 10000 ? `${(v/10000).toFixed(2)} ha` : `${v.toFixed(0)} m²`;
+  const fmtPct = v => `${((v/lay.areaTotal)*100).toFixed(1)}%`;
+  const stats = [
+    ['Total de lotes', lay.totalLots + ' lotes'],
+    ['Área total da gleba', fmtHa(lay.areaTotal)],
+    ['Área de lotes', `${fmtHa(lay.areaLotesReal)} (${fmtPct(lay.areaLotesReal)})`],
+    ['Área de vias', `${fmtHa(lay.areaViasReal)} (${fmtPct(lay.areaViasReal)})`],
+    ['Área verde', `${fmtHa(lay.areaVerdeReal)} (${fmtPct(lay.areaVerdeReal)})`],
+    ['Área institucional', `${fmtHa(lay.areaInstReal)} (${fmtPct(lay.areaInstReal)})`],
+    ['Dimensão lote', `${cfg.lot_f}m × ${cfg.lot_d}m = ${cfg.lot_f*cfg.lot_d}m²`],
+    ['Dimensão gleba (est.)', `${lay.W.toFixed(0)}m × ${lay.H.toFixed(0)}m`],
+  ];
+  el.innerHTML = `<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:8px">Estatísticas da Planta</div>
+  ${stats.map(([k,v]) => `<div style="display:flex;justify-content:space-between;margin-bottom:5px;font-size:11px;border-bottom:1px solid var(--border);padding-bottom:4px">
+    <span style="color:var(--text2)">${k}</span>
+    <span style="font-weight:600;text-align:right">${v}</span>
+  </div>`).join('')}`;
+}
+
+function _plantaExportarSVG() {
+  if (!_plantaLayout) return;
+  const svg = _plantaRenderSVG(_plantaLayout, true, 2); // export at 2px/m
+  const blob = new Blob([svg], { type:'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (_intEstudo?.nome||'planta').replace(/[^a-z0-9]/gi,'_') + '_planta.svg';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function _plantaImprimir() {
+  if (!_plantaLayout) return;
+  const svg = _plantaRenderSVG(_plantaLayout, true, 3.5);
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>Planta — ${_intEstudo?.nome||''}</title>
+  <style>@page{size:A3 landscape;margin:10mm} body{margin:0;padding:0} svg{width:100%;height:auto}</style>
+  </head><body>${svg}<${'script'}>window.onload=()=>{window.print();window.close();}</${'script'}></body></html>`);
+  win.document.close();
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // MÓDULO: INTELIGÊNCIA DE EMPREENDIMENTOS
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -18194,6 +18583,7 @@ function _intRenderEstudo() {
       </div>
       <div style="display:flex;gap:8px">
         <button onclick="intComparar()" style="background:var(--navy3);color:var(--text);border:1px solid var(--border);padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer">≡ Comparar</button>
+        <button onclick="abrirPlantaUrbanistica()" style="background:var(--navy3);color:var(--text);border:1px solid var(--border);padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer">🗺️ Planta</button>
         <button onclick="intSalvarCenario()" style="background:var(--accent);color:var(--navy);border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">💾 Salvar</button>
       </div>
     </div>
