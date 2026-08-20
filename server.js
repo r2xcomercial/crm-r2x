@@ -7836,11 +7836,17 @@ Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
   try {
     const msg = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
-      max_tokens: 3000,
+      max_tokens: 8192,
       messages: [{ role: 'user', content: prompt }]
     });
     let text = msg.content[0].text.trim();
     if (text.startsWith('```')) text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '');
+    // Garante JSON válido mesmo se truncado (não deve ocorrer com 8192 tokens)
+    try { JSON.parse(text); } catch(_) {
+      // Tenta fechar o JSON truncado
+      const idx = text.lastIndexOf(',');
+      if (idx > 0) text = text.slice(0, idx) + ',"aviso":"Resposta parcial — tente novamente."}';
+    }
     const data = JSON.parse(text);
     ok(res, { ...data, gerado_em: new Date().toISOString() });
   } catch(e) {
