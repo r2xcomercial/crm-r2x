@@ -7869,6 +7869,54 @@ Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
   }
 });
 
+// ─── Calibração de preço com comparáveis reais ───────────────────────────────
+app.post('/api/inteligencia/calibrar-preco', autenticar, async (req, res) => {
+  if (!anthropic) return err(res, 'ANTHROPIC_API_KEY não configurado');
+  const { cidade, tipo, comparaveis, analise_original } = req.body;
+  if (!cidade) return err(res, 'cidade é obrigatória');
+  if (!comparaveis?.length) return err(res, 'informe ao menos um comparável');
+
+  const listComp = comparaveis.map((c, i) =>
+    `${i+1}. ${c.descricao || 'sem descrição'}: R$ ${c.preco_m2}/m²`
+  ).join('\n');
+
+  const resumoOriginal = analise_original
+    ? `\n\nAnálise de IA anterior para a região:\n- Tipo recomendado: ${analise_original.tipo_recomendado || '–'}\n- Estimativa original: ${analise_original.preco_m2_estimado || '–'}\n- Potencial de mercado: ${analise_original.potencial_mercado || '–'}`
+    : '';
+
+  const prompt = `Você é um especialista em avaliação imobiliária no Brasil. Analise os comparáveis de mercado fornecidos pelo usuário para ${cidade}${tipo ? ` (produto: ${tipo})` : ''} e forneça uma estimativa calibrada de preço por m².${resumoOriginal}
+
+Comparáveis reais informados pelo usuário:
+${listComp}
+
+Com base EXCLUSIVAMENTE nesses comparáveis locais (não use estimativas genéricas nacionais), forneça:
+
+Responda APENAS com JSON válido, sem markdown, neste formato exato:
+{
+  "preco_m2_min": 120,
+  "preco_m2_max": 180,
+  "preco_m2_mediana": 150,
+  "confianca": "alta|media|baixa",
+  "num_comparaveis": 3,
+  "analise": "Breve análise dos comparáveis e o que eles indicam sobre o mercado local.",
+  "outliers": ["descrição de comparável discrepante se houver"],
+  "recomendacao": "Recomendação de preço de lançamento com base nos dados locais.",
+  "aviso": "Nota sobre limitações desta análise."
+}`;
+
+  try {
+    const msg = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const data = _parseAIJson(msg.content[0].text.trim());
+    ok(res, { ...data, calibrado_em: new Date().toISOString(), cidade, num_comparaveis: comparaveis.length });
+  } catch(e) {
+    err(res, 'Erro ao calibrar preço: ' + e.message);
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => console.log(`CRM R2X rodando em http://localhost:${PORT}`));

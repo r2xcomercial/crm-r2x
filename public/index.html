@@ -18872,6 +18872,8 @@ async function intAnalisarArea() {
     });
     const data = await r.json();
     if (!data.ok) { if(res) res.innerHTML = `<div style="color:var(--danger);padding:16px;background:var(--card);border-radius:10px">❌ ${data.error}</div>`; return; }
+    window._iaAnaliseOriginal = { ...data.data, cidade, endereco };
+    window._iaComparaveis = [];
     _renderResultadoArea(data.data, cidade, endereco);
   } catch(e) {
     if(res) res.innerHTML = `<div style="color:var(--danger);padding:16px;background:var(--card);border-radius:10px">Erro: ${e.message}</div>`;
@@ -18926,6 +18928,42 @@ function _renderResultadoArea(d, cidade, endereco) {
         ${d.proximos_passos.map(p=>`<li style="font-size:13px;color:var(--text)">${p}</li>`).join('')}
       </ol>`) : ''}
 
+    <!-- Calibração com comparáveis reais -->
+    <div id="ia-calibracao" style="background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden">
+      <button onclick="_iaToggleCalib()" style="width:100%;background:none;border:none;padding:14px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left">
+        <span style="font-size:16px">📌</span>
+        <div style="flex:1">
+          <div style="font-size:12px;font-weight:700;color:var(--text)">Calibrar com preços reais da região</div>
+          <div style="font-size:11px;color:var(--text2)">Cole anúncios reais do ZAP, OLX ou Viva Real para refinar a estimativa da IA</div>
+        </div>
+        <span id="ia-calib-arrow" style="color:var(--text2);font-size:14px;transition:transform .2s">▼</span>
+      </button>
+      <div id="ia-calib-body" style="display:none;padding:0 16px 16px">
+        <div style="font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.5">
+          A estimativa acima usa dados de treinamento da IA (corte ago/2025), que podem não refletir o mercado local atual.
+          Adicione comparáveis reais que você encontrou e a IA recalibra com base neles.
+        </div>
+        <!-- Formulário de comparável -->
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+          <input id="ia-comp-desc" placeholder="Ex: Lote 360m² Bairro X · ZAP" style="flex:2;min-width:180px;background:var(--navy3);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--text)">
+          <div style="display:flex;align-items:center;gap:4px">
+            <span style="font-size:12px;color:var(--text2);white-space:nowrap">R$</span>
+            <input id="ia-comp-preco" type="number" placeholder="Preço/m²" style="width:110px;background:var(--navy3);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--text)">
+            <span style="font-size:12px;color:var(--text2)">/m²</span>
+          </div>
+          <button onclick="_iaAddComp()" style="background:var(--accent);color:var(--navy);border:none;border-radius:6px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">+ Adicionar</button>
+        </div>
+        <!-- Lista de comparáveis -->
+        <div id="ia-comp-lista" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
+        <!-- Resultado calibrado -->
+        <div id="ia-calib-resultado" style="display:none"></div>
+        <!-- Botão recalibrar -->
+        <button id="ia-btn-calibrar" onclick="_iaCalibrar()" style="display:none;width:100%;background:linear-gradient(90deg,rgba(0,196,180,.25),rgba(0,196,180,.1));border:1px solid rgba(0,196,180,.4);color:var(--accent);padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">
+          🔄 Recalibrar estimativa com dados reais
+        </button>
+      </div>
+    </div>
+
     <div style="background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);border-radius:8px;padding:10px 14px;font-size:11px;color:#F59E0B;line-height:1.5">
       ⚠ Análise baseada em dados de treinamento da IA. Recomendamos validar com pesquisa de campo e consulta ao CRECI local.
     </div>
@@ -18935,6 +18973,106 @@ function _renderResultadoArea(d, cidade, endereco) {
       <div style="font-size:12px;color:var(--text2)">Decidiu o produto? Avance para preparar o lançamento.</div>
       <button onclick="renderIntLancamento()" style="background:rgba(139,92,246,.2);border:1px solid rgba(139,92,246,.4);color:#C4B5FD;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">🚀 Preparar Lançamento →</button>
     </div>`;
+}
+
+// ─── Calibração de preço com comparáveis ─────────────────────────────────────
+
+function _iaToggleCalib() {
+  const body = document.getElementById('ia-calib-body');
+  const arrow = document.getElementById('ia-calib-arrow');
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  if (arrow) arrow.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+function _iaAddComp() {
+  const desc = document.getElementById('ia-comp-desc');
+  const preco = document.getElementById('ia-comp-preco');
+  if (!preco?.value || isNaN(Number(preco.value)) || Number(preco.value) <= 0) {
+    toast('Informe o preço por m²'); return;
+  }
+  if (!window._iaComparaveis) window._iaComparaveis = [];
+  const comp = { descricao: desc?.value?.trim() || '', preco_m2: Number(preco.value) };
+  window._iaComparaveis.push(comp);
+  if (desc) desc.value = '';
+  if (preco) preco.value = '';
+  _iaRenderComps();
+}
+
+function _iaRemoveComp(idx) {
+  if (window._iaComparaveis) window._iaComparaveis.splice(idx, 1);
+  _iaRenderComps();
+}
+
+function _iaRenderComps() {
+  const lista = document.getElementById('ia-comp-lista');
+  const btnCalibrar = document.getElementById('ia-btn-calibrar');
+  if (!lista) return;
+  const comps = window._iaComparaveis || [];
+  lista.innerHTML = comps.length ? comps.map((c, i) => `
+    <div style="display:flex;align-items:center;gap:8px;background:var(--navy3);border:1px solid var(--border);border-radius:6px;padding:8px 10px">
+      <span style="flex:1;font-size:12px;color:var(--text)">${c.descricao || '–'}</span>
+      <span style="font-size:13px;font-weight:700;color:var(--accent);font-family:monospace;white-space:nowrap">R$ ${c.preco_m2.toLocaleString('pt-BR')}/m²</span>
+      <button onclick="_iaRemoveComp(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:0 4px">✕</button>
+    </div>`).join('') : '';
+  if (btnCalibrar) btnCalibrar.style.display = comps.length >= 1 ? 'block' : 'none';
+}
+
+async function _iaCalibrar() {
+  const comps = window._iaComparaveis || [];
+  if (!comps.length) { toast('Adicione ao menos um comparável'); return; }
+  const analise = window._iaAnaliseOriginal || {};
+  const btn = document.getElementById('ia-btn-calibrar');
+  const resultDiv = document.getElementById('ia-calib-resultado');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Calibrando...'; }
+
+  try {
+    const r = await post('/api/inteligencia/calibrar-preco', {
+      cidade: analise.cidade || '',
+      tipo: analise.tipo_recomendado || '',
+      comparaveis: comps,
+      analise_original: analise
+    });
+    if (!r.ok) { toast('Erro: ' + r.error); return; }
+    const d = r.data;
+    const conf = { alta: { cor: '#22C55E', label: 'Alta confiança' }, media: { cor: '#F59E0B', label: 'Confiança média' }, baixa: { cor: '#EF4444', label: 'Baixa confiança' } };
+    const c = conf[d.confianca] || conf.media;
+    if (resultDiv) {
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = `
+        <div style="background:linear-gradient(135deg,rgba(0,196,180,.12),rgba(0,196,180,.04));border:1px solid rgba(0,196,180,.4);border-radius:10px;padding:16px;margin-bottom:10px">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--accent);margin-bottom:8px">
+            📌 Estimativa Calibrada · ${d.num_comparaveis} comparável(is) real(is)
+          </div>
+          <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:9px;color:var(--text2);text-transform:uppercase">Mínimo</span>
+              <span style="font-size:16px;font-weight:700;font-family:monospace;color:var(--text)">R$ ${d.preco_m2_min?.toLocaleString('pt-BR')}/m²</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:9px;color:var(--accent);text-transform:uppercase;font-weight:700">Mediana</span>
+              <span style="font-size:22px;font-weight:800;font-family:monospace;color:var(--accent)">R$ ${d.preco_m2_mediana?.toLocaleString('pt-BR')}/m²</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:9px;color:var(--text2);text-transform:uppercase">Máximo</span>
+              <span style="font-size:16px;font-weight:700;font-family:monospace;color:var(--text)">R$ ${d.preco_m2_max?.toLocaleString('pt-BR')}/m²</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px;margin-left:auto">
+              <span style="font-size:9px;color:var(--text2);text-transform:uppercase">Confiança</span>
+              <span style="font-size:12px;font-weight:700;color:${c.cor}">${c.label}</span>
+            </div>
+          </div>
+          ${d.analise ? `<div style="font-size:12px;color:var(--text);line-height:1.6;margin-bottom:8px">${d.analise}</div>` : ''}
+          ${d.recomendacao ? `<div style="background:var(--navy3);border-radius:6px;padding:10px;font-size:12px;color:var(--text);line-height:1.5"><strong>Recomendação:</strong> ${d.recomendacao}</div>` : ''}
+          ${d.outliers?.length ? `<div style="margin-top:8px;font-size:11px;color:#F59E0B">⚠ Outlier detectado: ${d.outliers.join(', ')}</div>` : ''}
+        </div>`;
+    }
+  } catch(e) {
+    toast('Erro na calibração: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Recalibrar estimativa com dados reais'; }
+  }
 }
 
 // ─── CAMINHO 2: Preparar Lançamento ──────────────────────────────────────────
