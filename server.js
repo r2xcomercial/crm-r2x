@@ -99,6 +99,30 @@ const PORT = process.env.PORT || 4000;
 function ok(res, data) { res.json({ ok: true, data }); }
 function err(res, msg, code = 400) { res.status(code).json({ ok: false, error: msg }); }
 
+// Extrai e parseia JSON de respostas da IA de forma robusta
+function _parseAIJson(raw) {
+  let text = raw.trim();
+  // Remove blocos de código markdown (```json ... ``` ou ``` ... ```)
+  if (text.includes('```')) {
+    const m = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+    if (m) text = m[1].trim();
+    else text = text.replace(/```[a-z]*/g, '').replace(/```/g, '').trim();
+  }
+  // Extrai o primeiro objeto JSON encontrado, ignorando texto antes/depois
+  const m = text.match(/\{[\s\S]*\}/);
+  if (m) text = m[0];
+  // Tenta parse direto
+  try { return JSON.parse(text); } catch (_) {}
+  // Tenta corrigir aspas curtas/especiais comuns em respostas PT-BR
+  const fixed = text
+    .replace(/[‘’]/g, "'")   // aspas simples curvas → retas
+    .replace(/[“”]/g, '"')   // aspas duplas curvas → retas
+    .replace(/\n\s*\/\/[^\n]*/g, '')   // remove comentários JS inline
+    .replace(/,\s*}/g, '}')            // vírgula antes de }
+    .replace(/,\s*]/g, ']');           // vírgula antes de ]
+  return JSON.parse(fixed);
+}
+
 // Health check sem autenticação — para diagnóstico
 app.get('/api/health', (req, res) => {
   const checks = {};
@@ -7625,8 +7649,7 @@ Responda APENAS com JSON puro (sem markdown, sem explicação), neste formato ex
     });
 
     let text = msg.content[0].text.trim();
-    if (text.startsWith('```')) text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '');
-    const data = JSON.parse(text);
+    const data = _parseAIJson(text);
 
     // Se tiver estudo_id, salvar os dados da planta no estudo (opcional)
     if (estudo_id) {
@@ -7697,8 +7720,7 @@ Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
       messages: [{ role: 'user', content: prompt }]
     });
     let text = msg.content[0].text.trim();
-    if (text.startsWith('```')) text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '');
-    const data = JSON.parse(text);
+    const data = _parseAIJson(text);
     ok(res, { ...data, status: 'nao_verificado', gerado_em: new Date().toISOString() });
   } catch(e) {
     err(res, 'Erro na pesquisa AI: ' + e.message);
@@ -7763,8 +7785,7 @@ Com base nos dados fornecidos${req.file ? ' e na imagem' : ''}, responda em JSON
       messages: [{ role: 'user', content }]
     });
     let text = msg.content[0].text.trim();
-    if (text.startsWith('```')) text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '');
-    const data = JSON.parse(text);
+    const data = _parseAIJson(text);
     ok(res, data);
   } catch(e) {
     err(res, 'Erro na análise da área: ' + e.message);
@@ -7841,14 +7862,7 @@ Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
       messages: [{ role: 'user', content: prompt }]
     });
     let text = msg.content[0].text.trim();
-    if (text.startsWith('```')) text = text.replace(/^```[a-z]*\n?/, '').replace(/\n?```$/, '');
-    // Garante JSON válido mesmo se truncado (não deve ocorrer com 8192 tokens)
-    try { JSON.parse(text); } catch(_) {
-      // Tenta fechar o JSON truncado
-      const idx = text.lastIndexOf(',');
-      if (idx > 0) text = text.slice(0, idx) + ',"aviso":"Resposta parcial — tente novamente."}';
-    }
-    const data = JSON.parse(text);
+    const data = _parseAIJson(text);
     ok(res, { ...data, gerado_em: new Date().toISOString() });
   } catch(e) {
     err(res, 'Erro ao gerar inteligência: ' + e.message);
