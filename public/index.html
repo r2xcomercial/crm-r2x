@@ -18452,7 +18452,10 @@ function _irr(cf) {
 }
 
 function _leituraVia(kpis, taxa_desconto) {
+  if (!kpis) return 'Preencha área vendável e preço médio para ver a leitura automática.';
   const { resultado, VGV, margem, tir_anual, exposicao, payback, pct_vgv_eq } = kpis;
+  if (!isFinite(resultado) || !isFinite(margem)) return 'Verifique os valores de entrada — resultado não é finito.';
+
   const tiaPct = tir_anual !== null ? tir_anual * 100 : null;
   const marPct = margem * 100;
   const msgs = [];
@@ -19001,7 +19004,7 @@ function _renderResultadoArea(d, cidade, endereco) {
       const custoTotal = window._iaCustoTerreno + custoUrb + custoProjetos + custoOverhead;
       const dedBase = 0.10;
       const precoRawStr = d.preco_m2_estimado || '';
-      const precoMercado = precoRawStr ? parseInt(precoRawStr.replace(/\D/g,''))||null : null;
+      const precoMercado = precoRawStr ? parseInt(precoRawStr.match(/\d+/)?.[0])||null : null;
       const linhas = [0, 0.15, 0.25, 0.40].map(m => {
         const ded = dedBase + m;
         if (ded >= 1) return '';
@@ -19489,7 +19492,7 @@ async function intGerarInteligencia() {
       lote_area_media: d?.lote_area_media_m2 || null,
       vgv_estimado: emp?.vgv_estimado || null,
     }),
-    get('/api/corretores')
+    get('/api/corretores').catch(() => ({ data: [] }))
   ]);
 
   if (!r.ok) { el.innerHTML = `<div style="color:var(--danger);font-size:12px">❌ ${r.error}</div>`; return; }
@@ -19722,14 +19725,15 @@ function _intRenderEstudo() {
   const c = document.getElementById('content');
   const cen = e.cenarios[_intCenTab];
 
-  const kpis = _calcViabilidade({
+  const _vgvOk = cen.area_vendavel > 0 && cen.preco_medio > 0;
+  const kpis = _vgvOk ? _calcViabilidade({
     terreno: cen.terreno, itbi_pct: cen.itbi_pct, area_vendavel: cen.area_vendavel,
     preco_medio: cen.preco_medio, urbanizacao: cen.urbanizacao, projetos: cen.projetos,
     overhead: cen.overhead, corretagem_pct: cen.corretagem_pct, tributos_pct: cen.tributos_pct,
     entrada_pct: cen.entrada_pct, parcelamento_meses: cen.parcelamento_meses,
     vendas_inicio: cen.vendas_inicio, vendas_prazo: cen.vendas_prazo,
     obras_inicio: cen.obras_inicio, obras_prazo: cen.obras_prazo, taxa_desconto: cen.taxa_desconto
-  });
+  }) : null;
 
   c.innerHTML = `
   <div style="padding:0;display:flex;flex-direction:column;height:100%;overflow:hidden">
@@ -19819,7 +19823,7 @@ function _intRenderEstudo() {
   </div>`;
 
   // Aguarda o canvas estar no DOM antes de renderizar o gráfico
-  requestAnimationFrame(() => { _intRenderChart(kpis); });
+  requestAnimationFrame(() => { if (kpis) _intRenderChart(kpis); });
   _intBindInputs();
 }
 
@@ -19857,6 +19861,9 @@ function _intInputsHTML(cen) {
 }
 
 function _intKpisHTML(k, taxa) {
+  if (!k) return `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:22px;text-align:center;color:var(--text2);font-size:12px">
+    Preencha <strong style="color:var(--text)">Área vendável</strong> e <strong style="color:var(--text)">Preço médio</strong> e clique em ⚡ Calcular para ver os indicadores.
+  </div>`;
   const ok_color = k.resultado >= 0 && (k.tir_anual === null || k.tir_anual*100 >= taxa) ? '#22C55E' : '#EF4444';
   const tirTxt = k.tir_anual !== null ? `${(k.tir_anual*100).toFixed(1)}%` : 'n/d';
   const tds = [
@@ -19943,7 +19950,7 @@ function _intGetInputs() {
 
 function intRecalcular() {
   const p = _intGetInputs();
-  if (!p.area_vendavel || !p.vendas_prazo || !p.obras_prazo) return;
+  if (!p.area_vendavel || !p.preco_medio || !p.vendas_prazo || !p.obras_prazo) return;
   const kpis = _calcViabilidade(p);
   document.getElementById('int-kpis').innerHTML = _intKpisHTML(kpis, p.taxa_desconto);
   document.getElementById('int-leitura').innerHTML = _leituraVia(kpis, p.taxa_desconto);
@@ -19953,12 +19960,12 @@ function intRecalcular() {
 async function intSalvarCenario() {
   const p = _intGetInputs();
   const cen = _intEstudo.cenarios[_intCenTab];
-  const kpis = _calcViabilidade(p);
+  const kpis = (p.area_vendavel > 0 && p.preco_medio > 0) ? _calcViabilidade(p) : null;
   Object.assign(cen, p);
-  await put(`/api/inteligencia/cenarios/${cen.id}`, { nome: cen.nome, ...p, kpis_json: {
+  await put(`/api/inteligencia/cenarios/${cen.id}`, { nome: cen.nome, ...p, kpis_json: kpis ? {
     VGV: kpis.VGV, resultado: kpis.resultado, margem: kpis.margem,
     exposicao: kpis.exposicao, tir_anual: kpis.tir_anual, vpl: kpis.vpl
-  }});
+  } : null});
   toast('Cenário salvo');
 }
 
@@ -19969,10 +19976,12 @@ function intExportarEstudoPDF() {
   const fmtP = v => `${Number(v||0).toFixed(1)}%`;
   const linhas = e.cenarios.map(cen => {
     const p = {terreno:cen.terreno,itbi_pct:cen.itbi_pct,area_vendavel:cen.area_vendavel,preco_medio:cen.preco_medio,urbanizacao:cen.urbanizacao,projetos:cen.projetos,overhead:cen.overhead,corretagem_pct:cen.corretagem_pct,tributos_pct:cen.tributos_pct,entrada_pct:cen.entrada_pct,parcelamento_meses:cen.parcelamento_meses,vendas_inicio:cen.vendas_inicio,vendas_prazo:cen.vendas_prazo,obras_inicio:cen.obras_inicio,obras_prazo:cen.obras_prazo,taxa_desconto:cen.taxa_desconto};
-    return {cen, k:_calcViabilidade(p), p};
+    const k = (cen.area_vendavel > 0 && cen.preco_medio > 0) ? _calcViabilidade(p) : null;
+    return {cen, k, p};
   });
-  const cards = linhas.map(({cen,k}) => `
-    <div class="ccard">
+  const cards = linhas.map(({cen,k}) => {
+    if (!k) return `<div class="ccard"><h3>${cen.nome.toUpperCase()}</h3><div style="color:#999;font-size:9pt;padding-top:8px">Cenário sem dados — preencha área vendável e preço médio.</div></div>`;
+    return `<div class="ccard">
       <h3>${cen.nome.toUpperCase()}</h3>
       <table><tbody>
         <tr><td>VGV</td><td><strong>${fmtR(k.VGV)}</strong></td></tr>
@@ -19984,7 +19993,8 @@ function intExportarEstudoPDF() {
         <tr><td>Payback</td><td>${k.payback>0?`mês ${k.payback}`:'–'}</td></tr>
         <tr><td>Eq. % VGV</td><td>${fmtP((k.pct_vgv_eq||0)*100)}</td></tr>
       </tbody></table>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   const ip = linhas.find(l=>l.cen.nome==='base')?.p || linhas[0]?.p;
   const htmlStr = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
   <title>Viabilidade — ${e.nome}</title>
@@ -20065,7 +20075,8 @@ function intComparar() {
   const e = _intEstudo;
   const rows = e.cenarios.map(cen => {
     const p = { terreno:cen.terreno,itbi_pct:cen.itbi_pct,area_vendavel:cen.area_vendavel,preco_medio:cen.preco_medio,urbanizacao:cen.urbanizacao,projetos:cen.projetos,overhead:cen.overhead,corretagem_pct:cen.corretagem_pct,tributos_pct:cen.tributos_pct,entrada_pct:cen.entrada_pct,parcelamento_meses:cen.parcelamento_meses,vendas_inicio:cen.vendas_inicio,vendas_prazo:cen.vendas_prazo,obras_inicio:cen.obras_inicio,obras_prazo:cen.obras_prazo,taxa_desconto:cen.taxa_desconto };
-    return { cen, k: _calcViabilidade(p) };
+    const k = (cen.area_vendavel > 0 && cen.preco_medio > 0) ? _calcViabilidade(p) : { VGV:0, resultado:0, margem:0, tir_anual:null, vpl:0, exposicao:0, payback:-1, pct_vgv_eq:0 };
+    return { cen, k };
   });
   const cols = rows.map(({cen,k}) => {
     const tirOk = k.tir_anual !== null && k.tir_anual*100 >= cen.taxa_desconto;
