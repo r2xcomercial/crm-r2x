@@ -18626,17 +18626,27 @@ function renderIntAnaliseArea() {
             <label style="font-size:11px;color:var(--text2)">Zoneamento / Informações adicionais</label>
             <textarea id="ia-notas" class="modal-input" rows="3" placeholder="Ex: Zoneamento ZR-2, área de 15 ha, próximo ao centro, acesso pela SC-407..." style="width:100%;resize:vertical"></textarea>
           </div>
-          <div>
-            <label style="font-size:11px;color:var(--text2)">Perfil do público-alvo (opcional)</label>
-            <select id="ia-publico" class="modal-input" style="width:100%">
-              <option value="">-- Não sei ainda --</option>
-              <option>Classe média / residencial popular</option>
-              <option>Classe média alta / residencial</option>
-              <option>Alta renda / premium</option>
-              <option>Industrial / logístico</option>
-              <option>Comercial</option>
-              <option>Misto</option>
-            </select>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:11px;color:var(--text2)">Tipo de produto pretendido *</label>
+              <select id="ia-tipo-produto" class="modal-input" style="width:100%">
+                <option value="lote">🏞️ Loteamento / Terreno</option>
+                <option value="apartamento">🏢 Apartamento / Vertical</option>
+                <option value="casa">🏠 Casas / Sobrados</option>
+                <option value="comercial">🏪 Comercial / Misto</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text2)">Perfil do público-alvo (opcional)</label>
+              <select id="ia-publico" class="modal-input" style="width:100%">
+                <option value="">-- Não sei ainda --</option>
+                <option>Classe média / popular</option>
+                <option>Classe média alta</option>
+                <option>Alta renda / premium</option>
+                <option>Industrial / logístico</option>
+                <option>Misto</option>
+              </select>
+            </div>
           </div>
 
           <button onclick="intAnalisarArea()" style="width:100%;background:var(--accent);color:var(--navy);border:none;padding:12px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">🤖 Analisar com IA</button>
@@ -18864,6 +18874,7 @@ async function intAnalisarArea() {
   fd.append('area_ha', document.getElementById('ia-area').value || '');
   fd.append('notas', document.getElementById('ia-notas').value || '');
   fd.append('publico', document.getElementById('ia-publico').value || '');
+  fd.append('tipo_produto', document.getElementById('ia-tipo-produto')?.value || 'lote');
   if (window._iaLat && window._iaLng) {
     fd.append('coordenadas', `${window._iaLat.toFixed(6)}, ${window._iaLng.toFixed(6)}`);
   }
@@ -18912,12 +18923,24 @@ function _renderResultadoArea(d, cidade, endereco) {
       </div>` : ''}
     </div>
 
+    <!-- Dados IBGE -->
+    ${d.dados_municipio?.municipio ? `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:14px;align-items:center">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);flex-shrink:0">📊 IBGE</div>
+      <div style="font-size:12px;color:var(--text)"><span style="color:var(--text2)">Município:</span> ${d.dados_municipio.municipio.nome} – ${d.dados_municipio.municipio.sigla_uf}</div>
+      ${d.dados_municipio.populacao ? `<div style="font-size:12px;color:var(--text)"><span style="color:var(--text2)">Pop.:</span> <strong>${d.dados_municipio.populacao.toLocaleString('pt-BR')}</strong> hab.</div>` : ''}
+      ${d.dados_municipio.pib_pc ? `<div style="font-size:12px;color:var(--text)"><span style="color:var(--text2)">PIB/hab.:</span> <strong>R$ ${Number(d.dados_municipio.pib_pc).toLocaleString('pt-BR')}</strong></div>` : ''}
+      <div style="font-size:12px;color:var(--text2)">Microrregião: ${d.dados_municipio.municipio.microrregiao||'–'}</div>
+    </div>` : ''}
+
     ${d.alternativas?.length ? secao('Alternativas consideradas', `
       <div style="display:flex;flex-direction:column;gap:8px">
         ${d.alternativas.map(a=>`<div style="display:flex;align-items:baseline;gap:10px"><span style="color:var(--accent);font-size:14px">▸</span><div><strong style="font-size:13px">${a.tipo}</strong><span style="font-size:12px;color:var(--text2);margin-left:8px">${a.motivo}</span></div></div>`).join('')}
       </div>`) : ''}
 
     ${d.analise_terreno ? secao('Análise do Terreno', `<div style="font-size:13px;color:var(--text);line-height:1.6">${d.analise_terreno}</div>`) : ''}
+
+    ${d.analise_zoneamento ? secao('📐 Zoneamento / Plano Diretor', `<div style="font-size:13px;color:var(--text);line-height:1.6">${d.analise_zoneamento}</div>`) : ''}
 
     ${secao('Mercado Regional', `
       <div style="font-size:13px;color:var(--text);line-height:1.6;margin-bottom:12px">${d.potencial_mercado||''}</div>
@@ -19452,6 +19475,15 @@ function _renderInteligenciaLancamento(d, cidade, tipo) {
     `<ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">${d.recomendacoes_tabela.map(t=>`<li style="font-size:12px;line-height:1.5">${t}</li>`).join('')}</ol>` : '';
 
   el.innerHTML = `
+    <!-- Dados IBGE no lançamento -->
+    ${d.dados_municipio?.municipio ? `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:14px;align-items:center">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);flex-shrink:0">📊 IBGE</div>
+      ${d.dados_municipio.populacao ? `<div style="font-size:12px;color:var(--text)"><span style="color:var(--text2)">Pop.:</span> <strong>${d.dados_municipio.populacao.toLocaleString('pt-BR')}</strong> hab.</div>` : ''}
+      ${d.dados_municipio.pib_pc ? `<div style="font-size:12px;color:var(--text)"><span style="color:var(--text2)">PIB/hab.:</span> <strong>R$ ${Number(d.dados_municipio.pib_pc).toLocaleString('pt-BR')}</strong></div>` : ''}
+      <div style="font-size:12px;color:var(--text2)">${d.dados_municipio.municipio.microrregiao||''}</div>
+    </div>` : ''}
+
     <!-- Badge de fonte dos dados -->
     ${d.comparaveis_online?.length ? `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;background:rgba(0,196,180,.06);border:1px solid rgba(0,196,180,.2);border-radius:8px;padding:8px 12px">

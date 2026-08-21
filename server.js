@@ -126,13 +126,73 @@ function _cidadeBase(cidade) {
   return cidade.replace(/[,\-]?\s*[A-Z]{2}\s*$/, '').trim();
 }
 
-function _unitTypeZap(tipo) {
-  if (!tipo) return 'LOT,LotInCondominium';
+// Mapa: tipo de produto → unitTypes ZAP/VR + label + slug da URL
+const _TIPOS_PRODUTO = {
+  lote:         { unitTypes: 'LOT,LotInCondominium',          urlZap: 'lotes-terrenos',  urlVr: 'lote-terreno_lote',        label: 'Lote / Terreno' },
+  apartamento:  { unitTypes: 'APARTMENT,Studio,Flat',         urlZap: 'apartamentos',    urlVr: 'apartamento_residencial',  label: 'Apartamento / Vertical' },
+  casa:         { unitTypes: 'HOME,TwoStoreyHouse,Condominium',urlZap: 'casas',           urlVr: 'casa_residencial',         label: 'Casa / Sobrado' },
+  comercial:    { unitTypes: 'COMMERCIAL_PREMISES,OFFICES,WAREHOUSE,SHOPS', urlZap: 'comerciais', urlVr: 'comercial', label: 'Comercial / Misto' },
+};
+
+function _tipoProdutoConfig(tipo) {
+  if (!tipo) return _TIPOS_PRODUTO.lote;
   const t = tipo.toLowerCase();
-  if (/apart/.test(t)) return 'APARTMENT';
-  if (/casa|sobrado|vila/.test(t)) return 'HOME';
-  if (/condo|loteamento fechado/.test(t)) return 'LOT,LotInCondominium';
-  return 'LOT,LotInCondominium';
+  if (/apart|vertical|apto/.test(t))   return _TIPOS_PRODUTO.apartamento;
+  if (/casa|sobrado|village/.test(t))  return _TIPOS_PRODUTO.casa;
+  if (/comercial|loja|escritorio|galpao/.test(t)) return _TIPOS_PRODUTO.comercial;
+  return _TIPOS_PRODUTO.lote;
+}
+
+// ─── Busca preços em múltiplos portais ───────────────────────────────────────
+
+function _parsarListing(l, fonte, cidadeBase, estado) {
+  if (!l) return null;
+  // Filtra por estado para evitar cidades homônimas
+  if (estado && l.address?.stateAcronym && l.address.stateAcronym !== estado) return null;
+  // Filtra por cidade (match parcial, case-insensitive sem acento)
+  const slug = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (l.address?.city && !slug(l.address.city).includes(slug(cidadeBase).slice(0, 5))) return null;
+
+  const areas = (l.usableAreas || l.totalAreas || []).map(Number).filter(n => n > 0);
+  const area = areas[0] || 0;
+  const pricing = (l.pricingInfos || []).find(p => p.businessType === 'SALE');
+  const preco = pricing?.price ? Number(pricing.price) : 0;
+  if (area < 20 || preco < 3000) return null;
+  const preco_m2 = Math.round(preco / area);
+  if (preco_m2 < 3 || preco_m2 > 150000) return null;
+  const bairro = l.address?.neighborhood || l.address?.city || cidadeBase;
+  return {
+    descricao: `${bairro} · ${area.toLocaleString('pt-BR')}m²`,
+    preco_m2, area_m2: area, preco_total: preco, fonte,
+    cidade_listing: l.address?.city || ''
+  };
+}
+
+async function _buscarZapHTML(cidadeBase, estado, tipoCfg) {
+  // Fallback: faz scraping do __NEXT_DATA__ da página HTML do ZAP
+  const estadoNome = _estadosPorSigla[estado] || estado.toLowerCase();
+  const cidadeSlug = _slugify(cidadeBase);
+  const url = `https://www.zapimoveis.com.br/venda/${tipoCfg.urlZap}/${estadoNome}+${cidadeSlug}/`;
+  try {
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 8000);
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'pt-BR,pt;q=0.9'
+      },
+      signal: ac.signal
+    });
+    if (!resp.ok) return [];
+    const html = await resp.text();
+    const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]{100,})<\/script>/);
+    if (!m) return [];
+    const nd = JSON.parse(m[1]);
+    const listings = nd?.props?.pageProps?.initialState?.search?.result?.listings
+      || nd?.props?.initialProps?.pageProps?.initialState?.search?.result?.listings || [];
+    return listings.map(item => _parsarListing(item.listing, 'ZAP (página)', cidadeBase, estado)).filter(Boolean);
+  } catch(_) { return []; }
 }
 
 async function _buscarPrecosImobiliarias(cidade, tipo) {
@@ -140,76 +200,172 @@ async function _buscarPrecosImobiliarias(cidade, tipo) {
   const cidadeBase = _cidadeBase(cidade);
   const estadoNome = _estadosPorSigla[estado] || _slugify(estado);
   const cidadeSlug = _slugify(cidadeBase);
-  const unitTypes = _unitTypeZap(tipo);
+  const tipoCfg = _tipoProdutoConfig(tipo);
 
   const q = encodeURIComponent(`${cidadeBase}, ${estado}`);
-  const baseParams = `categoryPage=RESULT&listingType=USED&transactionType=SALE&unitTypes=${unitTypes}&size=36&from=0&q=${q}`;
+  const baseParams = `categoryPage=RESULT&listingType=USED&transactionType=SALE&unitTypes=${tipoCfg.unitTypes}&size=36&from=0&q=${q}&stateAcronym=${estado}`;
 
+  const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
   const hdrsZap = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'application/json, text/plain, */*',
+    'User-Agent': UA, 'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'pt-BR,pt;q=0.9',
-    'x-domain': 'www.zapimoveis.com.br',
-    'x-source': 'WEB',
+    'x-domain': 'www.zapimoveis.com.br', 'x-source': 'WEB',
     'Origin': 'https://www.zapimoveis.com.br',
-    'Referer': `https://www.zapimoveis.com.br/venda/lotes-terrenos/${estadoNome}+${cidadeSlug}/`
+    'Referer': `https://www.zapimoveis.com.br/venda/${tipoCfg.urlZap}/${estadoNome}+${cidadeSlug}/`
   };
   const hdrsVr = {
-    ...hdrsZap,
-    'x-domain': 'www.vivareal.com.br',
+    'User-Agent': UA, 'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'pt-BR,pt;q=0.9',
+    'x-domain': 'www.vivareal.com.br', 'x-source': 'WEB',
     'Origin': 'https://www.vivareal.com.br',
-    'Referer': `https://www.vivareal.com.br/venda/${estadoNome}/${cidadeSlug}/lote-terreno_lote/`
+    'Referer': `https://www.vivareal.com.br/venda/${estadoNome}/${cidadeSlug}/${tipoCfg.urlVr}/`
+  };
+  // Imovelweb (Grupo OLX) — API pública semelhante
+  const hdrsIw = {
+    'User-Agent': UA, 'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'pt-BR,pt;q=0.9',
+    'x-domain': 'www.imovelweb.com.br', 'x-source': 'WEB',
+    'Origin': 'https://www.imovelweb.com.br',
+    'Referer': `https://www.imovelweb.com.br/imoveis-venda-${estadoNome}-${cidadeSlug}.html`
   };
 
   const ac = new AbortController();
-  const tmr = setTimeout(() => ac.abort(), 9000);
-
-  function _parseListing(l, fonte) {
-    if (!l) return null;
-    const areas = (l.usableAreas || l.totalAreas || []).map(Number).filter(n => n > 0);
-    const area = areas[0] || 0;
-    const pricing = (l.pricingInfos || []).find(p => p.businessType === 'SALE');
-    const preco = pricing?.price ? Number(pricing.price) : 0;
-    if (area < 50 || preco < 5000) return null;
-    const preco_m2 = Math.round(preco / area);
-    if (preco_m2 < 5 || preco_m2 > 100000) return null;
-    const bairro = l.address?.neighborhood || l.address?.city || cidadeBase;
-    return {
-      descricao: `${bairro} · ${area.toLocaleString('pt-BR')}m²`,
-      preco_m2, area_m2: area, preco_total: preco, fonte
-    };
-  }
+  const tmr = setTimeout(() => ac.abort(), 10000);
 
   const resultados = [];
   try {
-    const [zapRes, vrRes] = await Promise.allSettled([
+    const [zapRes, vrRes, iwRes] = await Promise.allSettled([
       fetch(`https://glue-api.zapimoveis.com.br/v2/listings?${baseParams}`, { headers: hdrsZap, signal: ac.signal }),
-      fetch(`https://glue-api.vivareal.com.br/v2/listings?${baseParams}`, { headers: hdrsVr, signal: ac.signal })
+      fetch(`https://glue-api.vivareal.com.br/v2/listings?${baseParams}`, { headers: hdrsVr, signal: ac.signal }),
+      fetch(`https://glue-api.imovelweb.com.br/v2/listings?${baseParams}`, { headers: hdrsIw, signal: ac.signal })
     ]);
-    for (const [settled, fonte] of [[zapRes, 'ZAP Imóveis'], [vrRes, 'Viva Real']]) {
+
+    for (const [settled, fonte] of [[zapRes, 'ZAP Imóveis'], [vrRes, 'Viva Real'], [iwRes, 'Imovelweb']]) {
       if (settled.status !== 'fulfilled' || !settled.value.ok) continue;
+      const ct = settled.value.headers.get('content-type') || '';
+      if (!ct.includes('json')) continue; // ignora respostas HTML (Cloudflare block)
       try {
         const json = await settled.value.json();
         const listings = json?.search?.result?.listings || [];
         for (const item of listings) {
-          const parsed = _parseListing(item.listing, fonte);
+          const parsed = _parsarListing(item.listing, fonte, cidadeBase, estado);
           if (parsed) resultados.push(parsed);
         }
       } catch(_) {}
     }
-  } catch(_) {
-    // timeout ou bloqueio — falha silenciosa
-  } finally {
-    clearTimeout(tmr);
+  } catch(_) {} finally { clearTimeout(tmr); }
+
+  // Fallback: ZAP HTML scraping se API retornou poucos dados
+  if (resultados.filter(r => r.fonte.includes('ZAP')).length < 3) {
+    const html = await _buscarZapHTML(cidadeBase, estado, tipoCfg);
+    resultados.push(...html);
   }
 
-  // Remove duplicatas por preço/m² muito próximo (mesmo imóvel em ambos portais)
+  // Deduplicar por (area, preço) e ordenar por preço/m²
   const vistos = new Set();
-  return resultados.filter(r => {
+  const unicos = resultados.filter(r => {
     const key = `${r.area_m2}-${r.preco_total}`;
     if (vistos.has(key)) return false;
     vistos.add(key); return true;
-  }).slice(0, 40);
+  });
+  unicos.sort((a, b) => a.preco_m2 - b.preco_m2);
+  return unicos.slice(0, 40);
+}
+
+// ─── Dados públicos: IBGE + Plano Diretor ────────────────────────────────────
+
+async function _buscarDadosMunicipio(cidade) {
+  const estado = _extrairEstado(cidade);
+  const cidadeBase = _cidadeBase(cidade);
+  const dados = { municipio: null, populacao: null, pib_pc: null, snippets_pd: [] };
+
+  // IBGE: busca municipio por nome
+  try {
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 6000);
+    const resp = await fetch(
+      `https://servicodados.ibge.gov.br/api/v1/localidades/municipios?nome=${encodeURIComponent(cidadeBase)}`,
+      { signal: ac.signal }
+    );
+    if (resp.ok) {
+      const lista = await resp.json();
+      const mun = lista.find(m => m.microrregiao?.mesorregiao?.UF?.sigla === estado) || lista[0];
+      if (mun) {
+        dados.municipio = {
+          id: mun.id,
+          nome: mun.nome,
+          sigla_uf: mun.microrregiao?.mesorregiao?.UF?.sigla,
+          uf: mun.microrregiao?.mesorregiao?.UF?.nome,
+          mesorregiao: mun.microrregiao?.mesorregiao?.nome,
+          microrregiao: mun.microrregiao?.nome
+        };
+        // Busca população (Censo 2022 — tabela 9514, variável 93)
+        try {
+          const popAc = new AbortController();
+          setTimeout(() => popAc.abort(), 5000);
+          const popResp = await fetch(
+            `https://apisidra.ibge.gov.br/values/t/9514/n6/${mun.id}/v/93/p/2022/c2/6794?formato=us`,
+            { signal: popAc.signal }
+          );
+          if (popResp.ok) {
+            const popJson = await popResp.json();
+            const val = popJson?.[1]?.V;
+            if (val && val !== '...') dados.populacao = Number(val);
+          }
+        } catch(_) {}
+        // Busca PIB per capita (tabela 5938, variável 37 — último disponível)
+        try {
+          const pibAc = new AbortController();
+          setTimeout(() => pibAc.abort(), 5000);
+          const pibResp = await fetch(
+            `https://apisidra.ibge.gov.br/values/t/5938/n6/${mun.id}/v/37/p/last%201?formato=us`,
+            { signal: pibAc.signal }
+          );
+          if (pibResp.ok) {
+            const pibJson = await pibResp.json();
+            const val = pibJson?.[1]?.V;
+            if (val && val !== '...') dados.pib_pc = Number(val);
+          }
+        } catch(_) {}
+      }
+    }
+  } catch(_) {}
+
+  // DuckDuckGo: busca snippets do Plano Diretor da cidade
+  try {
+    const query = `"${cidadeBase}" "${estado}" plano diretor zoneamento lei uso solo`;
+    const acPd = new AbortController();
+    setTimeout(() => acPd.abort(), 8000);
+    const pdResp = await fetch(
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=br-pt`,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'Accept': 'text/html', 'Accept-Language': 'pt-BR,pt;q=0.9'
+        },
+        signal: acPd.signal
+      }
+    );
+    if (pdResp.ok) {
+      const html = await pdResp.text();
+      // Extrai títulos + snippets dos resultados
+      const snippRe = /class="result__snippet"[^>]*>([\s\S]{20,400}?)<\/a>/g;
+      const titleRe = /class="result__a"[^>]*>([^<]{5,120})<\/a>/g;
+      let m;
+      const titulos = [];
+      while ((m = titleRe.exec(html)) !== null && titulos.length < 6) {
+        titulos.push(m[1].replace(/\s+/g, ' ').trim());
+      }
+      const snippets = [];
+      while ((m = snippRe.exec(html)) !== null && snippets.length < 5) {
+        const txt = m[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+        if (txt.length > 30) snippets.push(txt);
+      }
+      dados.snippets_pd = titulos.slice(0, 5).map((t, i) => `${t}${snippets[i] ? ': ' + snippets[i] : ''}`);
+    }
+  } catch(_) {}
+
+  return dados;
 }
 
 // Extrai e parseia JSON de respostas da IA de forma robusta
@@ -7843,14 +7999,19 @@ Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
 // ─── Caminho 1: Analisar Nova Área (Google Earth + localização) ──────────────
 app.post('/api/inteligencia/analisar-area', autenticar, uploadPlanta.single('imagem'), async (req, res) => {
   if (!anthropic) return err(res, 'ANTHROPIC_API_KEY não configurado');
-  const { cidade, endereco, area_ha, notas, publico, coordenadas } = req.body;
+  const { cidade, endereco, area_ha, notas, publico, coordenadas, tipo_produto } = req.body;
   if (!cidade || !endereco) return err(res, 'cidade e endereco são obrigatórios');
 
-  // Busca preços reais nos portais imobiliários (paralelo ao processamento)
-  let precosReais = [];
-  try { precosReais = await _buscarPrecosImobiliarias(cidade, null); } catch(_) {}
+  const tipoCfg = _tipoProdutoConfig(tipo_produto);
+
+  // Busca dados em paralelo: preços nos portais + IBGE + Plano Diretor
+  const [precosReais, dadosMun] = await Promise.all([
+    _buscarPrecosImobiliarias(cidade, tipo_produto).catch(() => []),
+    _buscarDadosMunicipio(cidade).catch(() => ({ municipio: null, populacao: null, pib_pc: null, snippets_pd: [] }))
+  ]);
 
   const contextDados = [
+    `Tipo de empreendimento pretendido: ${tipoCfg.label}`,
     `Localização: ${endereco}`,
     `Cidade: ${cidade}`,
     coordenadas ? `Coordenadas GPS: ${coordenadas}` : null,
@@ -7859,36 +8020,53 @@ app.post('/api/inteligencia/analisar-area', autenticar, uploadPlanta.single('ima
     notas ? `Informações adicionais: ${notas}` : null,
   ].filter(Boolean).join('\n');
 
+  // Bloco IBGE
+  const ibge = dadosMun.municipio;
+  const contextIBGE = ibge ? `\n\n═══ DADOS IBGE — ${ibge.nome} (${ibge.sigla_uf}) ═══
+- Mesorregião: ${ibge.mesorregiao || '–'} | Microrregião: ${ibge.microrregiao || '–'}
+- Código IBGE: ${ibge.id}
+${dadosMun.populacao ? `- População (Censo 2022): ${dadosMun.populacao.toLocaleString('pt-BR')} habitantes` : ''}
+${dadosMun.pib_pc ? `- PIB per capita: R$ ${Number(dadosMun.pib_pc).toLocaleString('pt-BR')} (ano mais recente disponível)` : ''}
+Use estes dados para calibrar o perfil socioeconômico do público-alvo e a demanda local.` : '';
+
+  // Bloco Plano Diretor
+  const contextPD = dadosMun.snippets_pd?.length ? `\n\n═══ PLANO DIRETOR / ZONEAMENTO — informações encontradas online ═══
+${dadosMun.snippets_pd.map((s, i) => `${i+1}. ${s}`).join('\n')}
+
+Interprete estes trechos para identificar zonas de uso permitidas, índices urbanísticos relevantes (CA, TO, gabarito), restrições ou incentivos aplicáveis ao tipo de empreendimento pretendido.` : '';
+
+  // Bloco preços
   const contextPrecos = precosReais.length > 0
-    ? `\n\n═══ DADOS REAIS DE MERCADO (ZAP Imóveis + Viva Real — ${new Date().toLocaleDateString('pt-BR')}) ═══
+    ? `\n\n═══ PREÇOS REAIS DE MERCADO — ${precosReais.length} anúncios em ZAP Imóveis, Viva Real e Imovelweb (${new Date().toLocaleDateString('pt-BR')}) ═══
 ${precosReais.map(p => `• ${p.descricao} → R$ ${p.preco_m2.toLocaleString('pt-BR')}/m² [${p.fonte}]`).join('\n')}
 
-INSTRUÇÕES: Use ESTES dados como fonte primária para o campo "preco_m2_estimado". Calcule a mediana e faixa real com base nos valores acima, não nos seus dados de treinamento.`
-    : `\n\nNota: Portais imobiliários não retornaram dados para esta cidade. Use seus dados de treinamento com cautela e sinalize baixa confiança.`;
+INSTRUÇÕES: Use ESTES valores como fonte primária para "preco_m2_estimado". Calcule a mediana dos preços acima. NÃO use seus dados de treinamento para preço — eles estão desatualizados para mercados locais.`
+    : `\n\nNota: Portais imobiliários não retornaram anúncios para esta cidade. Estime preços com cautela e sinalize baixa confiança.`;
 
-  const prompt = `Você é um especialista em incorporação imobiliária e inteligência de mercado no Brasil (foco Santa Catarina).
+  const prompt = `Você é um especialista em incorporação imobiliária, análise de viabilidade e legislação urbanística no Brasil (foco: ${cidade}).
 
 Analise a área/terreno com os seguintes dados:
 ${contextDados}
 ${req.file ? 'Uma imagem do Google Earth/satélite da área foi anexada.' : ''}
-${contextPrecos}
+${contextIBGE}${contextPD}${contextPrecos}
 
-Com base nos dados fornecidos${req.file ? ' e na imagem' : ''}, responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
+Com base em TODOS os dados acima${req.file ? ' e na imagem' : ''}, responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
 {
-  "tipo_recomendado": "Tipo de empreendimento principal recomendado (ex: Loteamento Residencial de Médio Padrão)",
-  "score_viabilidade": (número de 1 a 10 indicando viabilidade geral),
-  "justificativa": "2-3 parágrafos explicando por que este tipo de empreendimento se encaixa nesta área",
+  "tipo_recomendado": "Tipo de empreendimento principal recomendado — compatível com o Plano Diretor se houver dados",
+  "score_viabilidade": (número 1–10),
+  "justificativa": "2-3 parágrafos explicando a recomendação, incluindo compatibilidade com o zoneamento identificado e o perfil socioeconômico local",
   "alternativas": [
     {"tipo": "Tipo alternativo 1", "motivo": "por que também pode funcionar"},
     {"tipo": "Tipo alternativo 2", "motivo": "por que também pode funcionar"}
   ],
-  "analise_terreno": "Análise das características físicas do terreno visíveis na imagem: topografia, vegetação, acessos, vizinhança",
-  "potencial_mercado": "Análise do potencial de mercado da região: demanda, crescimento urbano, perfil socioeconômico, concorrência",
-  "preco_m2_estimado": "Faixa de preço/m² baseada nos dados reais buscados (ex: R$ 180 a R$ 250/m²)",
-  "pontos_fortes": ["Ponto forte 1", "Ponto forte 2", "Ponto forte 3"],
-  "pontos_atencao": ["Atenção 1", "Atenção 2"],
-  "proximos_passos": ["Passo 1: ...", "Passo 2: ...", "Passo 3: ..."],
-  "aviso": "${precosReais.length > 0 ? `Estimativa de preço baseada em ${precosReais.length} anúncios reais do ZAP Imóveis e Viva Real coletados hoje. Validar condições de pagamento e absorção com corretores locais.` : 'Análise baseada em dados de treinamento da IA por falta de dados dos portais. Validar com pesquisa de campo e CRECI local.'}"
+  "analise_terreno": "Topografia, vegetação, acessos, vizinhança, infraestrutura visível",
+  "analise_zoneamento": "Interpretação dos dados do Plano Diretor encontrados: zonas permitidas, índices urbanísticos prováveis, restrições. Se não houver dados, diga 'Dados de zoneamento não encontrados — verificar diretamente na prefeitura de ${_cidadeBase(cidade)}.'",
+  "potencial_mercado": "Demanda local, crescimento urbano, perfil de compradores com base na população e PIB per capita do IBGE",
+  "preco_m2_estimado": "Faixa de preço/m² calculada com base nos anúncios reais coletados (ex: R$ 180 a R$ 250/m²)",
+  "pontos_fortes": ["string", "string", "string"],
+  "pontos_atencao": ["string", "string"],
+  "proximos_passos": ["Passo 1: ...", "Passo 2: ...", "Passo 3: ...", "Passo 4: verificar zoneamento na prefeitura"],
+  "aviso": "${precosReais.length > 0 ? `Preços baseados em ${precosReais.length} anúncios reais coletados hoje nos portais. Plano Diretor baseado em pesquisa online — validar na prefeitura.` : 'Preços estimados por falta de anúncios nos portais. Validar com corretores locais e na prefeitura.'}"
 }`;
 
   try {
@@ -7911,7 +8089,7 @@ Com base nos dados fornecidos${req.file ? ' e na imagem' : ''}, responda em JSON
     });
     let text = msg.content[0].text.trim();
     const data = _parseAIJson(text);
-    ok(res, { ...data, comparaveis_online: precosReais });
+    ok(res, { ...data, comparaveis_online: precosReais, dados_municipio: dadosMun });
   } catch(e) {
     err(res, 'Erro na análise da área: ' + e.message);
   }
@@ -7923,9 +8101,11 @@ app.post('/api/inteligencia/inteligencia-lancamento', autenticar, async (req, re
   const { cidade, tipo, dados_planta, area_m2, total_lotes, lote_area_media, nome_empreendimento, vgv_estimado } = req.body;
   if (!cidade) return err(res, 'cidade é obrigatória');
 
-  // Busca preços reais nos portais
-  let precosReais = [];
-  try { precosReais = await _buscarPrecosImobiliarias(cidade, tipo); } catch(_) {}
+  // Busca dados em paralelo
+  const [precosReais, dadosMun] = await Promise.all([
+    _buscarPrecosImobiliarias(cidade, tipo).catch(() => []),
+    _buscarDadosMunicipio(cidade).catch(() => ({ municipio: null, populacao: null, pib_pc: null, snippets_pd: [] }))
+  ]);
 
   const contextPlanta = [];
   if (nome_empreendimento) contextPlanta.push(`Nome do empreendimento: ${nome_empreendimento}`);
@@ -7943,20 +8123,27 @@ app.post('/api/inteligencia/inteligencia-lancamento', autenticar, async (req, re
   }
   if (vgv_estimado) contextPlanta.push(`VGV estimado: R$ ${Number(vgv_estimado).toLocaleString('pt-BR')}`);
 
+  const ibge = dadosMun?.municipio;
+  const contextIBGE = ibge ? `\n\n═══ DADOS IBGE — ${ibge.nome} ═══
+${dadosMun.populacao ? `- População: ${dadosMun.populacao.toLocaleString('pt-BR')} habitantes` : ''}
+${dadosMun.pib_pc ? `- PIB per capita: R$ ${Number(dadosMun.pib_pc).toLocaleString('pt-BR')}` : ''}
+- Microrregião: ${ibge.microrregiao || '–'}
+Use para calibrar número de corretores, demanda absorvida e perfil de compradores.` : '';
+
   const contextPrecos = precosReais.length > 0
-    ? `\n\n═══ DADOS REAIS DE MERCADO (ZAP Imóveis + Viva Real — ${new Date().toLocaleDateString('pt-BR')}) ═══
+    ? `\n\n═══ PREÇOS REAIS — ${precosReais.length} anúncios em ZAP, Viva Real e Imovelweb (${new Date().toLocaleDateString('pt-BR')}) ═══
 ${precosReais.map(p => `• ${p.descricao} → R$ ${p.preco_m2.toLocaleString('pt-BR')}/m² [${p.fonte}]`).join('\n')}
 
-INSTRUÇÕES CRÍTICAS: Use ESTES dados como fonte primária para preco_m2_min, preco_m2_mediana e preco_m2_max. Calcule a mediana e percentis dos valores acima. Ajuste para lançamento (geralmente 5-15% acima do mercado secundário). Defina "confianca" como "alta" se houver 10+ anúncios, "media" se 3-9, "baixa" se menos de 3.`
-    : `\n\nNota: Portais imobiliários não retornaram dados para esta cidade hoje. Estime com dados de treinamento e defina confiança como "baixa".`;
+INSTRUÇÕES CRÍTICAS: Use ESTES dados como fonte primária para preco_m2_min, preco_m2_mediana e preco_m2_max. Calcule a mediana e percentis dos valores acima. Ajuste para lançamento (geralmente 5–15% acima do mercado secundário). Defina "confianca" como "alta" se houver 10+ anúncios, "media" se 3–9, "baixa" se menos de 3.`
+    : `\n\nNota: Portais não retornaram dados para esta cidade hoje. Estime com dados de treinamento e defina confiança como "baixa".`;
 
-  const prompt = `Você é um especialista em lançamentos imobiliários no Brasil, com expertise em Santa Catarina.
+  const prompt = `Você é um especialista em lançamentos imobiliários no Brasil, com expertise em ${cidade}.
 
 Preciso de inteligência completa de mercado para o lançamento de um empreendimento:
 - Tipo: ${tipo || 'loteamento residencial'}
 - Localização: ${cidade}
 ${contextPlanta.length ? `- Dados do produto:\n${contextPlanta.map(p=>`  • ${p}`).join('\n')}` : ''}
-${contextPrecos}
+${contextIBGE}${contextPrecos}
 
 Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
 {
@@ -8000,7 +8187,7 @@ Responda em JSON com EXATAMENTE este formato (sem markdown, apenas JSON puro):
     });
     let text = msg.content[0].text.trim();
     const data = _parseAIJson(text);
-    ok(res, { ...data, gerado_em: new Date().toISOString(), comparaveis_online: precosReais });
+    ok(res, { ...data, gerado_em: new Date().toISOString(), comparaveis_online: precosReais, dados_municipio: dadosMun });
   } catch(e) {
     err(res, 'Erro ao gerar inteligência: ' + e.message);
   }
