@@ -7770,6 +7770,10 @@ try { db.exec(`ALTER TABLE int_estudos ADD COLUMN tipo_produto TEXT`); } catch(_
 try { db.exec(`ALTER TABLE int_estudos ADD COLUMN cidade TEXT DEFAULT ''`); } catch(_) {}
 try { db.exec(`ALTER TABLE int_cenarios ADD COLUMN permuta_pct REAL DEFAULT 0`); } catch(_) {}
 try { db.exec(`ALTER TABLE int_cenarios ADD COLUMN obras_curva TEXT DEFAULT 'linear'`); } catch(_) {}
+try { db.exec(`ALTER TABLE int_cenarios ADD COLUMN vso_curva TEXT DEFAULT 'linear'`); } catch(_) {}
+try { db.exec(`ALTER TABLE int_cenarios ADD COLUMN financ_pct REAL DEFAULT 0`); } catch(_) {}
+try { db.exec(`ALTER TABLE int_cenarios ADD COLUMN financ_taxa_aa REAL DEFAULT 0`); } catch(_) {}
+try { db.exec(`ALTER TABLE int_cenarios ADD COLUMN regime_tributario TEXT DEFAULT 'manual'`); } catch(_) {}
 
 app.get('/api/inteligencia/estudos', autenticar, (req, res) => {
   const rows = db.prepare(`
@@ -7825,12 +7829,13 @@ app.put('/api/inteligencia/cenarios/:id', autenticar, (req, res) => {
     nome=?,terreno=?,itbi_pct=?,area_vendavel=?,preco_medio=?,urbanizacao=?,projetos=?,overhead=?,
     corretagem_pct=?,tributos_pct=?,entrada_pct=?,parcelamento_meses=?,
     vendas_inicio=?,vendas_prazo=?,obras_inicio=?,obras_prazo=?,taxa_desconto=?,
-    permuta_pct=?,obras_curva=?,
+    permuta_pct=?,obras_curva=?,vso_curva=?,financ_pct=?,financ_taxa_aa=?,regime_tributario=?,
     kpis_json=?,atualizado_em=datetime('now') WHERE id=?`).run(
     f.nome,f.terreno,f.itbi_pct,f.area_vendavel,f.preco_medio,f.urbanizacao,f.projetos,f.overhead,
     f.corretagem_pct,f.tributos_pct,f.entrada_pct,f.parcelamento_meses,
     f.vendas_inicio,f.vendas_prazo,f.obras_inicio,f.obras_prazo,f.taxa_desconto,
-    f.permuta_pct||0, f.obras_curva||'linear',
+    f.permuta_pct||0, f.obras_curva||'linear', f.vso_curva||'linear',
+    f.financ_pct||0, f.financ_taxa_aa||0, f.regime_tributario||'manual',
     f.kpis_json ? JSON.stringify(f.kpis_json) : null,
     parseInt(req.params.id)
   );

@@ -18366,6 +18366,9 @@ function _calcViabilidade(p) {
           vendas_inicio, vendas_prazo, obras_inicio, obras_prazo, taxa_desconto } = p;
   const permuta_pct = p.permuta_pct || 0;
   const obras_curva = p.obras_curva || 'linear';
+  const vso_curva = p.vso_curva || 'linear';
+  const financ_pct = p.financ_pct || 0;
+  const financ_taxa_aa = p.financ_taxa_aa || 0;
 
   const VGV = area_vendavel * preco_medio;
   const itbi = terreno * itbi_pct / 100;
@@ -18401,17 +18404,44 @@ function _calcViabilidade(p) {
   const ovrParcela = overhead / (H + 1);
   for (let t = 0; t <= H; t++) cf[t] -= ovrParcela;
 
-  const vendaMensal = VGV / vendas_prazo;
-  for (let s = vendas_inicio; s < vendas_inicio + vendas_prazo; s++) {
-    if (s > H) break;
-    cf[s] -= vendaMensal * corretagem_pct / 100;
-    // Permuta financeira: % do VGV pago ao proprietário na medida das vendas
-    if (permuta_pct > 0) cf[s] -= vendaMensal * permuta_pct / 100;
+  // Financiamento bancário (SFH/SCI): banco financia financ_pct% de obra+projetos
+  if (financ_pct > 0 && financ_taxa_aa > 0 && obras_prazo > 0) {
+    const montante = (urbanizacao + projetos) * financ_pct / 100;
+    const taxaM = Math.pow(1 + financ_taxa_aa / 100, 1/12) - 1;
+    const totalDevolver = montante * Math.pow(1 + taxaM, obras_prazo);
+    const fundPorMes = montante / obras_prazo;
+    for (let t = obras_inicio; t < obras_inicio + obras_prazo && t <= H; t++) cf[t] += fundPorMes;
+    const tPag = Math.min(obras_inicio + obras_prazo, H);
+    cf[tPag] -= totalDevolver;
+  }
 
-    const entrada = vendaMensal * entrada_pct / 100;
+  // VSO: distribuição das vendas por curva de absorção
+  const vsoWeights = (() => {
+    const n = Math.max(vendas_prazo, 1);
+    if (vso_curva === 'front') {
+      const raw = Array.from({length: n}, (_, i) => n - i);
+      const s = raw.reduce((a,b) => a+b, 0);
+      return raw.map(w => w/s);
+    }
+    if (vso_curva === 'back') {
+      const raw = Array.from({length: n}, (_, i) => i + 1);
+      const s = raw.reduce((a,b) => a+b, 0);
+      return raw.map(w => w/s);
+    }
+    return Array(n).fill(1/n);
+  })();
+
+  for (let i = 0; i < vendas_prazo; i++) {
+    const s = vendas_inicio + i;
+    if (s > H) break;
+    const vendaS = VGV * vsoWeights[i];
+    cf[s] -= vendaS * corretagem_pct / 100;
+    if (permuta_pct > 0) cf[s] -= vendaS * permuta_pct / 100;
+
+    const entrada = vendaS * entrada_pct / 100;
     receipts[s] += entrada;
 
-    const saldo = vendaMensal * (1 - entrada_pct / 100);
+    const saldo = vendaS * (1 - entrada_pct / 100);
     const parcela = saldo / parcelamento_meses;
     for (let k = 1; k <= parcelamento_meses; k++) {
       if (s + k <= H) receipts[s + k] += parcela;
@@ -19788,15 +19818,19 @@ function _intRenderEstudo() {
   const c = document.getElementById('content');
   const cen = e.cenarios[_intCenTab];
 
+  const _cenP = c => ({
+    terreno:c.terreno, itbi_pct:c.itbi_pct, area_vendavel:c.area_vendavel,
+    preco_medio:c.preco_medio, urbanizacao:c.urbanizacao, projetos:c.projetos,
+    overhead:c.overhead, corretagem_pct:c.corretagem_pct, tributos_pct:c.tributos_pct,
+    entrada_pct:c.entrada_pct, parcelamento_meses:c.parcelamento_meses,
+    vendas_inicio:c.vendas_inicio, vendas_prazo:c.vendas_prazo,
+    obras_inicio:c.obras_inicio, obras_prazo:c.obras_prazo, taxa_desconto:c.taxa_desconto,
+    permuta_pct:c.permuta_pct||0, obras_curva:c.obras_curva||'linear',
+    vso_curva:c.vso_curva||'linear', financ_pct:c.financ_pct||0,
+    financ_taxa_aa:c.financ_taxa_aa||0
+  });
   const _vgvOk = cen.area_vendavel > 0 && cen.preco_medio > 0;
-  const kpis = _vgvOk ? _calcViabilidade({
-    terreno: cen.terreno, itbi_pct: cen.itbi_pct, area_vendavel: cen.area_vendavel,
-    preco_medio: cen.preco_medio, urbanizacao: cen.urbanizacao, projetos: cen.projetos,
-    overhead: cen.overhead, corretagem_pct: cen.corretagem_pct, tributos_pct: cen.tributos_pct,
-    entrada_pct: cen.entrada_pct, parcelamento_meses: cen.parcelamento_meses,
-    vendas_inicio: cen.vendas_inicio, vendas_prazo: cen.vendas_prazo,
-    obras_inicio: cen.obras_inicio, obras_prazo: cen.obras_prazo, taxa_desconto: cen.taxa_desconto
-  }) : null;
+  const kpis = _vgvOk ? _calcViabilidade(_cenP(cen)) : null;
 
   c.innerHTML = `
   <div style="padding:0;display:flex;flex-direction:column;height:100%;overflow:hidden">
@@ -19842,25 +19876,8 @@ function _intRenderEstudo() {
             <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:12px">Fluxo de Caixa Acumulado (R$)</div>
             <canvas id="int-chart" style="width:100%;height:220px"></canvas>
           </div>
-          <div id="int-sensibilidade">${_intSensibilidadeHTML({
-            terreno:cen.terreno, itbi_pct:cen.itbi_pct, area_vendavel:cen.area_vendavel,
-            preco_medio:cen.preco_medio, urbanizacao:cen.urbanizacao, projetos:cen.projetos,
-            overhead:cen.overhead, corretagem_pct:cen.corretagem_pct, tributos_pct:cen.tributos_pct,
-            entrada_pct:cen.entrada_pct, parcelamento_meses:cen.parcelamento_meses,
-            vendas_inicio:cen.vendas_inicio, vendas_prazo:cen.vendas_prazo,
-            obras_inicio:cen.obras_inicio, obras_prazo:cen.obras_prazo, taxa_desconto:cen.taxa_desconto,
-            permuta_pct:cen.permuta_pct||0, obras_curva:cen.obras_curva||'linear'
-          })}</div>
-
-          <div id="int-tabela2d">${_intTabela2DHTML({
-            terreno:cen.terreno, itbi_pct:cen.itbi_pct, area_vendavel:cen.area_vendavel,
-            preco_medio:cen.preco_medio, urbanizacao:cen.urbanizacao, projetos:cen.projetos,
-            overhead:cen.overhead, corretagem_pct:cen.corretagem_pct, tributos_pct:cen.tributos_pct,
-            entrada_pct:cen.entrada_pct, parcelamento_meses:cen.parcelamento_meses,
-            vendas_inicio:cen.vendas_inicio, vendas_prazo:cen.vendas_prazo,
-            obras_inicio:cen.obras_inicio, obras_prazo:cen.obras_prazo, taxa_desconto:cen.taxa_desconto,
-            permuta_pct:cen.permuta_pct||0, obras_curva:cen.obras_curva||'linear'
-          })}</div>
+          <div id="int-sensibilidade">${_intSensibilidadeHTML(_cenP(cen))}</div>
+          <div id="int-tabela2d">${_intTabela2DHTML(_cenP(cen))}</div>
 
           <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:16px">
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#F59E0B;margin-bottom:8px">Leitura Automática</div>
@@ -19937,12 +19954,44 @@ function _intInputsHTML(cen) {
     ${row('Overhead/Admin (R$)','overhead',cen.overhead)}
     <div style="font-size:11px;color:var(--accent);font-weight:600;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">Receita e Tributação</div>
     ${row('Corretagem (%)','corretagem_pct',cen.corretagem_pct,'number','0.5','0')}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Regime tributário</label>
+      <select id="int-f-regime_tributario" onchange="intAplicarRegimeTrib(this.value)"
+        style="width:130px;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:12px">
+        <option value="manual"  ${(cen.regime_tributario||'manual')==='manual' ?'selected':''}>Manual</option>
+        <option value="ret"     ${cen.regime_tributario==='ret'    ?'selected':''}>RET — 4% s/receita</option>
+        <option value="lp"      ${cen.regime_tributario==='lp'     ?'selected':''}>Lucro Presumido ≈ 6,37%</option>
+        <option value="lr"      ${cen.regime_tributario==='lr'     ?'selected':''}>Lucro Real (variável)</option>
+      </select>
+    </div>
     ${row('Tributos (%)','tributos_pct',cen.tributos_pct,'number','0.5','0')}
+    <div style="font-size:11px;color:var(--accent);font-weight:600;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">Financiamento de Obra (SFH/SCI)</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Banco financia (%obra)</label>
+      <input id="int-f-financ_pct" type="number" value="${cen.financ_pct||0}" step="5" min="0" max="80"
+        style="width:130px;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:13px;text-align:right;font-family:monospace"
+        onchange="intRecalcular()" title="% do custo de obra+projetos financiado pelo banco (típico SFH: 70%)">
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Taxa financ. a.a. (%)</label>
+      <input id="int-f-financ_taxa_aa" type="number" value="${cen.financ_taxa_aa||0}" step="0.5" min="0"
+        style="width:130px;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:13px;text-align:right;font-family:monospace"
+        onchange="intRecalcular()" title="Ex: 12 para CDI+2% ≈ 12% a.a.">
+    </div>
     <div style="font-size:11px;color:var(--accent);font-weight:600;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">Prazos</div>
     ${row('Entrada (%)','entrada_pct',cen.entrada_pct,'number','1','0')}
     ${row('Parcelamento (meses)','parcelamento_meses',cen.parcelamento_meses,'number','1','1')}
     ${row('Vendas: início (mês)','vendas_inicio',cen.vendas_inicio,'number','1','0')}
     ${row('Vendas: prazo (meses)','vendas_prazo',cen.vendas_prazo,'number','1','1')}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Curva de absorção</label>
+      <select id="int-f-vso_curva" onchange="intRecalcular()"
+        style="width:130px;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:12px">
+        <option value="linear" ${(cen.vso_curva||'linear')==='linear'?'selected':''}>Linear (uniforme)</option>
+        <option value="front"  ${cen.vso_curva==='front' ?'selected':''}>Lançamento (forte início)</option>
+        <option value="back"   ${cen.vso_curva==='back'  ?'selected':''}>Gradual (devagar início)</option>
+      </select>
+    </div>
     ${row('Obras: início (mês)','obras_inicio',cen.obras_inicio,'number','1','0')}
     ${row('Obras: prazo (meses)','obras_prazo',cen.obras_prazo,'number','1','1')}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -20167,8 +20216,20 @@ function _intGetInputs() {
     entrada_pct: v('entrada_pct'), parcelamento_meses: vi('parcelamento_meses'),
     vendas_inicio: vi('vendas_inicio'), vendas_prazo: vi('vendas_prazo'),
     obras_inicio: vi('obras_inicio'), obras_prazo: vi('obras_prazo'), taxa_desconto: v('taxa_desconto'),
-    permuta_pct: v('permuta_pct'), obras_curva: vs('obras_curva') || 'linear'
+    permuta_pct: v('permuta_pct'), obras_curva: vs('obras_curva') || 'linear',
+    vso_curva: vs('vso_curva') || 'linear',
+    financ_pct: v('financ_pct'), financ_taxa_aa: v('financ_taxa_aa'),
+    regime_tributario: vs('regime_tributario') || 'manual'
   };
+}
+
+function intAplicarRegimeTrib(regime) {
+  const el = document.getElementById('int-f-tributos_pct');
+  if (!el) return;
+  if (regime === 'ret') el.value = 4;
+  else if (regime === 'lp') el.value = 6.37;
+  // 'lr' e 'manual': não altera — usuário define
+  intRecalcular();
 }
 
 function intRecalcular() {
@@ -20191,6 +20252,8 @@ async function intSalvarCenario() {
   Object.assign(cen, p);
   await put(`/api/inteligencia/cenarios/${cen.id}`, { nome: cen.nome, ...p,
     permuta_pct: p.permuta_pct||0, obras_curva: p.obras_curva||'linear',
+    vso_curva: p.vso_curva||'linear', financ_pct: p.financ_pct||0,
+    financ_taxa_aa: p.financ_taxa_aa||0, regime_tributario: p.regime_tributario||'manual',
     kpis_json: kpis ? {
       VGV: kpis.VGV, resultado: kpis.resultado, margem: kpis.margem,
       exposicao: kpis.exposicao, tir_anual: kpis.tir_anual, vpl: kpis.vpl
@@ -20203,8 +20266,9 @@ function intExportarEstudoPDF() {
   if (!e) return;
   const fmtR = v => `R$ ${Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0})}`;
   const fmtP = v => `${Number(v||0).toFixed(1)}%`;
+  const _cenP2 = c => ({terreno:c.terreno,itbi_pct:c.itbi_pct,area_vendavel:c.area_vendavel,preco_medio:c.preco_medio,urbanizacao:c.urbanizacao,projetos:c.projetos,overhead:c.overhead,corretagem_pct:c.corretagem_pct,tributos_pct:c.tributos_pct,entrada_pct:c.entrada_pct,parcelamento_meses:c.parcelamento_meses,vendas_inicio:c.vendas_inicio,vendas_prazo:c.vendas_prazo,obras_inicio:c.obras_inicio,obras_prazo:c.obras_prazo,taxa_desconto:c.taxa_desconto,permuta_pct:c.permuta_pct||0,obras_curva:c.obras_curva||'linear',vso_curva:c.vso_curva||'linear',financ_pct:c.financ_pct||0,financ_taxa_aa:c.financ_taxa_aa||0});
   const linhas = e.cenarios.map(cen => {
-    const p = {terreno:cen.terreno,itbi_pct:cen.itbi_pct,area_vendavel:cen.area_vendavel,preco_medio:cen.preco_medio,urbanizacao:cen.urbanizacao,projetos:cen.projetos,overhead:cen.overhead,corretagem_pct:cen.corretagem_pct,tributos_pct:cen.tributos_pct,entrada_pct:cen.entrada_pct,parcelamento_meses:cen.parcelamento_meses,vendas_inicio:cen.vendas_inicio,vendas_prazo:cen.vendas_prazo,obras_inicio:cen.obras_inicio,obras_prazo:cen.obras_prazo,taxa_desconto:cen.taxa_desconto};
+    const p = _cenP2(cen);
     const k = (cen.area_vendavel > 0 && cen.preco_medio > 0) ? _calcViabilidade(p) : null;
     return {cen, k, p};
   });
@@ -20302,8 +20366,9 @@ async function intDeletarCenario(id) {
 
 function intComparar() {
   const e = _intEstudo;
+  const _cenP3 = c => ({terreno:c.terreno,itbi_pct:c.itbi_pct,area_vendavel:c.area_vendavel,preco_medio:c.preco_medio,urbanizacao:c.urbanizacao,projetos:c.projetos,overhead:c.overhead,corretagem_pct:c.corretagem_pct,tributos_pct:c.tributos_pct,entrada_pct:c.entrada_pct,parcelamento_meses:c.parcelamento_meses,vendas_inicio:c.vendas_inicio,vendas_prazo:c.vendas_prazo,obras_inicio:c.obras_inicio,obras_prazo:c.obras_prazo,taxa_desconto:c.taxa_desconto,permuta_pct:c.permuta_pct||0,obras_curva:c.obras_curva||'linear',vso_curva:c.vso_curva||'linear',financ_pct:c.financ_pct||0,financ_taxa_aa:c.financ_taxa_aa||0});
   const rows = e.cenarios.map(cen => {
-    const p = { terreno:cen.terreno,itbi_pct:cen.itbi_pct,area_vendavel:cen.area_vendavel,preco_medio:cen.preco_medio,urbanizacao:cen.urbanizacao,projetos:cen.projetos,overhead:cen.overhead,corretagem_pct:cen.corretagem_pct,tributos_pct:cen.tributos_pct,entrada_pct:cen.entrada_pct,parcelamento_meses:cen.parcelamento_meses,vendas_inicio:cen.vendas_inicio,vendas_prazo:cen.vendas_prazo,obras_inicio:cen.obras_inicio,obras_prazo:cen.obras_prazo,taxa_desconto:cen.taxa_desconto };
+    const p = _cenP3(cen);
     const k = (cen.area_vendavel > 0 && cen.preco_medio > 0) ? _calcViabilidade(p) : { VGV:0, resultado:0, margem:0, tir_anual:null, vpl:0, exposicao:0, payback:-1, pct_vgv_eq:0 };
     return { cen, k };
   });
