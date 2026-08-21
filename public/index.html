@@ -18623,6 +18623,10 @@ function renderIntAnaliseArea() {
             </div>
           </div>
           <div>
+            <label style="font-size:11px;color:var(--text2)">Custo total do terreno (R$) <span style="font-style:italic;font-weight:400">(opcional — ativa motor invertido)</span></label>
+            <input id="ia-custo-terreno" class="modal-input" type="number" placeholder="ex: 850000" style="width:100%">
+          </div>
+          <div>
             <label style="font-size:11px;color:var(--text2)">Zoneamento / Informações adicionais</label>
             <textarea id="ia-notas" class="modal-input" rows="3" placeholder="Ex: Zoneamento ZR-2, área de 15 ha, próximo ao centro, acesso pela SC-407..." style="width:100%;resize:vertical"></textarea>
           </div>
@@ -18875,6 +18879,10 @@ async function intAnalisarArea() {
   fd.append('notas', document.getElementById('ia-notas').value || '');
   fd.append('publico', document.getElementById('ia-publico').value || '');
   fd.append('tipo_produto', document.getElementById('ia-tipo-produto')?.value || 'lote');
+  window._iaCustoTerreno = parseFloat(document.getElementById('ia-custo-terreno')?.value) || 0;
+  window._iaAreaHa = parseFloat(document.getElementById('ia-area')?.value) || 0;
+  window._iaTipoProduto = document.getElementById('ia-tipo-produto')?.value || 'lote';
+  window._iaCidade = cidade;
   if (window._iaLat && window._iaLng) {
     fd.append('coordenadas', `${window._iaLat.toFixed(6)}, ${window._iaLng.toFixed(6)}`);
   }
@@ -18977,6 +18985,59 @@ function _renderResultadoArea(d, cidade, endereco) {
       <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">
         ${d.proximos_passos.map(p=>`<li style="font-size:13px;color:var(--text)">${p}</li>`).join('')}
       </ol>`) : ''}
+
+    ${(() => {
+      if (!(window._iaCustoTerreno > 0) || !(window._iaAreaHa > 0)) return '';
+      const areaM2 = window._iaAreaHa * 10000;
+      const tipo = window._iaTipoProduto || 'lote';
+      const effMap = { lote: 0.65, apartamento: 3.5, casa: 0.55, comercial: 0.60 };
+      const urbMap = { lote: 90, apartamento: 1800, casa: 900, comercial: 1400 };
+      const eff = effMap[tipo] || 0.65;
+      const urbM2 = urbMap[tipo] || 90;
+      const areaVend = Math.round(areaM2 * eff);
+      const custoUrb = areaM2 * urbM2;
+      const custoProjetos = custoUrb * 0.08;
+      const custoOverhead = window._iaCustoTerreno * 0.04;
+      const custoTotal = window._iaCustoTerreno + custoUrb + custoProjetos + custoOverhead;
+      const dedBase = 0.10;
+      const precoRawStr = d.preco_m2_estimado || '';
+      const precoMercado = precoRawStr ? parseInt(precoRawStr.replace(/\D/g,''))||null : null;
+      const linhas = [0, 0.15, 0.25, 0.40].map(m => {
+        const ded = dedBase + m;
+        if (ded >= 1) return '';
+        const vgv = custoTotal / (1 - ded);
+        const pM2 = Math.round(vgv / areaVend);
+        const ok = precoMercado ? pM2 <= precoMercado : null;
+        return `<div style="display:flex;align-items:center;gap:8px;background:${ok===true?'rgba(34,197,94,.08)':ok===false?'rgba(239,68,68,.08)':'var(--navy3)'};border:1px solid ${ok===true?'rgba(34,197,94,.25)':ok===false?'rgba(239,68,68,.25)':'var(--border)'};border-radius:6px;padding:8px 12px">
+          <span style="flex:1;font-size:12px;color:var(--text2)">Margem ${Math.round(m*100)}%${m===0?' (break-even)':''}</span>
+          <span style="font-size:15px;font-weight:700;color:${ok===true?'#22C55E':ok===false?'#EF4444':'var(--text)'};font-family:monospace">R$ ${pM2.toLocaleString('pt-BR')}/m²</span>
+          ${ok!==null ? `<span style="font-size:11px;color:${ok?'#22C55E':'#EF4444'}">${ok?'✓ viável':'✗ acima do mercado'}</span>` : ''}
+        </div>`;
+      }).join('');
+      return `<div style="background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.3);border-radius:10px;padding:16px;margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#C4B5FD;margin-bottom:10px">⚡ Motor de Viabilidade Invertido</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+          <div style="background:var(--navy3);border-radius:8px;padding:10px">
+            <div style="font-size:10px;color:var(--text2)">Custo do terreno</div>
+            <div style="font-size:14px;font-weight:700;color:#C4B5FD;font-family:monospace">R$ ${window._iaCustoTerreno.toLocaleString('pt-BR')}</div>
+          </div>
+          <div style="background:var(--navy3);border-radius:8px;padding:10px">
+            <div style="font-size:10px;color:var(--text2)">Área total</div>
+            <div style="font-size:14px;font-weight:700;color:#C4B5FD;font-family:monospace">${areaM2.toLocaleString('pt-BR')} m²</div>
+          </div>
+          <div style="background:var(--navy3);border-radius:8px;padding:10px">
+            <div style="font-size:10px;color:var(--text2)">Área vendável est.</div>
+            <div style="font-size:14px;font-weight:700;color:#C4B5FD;font-family:monospace">${areaVend.toLocaleString('pt-BR')} m²</div>
+            <div style="font-size:9px;color:var(--text2)">${tipo} · efic. ${Math.round(eff*100)}%</div>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Custo total est.: R$ ${custoTotal.toLocaleString('pt-BR')} (terreno + urb. + proj. + overhead)</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px">Preço/m² mínimo necessário por margem alvo:</div>
+        <div style="display:flex;flex-direction:column;gap:6px">${linhas}</div>
+        ${precoMercado ? `<div style="font-size:10px;color:var(--text2);margin-top:8px">Referência de mercado: R$ ${precoMercado.toLocaleString('pt-BR')}/m²</div>` : ''}
+        <div style="font-size:10px;color:var(--text2);margin-top:6px">* Estimativa: urb. ≈ R$ ${urbM2}/m², proj. +8%, overhead +4%. Refine no Motor de Viabilidade.</div>
+      </div>`;
+    })()}
 
     <!-- Calibração com comparáveis reais -->
     <div id="ia-calibracao" style="background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden">
@@ -19418,21 +19479,24 @@ async function intGerarInteligencia() {
     <div>Depois a IA gera a inteligência de mercado com os dados reais. Aguarde 30–50 s.</div>
   </div>`;
 
-  const r = await post('/api/inteligencia/inteligencia-lancamento', {
-    cidade, tipo,
-    nome_empreendimento: emp?._emp_nome || emp?.nome || d?.nome_empreendimento || null,
-    dados_planta: d?.total_lotes ? d : null,
-    area_m2: d?.area_vendavel_m2 || null,
-    total_lotes: d?.total_lotes || emp?.num_unidades || null,
-    lote_area_media: d?.lote_area_media_m2 || null,
-    vgv_estimado: emp?.vgv_estimado || null,
-  });
+  const [r, corrResp] = await Promise.all([
+    post('/api/inteligencia/inteligencia-lancamento', {
+      cidade, tipo,
+      nome_empreendimento: emp?._emp_nome || emp?.nome || d?.nome_empreendimento || null,
+      dados_planta: d?.total_lotes ? d : null,
+      area_m2: d?.area_vendavel_m2 || null,
+      total_lotes: d?.total_lotes || emp?.num_unidades || null,
+      lote_area_media: d?.lote_area_media_m2 || null,
+      vgv_estimado: emp?.vgv_estimado || null,
+    }),
+    get('/api/corretores')
+  ]);
 
   if (!r.ok) { el.innerHTML = `<div style="color:var(--danger);font-size:12px">❌ ${r.error}</div>`; return; }
-  _renderInteligenciaLancamento(r.data, cidade, tipo);
+  _renderInteligenciaLancamento(r.data, cidade, tipo, corrResp.data || []);
 }
 
-function _renderInteligenciaLancamento(d, cidade, tipo) {
+function _renderInteligenciaLancamento(d, cidade, tipo, crmCorretores) {
   const el = document.getElementById('il-inteligencia-resultado');
   if (!el) return;
 
@@ -19442,7 +19506,22 @@ function _renderInteligenciaLancamento(d, cidade, tipo) {
       ${corpo}
     </div>`;
 
+  const crmCorr = crmCorretores || [];
+  const crmHTML = crmCorr.length ? `
+    <div style="background:rgba(0,196,180,.06);border:1px solid rgba(0,196,180,.2);border-radius:6px;padding:10px;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:6px">📋 Corretores cadastrados no CRM (${crmCorr.length})</div>
+      <div style="display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto">
+        ${crmCorr.map(c=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px">
+          <span style="flex:1;font-weight:600">${c.nome}</span>
+          <span style="color:var(--text2)">${c.telefone||c.whatsapp||c.email||'–'}</span>
+          ${c.creci?`<span style="font-size:10px;color:var(--text2)">CRECI ${c.creci}</span>`:''}
+        </div>`).join('')}
+      </div>
+    </div>` : '';
+
   const corretoresHTML = (d.corretores||[]).length ? `
+    ${crmHTML}
+    <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px">Sugestões da IA para a região:</div>
     <div style="overflow-x:auto">
       <table style="width:100%;font-size:12px;border-collapse:collapse">
         <thead><tr style="background:var(--card)">
@@ -19462,7 +19541,8 @@ function _renderInteligenciaLancamento(d, cidade, tipo) {
           </tr>`).join('')}</tbody>
       </table>
     </div>
-    <div style="font-size:10px;color:var(--text2);margin-top:6px">💡 Confirme contatos no <a href="https://www.creci-sc.gov.br" target="_blank" style="color:var(--accent2)">CRECI</a> da região antes de usar.</div>` : '<div style="font-size:12px;color:var(--text2)">Dados de corretores não disponíveis para esta região.</div>';
+    <div style="font-size:10px;color:var(--text2);margin-top:6px">💡 Confirme contatos no <a href="https://www.creci-sc.gov.br" target="_blank" style="color:var(--accent2)">CRECI</a> da região antes de usar.</div>` :
+    (crmHTML || '<div style="font-size:12px;color:var(--text2)">Dados de corretores não disponíveis para esta região.</div>');
 
   const condicoesHTML = (d.condicoes_pagamento||[]).length ?
     `<div style="display:flex;flex-direction:column;gap:6px">${d.condicoes_pagamento.map(cc=>`
@@ -19557,9 +19637,20 @@ async function intCriarEstudoComPreco(preco) {
   const nome = prompt('Nome do estudo de viabilidade:', nomeDefault);
   if (!nome) return;
 
+  const custoTerreno = window._iaCustoTerreno || 0;
+  const areaHa = window._iaAreaHa || 0;
+  const areaM2Terreno = areaHa * 10000;
+  const tipoProd = window._iaTipoProduto || planta?._tipo || emp?.tipo || 'lote';
+  const cidadeEstudo = window._iaCidade || emp?.cidade || planta?._cidade || '';
+
   const r = await post('/api/inteligencia/estudos', {
     nome,
-    empreendimento_id: emp?.id || null
+    empreendimento_id: emp?.id || null,
+    custo_terreno_total: custoTerreno > 0 ? custoTerreno : null,
+    area_terreno_m2: areaM2Terreno > 0 ? areaM2Terreno : null,
+    tipo_produto: tipoProd,
+    cidade: cidadeEstudo,
+    preco_medio_inicial: preco
   });
   if (!r.ok) { alert(r.error); return; }
 
@@ -19571,14 +19662,16 @@ async function intCriarEstudoComPreco(preco) {
   // Monta atualização do cenário com dados reais
   const updates = { ...cen, preco_medio: preco };
 
-  // Área vendável: planta > estimativa por unidades
+  // Área vendável: planta > estimativa por unidades > estimativa pelo terreno
   if (planta?.area_vendavel_m2) {
     updates.area_vendavel = Math.round(planta.area_vendavel_m2);
   } else if (emp?.num_unidades && planta?.lote_area_media_m2) {
     updates.area_vendavel = Math.round(emp.num_unidades * planta.lote_area_media_m2);
   } else if (emp?.vgv_estimado && preco > 0) {
-    // back-calcula área a partir do VGV estimado
     updates.area_vendavel = Math.round(emp.vgv_estimado / preco);
+  } else if (areaM2Terreno > 0) {
+    const effMap = { lote: 0.65, apartamento: 3.5, casa: 0.55, comercial: 0.60 };
+    updates.area_vendavel = Math.round(areaM2Terreno * (effMap[tipoProd] || 0.65));
   }
 
   await put(`/api/inteligencia/cenarios/${cen.id}`, updates);
@@ -19650,6 +19743,7 @@ function _intRenderEstudo() {
       <div style="display:flex;gap:8px">
         <button onclick="intComparar()" style="background:var(--navy3);color:var(--text);border:1px solid var(--border);padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer">≡ Comparar</button>
         <button onclick="abrirPlantaUrbanistica()" style="background:var(--navy3);color:var(--text);border:1px solid var(--border);padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer">🗺️ Planta</button>
+        <button onclick="intExportarEstudoPDF()" style="background:var(--navy3);color:var(--text);border:1px solid var(--border);padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer" title="Exportar estudo completo como PDF">🖨️ PDF</button>
         <button onclick="intSalvarCenario()" style="background:var(--accent);color:var(--navy);border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">💾 Salvar</button>
       </div>
     </div>
@@ -19685,6 +19779,29 @@ function _intRenderEstudo() {
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#F59E0B;margin-bottom:8px">Leitura Automática</div>
             <div id="int-leitura" style="font-size:13px;color:var(--text);line-height:1.6">${_leituraVia(kpis, cen.taxa_desconto)}</div>
           </div>
+
+          ${(() => {
+            const pm = cen.preco_medio;
+            if (!pm || pm <= 0) return '';
+            const tipo = (e.tipo_produto||'').toLowerCase();
+            const isV = tipo.includes('apto') || tipo.includes('apart') || tipo.includes('casa') || tipo.includes('vertical');
+            if (!isV) return '';
+            const areaUnit = tipo.includes('casa') ? 100 : 65;
+            const precoUnit = pm * areaUnit;
+            let faixa = null;
+            if (precoUnit <= 190000) faixa = {n:1, max:190000, txt:'subsídio de até R$ 55.000 pela CAIXA'};
+            else if (precoUnit <= 264000) faixa = {n:2, max:264000, txt:'subsídio de até R$ 29.000'};
+            else if (precoUnit <= 350000) faixa = {n:3, max:350000, txt:'FGTS facilitado + taxa reduzida'};
+            if (!faixa) return '';
+            return `<div style="background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:10px;padding:12px 16px">
+              <div style="font-size:11px;font-weight:700;color:#22C55E;margin-bottom:4px">🏠 Possível elegibilidade MCMV — Faixa ${faixa.n}</div>
+              <div style="font-size:12px;color:var(--text2);line-height:1.5">
+                A R$ ${pm.toLocaleString('pt-BR')}/m² com ~${areaUnit}m²/unidade → <strong style="color:var(--text)">R$ ${Math.round(precoUnit).toLocaleString('pt-BR')}/unidade</strong>.<br>
+                Faixa ${faixa.n} (até R$ ${faixa.max.toLocaleString('pt-BR')}): ${faixa.txt}.
+              </div>
+              <div style="font-size:10px;color:#22C55E;margin-top:5px">Confirme com a CAIXA — limites variam por município, renda familiar e estado.</div>
+            </div>`;
+          })()}
 
           <!-- Pesquisa de Mercado (Submódulo B) -->
           <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden">
@@ -19843,6 +19960,85 @@ async function intSalvarCenario() {
     exposicao: kpis.exposicao, tir_anual: kpis.tir_anual, vpl: kpis.vpl
   }});
   toast('Cenário salvo');
+}
+
+function intExportarEstudoPDF() {
+  const e = _intEstudo;
+  if (!e) return;
+  const fmtR = v => `R$ ${Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0})}`;
+  const fmtP = v => `${Number(v||0).toFixed(1)}%`;
+  const linhas = e.cenarios.map(cen => {
+    const p = {terreno:cen.terreno,itbi_pct:cen.itbi_pct,area_vendavel:cen.area_vendavel,preco_medio:cen.preco_medio,urbanizacao:cen.urbanizacao,projetos:cen.projetos,overhead:cen.overhead,corretagem_pct:cen.corretagem_pct,tributos_pct:cen.tributos_pct,entrada_pct:cen.entrada_pct,parcelamento_meses:cen.parcelamento_meses,vendas_inicio:cen.vendas_inicio,vendas_prazo:cen.vendas_prazo,obras_inicio:cen.obras_inicio,obras_prazo:cen.obras_prazo,taxa_desconto:cen.taxa_desconto};
+    return {cen, k:_calcViabilidade(p), p};
+  });
+  const cards = linhas.map(({cen,k}) => `
+    <div class="ccard">
+      <h3>${cen.nome.toUpperCase()}</h3>
+      <table><tbody>
+        <tr><td>VGV</td><td><strong>${fmtR(k.VGV)}</strong></td></tr>
+        <tr><td>Resultado</td><td class="${k.resultado>=0?'ok':'bad'}">${fmtR(k.resultado)}</td></tr>
+        <tr><td>Margem</td><td class="${k.margem>=0.15?'ok':'bad'}">${fmtP(k.margem*100)}</td></tr>
+        <tr><td>TIR a.a.</td><td class="${k.tir_anual&&k.tir_anual*100>=cen.taxa_desconto?'ok':'bad'}">${k.tir_anual?fmtP(k.tir_anual*100):'n/d'}</td></tr>
+        <tr><td>VPL (@${cen.taxa_desconto}% a.a.)</td><td>${fmtR(k.vpl)}</td></tr>
+        <tr><td>Exposição máx.</td><td>${fmtR(k.exposicao)}</td></tr>
+        <tr><td>Payback</td><td>${k.payback>0?`mês ${k.payback}`:'–'}</td></tr>
+        <tr><td>Eq. % VGV</td><td>${fmtP((k.pct_vgv_eq||0)*100)}</td></tr>
+      </tbody></table>
+    </div>`).join('');
+  const ip = linhas.find(l=>l.cen.nome==='base')?.p || linhas[0]?.p;
+  const htmlStr = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+  <title>Viabilidade — ${e.nome}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;font-size:11pt;color:#1a2332;padding:28px}
+    h1{font-size:18pt;color:#005a50;margin-bottom:3px}
+    h2{font-size:12pt;color:#005a50;margin:18px 0 8px;border-bottom:1px solid #ccc;padding-bottom:4px}
+    h3{font-size:10.5pt;color:#1a2332;margin-bottom:8px;text-transform:capitalize}
+    .meta{font-size:9pt;color:#666;margin-bottom:18px}
+    .cenarios{display:flex;gap:16px}
+    .ccard{flex:1;border:1px solid #ccc;border-radius:6px;padding:14px}
+    table{width:100%;border-collapse:collapse;font-size:9.5pt}
+    td{padding:4px 6px;border-bottom:1px solid #f0f0f0}
+    td:first-child{color:#666}td:last-child{text-align:right;font-family:monospace}
+    .ok{color:#15803d;font-weight:700}.bad{color:#b91c1c;font-weight:700}
+    .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:9.5pt}
+    .irow{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dotted #eee}
+    .irow .lbl{color:#666}.irow .val{font-family:monospace}
+    .sec{margin-bottom:6px;font-weight:700;color:#005a50;font-size:9pt}
+    .footer{margin-top:22px;font-size:8pt;color:#aaa;border-top:1px solid #eee;padding-top:7px}
+    @media print{body{padding:0}button{display:none}}
+  </style></head><body>
+  <h1>${e.nome}</h1>
+  <div class="meta">${e.emp_nome?`Empreendimento: <strong>${e.emp_nome}</strong> · `:''}${e.cidade?`Cidade: <strong>${e.cidade}</strong> · `:''}${e.tipo_produto?`Tipo: ${e.tipo_produto} · `:''}Gerado em: ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})}</div>
+  <h2>Resumo por Cenário</h2>
+  <div class="cenarios">${cards}</div>
+  ${ip?`<h2>Premissas (Cenário Base)</h2><div class="grid3">
+    <div><div class="sec">Terreno</div>
+      <div class="irow"><span class="lbl">Custo terreno</span><span class="val">${fmtR(ip.terreno)}</span></div>
+      <div class="irow"><span class="lbl">ITBI</span><span class="val">${fmtP(ip.itbi_pct)}</span></div>
+    </div>
+    <div><div class="sec">Produto</div>
+      <div class="irow"><span class="lbl">Área vendável</span><span class="val">${Number(ip.area_vendavel||0).toLocaleString('pt-BR')} m²</span></div>
+      <div class="irow"><span class="lbl">Preço médio</span><span class="val">R$ ${Number(ip.preco_medio||0).toLocaleString('pt-BR')}/m²</span></div>
+      <div class="irow"><span class="lbl">Corretagem</span><span class="val">${fmtP(ip.corretagem_pct)}</span></div>
+      <div class="irow"><span class="lbl">Tributos</span><span class="val">${fmtP(ip.tributos_pct)}</span></div>
+    </div>
+    <div><div class="sec">Custos e Prazos</div>
+      <div class="irow"><span class="lbl">Urbanização</span><span class="val">${fmtR(ip.urbanizacao)}</span></div>
+      <div class="irow"><span class="lbl">Projetos/Lic.</span><span class="val">${fmtR(ip.projetos)}</span></div>
+      <div class="irow"><span class="lbl">Overhead</span><span class="val">${fmtR(ip.overhead)}</span></div>
+      <div class="irow"><span class="lbl">Vendas (início · prazo)</span><span class="val">M${ip.vendas_inicio} · ${ip.vendas_prazo}m</span></div>
+      <div class="irow"><span class="lbl">Obras (início · prazo)</span><span class="val">M${ip.obras_inicio} · ${ip.obras_prazo}m</span></div>
+      <div class="irow"><span class="lbl">Taxa desconto</span><span class="val">${fmtP(ip.taxa_desconto)} a.a.</span></div>
+    </div>
+  </div>`:''}
+  <div class="footer">R2X CRM · Inteligência de Empreendimentos · Dados meramente indicativos — consulte especialistas antes de tomar decisões de investimento.</div>
+  <scr`+`ipt>window.onload=()=>window.print()<`+`/scr`+`ipt>
+  </body></html>`;
+  const w = window.open('','_blank');
+  if (!w) { alert('Permita popups para exportar o PDF.'); return; }
+  w.document.write(htmlStr);
+  w.document.close();
 }
 
 async function intNovoCenario() {

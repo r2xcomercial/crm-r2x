@@ -7763,6 +7763,12 @@ try { db.exec(`CREATE TABLE IF NOT EXISTS int_comparaveis (
   criado_em TEXT DEFAULT (datetime('now'))
 )`); } catch(_) {}
 
+try { db.exec(`ALTER TABLE int_estudos ADD COLUMN analise_ia_json TEXT`); } catch(_) {}
+try { db.exec(`ALTER TABLE int_estudos ADD COLUMN custo_terreno_total REAL`); } catch(_) {}
+try { db.exec(`ALTER TABLE int_estudos ADD COLUMN area_terreno_m2 REAL`); } catch(_) {}
+try { db.exec(`ALTER TABLE int_estudos ADD COLUMN tipo_produto TEXT`); } catch(_) {}
+try { db.exec(`ALTER TABLE int_estudos ADD COLUMN cidade TEXT DEFAULT ''`); } catch(_) {}
+
 app.get('/api/inteligencia/estudos', autenticar, (req, res) => {
   const rows = db.prepare(`
     SELECT e.*, emp.nome as emp_nome,
@@ -7775,13 +7781,19 @@ app.get('/api/inteligencia/estudos', autenticar, (req, res) => {
 });
 
 app.post('/api/inteligencia/estudos', autenticar, (req, res) => {
-  const { nome, descricao, empreendimento_id } = req.body;
+  const { nome, descricao, empreendimento_id, analise_ia_json, custo_terreno_total, area_terreno_m2, tipo_produto, cidade, preco_medio_inicial, area_vendavel_inicial } = req.body;
   if (!nome) return err(res, 'Nome obrigatório');
-  const r = db.prepare(`INSERT INTO int_estudos (nome,descricao,empreendimento_id,usuario_id) VALUES (?,?,?,?)`)
-    .run(nome, descricao||'', empreendimento_id||null, req.usuario.id);
+  const r = db.prepare(`INSERT INTO int_estudos (nome,descricao,empreendimento_id,usuario_id,analise_ia_json,custo_terreno_total,area_terreno_m2,tipo_produto,cidade) VALUES (?,?,?,?,?,?,?,?,?)`)
+    .run(nome, descricao||'', empreendimento_id||null, req.usuario.id,
+      analise_ia_json ? JSON.stringify(analise_ia_json) : null,
+      custo_terreno_total||null, area_terreno_m2||null, tipo_produto||null, cidade||null);
   const id = r.lastInsertRowid;
+  const terr = parseFloat(custo_terreno_total)||0;
+  const prec = parseFloat(preco_medio_inicial)||0;
+  const areaV = parseFloat(area_vendavel_inicial)||0;
   for (const n of ['conservador','base','otimista'])
-    db.prepare(`INSERT INTO int_cenarios (estudo_id,nome) VALUES (?,?)`).run(id, n);
+    db.prepare(`INSERT INTO int_cenarios (estudo_id,nome,terreno,itbi_pct,area_vendavel,preco_medio,urbanizacao,projetos,overhead,corretagem_pct,tributos_pct,entrada_pct,parcelamento_meses,vendas_inicio,vendas_prazo,obras_inicio,obras_prazo,taxa_desconto) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id, n, terr, 2.5, areaV, prec, 0, 0, 0, 6, 4, 30, 36, 6, 18, 3, 12, 15);
   ok(res, { id });
 });
 
