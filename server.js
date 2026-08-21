@@ -7768,6 +7768,8 @@ try { db.exec(`ALTER TABLE int_estudos ADD COLUMN custo_terreno_total REAL`); } 
 try { db.exec(`ALTER TABLE int_estudos ADD COLUMN area_terreno_m2 REAL`); } catch(_) {}
 try { db.exec(`ALTER TABLE int_estudos ADD COLUMN tipo_produto TEXT`); } catch(_) {}
 try { db.exec(`ALTER TABLE int_estudos ADD COLUMN cidade TEXT DEFAULT ''`); } catch(_) {}
+try { db.exec(`ALTER TABLE int_cenarios ADD COLUMN permuta_pct REAL DEFAULT 0`); } catch(_) {}
+try { db.exec(`ALTER TABLE int_cenarios ADD COLUMN obras_curva TEXT DEFAULT 'linear'`); } catch(_) {}
 
 app.get('/api/inteligencia/estudos', autenticar, (req, res) => {
   const rows = db.prepare(`
@@ -7823,10 +7825,12 @@ app.put('/api/inteligencia/cenarios/:id', autenticar, (req, res) => {
     nome=?,terreno=?,itbi_pct=?,area_vendavel=?,preco_medio=?,urbanizacao=?,projetos=?,overhead=?,
     corretagem_pct=?,tributos_pct=?,entrada_pct=?,parcelamento_meses=?,
     vendas_inicio=?,vendas_prazo=?,obras_inicio=?,obras_prazo=?,taxa_desconto=?,
+    permuta_pct=?,obras_curva=?,
     kpis_json=?,atualizado_em=datetime('now') WHERE id=?`).run(
     f.nome,f.terreno,f.itbi_pct,f.area_vendavel,f.preco_medio,f.urbanizacao,f.projetos,f.overhead,
     f.corretagem_pct,f.tributos_pct,f.entrada_pct,f.parcelamento_meses,
     f.vendas_inicio,f.vendas_prazo,f.obras_inicio,f.obras_prazo,f.taxa_desconto,
+    f.permuta_pct||0, f.obras_curva||'linear',
     f.kpis_json ? JSON.stringify(f.kpis_json) : null,
     parseInt(req.params.id)
   );

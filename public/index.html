@@ -18364,6 +18364,8 @@ function _calcViabilidade(p) {
   const { terreno, itbi_pct, area_vendavel, preco_medio, urbanizacao, projetos, overhead,
           corretagem_pct, tributos_pct, entrada_pct, parcelamento_meses,
           vendas_inicio, vendas_prazo, obras_inicio, obras_prazo, taxa_desconto } = p;
+  const permuta_pct = p.permuta_pct || 0;
+  const obras_curva = p.obras_curva || 'linear';
 
   const VGV = area_vendavel * preco_medio;
   const itbi = terreno * itbi_pct / 100;
@@ -18376,14 +18378,25 @@ function _calcViabilidade(p) {
   const cf = new Array(H + 1).fill(0);
   const receipts = new Array(H + 1).fill(0);
 
-  cf[0] -= terreno + itbi;
+  // Terreno: zerado se permuta (pagamento via receita de vendas)
+  if (permuta_pct <= 0) cf[0] -= terreno + itbi;
 
   const projMeses = Math.min(6, H + 1);
   const projParcela = projetos / projMeses;
   for (let t = 0; t < projMeses; t++) cf[t] -= projParcela;
 
-  const urbParcela = urbanizacao / obras_prazo;
-  for (let t = obras_inicio; t < obras_inicio + obras_prazo && t <= H; t++) cf[t] -= urbParcela;
+  // Obras: distribuição linear ou curva S (smoothstep)
+  if (obras_curva === 's' && obras_prazo > 0) {
+    const sCurveF = x => 3*x*x - 2*x*x*x; // smoothstep CDF
+    for (let t = obras_inicio; t < obras_inicio + obras_prazo && t <= H; t++) {
+      const x0 = (t - obras_inicio) / obras_prazo;
+      const x1 = (t - obras_inicio + 1) / obras_prazo;
+      cf[t] -= urbanizacao * (sCurveF(Math.min(x1,1)) - sCurveF(Math.max(x0,0)));
+    }
+  } else {
+    const urbParcela = urbanizacao / obras_prazo;
+    for (let t = obras_inicio; t < obras_inicio + obras_prazo && t <= H; t++) cf[t] -= urbParcela;
+  }
 
   const ovrParcela = overhead / (H + 1);
   for (let t = 0; t <= H; t++) cf[t] -= ovrParcela;
@@ -18392,6 +18405,8 @@ function _calcViabilidade(p) {
   for (let s = vendas_inicio; s < vendas_inicio + vendas_prazo; s++) {
     if (s > H) break;
     cf[s] -= vendaMensal * corretagem_pct / 100;
+    // Permuta financeira: % do VGV pago ao proprietário na medida das vendas
+    if (permuta_pct > 0) cf[s] -= vendaMensal * permuta_pct / 100;
 
     const entrada = vendaMensal * entrada_pct / 100;
     receipts[s] += entrada;
@@ -18417,8 +18432,9 @@ function _calcViabilidade(p) {
   const exposicao = Math.min(...acum);
   const payback = acum.findIndex((v, i) => i > 0 && v >= 0 && acum[i-1] < 0);
 
-  const Ffix = terreno + itbi + urbanizacao + projetos + overhead;
-  const vrate = (corretagem_pct + tributos_pct) / 100;
+  const custoTerreno = permuta_pct > 0 ? 0 : (terreno + itbi);
+  const Ffix = custoTerreno + urbanizacao + projetos + overhead;
+  const vrate = (corretagem_pct + tributos_pct + permuta_pct) / 100;
   const receita_eq = Ffix / (1 - vrate);
   const pct_vgv_eq = receita_eq / VGV;
 
@@ -19826,6 +19842,26 @@ function _intRenderEstudo() {
             <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2);margin-bottom:12px">Fluxo de Caixa Acumulado (R$)</div>
             <canvas id="int-chart" style="width:100%;height:220px"></canvas>
           </div>
+          <div id="int-sensibilidade">${_intSensibilidadeHTML({
+            terreno:cen.terreno, itbi_pct:cen.itbi_pct, area_vendavel:cen.area_vendavel,
+            preco_medio:cen.preco_medio, urbanizacao:cen.urbanizacao, projetos:cen.projetos,
+            overhead:cen.overhead, corretagem_pct:cen.corretagem_pct, tributos_pct:cen.tributos_pct,
+            entrada_pct:cen.entrada_pct, parcelamento_meses:cen.parcelamento_meses,
+            vendas_inicio:cen.vendas_inicio, vendas_prazo:cen.vendas_prazo,
+            obras_inicio:cen.obras_inicio, obras_prazo:cen.obras_prazo, taxa_desconto:cen.taxa_desconto,
+            permuta_pct:cen.permuta_pct||0, obras_curva:cen.obras_curva||'linear'
+          })}</div>
+
+          <div id="int-tabela2d">${_intTabela2DHTML({
+            terreno:cen.terreno, itbi_pct:cen.itbi_pct, area_vendavel:cen.area_vendavel,
+            preco_medio:cen.preco_medio, urbanizacao:cen.urbanizacao, projetos:cen.projetos,
+            overhead:cen.overhead, corretagem_pct:cen.corretagem_pct, tributos_pct:cen.tributos_pct,
+            entrada_pct:cen.entrada_pct, parcelamento_meses:cen.parcelamento_meses,
+            vendas_inicio:cen.vendas_inicio, vendas_prazo:cen.vendas_prazo,
+            obras_inicio:cen.obras_inicio, obras_prazo:cen.obras_prazo, taxa_desconto:cen.taxa_desconto,
+            permuta_pct:cen.permuta_pct||0, obras_curva:cen.obras_curva||'linear'
+          })}</div>
+
           <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:16px">
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#F59E0B;margin-bottom:8px">Leitura Automática</div>
             <div id="int-leitura" style="font-size:13px;color:var(--text);line-height:1.6">${_leituraVia(kpis, cen.taxa_desconto)}</div>
@@ -19886,6 +19922,12 @@ function _intInputsHTML(cen) {
     <div style="font-size:11px;color:var(--accent);font-weight:600;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">Terreno</div>
     ${row('Terreno (R$)','terreno',cen.terreno)}
     ${row('ITBI (%)','itbi_pct',cen.itbi_pct,'number','0.1','0')}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Permuta financeira (%VGV)</label>
+      <input id="int-f-permuta_pct" type="number" value="${cen.permuta_pct||0}" step="1" min="0" max="100"
+        style="width:130px;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:13px;text-align:right;font-family:monospace"
+        onchange="intRecalcular()" title="Se >0: terreno não pago à vista — proprietário recebe esta % do VGV conforme as vendas">
+    </div>
     <div style="font-size:11px;color:var(--accent);font-weight:600;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">Produto</div>
     ${row('Área vendável (m²)','area_vendavel',cen.area_vendavel)}
     ${row('Preço médio (R$/m²)','preco_medio',cen.preco_medio)}
@@ -19903,8 +19945,140 @@ function _intInputsHTML(cen) {
     ${row('Vendas: prazo (meses)','vendas_prazo',cen.vendas_prazo,'number','1','1')}
     ${row('Obras: início (mês)','obras_inicio',cen.obras_inicio,'number','1','0')}
     ${row('Obras: prazo (meses)','obras_prazo',cen.obras_prazo,'number','1','1')}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <label style="font-size:12px;color:var(--text2);flex:1">Distribuição de obra</label>
+      <select id="int-f-obras_curva" onchange="intRecalcular()"
+        style="width:130px;background:var(--navy3);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:12px">
+        <option value="linear" ${(cen.obras_curva||'linear')==='linear'?'selected':''}>Linear</option>
+        <option value="s" ${cen.obras_curva==='s'?'selected':''}>Curva S (realista)</option>
+      </select>
+    </div>
     <div style="font-size:11px;color:var(--accent);font-weight:600;margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)">Desconto</div>
     ${row('Taxa desconto a.a. (%)','taxa_desconto',cen.taxa_desconto,'number','0.5','0')}`;
+}
+
+function _intSensibilidadeHTML(p) {
+  if (!p.area_vendavel || !p.preco_medio || !p.vendas_prazo || !p.obras_prazo) return '';
+  const base = _calcViabilidade(p);
+  if (!base || !base.VGV) return '';
+
+  const vars = [
+    { key:'preco_medio',     label:'Preço médio (R$/m²)',     tipo:'mult' },
+    { key:'area_vendavel',   label:'Área vendável (m²)',      tipo:'mult' },
+    { key:'urbanizacao',     label:'Custo de obra (R$)',      tipo:'mult' },
+    { key:'terreno',         label:'Custo do terreno (R$)',   tipo:'mult' },
+    { key:'vendas_prazo',    label:'Prazo de vendas (meses)', tipo:'add', delta:4 },
+    { key:'corretagem_pct',  label:'Corretagem (%)',          tipo:'add', delta:1 },
+    { key:'tributos_pct',    label:'Tributos (%)',            tipo:'add', delta:1 },
+  ];
+
+  const deltas = vars.map(v => {
+    let up, dn;
+    if (v.tipo === 'mult') {
+      up = {...p, [v.key]: p[v.key]*1.2};
+      dn = {...p, [v.key]: Math.max(p[v.key]*0.8, 0)};
+    } else {
+      up = {...p, [v.key]: p[v.key] + (v.delta||2)};
+      dn = {...p, [v.key]: Math.max(p[v.key] - (v.delta||2), 0)};
+    }
+    const kUp = _calcViabilidade(up); const kDn = _calcViabilidade(dn);
+    const mBase = base.margem*100, mUp = kUp.margem*100, mDn = kDn.margem*100;
+    return { ...v, mBase, mUp, mDn, span: Math.abs(mUp - mDn) };
+  }).filter(d => d.span > 0.01).sort((a,b) => b.span - a.span);
+
+  if (!deltas.length) return '';
+  const maxSpan = deltas[0].span;
+
+  const bars = deltas.map(d => {
+    const isNeg = d.mUp < d.mDn; // higher value → worse (e.g. cost)
+    const [posV, negV] = isNeg ? [d.mDn, d.mUp] : [d.mUp, d.mDn];
+    const wPos = Math.round((posV - d.mBase) / maxSpan * 50);
+    const wNeg = Math.round((d.mBase - negV) / maxSpan * 50);
+    const fmtD = v => `${v>=0?'+':''}${v.toFixed(1)}pp`;
+    return `<div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:3px">
+        <span>${d.label}</span>
+        <span style="font-family:monospace;color:var(--text);font-size:11px">${d.mBase.toFixed(1)}% base</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:0;height:18px;background:var(--navy3);border-radius:3px;overflow:hidden;position:relative">
+        <div style="flex:1;display:flex;justify-content:flex-end">
+          <div style="width:${wNeg}%;background:rgba(239,68,68,.55);height:100%;min-width:${wNeg>0?'2px':'0'}" title="${fmtD(negV - d.mBase)}pp"></div>
+        </div>
+        <div style="width:2px;background:var(--text2);height:100%;flex-shrink:0"></div>
+        <div style="flex:1;display:flex;justify-content:flex-start">
+          <div style="width:${wPos}%;background:rgba(34,197,94,.55);height:100%;min-width:${wPos>0?'2px':'0'}" title="+${(posV - d.mBase).toFixed(1)}pp"></div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text2);margin-top:2px;font-family:monospace">
+        <span style="color:rgba(239,68,68,.9)">${fmtD(negV - d.mBase)}</span>
+        <span style="color:rgba(34,197,94,.9)">+${(posV - d.mBase).toFixed(1)}pp</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+    <div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.arr').textContent=this.nextElementSibling.style.display==='none'?'▸':'▾'"
+      style="padding:14px 18px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2)">📊 Análise de Sensibilidade — Impacto na Margem</div>
+      <span class="arr" style="color:var(--text2);font-size:14px">▾</span>
+    </div>
+    <div style="padding:0 18px 18px">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:12px">Variação de ±20% em cada variável. Barras verdes = impacto positivo na margem, vermelhas = negativo.</div>
+      ${bars}
+    </div>
+  </div>`;
+}
+
+function _intTabela2DHTML(p) {
+  if (!p.area_vendavel || !p.preco_medio || !p.vendas_prazo || !p.obras_prazo) return '';
+
+  const precoDeltas = [-20, -10, 0, 10, 20];
+  const prazoDeltas = [-4, -2, 0, 2, 4];
+  const precos = precoDeltas.map(d => Math.round(p.preco_medio * (1 + d/100)));
+  const prazos = prazoDeltas.map(d => Math.max(1, p.vendas_prazo + d));
+
+  const cellColor = (m) => {
+    if (m < 0)   return 'rgba(239,68,68,.18)';
+    if (m < 0.10) return 'rgba(239,68,68,.08)';
+    if (m < 0.15) return 'rgba(245,158,11,.14)';
+    if (m < 0.25) return 'rgba(34,197,94,.10)';
+    return 'rgba(34,197,94,.22)';
+  };
+  const textColor = (m) => {
+    if (m < 0.10) return '#EF4444';
+    if (m < 0.15) return '#F59E0B';
+    return '#22C55E';
+  };
+
+  const header = `<tr>
+    <th style="font-size:10px;color:var(--text2);padding:6px 8px;text-align:left;font-weight:500">Preço↓ / Prazo→</th>
+    ${prazos.map((pr,i) => `<th style="font-size:10px;color:var(--text2);padding:6px 8px;text-align:center;font-weight:500">${pr}m${prazoDeltas[i]!==0?` (${prazoDeltas[i]>0?'+':''}${prazoDeltas[i]})`:''}</th>`).join('')}
+  </tr>`;
+
+  const rows = precos.map((pc,pi) => {
+    const cells = prazos.map(pr => {
+      const k = _calcViabilidade({...p, preco_medio: pc, vendas_prazo: pr});
+      const m = k.margem;
+      return `<td style="text-align:center;padding:7px 8px;font-family:monospace;font-size:11px;color:${textColor(m)};background:${cellColor(m)};font-weight:600">${(m*100).toFixed(1)}%</td>`;
+    }).join('');
+    const isBase = precoDeltas[pi] === 0;
+    return `<tr style="${isBase?'outline:1px solid var(--accent);':''}">
+      <td style="font-size:10px;color:${precoDeltas[pi]<0?'#EF4444':precoDeltas[pi]>0?'#22C55E':'var(--text)'};padding:6px 8px;font-family:monospace;font-weight:600;white-space:nowrap">
+        R$ ${pc.toLocaleString('pt-BR')}/m²${precoDeltas[pi]!==0?` (${precoDeltas[pi]>0?'+':''}${precoDeltas[pi]}%)`:' ←base'}
+      </td>${cells}</tr>`;
+  }).join('');
+
+  return `<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+    <div onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.arr2').textContent=this.nextElementSibling.style.display==='none'?'▸':'▾'"
+      style="padding:14px 18px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text2)">🗺️ Margem% — Preço × Prazo de Vendas</div>
+      <span class="arr2" style="color:var(--text2);font-size:14px">▾</span>
+    </div>
+    <div style="padding:0 18px 18px">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">Cada célula = margem bruta para aquela combinação de preço e prazo. Linha destacada = cenário atual.</div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead>${header}</thead><tbody>${rows}</tbody></table></div>
+    </div>
+  </div>`;
 }
 
 function _intKpisHTML(k, taxa) {
@@ -19985,13 +20159,15 @@ function _intBindInputs() {
 function _intGetInputs() {
   const v = id => parseFloat(document.getElementById('int-f-'+id)?.value)||0;
   const vi = id => parseInt(document.getElementById('int-f-'+id)?.value)||0;
+  const vs = id => document.getElementById('int-f-'+id)?.value || '';
   return {
     terreno: v('terreno'), itbi_pct: v('itbi_pct'), area_vendavel: v('area_vendavel'),
     preco_medio: v('preco_medio'), urbanizacao: v('urbanizacao'), projetos: v('projetos'),
     overhead: v('overhead'), corretagem_pct: v('corretagem_pct'), tributos_pct: v('tributos_pct'),
     entrada_pct: v('entrada_pct'), parcelamento_meses: vi('parcelamento_meses'),
     vendas_inicio: vi('vendas_inicio'), vendas_prazo: vi('vendas_prazo'),
-    obras_inicio: vi('obras_inicio'), obras_prazo: vi('obras_prazo'), taxa_desconto: v('taxa_desconto')
+    obras_inicio: vi('obras_inicio'), obras_prazo: vi('obras_prazo'), taxa_desconto: v('taxa_desconto'),
+    permuta_pct: v('permuta_pct'), obras_curva: vs('obras_curva') || 'linear'
   };
 }
 
@@ -20001,6 +20177,10 @@ function intRecalcular() {
   const kpis = _calcViabilidade(p);
   document.getElementById('int-kpis').innerHTML = _intKpisHTML(kpis, p.taxa_desconto);
   document.getElementById('int-leitura').innerHTML = _leituraVia(kpis, p.taxa_desconto);
+  const elS = document.getElementById('int-sensibilidade');
+  if (elS) elS.innerHTML = _intSensibilidadeHTML(p);
+  const elT = document.getElementById('int-tabela2d');
+  if (elT) elT.innerHTML = _intTabela2DHTML(p);
   _intRenderChart(kpis);
 }
 
@@ -20009,10 +20189,12 @@ async function intSalvarCenario() {
   const cen = _intEstudo.cenarios[_intCenTab];
   const kpis = (p.area_vendavel > 0 && p.preco_medio > 0) ? _calcViabilidade(p) : null;
   Object.assign(cen, p);
-  await put(`/api/inteligencia/cenarios/${cen.id}`, { nome: cen.nome, ...p, kpis_json: kpis ? {
-    VGV: kpis.VGV, resultado: kpis.resultado, margem: kpis.margem,
-    exposicao: kpis.exposicao, tir_anual: kpis.tir_anual, vpl: kpis.vpl
-  } : null});
+  await put(`/api/inteligencia/cenarios/${cen.id}`, { nome: cen.nome, ...p,
+    permuta_pct: p.permuta_pct||0, obras_curva: p.obras_curva||'linear',
+    kpis_json: kpis ? {
+      VGV: kpis.VGV, resultado: kpis.resultado, margem: kpis.margem,
+      exposicao: kpis.exposicao, tir_anual: kpis.tir_anual, vpl: kpis.vpl
+    } : null});
   toast('Cenário salvo');
 }
 
