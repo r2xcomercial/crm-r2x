@@ -18625,9 +18625,18 @@ function renderIntAnaliseArea() {
               <input id="ia-area" class="modal-input" type="number" placeholder="ex: 15" style="width:100%">
             </div>
           </div>
-          <div>
-            <label style="font-size:11px;color:var(--text2)">Custo total do terreno (R$) <span style="font-style:italic;font-weight:400">(opcional — ativa motor invertido)</span></label>
-            <input id="ia-custo-terreno" class="modal-input" type="number" placeholder="ex: 850000" style="width:100%">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="font-size:11px;color:var(--text2)">Custo total do terreno (R$) <span style="font-style:italic;font-weight:400">(opcional — ativa motor invertido)</span></label>
+              <input id="ia-custo-terreno" class="modal-input" type="number" placeholder="ex: 850000" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text2)">CUB regional (R$/m²) <span style="font-style:italic;font-weight:400">(vertical: custo = CUB × 1,2)</span></label>
+              <input id="ia-cub" class="modal-input" type="number" placeholder="ex: 2800" style="width:100%">
+            </div>
+          </div>
+          <div style="font-size:10px;color:var(--text2);background:rgba(0,196,180,.06);border:1px solid rgba(0,196,180,.15);border-radius:6px;padding:6px 10px;line-height:1.5">
+            💡 <strong>Referência de custos:</strong> Loteamento: R$80–150/m² de terra (médio R$100). Vertical: CUB × 1,2 × área construída. Projetos e overhead calculados automaticamente.
           </div>
           <div>
             <label style="font-size:11px;color:var(--text2)">Zoneamento / Informações adicionais</label>
@@ -18883,6 +18892,7 @@ async function intAnalisarArea() {
   fd.append('publico', document.getElementById('ia-publico').value || '');
   fd.append('tipo_produto', document.getElementById('ia-tipo-produto')?.value || 'lote');
   window._iaCustoTerreno = parseFloat(document.getElementById('ia-custo-terreno')?.value) || 0;
+  window._iaCub = parseFloat(document.getElementById('ia-cub')?.value) || 0;
   window._iaAreaHa = parseFloat(document.getElementById('ia-area')?.value) || 0;
   window._iaTipoProduto = document.getElementById('ia-tipo-produto')?.value || 'lote';
   window._iaCidade = cidade;
@@ -19677,7 +19687,44 @@ async function intCriarEstudoComPreco(preco) {
     updates.area_vendavel = Math.round(areaM2Terreno * (effMap[tipoProd] || 0.65));
   }
 
+  // Custos de obra — calculados automaticamente pela referência de tipo
+  const areaVend = updates.area_vendavel || 0;
+  const cub = window._iaCub || 0;
+  const isLote = tipoProd === 'lote' || tipoProd === 'loteamento';
+  const isVertical = tipoProd === 'apartamento' || tipoProd === 'comercial';
+  const isCasa = tipoProd === 'casa';
+
+  let urbanizacaoAuto = 0, projetosAuto = 0;
+  if (isLote && areaM2Terreno > 0) {
+    // Loteamento: referência média R$100/m² de terra total
+    urbanizacaoAuto = Math.round(areaM2Terreno * 100);
+    projetosAuto = Math.round(urbanizacaoAuto * 0.12); // projetos/licenças/ambiental ≈12% da infra
+  } else if (cub > 0 && areaVend > 0) {
+    // Vertical/casa: CUB × 1.2 × área construída (área vendável × fator de perda)
+    const fatorConstruido = isVertical ? 1.30 : (isCasa ? 1.15 : 1.20);
+    const pctProjetos = isVertical ? 0.05 : 0.07;
+    const areaConst = Math.round(areaVend * fatorConstruido);
+    urbanizacaoAuto = Math.round(areaConst * cub * 1.2);
+    projetosAuto = Math.round(urbanizacaoAuto * pctProjetos);
+  }
+  if (urbanizacaoAuto > 0) {
+    updates.urbanizacao = urbanizacaoAuto;
+    updates.projetos = projetosAuto;
+    updates.overhead = Math.round((urbanizacaoAuto + projetosAuto) * 0.05);
+  }
+
+  // Aplica ao cenário base (index 0) e propaga custos para os demais cenários
   await put(`/api/inteligencia/cenarios/${cen.id}`, updates);
+  if (urbanizacaoAuto > 0 && data.cenarios.length > 1) {
+    await Promise.all(data.cenarios.slice(1).map(c =>
+      put(`/api/inteligencia/cenarios/${c.id}`, {
+        ...c,
+        urbanizacao: urbanizacaoAuto,
+        projetos: projetosAuto,
+        overhead: Math.round((urbanizacaoAuto + projetosAuto) * 0.05)
+      })
+    ));
+  }
   intAbrirEstudo(r.data.id);
 }
 
