@@ -27,6 +27,25 @@ app.use(express.json());
 function gerarSalt() { return crypto.randomBytes(16).toString('hex'); }
 function hashSenha(senha, salt) { return crypto.pbkdf2Sync(senha, salt, 10000, 64, 'sha512').toString('hex'); }
 function gerarToken() { return crypto.randomBytes(32).toString('hex'); }
+function gerarSenhaTemp() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({length: 8}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+}
+function _criarLoginCorretor(corretorId, nome, loginEmail) {
+  if (!loginEmail) return null;
+  const existing = db.prepare('SELECT id FROM usuarios WHERE corretor_id=?').get(corretorId);
+  if (existing) return null; // já tem login
+  const senhaTemp = gerarSenhaTemp();
+  const salt = gerarSalt();
+  try {
+    db.prepare('INSERT INTO usuarios(nome,email,senha_hash,salt,perfil,corretor_id) VALUES(?,?,?,?,?,?)')
+      .run(nome, loginEmail, hashSenha(senhaTemp, salt), salt, 'corretor', corretorId);
+    return { login: loginEmail, senha_temp: senhaTemp };
+  } catch(e) {
+    if (e.message.includes('UNIQUE')) return { erro: 'E-mail já em uso por outro usuário' };
+    throw e;
+  }
+}
 
 const APIs_PUBLICAS = ["/api/corretores/publico", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/", "/api/pluggy/webhook"];
 
@@ -2118,7 +2137,9 @@ app.post("/api/corretores", (req, res) => {
   const { nome, cpf, creci, telefone, email, imobiliaria, cidade, estado, aniversario } = req.body;
   if (!nome) return err(res, "Nome obrigatório");
   const r = db.prepare(`INSERT INTO corretores (nome,cpf,creci,telefone,email,imobiliaria,cidade,estado,aniversario) VALUES (?,?,?,?,?,?,?,?,?)`).run(nome, cpf, creci, telefone, email, imobiliaria, cidade, estado, aniversario);
-  ok(res, { id: r.lastInsertRowid });
+  const id = r.lastInsertRowid;
+  const loginInfo = email ? _criarLoginCorretor(id, nome, email) : null;
+  ok(res, { id, loginInfo });
 });
 
 app.put("/api/corretores/:id", (req, res) => {
@@ -2132,6 +2153,30 @@ app.delete("/api/corretores/:id", (req, res) => {
   ok(res, {});
 });
 
+app.post("/api/corretores/:id/reset-senha", (req, res) => {
+  const c = db.prepare("SELECT nome, email FROM corretores WHERE id=?").get(req.params.id);
+  if (!c) return err(res, "Corretor não encontrado", 404);
+  const loginEmail = req.body.email || c.email;
+  if (!loginEmail) return err(res, "E-mail obrigatório para criar acesso");
+  const senhaTemp = gerarSenhaTemp();
+  const salt = gerarSalt();
+  const hash = hashSenha(senhaTemp, salt);
+  const existing = db.prepare("SELECT id FROM usuarios WHERE corretor_id=?").get(req.params.id);
+  if (existing) {
+    db.prepare("UPDATE usuarios SET email=?,senha_hash=?,salt=?,ativo=1 WHERE corretor_id=?")
+      .run(loginEmail, hash, salt, req.params.id);
+  } else {
+    try {
+      db.prepare("INSERT INTO usuarios(nome,email,senha_hash,salt,perfil,corretor_id) VALUES(?,?,?,?,?,?)")
+        .run(c.nome, loginEmail, hash, salt, 'corretor', req.params.id);
+    } catch(e) {
+      if (e.message.includes('UNIQUE')) return err(res, "E-mail já em uso por outro usuário");
+      throw e;
+    }
+  }
+  ok(res, { loginInfo: { login: loginEmail, senha_temp: senhaTemp } });
+});
+
 // Endpoint público — cadastro via link (sem autenticação)
 app.get("/cadastro-corretor", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "cadastro-corretor.html"));
@@ -2143,7 +2188,9 @@ app.post("/api/corretores/publico", (req, res) => {
   const existente = db.prepare("SELECT id FROM corretores WHERE telefone=?").get(telefone);
   if (existente) return err(res, "Corretor já cadastrado com este telefone");
   const r = db.prepare(`INSERT INTO corretores (nome,cpf,creci,telefone,email,imobiliaria,cidade,estado,aniversario) VALUES (?,?,?,?,?,?,?,?,?)`).run(nome, cpf, creci, telefone, email, imobiliaria, cidade, estado, aniversario);
-  ok(res, { id: r.lastInsertRowid, mensagem: "Cadastro realizado com sucesso!" });
+  const id = r.lastInsertRowid;
+  const loginInfo = email ? _criarLoginCorretor(id, nome, email) : null;
+  ok(res, { id, loginInfo, mensagem: "Cadastro realizado com sucesso!" });
 });
 
 // ─── LEADS ───────────────────────────────────────────────────────────────────
