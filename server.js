@@ -440,15 +440,6 @@ app.post('/api/auth/login', (req, res) => {
   ok(res, { token, nome: u.nome, email: u.email, perfil: u.perfil, corretor_id: u.corretor_id, cliente_id: u.cliente_id });
 });
 
-app.get('/api/emergencia/reset-admin-r2x9k2', (req, res) => {
-  const nova = 'r2x2026';
-  const salt = gerarSalt();
-  const hash = hashSenha(nova, salt);
-  const u = db.prepare("SELECT id, email FROM usuarios WHERE perfil='admin' ORDER BY id LIMIT 1").get();
-  if (!u) return res.json({ ok: false, msg: 'nenhum admin encontrado' });
-  db.prepare("UPDATE usuarios SET senha_hash=?, salt=?, ativo=1 WHERE id=?").run(hash, salt, u.id);
-  res.json({ ok: true, email: u.email, nova_senha: nova });
-});
 
 app.post('/api/auth/logout', (req, res) => {
   const token = req.headers["x-crm-token"] || req.query.token;
