@@ -7625,17 +7625,15 @@ async function marcarRecebido(id) {
       if (!rNova.ok) return toast(rNova.error, 'error');
       toast(`Parcial confirmado ✅ — recebido ${fmt(valorRec)}, saldo ${fmt(resto)} pendente`);
     } else {
-      const r = await put(`/api/financeiro/entradas/${id}`, {
-        ...entrada,
-        status:           'recebido',
+      const r = await post(`/api/financeiro/entradas/${id}/baixar`, {
         data_recebimento: dataRec,
+        conta_id:         contaId ? parseInt(contaId) : null,
         tem_nf_propria:   temNF,
         nf_numero:        nfNum,
         nf_data:          nfData,
-        conta_id:         contaId ? parseInt(contaId) : null,
       });
       if (!r.ok) return toast(r.error, 'error');
-      _contasCached = null; // invalida cache para atualizar saldos
+      _contasCached = null;
       toast(temNF ? 'Recebido com NF própria ✅🧾' : 'Recebido sem NF própria ✅');
     }
     closeModal(); renderFinanceiro();

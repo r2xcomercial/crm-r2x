@@ -3479,8 +3479,13 @@ app.post("/api/financeiro/entradas", (req, res) => {
 app.put("/api/financeiro/entradas/:id", (req, res) => {
   const { empreendimento_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num, parcela_total, tem_nf_propria, nf_numero, nf_data, conta_id } = req.body;
   const nfFlag = tem_nf_propria === false || tem_nf_propria === 0 || tem_nf_propria === '0' ? 0 : 1;
-  db.prepare(`UPDATE financeiro_entradas SET empreendimento_id=?,descricao=?,tipo=?,valor=?,data_prevista=?,data_recebimento=?,status=?,observacoes=?,parcela_num=?,parcela_total=?,tem_nf_propria=?,nf_numero=?,nf_data=?,conta_id=? WHERE id=?`).run(empreendimento_id, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num||null, parcela_total||null, nfFlag, nf_numero||null, nf_data||null, conta_id||null, req.params.id);
-  ok(res, {});
+  try {
+    db.prepare(`UPDATE financeiro_entradas SET empreendimento_id=?,descricao=?,tipo=?,valor=?,data_prevista=?,data_recebimento=?,status=?,observacoes=?,parcela_num=?,parcela_total=?,tem_nf_propria=?,nf_numero=?,nf_data=?,conta_id=? WHERE id=?`).run(empreendimento_id||null, descricao, tipo, valor, data_prevista, data_recebimento, status, observacoes, parcela_num||null, parcela_total||null, nfFlag, nf_numero||null, nf_data||null, conta_id||null, req.params.id);
+    ok(res, {});
+  } catch(e) {
+    if (e.message.includes('FOREIGN KEY')) return err(res, 'Referência inválida: empreendimento ou venda não encontrado', 400);
+    throw e;
+  }
 });
 
 // Multer disk storage para arquivos de NF
@@ -5736,7 +5741,7 @@ app.get('/api/pluggy/debug-tx', async (req, res) => {
     const { accountId } = req.query;
     if (!accountId) return err(res, 'accountId obrigatório');
     // Sem filtro de data — traz tudo
-    const raw = await pluggyFetch(`/transactions?accountId=${accountId}&pageSize=20`);
+    const raw = await pluggyFetch(`/v2/transactions?accountId=${accountId}&pageSize=20`);
     res.json({ ok: true, data: raw });
   } catch(e) { err(res, e.message); }
 });
@@ -5894,11 +5899,17 @@ async function _pluggySyncItem(itemId) {
         creditData.balanceDueDate || null);
 
     try {
-      // Cartão: busca 90 dias para capturar parcelas antigas em andamento
-      // Usa 1 ano para cartão (captura parcelas longas) e 90 dias para conta bancária
+      // Busca transações via API v2 com cursor pagination
       const from = isCartao ? de365 : de90;
-      const txResp = await pluggyFetch(`/transactions?accountId=${acc.id}&from=${from}&to=${hoje}&pageSize=500`);
-      const txs = txResp.results || txResp.transactions || [];
+      let txs = [];
+      let cursor = null;
+      do {
+        const qs = new URLSearchParams({ accountId: acc.id, pageSize: '500', from, to: hoje });
+        if (cursor) qs.set('cursor', cursor);
+        const txResp = await pluggyFetch(`/v2/transactions?${qs}`);
+        txs = txs.concat(txResp.results || []);
+        cursor = txResp.nextCursor || null;
+      } while (cursor);
       totalTxs += txs.length;
 
       const insert = db.prepare(`
@@ -7486,13 +7497,14 @@ app.post('/api/caixa/marcar-historico', autenticar, (req, res) => {
 
 // Vincula uma entrada a uma conta na baixa
 app.post('/api/financeiro/entradas/:id/baixar', autenticar, (req, res) => {
-  const { conta_id, data_recebimento } = req.body;
+  const { conta_id, data_recebimento, tem_nf_propria, nf_numero, nf_data } = req.body;
   if (!data_recebimento) return err(res, 'Data de recebimento obrigatória', 400);
   const e = db.prepare("SELECT * FROM financeiro_entradas WHERE id=?").get(req.params.id);
   if (!e) return err(res, 'Entrada não encontrada', 404);
   if (e.historico) return err(res, 'Registro histórico não pode ser alterado', 400);
-  db.prepare("UPDATE financeiro_entradas SET status='recebido', data_recebimento=?, conta_id=? WHERE id=?")
-    .run(data_recebimento, conta_id||null, req.params.id);
+  const nfFlag = tem_nf_propria === false || tem_nf_propria === 0 || tem_nf_propria === '0' ? 0 : (tem_nf_propria === 1 || tem_nf_propria === '1' || tem_nf_propria === true ? 1 : e.tem_nf_propria);
+  db.prepare("UPDATE financeiro_entradas SET status='recebido', data_recebimento=?, conta_id=?, tem_nf_propria=?, nf_numero=COALESCE(?,nf_numero), nf_data=COALESCE(?,nf_data) WHERE id=?")
+    .run(data_recebimento, conta_id||null, nfFlag, nf_numero||null, nf_data||null, req.params.id);
   ok(res, {});
 });
 
