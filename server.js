@@ -6905,7 +6905,7 @@ app.get('/api/financeiro/pagamentos-avulsos', autenticar, (req, res) => {
 
 app.post('/api/financeiro/pagamentos-avulsos', autenticar, (req, res) => {
   const { cliente_id, empreendimento_id, valor, data_recebimento, descricao, observacoes,
-          valor_bruto_nf, imposto_retido, nf_numero, nf_data } = req.body;
+          valor_bruto_nf, imposto_retido, nf_numero, nf_data, conta_id } = req.body;
   if (!cliente_id || !valor || !data_recebimento) return err(res, 'Incorporadora, valor e data obrigatórios');
 
   const bruto = valor_bruto_nf ? parseFloat(valor_bruto_nf) : null;
@@ -6946,7 +6946,8 @@ app.post('/api/financeiro/pagamentos-avulsos', autenticar, (req, res) => {
 
     // 3. Aplica baixa automática nos lançamentos mais antigos usando o valor bruto
     const baixaResult = _aplicarBaixaIncorporadora(
-      cliente_id, valorParaBaixa, data_recebimento, obsNfBaixa, r.lastInsertRowid
+      cliente_id, valorParaBaixa, data_recebimento, obsNfBaixa, r.lastInsertRowid,
+      conta_id ? parseInt(conta_id) : null
     );
 
     return { id: r.lastInsertRowid, ...baixaResult };
@@ -7164,7 +7165,7 @@ app.get('/api/financeiro/preview-baixa/:clienteId', autenticar, (req, res) => {
 });
 
 // Função reutilizável de baixa — usada pelo endpoint manual e pelo registro automático de NF
-function _aplicarBaixaIncorporadora(clienteId, valor, dataRec, obsNf, avulsoId = null) {
+function _aplicarBaixaIncorporadora(clienteId, valor, dataRec, obsNf, avulsoId = null, contaId = null) {
   const entries = db.prepare(`
     SELECT fe.*
     FROM financeiro_entradas fe
@@ -7188,16 +7189,16 @@ function _aplicarBaixaIncorporadora(clienteId, valor, dataRec, obsNf, avulsoId =
   for (const e of entries) {
     if (restante <= 0.005) break;
     if (e.valor <= restante + 0.005) {
-      db.prepare(`UPDATE financeiro_entradas SET status='recebido', data_recebimento=?, observacoes=?, baixa_avulso_id=? WHERE id=?`)
-        .run(dataRec, _obs(e.observacoes, null), avulsoId, e.id);
+      db.prepare(`UPDATE financeiro_entradas SET status='recebido', data_recebimento=?, observacoes=?, baixa_avulso_id=?, conta_id=COALESCE(?,conta_id) WHERE id=?`)
+        .run(dataRec, _obs(e.observacoes, null), avulsoId, contaId, e.id);
       restante -= e.valor;
       baixados++;
     } else {
       const valorBaixa = parseFloat(restante.toFixed(2));
       const valorSobra = parseFloat((e.valor - valorBaixa).toFixed(2));
       // Guarda o valor original para poder reverter depois
-      db.prepare(`UPDATE financeiro_entradas SET valor=?, status='recebido', data_recebimento=?, observacoes=?, baixa_avulso_id=? WHERE id=?`)
-        .run(valorBaixa, dataRec, _obs(e.observacoes, null), avulsoId, e.id);
+      db.prepare(`UPDATE financeiro_entradas SET valor=?, status='recebido', data_recebimento=?, observacoes=?, baixa_avulso_id=?, conta_id=COALESCE(?,conta_id) WHERE id=?`)
+        .run(valorBaixa, dataRec, _obs(e.observacoes, null), avulsoId, contaId, e.id);
       // Entrada de saldo — marcada com split_origem_id para reversão
       db.prepare(`INSERT INTO financeiro_entradas
         (empreendimento_id, venda_id, descricao, tipo, valor, data_prevista, status, observacoes, parcela_num, parcela_total, tem_nf_propria, split_origem_id)

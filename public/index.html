@@ -7109,9 +7109,10 @@ function paRecalcularLiquido() {
 }
 
 async function abrirModalPagtoAvulso(clienteIdPresel, nomePresel) {
-  const [clr, empr] = await Promise.all([get('/api/clientes'), get('/api/empreendimentos')]);
+  const [clr, empr, contasR] = await Promise.all([get('/api/clientes'), get('/api/empreendimentos'), api('GET', '/api/caixa/contas')]);
   const clientes = clr.data || [];
   const emps = empr.data || [];
+  const contas = contasR.data || contasR || [];
 
   const cliOpts = clientes.map(c =>
     `<option value="${c.id}" ${c.id == clienteIdPresel ? 'selected' : ''}>${c.razao_social}</option>`
@@ -7160,6 +7161,12 @@ async function abrirModalPagtoAvulso(clienteIdPresel, nomePresel) {
       <div class="form-group"><label>Data Recebimento *</label>
         <input type="date" id="pa-data" value="${new Date().toISOString().slice(0,10)}">
       </div>
+      <div class="form-group span2"><label>🏦 Conta bancária (conciliação)</label>
+        <select id="pa-conta">
+          <option value="">— Não vincular —</option>
+          ${contas.map(c => `<option value="${c.id}">${c.nome}${c.banco?' — '+c.banco:''}</option>`).join('')}
+        </select>
+      </div>
       <div class="form-group span2"><label>Descrição</label>
         <input id="pa-desc" placeholder="ex: Saldo comissões - Bloco A">
       </div>
@@ -7183,6 +7190,7 @@ async function abrirModalPagtoAvulso(clienteIdPresel, nomePresel) {
       nf_numero: v('pa-nf-num') || null,
       nf_data: v('pa-nf-data') || null,
     };
+    body.conta_id = v('pa-conta') || null;
     if (!body.cliente_id) return toast('Selecione a incorporadora', 'error');
     if (!body.valor || body.valor <= 0) return toast('Informe o valor líquido', 'error');
     if (!body.data_recebimento) return toast('Informe a data', 'error');
