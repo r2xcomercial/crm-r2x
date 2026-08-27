@@ -5859,7 +5859,6 @@ async function renderFinanceiro(filter = '') {
       <button class="fin-tab ${finTab==='fluxo'?'active':''}" onclick="setFinTab('fluxo')">📅 Fluxo de Caixa</button>
       <button class="fin-tab ${finTab==='fixas'?'active':''}" onclick="setFinTab('fixas')">🔁 Despesas Fixas</button>
       <button class="fin-tab ${finTab==='reconciliacao'?'active':''}" onclick="setFinTab('reconciliacao')">🔗 Reconciliação</button>
-      <button class="fin-tab ${finTab==='saldo-inc'?'active':''}" onclick="setFinTab('saldo-inc')">🏦 Saldo Incorporadoras</button>
       <button class="fin-tab ${finTab==='dre'?'active':''}" onclick="setFinTab('dre')">📊 DRE</button>
     </div>
     <div id="fin-content"></div>
@@ -5868,8 +5867,9 @@ async function renderFinanceiro(filter = '') {
 }
 
 function setFinTab(tab) {
+  if (tab === 'saldo-inc') tab = 'entradas';
   finTab = tab;
-  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo', fixas:'Fixas', reconciliacao:'Reconcil', 'saldo-inc':'Saldo Incorpor', dre:'DRE' };
+  const keys = { entradas:'Entrada', saidas:'Saída', distribuicoes:'Distrib', resumo:'Empreend', comissoes:'Comiss', fluxo:'Fluxo', fixas:'Fixas', reconciliacao:'Reconcil', dre:'DRE' };
   document.querySelectorAll('.fin-tab').forEach(t => t.classList.toggle('active', t.textContent.includes(keys[tab]||'')));
   renderFinTab();
 }
@@ -5912,6 +5912,20 @@ function renderFinTab() {
       <option value="">${ph}</option>${opts.map(o=>`<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('')}</select>`;
 
     el.innerHTML = `
+      <div id="inc-saldo-section" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <button onclick="toggleIncSaldoSection()" id="inc-saldo-toggle"
+            style="background:none;border:1px solid var(--border);color:var(--text2);border-radius:7px;padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer">
+            🏦 Saldo por Incorporadora ▼
+          </button>
+          <button onclick="abrirModalPagtoAvulso()" style="background:var(--accent);color:var(--navy);border:none;border-radius:7px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer">
+            💰 Receber de Incorporadora
+          </button>
+        </div>
+        <div id="inc-saldo-cards" style="display:none">
+          <div style="color:var(--text2);font-size:12px;padding:8px">Carregando…</div>
+        </div>
+      </div>
       <div class="table-card">
         <div class="table-header" style="flex-wrap:wrap;gap:8px">
           <div class="table-title">📥 Entradas (${rows.length}${rows.length<todas.length?' de '+todas.length:''})${rows.length<todas.length?` · <span style="color:var(--success);font-weight:700">${fmt(totalFiltrado)}</span>`:''}</div>
@@ -5961,6 +5975,10 @@ function renderFinTab() {
           </tbody>
         </table>
       </div>`;
+    // Populate the inc-saldo section only when it's already open (toggle keeps its state)
+    if (document.getElementById('inc-saldo-cards')?.style.display !== 'none') {
+      _renderIncSaldoInEntradas();
+    }
   } else if (finTab === 'saidas') {
     const rows = currentData.saidas || [];
     el.innerHTML = `
@@ -6932,6 +6950,51 @@ async function abrirModalDarBaixa(clienteId, nomeInc, avulsoDisponivel) {
   setTimeout(() => atualizarPreviewBaixa(clienteId), 100);
 }
 
+function toggleIncSaldoSection() {
+  const cards = document.getElementById('inc-saldo-cards');
+  const btn   = document.getElementById('inc-saldo-toggle');
+  if (!cards) return;
+  const open = cards.style.display !== 'none';
+  cards.style.display = open ? 'none' : 'block';
+  if (btn) btn.textContent = open ? '🏦 Saldo por Incorporadora ▼' : '🏦 Saldo por Incorporadora ▲';
+  if (!open) _renderIncSaldoInEntradas();
+}
+
+async function _renderIncSaldoInEntradas() {
+  const cards = document.getElementById('inc-saldo-cards');
+  if (!cards) return;
+  const fmtV = v => 'R$ ' + Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const r = await get('/api/financeiro/saldo-incorporadoras');
+  if (!r.ok) { cards.innerHTML = `<p style="color:var(--danger);font-size:12px">Erro ao carregar saldos.</p>`; return; }
+  const { incorporadoras } = r.data;
+  if (!incorporadoras.length) { cards.innerHTML = `<p style="color:var(--text2);font-size:12px;padding:8px">Nenhuma incorporadora com saldo pendente.</p>`; return; }
+  cards.innerHTML = incorporadoras.map(inc => {
+    const temPendente = inc.total_pendente > 0;
+    const temAvulso = inc.avulso_disponivel > 0.01;
+    return `
+    <div style="background:var(--navy3);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div>
+        <div style="font-weight:700;font-size:14px;margin-bottom:6px">${inc.razao_social}</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Pendente</div>
+            <div style="font-size:14px;font-weight:700;color:${temPendente?'#f87171':'var(--text2)'}">${fmtV(inc.total_pendente)}</div></div>
+          <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Já Recebido</div>
+            <div style="font-size:14px;font-weight:700;color:#4ade80">${fmtV(inc.total_recebido)}</div></div>
+          ${temAvulso ? `<div style="background:rgba(250,204,21,.12);border:1px solid rgba(250,204,21,.3);border-radius:6px;padding:4px 10px">
+            <div style="font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:.5px">⚡ Avulso a dar baixa</div>
+            <div style="font-size:14px;font-weight:700;color:var(--accent)">${fmtV(inc.avulso_disponivel)}</div></div>` : ''}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${temAvulso && temPendente ? `<button onclick="abrirModalDarBaixa(${inc.cliente_id},'${inc.razao_social.replace(/'/g,"\\'")}',${inc.avulso_disponivel})"
+          style="background:var(--accent);color:var(--navy);border:none;border-radius:7px;padding:6px 12px;font-weight:700;font-size:11px;cursor:pointer">✅ Dar Baixa</button>` : ''}
+        <button onclick="abrirModalPagtoAvulso(${inc.cliente_id},'${inc.razao_social.replace(/'/g,"\\'")}')"
+          style="background:var(--navy2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 12px;font-size:11px;cursor:pointer">💰 Registrar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 let _previewTimer = null;
 async function atualizarPreviewBaixa(clienteId) {
   clearTimeout(_previewTimer);
@@ -7426,8 +7489,11 @@ function inferirCategoria(descricao) {
   return 'outro';
 }
 
-function openEntradaModal(e = {}) {
+async function openEntradaModal(e = {}) {
   const isNew = !e.id;
+  const contas = await _getContas();
+  const contasOpts = `<option value="">— Não vincular —</option>` +
+    contas.map(c => `<option value="${c.id}" ${e.conta_id==c.id?'selected':''}>${c.nome}${c.banco?' — '+c.banco:''}</option>`).join('');
   openModal(e.id ? 'Editar Entrada' : 'Nova Entrada', `
     <div class="form-grid">
       <div class="form-group span2"><label>Descrição *</label><input id="f-desc" value="${e.descricao||''}" placeholder="Ex: Comissão Belvedere — Qd A Lt 01"></div>
@@ -7443,6 +7509,9 @@ function openEntradaModal(e = {}) {
       </div>
       <div class="form-group"><label>Data Prevista</label><input id="f-prev" type="date" value="${e.data_prevista||''}"></div>
       <div class="form-group"><label>Data Recebimento</label><input id="f-rec" type="date" value="${e.data_recebimento||''}"></div>
+      <div class="form-group span2"><label>🏦 Conta bancária (conciliação)</label>
+        <select id="f-conta">${contasOpts}</select>
+      </div>
       <div class="form-group span2" style="background:var(--navy3);border-radius:8px;padding:12px">
         <label style="margin-bottom:8px;display:block">📆 Parcelamento (opcional)</label>
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
@@ -7484,7 +7553,7 @@ function openEntradaModal(e = {}) {
     </div>
   `, async () => {
     const temNF = document.getElementById('f-nf-propria')?.checked ? 1 : 0;
-    const body = { descricao: v('f-desc'), tipo: v('f-tipo'), empreendimento_id: v('f-emp')||null, valor: parseFloat(v('f-valor')), status: v('f-status'), data_prevista: v('f-prev'), data_recebimento: v('f-rec'), observacoes: v('f-obs'), tem_nf_propria: temNF, nf_numero: v('f-nf-num')||null, nf_data: v('f-nf-data')||null };
+    const body = { descricao: v('f-desc'), tipo: v('f-tipo'), empreendimento_id: v('f-emp')||null, valor: parseFloat(v('f-valor')), status: v('f-status'), data_prevista: v('f-prev'), data_recebimento: v('f-rec'), observacoes: v('f-obs'), tem_nf_propria: temNF, nf_numero: v('f-nf-num')||null, nf_data: v('f-nf-data')||null, conta_id: v('f-conta')||null };
     if (!body.descricao || !body.valor) return toast('Descrição e valor obrigatórios', 'error');
 
     const parcelar = document.getElementById('f-parcelar')?.checked;
