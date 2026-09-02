@@ -68,16 +68,21 @@
   /* Grade de tiles */
   .grade-section { margin-top: 0; }
   .grade-titulo { font-size: 14px; font-weight: 600; color: #94a3b8; margin-bottom: 12px; }
-  .grade { display: flex; flex-wrap: wrap; gap: 6px; }
+  .grade {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 8px;
+  }
   .tile {
-    width: 54px; height: 54px; border-radius: 8px; display: flex; flex-direction: column;
+    aspect-ratio: 1; min-height: 62px;
+    border-radius: 10px; display: flex; flex-direction: column;
     align-items: center; justify-content: center; cursor: pointer;
     border: 1.5px solid transparent; font-weight: 700;
     transition: transform .15s; position: relative;
   }
-  .tile:hover { transform: scale(1.15); z-index: 5; }
-  .tile .lote-num { font-size: 14px; line-height: 1; }
-  .tile .quadra   { font-size: 9px; opacity: .7; margin-top: 1px; }
+  .tile:hover { transform: scale(1.1); z-index: 5; }
+  .tile .lote-num { font-size: 15px; line-height: 1; }
+  .tile .quadra   { font-size: 10px; opacity: .7; margin-top: 2px; }
   .tile.disponivel  { background: #14532d; border-color: #22c55e; color: #4ade80; }
   .tile.reservado   { background: #78350f; border-color: #f59e0b; color: #fbbf24; }
   .tile.vendido     { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
@@ -193,23 +198,24 @@
   .predio-frame { border: 1px solid #334155; border-radius: 10px; overflow: hidden; }
   .predio-andar { display: flex; align-items: stretch; border-bottom: 1px solid #1e293b; }
   .predio-andar:last-child { border-bottom: none; }
-  .predio-label { width: 54px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 4px; background: #0f172a; border-right: 1px solid #1e293b; gap: 2px; }
+  .predio-label { width: 58px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 4px; background: #0f172a; border-right: 1px solid #1e293b; gap: 2px; }
   .predio-num { font-size: 14px; font-weight: 700; color: #f1f5f9; font-variant-numeric: tabular-nums; }
   .predio-tag { font-size: 9px; color: #475569; text-transform: uppercase; letter-spacing: .05em; }
-  .predio-units { flex: 1; display: flex; gap: 6px; padding: 8px 10px; align-items: center; flex-wrap: wrap; background: #0c1322; }
+  .predio-units { flex: 1; display: flex; gap: 8px; padding: 8px 12px; align-items: stretch; background: #0c1322; }
   .predio-unit {
     position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    width: 62px; height: 52px; border-radius: 7px; cursor: pointer; border: 1.5px solid transparent;
-    transition: transform .12s; flex-shrink: 0;
+    flex: 1; min-width: 52px; max-width: 160px; height: 58px;
+    border-radius: 8px; cursor: pointer; border: 1.5px solid transparent;
+    transition: transform .12s;
   }
-  .predio-unit:hover { transform: translateY(-2px); z-index: 5; }
+  .predio-unit:hover { transform: translateY(-3px); z-index: 5; }
   .predio-unit.disponivel  { background: #14532d; border-color: #22c55e; color: #4ade80; }
   .predio-unit.reservado   { background: #78350f; border-color: #f59e0b; color: #fbbf24; }
   .predio-unit.vendido     { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
   .predio-unit.entregue    { background: #4c1d95; border-color: #a78bfa; color: #c4b5fd; }
   .predio-unit.indisponivel { background: #1e293b; border-color: #475569; color: #64748b; }
-  .predio-unit-num  { font-size: 13px; font-weight: 700; line-height: 1; }
-  .predio-unit-area { font-size: 9px; opacity: .7; margin-top: 2px; }
+  .predio-unit-num  { font-size: 14px; font-weight: 700; line-height: 1; }
+  .predio-unit-area { font-size: 10px; opacity: .7; margin-top: 2px; }
   .predio-unit .tip2 {
     display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
     background: #1e293b; border: 1px solid #334155; border-radius: 6px;
@@ -218,17 +224,39 @@
   }
   .predio-unit:hover .tip2 { display: block; }
 
+  /* Tela média (tablet) */
+  @media (max-width: 900px) {
+    .grade {
+      grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+      gap: 7px;
+    }
+    .tile { min-height: 58px; }
+  }
+
+  /* Mobile */
   @media (max-width: 600px) {
     header { padding: 12px 16px; }
-    .resumo { padding: 12px 16px; gap: 8px; }
-    main { padding: 0 16px 24px; }
-    .tile { width: 46px; height: 46px; }
-    .tile .lote-num { font-size: 12px; }
+    .logo { font-size: 17px; }
+    .resumo { padding: 10px 14px; gap: 7px; }
+    .resumo-card { min-width: 72px; padding: 10px 12px; }
+    .resumo-card .num { font-size: 22px; }
+    .maps-btn, .drive-btn, .social-btn, .export-btn { padding: 10px 14px; font-size: 12px; }
+    main { padding: 0 12px 24px; }
+    .grade {
+      grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+      gap: 6px;
+    }
+    .tile { min-height: 52px; border-radius: 8px; }
+    .tile .lote-num { font-size: 13px; }
+    .tile .quadra { font-size: 9px; }
     .sim-info-grid { grid-template-columns: 1fr; }
     .predio-label { width: 44px; }
     .predio-num { font-size: 12px; }
-    .predio-unit { width: 48px; height: 44px; }
-    .predio-unit-num { font-size: 11px; }
+    .predio-units { padding: 6px 8px; gap: 5px; }
+    .predio-unit { min-width: 44px; height: 48px; border-radius: 7px; }
+    .predio-unit-num { font-size: 12px; }
+    .predio-unit-area { font-size: 9px; }
+    .legenda { gap: 10px; }
   }
 </style>
 </head>
