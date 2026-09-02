@@ -306,6 +306,7 @@
 const slug = location.pathname.split('/espelho/')[1]?.split('/')[0];
 let countdown = 15, timer;
 let _empNome = '';
+let _empTipo = 'loteamento';
 let _simParams = null;
 let _markerSize = 20;
 let _mapsUrl = null;
@@ -658,6 +659,7 @@ async function carregar() {
 
     const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, mapsUrl, driveUrl, socialUrl, atualizado_em } = resp.data;
     _empNome    = emp.nome + (emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : '');
+    _empTipo    = emp.tipo || 'loteamento';
     _simParams  = espelhoParams || null;
     _markerSize = markerSize || 20;
     _mapsUrl    = mapsUrl || null;
@@ -1041,9 +1043,231 @@ function exportarTabelaEspelho() {
   if (!units.length) return;
 
   const p = _simParams;
-  const fmtC  = new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL', minimumFractionDigits:2 });
-  const fmt0  = new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL', minimumFractionDigits:0, maximumFractionDigits:0 });
-  const fmt2  = new Intl.NumberFormat('pt-BR', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const isLoteamento = _empTipo !== 'predio';
+
+  // Formatters idênticos ao sistema interno
+  const fmt2 = n => n == null ? '—' : 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmtN = n => n == null ? '—' : n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' m²';
+
+  // Ordenação idêntica ao sistema interno
+  const floorOrder = q => {
+    const n = parseFloat(q);
+    if (!isNaN(n)) return n;
+    const ql = String(q).toLowerCase();
+    if (ql.includes('térr') || ql.includes('terr')) return 0;
+    return Infinity;
+  };
+  const sortedUnits = [...units].sort((a, b) => {
+    const qa = String(a.quadra||''), qb = String(b.quadra||'');
+    const na = parseFloat(qa), nb = parseFloat(qb);
+    const qcmp = (!isNaN(na) && !isNaN(nb)) ? na - nb : qa.localeCompare(qb, 'pt-BR', {numeric:true, sensitivity:'base'});
+    if (qcmp !== 0) return qcmp;
+    const la = parseFloat(String(a.lote||'').replace(/\D/g,'')||'0');
+    const lb = parseFloat(String(b.lote||'').replace(/\D/g,'')||'0');
+    return (!isNaN(la) && !isNaN(lb)) ? la - lb : String(a.lote||'').localeCompare(String(b.lote||''), 'pt-BR', {numeric:true});
+  });
+
+  // Params — espelhoParams armazena pct como 0-100
+  const condicoes = p?.condicoes || [{label:'60x sem juros', nParc:60, juros:0}];
+  const nRef      = p?.nRef || 0;
+  const entFixo   = p?.entrada_tipo === 'valor';
+  const entParcN  = p?.entrada_parc || 1;
+  const refPct    = ((p?.pRef || 0)).toFixed(0);
+
+  const entradaSubHd = !p ? '' : entFixo
+    ? (entParcN > 1
+        ? `R$ ${(p.entrada_valor||0).toLocaleString('pt-BR')} · ${entParcN}x R$ ${((p.entrada_valor||0)/entParcN).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`
+        : `R$ ${(p.entrada_valor||0).toLocaleString('pt-BR')} · à vista`)
+    : (entParcN > 1
+        ? `${(p.entrada_pct||0).toFixed(0)}% · ${entParcN}x`
+        : `${(p.entrada_pct||0).toFixed(0)}% · à vista`);
+
+  const condCols  = condicoes.map(c =>
+    `<th class="right">${c.label||c.nParc+'x'}<span class="sub">${c.juros>0?c.juros.toFixed(2)+'% a.m.':'sem juros'}</span></th>`
+  ).join('');
+  const refColHd  = nRef > 0
+    ? `<th class="right">Balões ${nRef}<span class="sub">${refPct}% do valor · cada</span></th>` : '';
+
+  const extractNum = lote => { const m = String(lote).match(/\b(\d{1,4}[A-Za-z]?)\b/); return m ? m[1] : String(lote).split(/[\s-]/)[0]; };
+  const extractTip = lote => { const parts = String(lote).split(/\s*-\s*/); return parts.length > 1 ? parts.slice(1).filter(pt => /[a-zA-ZÀ-ú]/.test(pt)).join(' - ') : ''; };
+  const entSingleLine = isLoteamento && entFixo && entParcN > 1;
+
+  const rows = sortedUnits.map(u => {
+    const lote = String(u.lote || '');
+    const num  = extractNum(lote);
+    const tip  = u.tipologia || extractTip(lote);
+    const q    = u.quadra != null ? String(u.quadra) : '—';
+    const fo   = floorOrder(q);
+    const andarLabel = fo === 0 ? 'Térreo' : !isNaN(fo) ? `${fo}º andar` : q;
+    const P    = u.preco;
+    let entCell = '', refCell = '', condCells = '';
+
+    if (P && p) {
+      const entV     = entFixo ? (p.entrada_valor || 0) : P * ((p.entrada_pct || 0) / 100);
+      const totalRef = P * ((p.pRef || 0) / 100);
+      const refVal   = nRef > 0 ? totalRef / nRef : 0;
+      const saldo    = P - entV - totalRef;
+
+      if (entParcN > 1 && !entSingleLine) {
+        const parcEnt = entV / entParcN;
+        entCell = `${fmt2(entV)}<br><span style="font-size:9px;color:#6b7280">${entParcN}x ${fmt2(parcEnt)}</span>`;
+      } else {
+        entCell = fmt2(entV);
+      }
+      refCell = nRef > 0 ? fmt2(refVal) : '—';
+
+      const cp = isLoteamento ? '2px 4px' : '5px 10px';
+      condCells = condicoes.map(c => {
+        const pmv = calcPMT(saldo, c.nParc, c.juros);
+        const totalC = entV + totalRef + c.nParc * pmv;
+        const ok = !c.juros && Math.abs(totalC - P) < 0.10;
+        const chk = !c.juros ? `<span style="font-size:9px;color:${ok?'#166534':'#991b1b'};font-weight:700">${ok?'✓':'⚠'}</span>` : '';
+        return `<td style="padding:${cp};font-size:${isLoteamento?'10px':'12px'};font-weight:700;text-align:right;white-space:nowrap">${fmt2(pmv)} ${chk}</td>`;
+      }).join('');
+    } else {
+      const cp = isLoteamento ? '2px 4px' : '5px 10px';
+      condCells = condicoes.map(() => `<td style="padding:${cp};text-align:right;color:#9ca3af">—</td>`).join('');
+    }
+
+    const st       = u.status || 'disponivel';
+    const isRes    = st === 'reservado';
+    const isVend   = st === 'vendido';
+    const isIndisp = st === 'indisponivel';
+    const rowStyle = isVend
+      ? 'background:#fde68a;border-bottom:2px solid #f59e0b;border-left:4px solid #92400e'
+      : isRes
+        ? 'background:#fef3c7;border-bottom:2px solid #fcd34d;border-left:4px solid #f59e0b'
+        : isIndisp
+          ? 'background:#f0f4f8;border-bottom:2px solid #94a3b8;border-left:4px solid #64748b'
+          : 'background:#ffffff;border-bottom:2px solid #d1d5db;border-left:4px solid transparent';
+    const textDeco  = isVend ? 'text-decoration:line-through' : isIndisp ? 'text-decoration:underline;opacity:.65' : '';
+    const numColor  = isRes ? '#92400e' : isVend ? '#78350f' : isIndisp ? '#64748b' : '#111827';
+    const textColor = isRes ? 'color:#92400e' : isVend ? 'color:#78350f' : isIndisp ? 'color:#64748b' : 'color:#374151';
+    const badgeBg   = isVend ? '#92400e' : isRes ? '#d97706' : isIndisp ? '#64748b' : '#16a34a';
+    const badgeTxt  = isVend ? 'VENDIDO' : isRes ? 'RESERVADO' : isIndisp ? 'INDISPONÍVEL' : 'DISPONÍVEL';
+    const badgeExtra = isRes ? 'box-shadow:0 0 0 2px #f59e0b' : isVend ? 'box-shadow:0 0 0 2px #92400e' : '';
+    const badge = `<span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:9px;font-weight:800;background:${badgeBg};color:#fff;letter-spacing:.3px;${badgeExtra}">${badgeTxt}</span>`;
+
+    if (isLoteamento) {
+      return `<tr style="${rowStyle}">
+        <td style="padding:2px 4px;font-size:9px;white-space:nowrap;${textColor};${textDeco}">${q}</td>
+        <td style="padding:2px 4px;font-size:12px;font-weight:900;white-space:nowrap;color:${numColor};${textDeco}">${num}</td>
+        <td style="padding:2px 4px;font-size:9px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${fmtN(u.area_m2)}</td>
+        <td style="padding:2px 4px;font-size:10px;font-weight:800;text-align:right;white-space:nowrap;color:${numColor};${textDeco}">${fmt2(P)}</td>
+        <td style="padding:2px 4px;font-size:10px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${entCell}</td>
+        ${nRef>0?`<td style="padding:2px 4px;font-size:10px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${refCell}</td>`:''}
+        ${condCells}
+        <td style="padding:2px 4px;text-align:center">${badge}</td>
+      </tr>`;
+    } else {
+      return `<tr style="${rowStyle}">
+        <td style="padding:5px 10px;font-size:11px;white-space:nowrap;${textColor};${textDeco}">${andarLabel}</td>
+        <td style="padding:5px 10px;font-size:15px;font-weight:900;white-space:nowrap;color:${numColor};${textDeco}">${num}</td>
+        <td style="padding:5px 10px;font-size:10.5px;${isRes?'color:#92400e':'color:#6b7280'};${textDeco}">${tip}</td>
+        <td style="padding:5px 10px;font-size:12px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${fmtN(u.area_m2)}</td>
+        <td style="padding:5px 10px;font-size:13px;font-weight:800;text-align:right;white-space:nowrap;color:${numColor};${textDeco}">${fmt2(P)}</td>
+        <td style="padding:5px 10px;font-size:12px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${entCell}</td>
+        ${nRef>0?`<td style="padding:5px 10px;font-size:12px;text-align:right;white-space:nowrap;${textColor};${textDeco}">${refCell}</td>`:''}
+        ${condCells}
+        <td style="padding:5px 10px;text-align:center">${badge}</td>
+      </tr>`;
+    }
+  }).join('');
+
+  const nDisp   = units.filter(u=>u.status==='disponivel').length;
+  const nRes    = units.filter(u=>u.status==='reservado').length;
+  const nVend   = units.filter(u=>u.status==='vendido').length;
+  const nIndisp = units.filter(u=>u.status==='indisponivel').length;
+  const total   = units.length;
+
+  const condsDesc = condicoes.map(c =>
+    `${c.label||c.nParc+'x'}${c.juros>0?' c/ '+c.juros.toFixed(2)+'% a.m.':' sem juros'}`
+  ).join(' · ');
+
+  const now    = new Date().toLocaleDateString('pt-BR');
+  const titulo = p?.titulo || 'Tabela de Lançamento';
+  const obsLines = (p?.obs||'').split('\n').filter(Boolean);
+
+  const entHdCell = p ? `<th class="right">Entrada<span class="sub">${entradaSubHd}</span></th>` : '';
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8">
+<title>Tabela de Vendas — ${_empNome}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; background: #fff; color: #111; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-scheme: light; }
+  @page { size: A4 landscape; margin: ${isLoteamento ? '3mm 5mm' : '8mm 10mm'}; }
+  @media print { .no-print { display: none !important; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: ${isLoteamento ? '3px' : '10px'}; padding-bottom: ${isLoteamento ? '3px' : '8px'}; border-bottom: 3px solid #111; }
+  .header-left h1 { font-size: ${isLoteamento ? '11px' : '17px'}; font-weight: 900; letter-spacing: -.5px; color: #000; }
+  .header-left p  { font-size: ${isLoteamento ? '7px' : '10px'}; color: #374151; margin-top: 1px; }
+  .header-right   { text-align: right; }
+  .header-right .data  { font-size: ${isLoteamento ? '10px' : '15px'}; font-weight: 900; color: #000; }
+  .header-right .titulo { font-size: ${isLoteamento ? '7px' : '8px'}; color: #374151; text-transform: uppercase; letter-spacing: 1px; }
+  table { width: 100%; border-collapse: collapse; font-size: ${isLoteamento ? '8px' : '10.5px'}; }
+  thead th { background: #0f172a !important; color: #ffffff !important; padding: ${isLoteamento ? '4px 4px 3px' : '7px 8px 6px'}; font-size: ${isLoteamento ? '7.5px' : '9.5px'}; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; vertical-align: bottom; border: 1px solid #0f172a; }
+  thead th .sub { display: block; font-size: ${isLoteamento ? '6.5px' : '8.5px'}; font-weight: 400; opacity: .75; text-transform: none; letter-spacing: 0; margin-top: 1px; color: #cbd5e1; }
+  thead th.right  { text-align: right; }
+  thead th.center { text-align: center; }
+  tbody tr { line-height: 1; }
+  .resumo { display: flex; gap: 4px; margin-top: ${isLoteamento ? '3px' : '8px'}; }
+  .resumo-card { flex: 1; border: 1px solid #e5e7eb; border-radius: 4px; padding: ${isLoteamento ? '2px 4px' : '5px 10px'}; text-align: center; }
+  .resumo-card .val { font-size: ${isLoteamento ? '10px' : '15px'}; font-weight: 900; }
+  .resumo-card .lbl { font-size: ${isLoteamento ? '6px' : '7px'}; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; margin-top: 1px; }
+  .resumo-card.green  { border-color: #bbf7d0; background: #f0fdf4; }
+  .resumo-card.green .val  { color: #166534; }
+  .resumo-card.yellow { border-color: #fde68a; background: #fefce8; }
+  .resumo-card.yellow .val { color: #92400e; }
+  .resumo-card.red    { border-color: #fca5a5; background: #fef2f2; }
+  .resumo-card.red .val    { color: #991b1b; }
+</style>
+</head><body>
+<div class="header">
+  <div class="header-left">
+    <h1>${_empNome}</h1>
+    <p>${condsDesc}${p && (p.entrada_pct || p.entrada_valor) ? ' · Entrada: ' + entradaSubHd : ''}</p>
+  </div>
+  <div class="header-right">
+    <div class="data">${titulo}</div>
+    <div class="titulo">${now}</div>
+  </div>
+</div>
+<table>
+  <thead><tr>
+    ${isLoteamento ? `
+      <th>Quadra</th><th>Lote</th>
+      <th class="right">Área</th>
+      <th class="right">Valor</th>
+      ${entHdCell}
+      ${refColHd}
+      ${condCols}
+      <th class="center">Status</th>
+    ` : `
+      <th>Andar</th><th>Unidade</th><th>Tipologia</th>
+      <th class="right">Área</th>
+      <th class="right">Valor</th>
+      ${entHdCell}
+      ${refColHd}
+      ${condCols}
+      <th class="center">Status</th>
+    `}
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div class="resumo">
+  <div class="resumo-card"><div class="val">${total}</div><div class="lbl">Total</div></div>
+  <div class="resumo-card green"><div class="val">${nDisp}</div><div class="lbl">Disponível</div></div>
+  <div class="resumo-card yellow"><div class="val">${nRes}</div><div class="lbl">Reservado</div></div>
+  <div class="resumo-card red"><div class="val">${nVend}</div><div class="lbl">Vendido</div></div>
+  ${nIndisp > 0 ? `<div class="resumo-card"><div class="val">${nIndisp}</div><div class="lbl">Indisponível</div></div>` : ''}
+</div>
+${obsLines.length ? `<div style="margin-top:${isLoteamento?'3px':'8px'};font-size:${isLoteamento?'7px':'9px'};color:#6b7280">${obsLines.map(l=>`• ${l}`).join('<br>')}</div>` : ''}
+${'<sc'+'ript>window.onload=()=>window.print()<'+'/sc'+'ript>'}
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if (!w) return alert('Permita popups para exportar a tabela.');
+  w.document.write(html);
 
   const statusLabel = { disponivel:'Disponível', reservado:'Reservado', vendido:'Vendido', indisponivel:'Indisponível' };
   const statusColor = { disponivel:'#166534', reservado:'#92400e', vendido:'#991b1b', indisponivel:'#374151' };
