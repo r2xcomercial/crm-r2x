@@ -295,6 +295,10 @@
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
     Exportar Tabela
   </button>
+  <button id="pdf-btn" class="export-btn" style="display:none;background:#7c3aed;border-color:#6d28d9" onclick="baixarTabelaPDF()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Baixar PDF
+  </button>
 </div>
 
 <main>
@@ -677,6 +681,8 @@ async function carregar() {
     if (socialBtn) { socialBtn.href = _socialUrl || '#'; socialBtn.style.display = _socialUrl ? '' : 'none'; }
     const exportBtn = document.getElementById('export-btn');
     if (exportBtn) exportBtn.style.display = 'flex';
+    const pdfBtn = document.getElementById('pdf-btn');
+    if (pdfBtn) pdfBtn.style.display = 'flex';
 
     document.title = `Espelho — ${emp.nome}`;
     document.getElementById('emp-nome').textContent  = _empNome;
@@ -1156,6 +1162,155 @@ function initMapaPinchZoom() {
   outer.addEventListener('click', function(e) {
     if (_mDidPan) { _mDidPan = false; e.stopPropagation(); e.preventDefault(); }
   }, true);
+}
+
+async function baixarTabelaPDF() {
+  const units = window._units || [];
+  if (!units.length) return;
+  const p = _simParams;
+  const isLoteamento = _empTipo !== 'predio';
+
+  // Carregar jsPDF + autotable lazily
+  if (!window.jspdf) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  if (!window.jspdf?.jsPDF?.prototype?.autoTable) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+
+  // Cabeçalho
+  doc.setFontSize(14); doc.setFont('helvetica','bold');
+  doc.text(_empNome, 14, 14);
+  doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(120);
+  const titulo = p?.titulo || 'Tabela de Lançamento';
+  doc.text(titulo, pageW - 14, 10, { align: 'right' });
+  doc.text(new Date().toLocaleDateString('pt-BR'), pageW - 14, 15, { align: 'right' });
+  doc.setTextColor(0);
+
+  // Ordenar unidades
+  const _flo = g => { const n = parseFloat(g); if (!isNaN(n)) return n; const gl = (g||'').toLowerCase(); if (gl.includes('térr')||gl.includes('terr')) return 0; return 0; };
+  const sortedUnits = [...units].sort((a, b) => {
+    if (!isLoteamento) {
+      const fa = _flo(String(a.quadra||'')), fb = _flo(String(b.quadra||''));
+      if (fa !== fb) return fb - fa;
+      return parseFloat(String(a.lote).replace(/\D/g,'')) - parseFloat(String(b.lote).replace(/\D/g,''));
+    }
+    const qa = String(a.quadra||''), qb = String(b.quadra||'');
+    const na = parseFloat(qa), nb = parseFloat(qb);
+    const qcmp = (!isNaN(na)&&!isNaN(nb)) ? na-nb : qa.localeCompare(qb,'pt-BR',{numeric:true});
+    if (qcmp !== 0) return qcmp;
+    return parseFloat(String(a.lote||'').replace(/\D/g,'')||'0') - parseFloat(String(b.lote||'').replace(/\D/g,'')||'0');
+  });
+
+  const fmtR = n => n == null ? '—' : 'R$ ' + n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtA = n => n == null ? '—' : n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' m²';
+
+  const entFixo  = p?.entrada_tipo === 'valor';
+  const entParcN = p?.entrada_parc || 1;
+  const nRef     = p?.nRef || 0;
+  const condicoes = p?.condicoes || [];
+
+  // Colunas
+  const head = isLoteamento
+    ? ['Quadra','Lote','Área','Valor', ...(p?['Entrada']:[]), ...(nRef>0?['Balão (cada)']:[]), ...condicoes.map(c=>c.label||c.nParc+'x'), 'Status']
+    : ['Andar','Unidade','Tipologia','Área','Valor', ...(p?['Entrada']:[]), ...(nRef>0?['Balão (cada)']:[]), ...condicoes.map(c=>c.label||c.nParc+'x'), 'Status'];
+
+  const statusLabel = s => s==='vendido'?'VENDIDO':s==='reservado'?'RESERVADO':s==='indisponivel'?'INDISPONÍVEL':'DISPONÍVEL';
+  const statusClr   = s => s==='vendido'?[146,64,14]:s==='reservado'?[217,119,6]:s==='indisponivel'?[100,116,139]:[22,163,74];
+
+  const _flo2 = g => { const n = parseFloat(g); if (!isNaN(n)) return n; const gl=(g||'').toLowerCase(); return (gl.includes('térr')||gl.includes('terr'))?0:0; };
+
+  const body = sortedUnits.map(u => {
+    const P = u.preco;
+    let entCell='—', refCell='—', condCells=[];
+    if (P && p) {
+      const entV     = entFixo ? (p.entrada_valor||0) : P * ((p.entrada_pct||0)/100);
+      const totalRef = P * ((p.pRef||0)/100);
+      const refVal   = nRef>0 ? totalRef/nRef : 0;
+      const saldo    = P - entV - totalRef;
+      entCell = entParcN > 1
+        ? fmtR(entV) + ` (${entParcN}x ${fmtR(entV/entParcN)})`
+        : fmtR(entV);
+      refCell = nRef>0 ? fmtR(refVal) : '—';
+      condCells = condicoes.map(c => fmtR(calcPMT(saldo, c.nParc, c.juros||0)) + '/mês');
+    } else {
+      condCells = condicoes.map(() => '—');
+    }
+
+    const andarLabel = (() => { const fo=_flo2(String(u.quadra||'')); return fo===0&&String(u.quadra||'').match(/t[eé]r/i)?'Térreo':!isNaN(parseFloat(u.quadra))?`${parseFloat(u.quadra)}°`:String(u.quadra||'—'); })();
+    const loteNum = String(u.lote||'').match(/\b(\d{1,4}[A-Za-z]?)\b/)?.[1] || String(u.lote||'');
+
+    const row = isLoteamento
+      ? [String(u.quadra||'—'), loteNum, fmtA(u.area_m2), fmtR(P), ...(p?[entCell]:[]), ...(nRef>0?[refCell]:[]), ...condCells, statusLabel(u.status)]
+      : [andarLabel, loteNum, u.tipologia||'', fmtA(u.area_m2), fmtR(P), ...(p?[entCell]:[]), ...(nRef>0?[refCell]:[]), ...condCells, statusLabel(u.status)];
+
+    return { data: row, status: u.status };
+  });
+
+  const statusColIdx = head.length - 1;
+
+  doc.autoTable({
+    startY: 20,
+    head: [head],
+    body: body.map(r => r.data),
+    theme: 'grid',
+    headStyles: { fillColor: [15,23,42], textColor: 255, fontSize: 7, fontStyle: 'bold', halign: 'center' },
+    bodyStyles: { fontSize: 6.5, cellPadding: 2 },
+    columnStyles: {
+      [head.indexOf('Valor')]: { halign: 'right' },
+      ...(p ? { [head.indexOf('Entrada')]: { halign: 'right' } } : {}),
+      ...(nRef > 0 ? { [head.indexOf('Balão (cada)')]: { halign: 'right' } } : {}),
+      ...Object.fromEntries(condicoes.map((_, i) => [head.length - 1 - condicoes.length + i, { halign: 'right' }])),
+      [statusColIdx]: { halign: 'center', fontStyle: 'bold' }
+    },
+    didParseCell: data => {
+      if (data.section === 'body') {
+        const rowIdx = data.row.index;
+        const st = body[rowIdx]?.status;
+        if (data.column.index === statusColIdx) {
+          const [r,g,b] = statusClr(st);
+          data.cell.styles.fillColor = [r,g,b];
+          data.cell.styles.textColor = [255,255,255];
+          data.cell.styles.fontSize  = 5.5;
+        }
+        if (st === 'vendido')      { data.cell.styles.fillColor = [254,243,199]; }
+        else if (st === 'reservado')   { data.cell.styles.fillColor = [255,251,235]; }
+        else if (st === 'indisponivel'){ data.cell.styles.fillColor = [241,245,249]; data.cell.styles.textColor=[100,116,139]; }
+        if (data.column.index === statusColIdx) {
+          const [r,g,b] = statusClr(st);
+          data.cell.styles.fillColor = [r,g,b];
+          data.cell.styles.textColor = [255,255,255];
+        }
+      }
+    },
+    margin: { top: 22, left: 10, right: 10 }
+  });
+
+  // Rodapé resumo
+  const nDisp=units.filter(u=>u.status==='disponivel').length;
+  const nRes=units.filter(u=>u.status==='reservado').length;
+  const nVend=units.filter(u=>u.status==='vendido').length;
+  const nIndisp=units.filter(u=>u.status==='indisponivel').length;
+  const finalY = doc.lastAutoTable.finalY + 4;
+  doc.setFontSize(7); doc.setTextColor(80);
+  doc.text(`Total: ${units.length}  |  Disponível: ${nDisp}  |  Reservado: ${nRes}  |  Vendido: ${nVend}${nIndisp?'  |  Indisponível: '+nIndisp:''}`, 14, finalY);
+
+  const nomeArq = (_empNome||'tabela').replace(/[^a-zA-Z0-9À-ú\s]/g,'').trim().replace(/\s+/g,'_');
+  doc.save(`Tabela_${nomeArq}_${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
 function exportarTabelaEspelho() {
