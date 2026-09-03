@@ -477,7 +477,11 @@ function mostrarFormProposta(unitId) {
     txt += entParcN > 1 ? ` (${entParcN}x de ${fmt.format(entV / entParcN)})` : ' (à vista)';
     txt += '\n';
     const totalRef = preco * ((p.pRef || 0) / 100);
+    const nRef     = p.nRef || 0;
     const saldo    = preco - entV - totalRef;
+    if (totalRef > 0 && nRef > 0) {
+      txt += `Balões: ${nRef}x de ${fmt.format(totalRef / nRef)} (${((p.pRef||0)).toFixed(0)}% do valor)\n`;
+    }
     (p.condicoes || []).forEach(c => {
       const pmv = calcPMT(saldo, c.nParc, c.juros || 0);
       txt += `${c.label || c.nParc + 'x'}: ${c.nParc}x ${fmt.format(pmv)}/mês`;
