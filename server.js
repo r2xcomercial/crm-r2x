@@ -4334,6 +4334,45 @@ app.get('/api/espelho-publico/:slug/ping', (req, res) => {
 });
 
 
+// Endpoint: corretor cadastra lead a partir do espelho público
+app.post('/api/espelho-lead', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['corretor','gestor','admin'].includes(u.perfil)) return err(res, 'Acesso restrito a corretores', 403);
+  const corretor_id = u.corretor_id || null;
+  const { nome, telefone, email, observacoes, empreendimento_id, unidade_interesse, slug } = req.body;
+  if (!nome || !telefone) return err(res, 'Nome e telefone obrigatórios');
+
+  // Resolver empreendimento pelo slug se empreendimento_id não vier
+  let empId = empreendimento_id ? parseInt(empreendimento_id) : null;
+  if (!empId && slug) {
+    const emp = db.prepare("SELECT id FROM empreendimentos WHERE espelho_slug=?").get(slug);
+    if (emp) empId = emp.id;
+  }
+
+  const existente = db.prepare("SELECT id, status FROM leads WHERE telefone=?").get(telefone.replace(/\D/g,'').replace(/^(\d{10,11})$/,'$1'));
+  if (existente) {
+    // Atualiza corretor se ainda sem corretor
+    if (!db.prepare("SELECT corretor_id FROM leads WHERE id=?").get(existente.id).corretor_id && corretor_id) {
+      db.prepare("UPDATE leads SET corretor_id=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?").run(corretor_id, existente.id);
+    }
+    return ok(res, { id: existente.id, existente: true });
+  }
+
+  const r = db.prepare(`INSERT INTO leads (nome,telefone,email,corretor_id,empreendimento_id,empreendimento_interesse,status,origem,observacoes)
+    VALUES (?,?,?,?,?,?,?,?,?)`).run(
+    nome.trim(),
+    telefone.replace(/\D/g,''),
+    email||null,
+    corretor_id,
+    empId,
+    unidade_interesse||null,
+    'novo',
+    'espelho_publico',
+    observacoes||null
+  );
+  ok(res, { id: r.lastInsertRowid, existente: false });
+});
+
 // Migration: campos extras de vagas + vínculo com unidade
 try { db.exec('ALTER TABLE vagas_garagem ADD COLUMN box TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vagas_garagem ADD COLUMN tamanho REAL'); } catch(_) {}
