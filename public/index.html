@@ -4288,8 +4288,12 @@ function openEmpModal(e = {}) {
         <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Controla o acesso de <strong>todos</strong> os corretores a este empreendimento. Desativar aqui bloqueia mesmo que o corretor tenha permissão individual.</div>
         <div style="display:flex;gap:24px;flex-wrap:wrap">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+            <input type="checkbox" id="f-config-visivel" ${(e.config_visivel===0)?'':'checked'} style="width:16px;height:16px;accent-color:var(--accent)">
+            <span>👁 Lançamento visível para corretores</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
             <input type="checkbox" id="f-config-ver-tabela" ${(e.config_ver_tabela===0)?'':'checked'} style="width:16px;height:16px;accent-color:var(--accent)">
-            <span>👁 Corretores podem ver tabela de preços</span>
+            <span>📊 Corretores podem ver tabela de preços</span>
           </label>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
             <input type="checkbox" id="f-config-reservar" ${(e.config_reservar===0)?'':'checked'} style="width:16px;height:16px;accent-color:var(--accent)">
@@ -4517,6 +4521,7 @@ function openEmpModal(e = {}) {
       drive_url: v('f-drive-url')||null,
       social_url: v('f-social-url')||null,
       fase_lancamento: v('f-fase-lancamento')||'aquecimento',
+      config_visivel:    document.getElementById('f-config-visivel')?.checked ? 1 : 0,
       config_ver_tabela: document.getElementById('f-config-ver-tabela')?.checked ? 1 : 0,
       config_reservar:   document.getElementById('f-config-reservar')?.checked ? 1 : 0,
       condicao_pagamento_padrao: [...document.querySelectorAll('#emp-cp-list .ecp-condicao')].map(cond => ({

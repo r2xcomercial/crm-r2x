@@ -876,7 +876,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     vendedora_nome, vendedora_qualificacao,
     prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao,
     condicao_pagamento_padrao, logo_base64, maps_url, drive_url, social_url, fase_lancamento,
-    config_ver_tabela, config_reservar } = req.body;
+    config_ver_tabela, config_reservar, config_visivel } = req.body;
   const cpPadrao = condicao_pagamento_padrao && Array.isArray(condicao_pagamento_padrao) && condicao_pagamento_padrao.length > 0
     ? JSON.stringify(condicao_pagamento_padrao) : null;
   db.prepare(`UPDATE empreendimentos SET
@@ -886,7 +886,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     vendedora_nome=?,vendedora_qualificacao=?,
     prazo_entrega_meses=?,inicio_obra_previsto=?,valor_cub=?,
     patrimonio_afetacao=?,condicao_pagamento_padrao=?,logo_base64=?,maps_url=?,drive_url=?,social_url=?,fase_lancamento=?,
-    config_ver_tabela=?,config_reservar=?
+    config_ver_tabela=?,config_reservar=?,config_visivel=?
     WHERE id=?`).run(
     cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
     status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
@@ -897,6 +897,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     fase_lancamento||null,
     config_ver_tabela !== undefined ? (config_ver_tabela ? 1 : 0) : 1,
     config_reservar !== undefined ? (config_reservar ? 1 : 0) : 1,
+    config_visivel !== undefined ? (config_visivel ? 1 : 0) : 1,
     req.params.id);
   ok(res, {});
 });
@@ -4495,6 +4496,7 @@ try { db.exec('ALTER TABLE empreendimentos ADD COLUMN logo_base64 TEXT'); } catc
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN fase_lancamento TEXT DEFAULT 'aquecimento'"); } catch(_) {}
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN config_ver_tabela INTEGER NOT NULL DEFAULT 1"); } catch(_) {}
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN config_reservar INTEGER NOT NULL DEFAULT 1"); } catch(_) {}
+try { db.exec("ALTER TABLE empreendimentos ADD COLUMN config_visivel INTEGER NOT NULL DEFAULT 1"); } catch(_) {}
 try { db.exec(`CREATE TABLE IF NOT EXISTS org_nodes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   parent_id INTEGER,
@@ -8422,7 +8424,7 @@ app.get('/api/corretor/empreendimentos', autenticar, (req, res) => {
   if (!cid) return ok(res, []);
   const temRegistro = db.prepare('SELECT 1 FROM corretor_empreendimento_acesso WHERE corretor_id=? LIMIT 1').get(cid);
   if (!temRegistro) {
-    return ok(res, db.prepare(`SELECT id, nome, cidade, estado, tipo, status, espelho_slug, COALESCE(config_ver_tabela,1) AS pode_ver_tabela, COALESCE(config_reservar,1) AS pode_reservar FROM empreendimentos ORDER BY nome`).all());
+    return ok(res, db.prepare(`SELECT id, nome, cidade, estado, tipo, status, espelho_slug, COALESCE(config_ver_tabela,1) AS pode_ver_tabela, COALESCE(config_reservar,1) AS pode_reservar FROM empreendimentos WHERE COALESCE(config_visivel,1)=1 ORDER BY nome`).all());
   }
   ok(res, db.prepare(`
     SELECT e.id, e.nome, e.cidade, e.estado, e.tipo, e.status, e.espelho_slug,
@@ -8430,7 +8432,7 @@ app.get('/api/corretor/empreendimentos', autenticar, (req, res) => {
            COALESCE(a.pode_reservar, 1)   * COALESCE(e.config_reservar, 1)   AS pode_reservar
     FROM empreendimentos e
     JOIN corretor_empreendimento_acesso a ON a.empreendimento_id = e.id AND a.corretor_id = ?
-    WHERE a.liberado = 1
+    WHERE a.liberado = 1 AND COALESCE(e.config_visivel,1) = 1
     ORDER BY e.nome
   `).all(cid));
 });
