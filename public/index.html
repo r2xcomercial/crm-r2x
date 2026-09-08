@@ -5841,27 +5841,51 @@ async function _carregarAcessoEmpCorretor(corretorId) {
   const emps = r.data || [];
   const container = document.getElementById('corretor-emp-acesso');
   if (!container) return;
-  container.innerHTML = emps.length ? emps.map(e => `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-      <div>
-        <div style="font-size:13px;font-weight:600">${e.nome}</div>
-        ${e.cidade ? `<div style="font-size:11px;color:var(--text2)">${e.cidade}${e.estado?'/'+e.estado:''}</div>` : ''}
+  if (!emps.length) { container.innerHTML = '<div style="font-size:12px;color:var(--text2);padding:8px 0">Nenhum empreendimento cadastrado.</div>'; return; }
+  container.innerHTML = emps.map(e => `
+    <div style="padding:10px 0;border-bottom:1px solid var(--border)" id="emp-row-${e.id}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
+        <div>
+          <div style="font-size:13px;font-weight:600">${e.nome}</div>
+          ${e.cidade ? `<div style="font-size:11px;color:var(--text2)">${e.cidade}${e.estado?'/'+e.estado:''}</div>` : ''}
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">
+          <input type="checkbox" id="chk-lib-${e.id}" ${e.liberado ? 'checked' : ''}
+            onchange="_salvarAcessoEmp(${corretorId}, ${e.id})"
+            style="accent-color:var(--accent);width:15px;height:15px;cursor:pointer">
+          <span style="font-size:12px;font-weight:600;color:${e.liberado?'var(--accent)':'var(--text2)'}" id="lbl-lib-${e.id}">${e.liberado ? '✅ Liberado' : '🔒 Bloqueado'}</span>
+        </label>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-        <span style="font-size:12px;color:var(--text2)">${e.liberado ? 'Liberado' : 'Bloqueado'}</span>
-        <input type="checkbox" id="emp-acesso-${e.id}" ${e.liberado ? 'checked' : ''}
-          onchange="_toggleEmpAcesso(${corretorId}, ${e.id}, this.checked)"
-          style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)">
-      </label>
-    </div>`).join('') : '<div style="font-size:12px;color:var(--text2);padding:8px 0">Nenhum empreendimento cadastrado.</div>';
+      <div id="perms-row-${e.id}" style="display:${e.liberado?'flex':'none'};gap:14px;padding:6px 10px;background:var(--navy3);border-radius:7px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px">
+          <input type="checkbox" id="chk-tab-${e.id}" ${e.pode_ver_tabela ? 'checked' : ''}
+            onchange="_salvarAcessoEmp(${corretorId}, ${e.id})"
+            style="accent-color:var(--accent);cursor:pointer">
+          📊 Ver tabela de preços
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px">
+          <input type="checkbox" id="chk-res-${e.id}" ${e.pode_reservar ? 'checked' : ''}
+            onchange="_salvarAcessoEmp(${corretorId}, ${e.id})"
+            style="accent-color:var(--accent);cursor:pointer">
+          ⚡ Pode reservar unidades
+        </label>
+      </div>
+    </div>`).join('');
 }
 
-async function _toggleEmpAcesso(corretorId, empId, liberado) {
-  const r = await post(`/api/admin/corretor/${corretorId}/empreendimento-acesso`, { empreendimento_id: empId, liberado });
+async function _salvarAcessoEmp(corretorId, empId) {
+  const liberado     = document.getElementById(`chk-lib-${empId}`)?.checked ? 1 : 0;
+  const verTabela    = document.getElementById(`chk-tab-${empId}`)?.checked ? 1 : 0;
+  const podeReservar = document.getElementById(`chk-res-${empId}`)?.checked ? 1 : 0;
+  const permsRow     = document.getElementById(`perms-row-${empId}`);
+  const lblLib       = document.getElementById(`lbl-lib-${empId}`);
+  if (permsRow) permsRow.style.display = liberado ? 'flex' : 'none';
+  if (lblLib) { lblLib.textContent = liberado ? '✅ Liberado' : '🔒 Bloqueado'; lblLib.style.color = liberado ? 'var(--accent)' : 'var(--text2)'; }
+  const r = await post(`/api/admin/corretor/${corretorId}/empreendimento-acesso`, {
+    empreendimento_id: empId, liberado, pode_ver_tabela: verTabela, pode_reservar: podeReservar
+  });
   if (!r.ok) { toast(r.error || 'Erro ao salvar', 'error'); return; }
-  const lbl = document.querySelector(`#emp-acesso-${empId}`)?.closest('div')?.querySelector('span');
-  if (lbl) lbl.textContent = liberado ? 'Liberado' : 'Bloqueado';
-  toast(liberado ? '✅ Acesso liberado' : '🔒 Acesso bloqueado');
+  toast('💾 Permissões salvas');
 }
 
 async function editCorretor(id) { openCorretorModal(currentData.corretores.find(c => c.id === id)); }
@@ -9879,10 +9903,28 @@ function esconderTooltipMapa() {}
 
 // ─── ESPELHO DE VENDAS ────────────────────────────────────────────────────────
 
+// Permissões de visualização do corretor atual para o emp sendo exibido
+window._espelhoHidePreco   = false;
+window._espelhoHideReserva = false;
+
 async function verEspelho(empId) {
   const emp = (currentData.emp||[]).find(e => e.id === empId) || {};
   document.getElementById('page-title').textContent = `Espelho — ${emp.nome||''}`;
   document.getElementById('content').innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)">Carregando espelho de vendas...</div>';
+
+  // Carregar permissões do corretor para este empreendimento
+  if (USUARIO.perfil === 'corretor') {
+    if (!window._corretorEmpPerms[empId]) {
+      const pr = await get('/api/corretor/empreendimentos');
+      if (pr.ok) (pr.data||[]).forEach(e => { window._corretorEmpPerms[e.id] = { pode_ver_tabela: e.pode_ver_tabela, pode_reservar: e.pode_reservar }; });
+    }
+    const perms = window._corretorEmpPerms[empId] || { pode_ver_tabela: 1, pode_reservar: 1 };
+    window._espelhoHidePreco   = !perms.pode_ver_tabela;
+    window._espelhoHideReserva = !perms.pode_reservar;
+  } else {
+    window._espelhoHidePreco   = false;
+    window._espelhoHideReserva = false;
+  }
 
   // Tenta carregar mapa (imagem JPEG/PNG) real primeiro
   const mapaR = await get(`/api/empreendimentos/${empId}/mapa`);
@@ -9941,6 +9983,13 @@ async function verEspelho(empId) {
       ${grupoKeys.length > 1 ? `<select id="espelho-filtro" onchange="filtrarEspelho()" style="font-size:13px;padding:8px 12px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:8px">${filtros}</select>` : ''}
       <button onclick="verEspelho(${empId})" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:16px;cursor:pointer" title="Atualizar">🔄</button>
     </div>
+
+    <!-- Banner de acesso restrito -->
+    ${window._espelhoHidePreco ? `
+    <div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;font-size:13px">
+      <span style="font-size:18px">🔒</span>
+      <span style="color:var(--warning)"><strong>Acesso restrito:</strong> tabela de preços e reservas liberadas no lançamento.</span>
+    </div>` : ''}
 
     <!-- Contador compacto para corretor -->
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
@@ -10095,11 +10144,11 @@ function renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId) {
             const tileSub  = dashIdx > -1 ? u.lote.slice(dashIdx + 3) : '';
             return `
             <div class="espelho-tile ${u.status}" data-uid="${u.id}" onclick="abrirUnidade(${u.id},${empId})"
-              title="${lblB} ${u.lote}${u.area_m2?' · '+u.area_m2+'m²':''}${u.preco?' · '+fmtPlain(u.preco):''}${u.num_vagas?' · '+u.num_vagas+' vaga(s)':''}">
+              title="${lblB} ${u.lote}${u.area_m2?' · '+u.area_m2+'m²':''}${(!window._espelhoHidePreco&&u.preco)?' · '+fmtPlain(u.preco):''}${u.num_vagas?' · '+u.num_vagas+' vaga(s)':''}">
               <div class="tile-num">${tileNum}</div>
               ${tileSub ? `<div class="tile-area" style="font-size:8px;opacity:.6;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${tileSub}</div>` : ''}
               ${u.area_m2 ? `<div class="tile-area">${u.area_m2}m²</div>` : ''}
-              ${u.preco ? `<div class="tile-preco">${fmtK(u.preco)}</div>` : ''}
+              ${(!window._espelhoHidePreco && u.preco) ? `<div class="tile-preco">${fmtK(u.preco)}</div>` : ''}
               ${u.num_vagas ? `<div class="tile-area" style="color:#60a5fa">🅿️ ${u.num_vagas}</div>` : ''}
             </div>`;
           }).join('')}
@@ -10177,14 +10226,14 @@ function renderEspelhoPredio(grupoKeys, grupos, empId) {
       const tip = u.tipologia || extractTip(u.lote);
       const clr = stClr[u.status] || 'var(--text2)';
       const tooltipTip = tip ? ` · ${tip}` : '';
-      const tooltip = `${andLabel} andar · Apto ${num}${tooltipTip}${u.area_m2 ? ' · ' + u.area_m2 + 'm²' : ''}${u.preco ? ' · ' + fmtPlain(u.preco) : ''}`;
+      const tooltip = `${andLabel} andar · Apto ${num}${tooltipTip}${u.area_m2 ? ' · ' + u.area_m2 + 'm²' : ''}${(!window._espelhoHidePreco && u.preco) ? ' · ' + fmtPlain(u.preco) : ''}`;
       return `<td style="padding:2px 3px">
         <div onclick="abrirUnidade(${u.id},${empId})" title="${tooltip}"
           data-uid="${u.id}" class="espelho-tile ${u.status || 'disponivel'}">
           <div class="tile-num" style="color:${clr}">${num}</div>
           ${tip ? `<div class="tile-tip">${tip}</div>` : ''}
           ${u.area_m2 ? `<div class="tile-area">${u.area_m2}m²</div>` : ''}
-          ${u.preco   ? `<div class="tile-preco">${fmtK(u.preco)}</div>` : ''}
+          ${(!window._espelhoHidePreco && u.preco) ? `<div class="tile-preco">${fmtK(u.preco)}</div>` : ''}
         </div>
       </td>`;
     }).join('');
@@ -11025,21 +11074,36 @@ async function abrirUnidade(unidadeId, empId) {
     </div>`;
 
   if (USUARIO.perfil === 'corretor') {
-    document.getElementById('modal-body').innerHTML = infoCards + (u.status === 'disponivel' ? `
-      <div style="border-top:1px solid var(--border);padding-top:16px">
-        <div style="font-size:12px;font-weight:600;color:var(--text1);margin-bottom:12px">Dados do cliente para reserva</div>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <input id="rr-esp-nome" type="text" placeholder="Nome completo *" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
-          <input id="rr-esp-tel" type="tel" placeholder="Telefone / WhatsApp *" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
-          <button onclick="reservarDoEspelho(${u.id},${empId})"
-            style="margin-top:4px;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-size:14px;font-weight:700;cursor:pointer">
-            ⚡ Reservar agora
-          </button>
-        </div>
-      </div>` : `
-      <div style="border-top:1px solid var(--border);padding-top:16px;text-align:center;color:var(--text2);font-size:13px">
+    const podeReservar  = !window._espelhoHideReserva;
+    const podeVerTabela = !window._espelhoHidePreco;
+    // Remove o card de preço se não tiver permissão
+    const infoCorr = podeVerTabela ? infoCards : infoCards.replace(
+      /<div style="background:var\(--navy3\);border-radius:8px;padding:14px;text-align:center">[\s\S]*?<\/div>\s*<\/div>/,''
+    );
+    let reservaHtml = '';
+    if (u.status === 'disponivel') {
+      if (podeReservar) {
+        reservaHtml = `
+          <div style="border-top:1px solid var(--border);padding-top:16px">
+            <div style="font-size:12px;font-weight:600;color:var(--text1);margin-bottom:12px">Dados do cliente para reserva</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <input id="rr-esp-nome" type="text" placeholder="Nome completo *" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+              <input id="rr-esp-tel" type="tel" placeholder="Telefone / WhatsApp *" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+              <button onclick="reservarDoEspelho(${u.id},${empId})"
+                style="margin-top:4px;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-size:14px;font-weight:700;cursor:pointer">
+                ⚡ Reservar agora
+              </button>
+            </div>
+          </div>`;
+      } else {
+        reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px;text-align:center;color:var(--text2);font-size:13px">✅ Unidade disponível. Reservas serão liberadas em breve.</div>`;
+      }
+    } else {
+      reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px;text-align:center;color:var(--text2);font-size:13px">
         ${u.status === 'reservado' ? '🟡 Esta unidade já está reservada.' : '🔴 Esta unidade já foi vendida.'}
-      </div>`);
+      </div>`;
+    }
+    document.getElementById('modal-body').innerHTML = infoCorr + reservaHtml;
     document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
   } else {
     document.getElementById('modal-body').innerHTML = infoCards + `
@@ -15276,6 +15340,7 @@ function compartilharSimulacaoWpp() {
 
 let _cpTab = 'empreendimentos'; // aba ativa do painel corretor
 let _cpData = null; // cache do painel
+window._corretorEmpPerms = {}; // empId → { pode_ver_tabela, pode_reservar }
 
 async function renderCorretorPainel(tab) {
   if (tab) _cpTab = tab;
@@ -15594,6 +15659,8 @@ async function _renderEmpCorretorTab(el) {
   const r = await get('/api/corretor/empreendimentos');
   if (!r.ok) { el.innerHTML = `<div style="padding:20px;color:var(--danger)">Erro ao carregar empreendimentos</div>`; return; }
   const emps = r.data || [];
+  // Armazena permissões no cache global para uso no espelho
+  emps.forEach(e => { window._corretorEmpPerms[e.id] = { pode_ver_tabela: e.pode_ver_tabela, pode_reservar: e.pode_reservar }; });
   if (!emps.length) {
     el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2)">
       <div style="font-size:40px;margin-bottom:12px">🏗️</div>
@@ -15611,6 +15678,13 @@ async function _renderEmpCorretorTab(el) {
         const statusBadge = e.status === 'ativo' ? '<span class="badge badge-green">Ativo</span>'
           : e.status === 'lancamento' ? '<span class="badge badge-blue">Lançamento</span>'
           : `<span class="badge badge-gray">${e.status||'—'}</span>`;
+        const podeTabela = e.pode_ver_tabela !== 0;
+        const podeRes    = e.pode_reservar !== 0;
+        const chips = `
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${podeTabela ? '<span style="font-size:11px;background:rgba(0,196,180,.12);color:var(--accent);border:1px solid rgba(0,196,180,.3);border-radius:10px;padding:2px 8px">📊 Ver tabela</span>' : '<span style="font-size:11px;background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:2px 8px">🔒 Tabela bloqueada</span>'}
+            ${podeRes    ? '<span style="font-size:11px;background:rgba(245,158,11,.12);color:#fbbf24;border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:2px 8px">⚡ Pode reservar</span>' : '<span style="font-size:11px;background:rgba(100,116,139,.1);color:#94a3b8;border:1px solid rgba(100,116,139,.3);border-radius:10px;padding:2px 8px">🔒 Sem reserva</span>'}
+          </div>`;
         return `
           <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
@@ -15618,6 +15692,7 @@ async function _renderEmpCorretorTab(el) {
               ${statusBadge}
             </div>
             ${e.cidade ? `<div style="font-size:12px;color:var(--text2)">📍 ${e.cidade}${e.estado?'/'+e.estado:''}</div>` : ''}
+            ${chips}
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
               <button onclick="verEspelho(${e.id})" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--navy);border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">
                 🏠 Ver Espelho
