@@ -580,6 +580,9 @@ function abrirSimulacao(unitId) {
     }).join('');
   }
 
+  const hidePreco   = !!window._hidePreco;
+  const hideReserva = !!window._hideReserva;
+
   const dispVendido = u.status === 'vendido' || u.status === 'reservado';
   const statusBadge = dispVendido
     ? `<span style="background:${u.status==='vendido'?'#7f1d1d':'#78350f'};color:${u.status==='vendido'?'#fca5a5':'#fbbf24'};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${statusLabel(u.status).toUpperCase()}</span>`
@@ -590,7 +593,7 @@ function abrirSimulacao(unitId) {
   </div>` : '';
 
   // Build footer + optional form screen (screen-2)
-  const propostaBtn = (p && preco && u.status === 'disponivel')
+  const propostaBtn = (!hidePreco && p && preco && u.status === 'disponivel')
     ? '<button class="btn-sim wa" onclick="mostrarFormProposta(' + unitId + ')">📲 Proposta</button>'
     : '';
   const formFields = [
@@ -600,16 +603,21 @@ function abrirSimulacao(unitId) {
     '<div class="sim-field"><label>Proposta</label><textarea id="sf-proposta" rows="5"></textarea></div>',
     '<div class="sim-field"><label>Observações</label><textarea id="sf-obs" rows="2" placeholder="Observações adicionais..."></textarea></div>'
   ].join('');
-  const leadBtn = _corretorToken
+  const leadBtn = (!hideReserva && _corretorToken)
     ? `<button class="btn-sim" style="background:#0f766e;border:1px solid #0d9488" onclick="abrirCadastrarLead(${unitId})">📋 Cliente</button>`
     : '';
-  const footerContent = p && preco
+  const reservaBloqueadaMsg = (hideReserva && u.status === 'disponivel')
+    ? `<div style="font-size:12px;color:#f59e0b;text-align:center;padding:6px 0">🔒 Reservas serão liberadas em breve</div>`
+    : '';
+  const showSimulacao = !hidePreco && p && preco;
+  const footerContent = showSimulacao
     ? `<div class="sim-foot">
         <button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button>
         <button class="btn-sim primary" onclick="gerarPDFSimulacao(${unitId})">🖨️ PDF</button>
         ${propostaBtn}
         ${leadBtn}
       </div>
+      ${reservaBloqueadaMsg}
       <div class="sim-aviso">* Simulação sujeita a alterações. Consulte a equipe da R2X.</div>
       </div>
       <div id="sim-screen-2" style="display:none">
@@ -622,7 +630,7 @@ function abrirSimulacao(unitId) {
           <button class="btn-sim wa" onclick="enviarPropostaWA(${unitId})">📲 Enviar WhatsApp</button>
         </div>
       </div>`
-    : '<div class="sim-foot"><button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button></div></div>';
+    : `<div class="sim-foot"><button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button>${leadBtn}</div>${reservaBloqueadaMsg}</div>`;
 
   const modalHtml = `<div class="sim-overlay" id="sim-overlay" onclick="if(event.target===this)fecharSimulacao()">
     <div class="sim-modal">
@@ -637,10 +645,10 @@ function abrirSimulacao(unitId) {
       <div class="sim-body">
         <div class="sim-info-grid">
           ${u.area_m2 ? `<div class="sim-info-cell"><div class="lbl">Área</div><div class="val">${Number(u.area_m2).toLocaleString('pt-BR', {minimumFractionDigits:2})} m²</div></div>` : ''}
-          ${preco ? `<div class="sim-info-cell"><div class="lbl">Valor</div><div class="val price">${fmt0.format(preco)}</div></div>` : ''}
+          ${!hidePreco && preco ? `<div class="sim-info-cell"><div class="lbl">Valor</div><div class="val price">${fmt0.format(preco)}</div></div>` : ''}
         </div>
 
-        ${p && preco && entV > 0 ? `
+        ${!hidePreco && p && preco && entV > 0 ? `
         <div>
           <div class="sim-section-title">Entrada</div>
           <div class="sim-entrada-box">
@@ -652,7 +660,7 @@ function abrirSimulacao(unitId) {
           </div>
         </div>` : ''}
 
-        ${condsHtml ? `<div><div class="sim-section-title">Condições de Parcelamento</div><div style="display:flex;flex-direction:column;gap:8px">${condsHtml}</div></div>` : semParamsHtml}
+        ${!hidePreco ? (condsHtml ? `<div><div class="sim-section-title">Condições de Parcelamento</div><div style="display:flex;flex-direction:column;gap:8px">${condsHtml}</div></div>` : semParamsHtml) : ''}
       </div>
       ${footerContent}
     </div>
@@ -868,7 +876,9 @@ async function carregar() {
       return;
     }
 
-    const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, mapsUrl, driveUrl, socialUrl, atualizado_em } = resp.data;
+    const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, mapsUrl, driveUrl, socialUrl, configVerTabela, configReservar, atualizado_em } = resp.data;
+    window._hidePreco   = configVerTabela === 0;
+    window._hideReserva = configReservar  === 0;
     _empNome    = emp.nome + (emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : '');
     _empTipo    = emp.tipo || 'loteamento';
     _simParams  = espelhoParams || null;
@@ -976,7 +986,7 @@ async function carregar() {
                 u.quadra ? `Quadra ${u.quadra}` : '',
                 `Lote ${u.lote}`,
                 u.area_m2 ? `${u.area_m2}m²` : '',
-                u.preco ? fmt0.format(u.preco) : '',
+                (!window._hidePreco && u.preco) ? fmt0.format(u.preco) : '',
                 statusLabel(u.status)
               ].filter(Boolean).join('<br>');
               html.push(`<div class="tile ${u.status}" onclick="abrirSimulacao(${u.id})" title="Clique para simular">
@@ -1104,7 +1114,7 @@ function renderEspelhoPredio(grupoKeys, grupos) {
       const clr = stClr[u.status] || '#94a3b8';
       const bg  = bgMap[u.status]  || '#1e293b';
       const bd  = bdMap[u.status]  || '#475569';
-      const tooltipLines = [`Apto ${num}`, tip, u.area_m2 ? u.area_m2 + 'm²' : '', u.preco && u.status === 'disponivel' ? fmt0.format(u.preco) : ''].filter(Boolean).join(' · ');
+      const tooltipLines = [`Apto ${num}`, tip, u.area_m2 ? u.area_m2 + 'm²' : '', (!window._hidePreco && u.preco && u.status === 'disponivel') ? fmt0.format(u.preco) : ''].filter(Boolean).join(' · ');
       return `<td style="padding:3px 4px">
         <div onclick="abrirSimulacao(${u.id})" title="${tooltipLines}" style="
           width:68px;height:58px;border-radius:8px;cursor:pointer;
@@ -1206,7 +1216,7 @@ function renderPredio(units, floorGroups) {
       const tipInfo = [
         `Apto ${u.lote}`,
         u.area_m2 ? `${u.area_m2}m²` : '',
-        u.preco && u.status === 'disponivel' ? fmt0.format(u.preco) : (u.preco ? 'Sob consulta' : ''),
+        (!window._hidePreco && u.preco && u.status === 'disponivel') ? fmt0.format(u.preco) : (!window._hidePreco && u.preco ? 'Sob consulta' : ''),
         statusLabel(u.status)
       ].filter(Boolean).join('<br>');
 
