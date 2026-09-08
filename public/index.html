@@ -2699,7 +2699,7 @@ function addUnidadeSlot(unidadeIdSelecionada = null) {
   div.innerHTML = `
     <select class="venda-unidade-sel" onchange="preencherUnidade(this)" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
       <option value="">— Selecione a unidade —</option>
-      ${_unidadesDisponiveis.map(u => `<option value="${u.id}" data-preco="${u.preco||''}" data-label="${u.label}" ${u.id==unidadeIdSelecionada?'selected':''}>${u.label}${u.preco?' — R$ '+u.preco.toLocaleString('pt-BR'):''}${u.status==='reservado'?' 🟡':''}</option>`).join('')}
+      ${_unidadesDisponiveis.map(u => `<option value="${u.id}" data-preco="${u.preco||''}" data-label="${u.label}" ${u.id==unidadeIdSelecionada?'selected':''}>${u.label}${(u.preco&&!window._espelhoHidePreco)?' — R$ '+u.preco.toLocaleString('pt-BR'):''}${u.status==='reservado'?' 🟡':''}</option>`).join('')}
     </select>
     <button type="button" onclick="this.parentElement.remove();atualizarDescricaoImovel()" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:14px;flex-shrink:0">✕</button>
   `;
@@ -9669,7 +9669,7 @@ function renderMarkers() {
         white-space:nowrap;overflow:hidden;
         line-height:1;padding:1px;
       "
-      title="${u.quadra ? `Qd ${u.quadra} - ` : ''}${u.lote}${u.area_m2 ? ` · ${u.area_m2}m²` : ''}${u.preco ? ` · ${fmtPlain(u.preco)}` : ''}"
+      title="${u.quadra ? `Qd ${u.quadra} - ` : ''}${u.lote}${u.area_m2 ? ` · ${u.area_m2}m²` : ''}${(!window._espelhoHidePreco && u.preco) ? ` · ${fmtPlain(u.preco)}` : ''}"
     >${loteLabel}</div>`;
   }).join('');
 }
@@ -11071,6 +11071,10 @@ async function abrirUnidade(unidadeId, empId) {
 
   document.getElementById('modal-title').textContent = `${lblA} ${u.quadra||'—'} — ${lblB} ${u.lote}`;
 
+  const isCorretor = USUARIO.perfil === 'corretor';
+  const podeVerTabela = isCorretor ? !window._espelhoHidePreco   : true;
+  const podeReservar  = isCorretor ? !window._espelhoHideReserva : true;
+
   const infoCards = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
       <div style="background:var(--navy3);border-radius:8px;padding:14px;text-align:center">
@@ -11085,19 +11089,13 @@ async function abrirUnidade(unidadeId, empId) {
         <div style="font-size:10px;color:var(--text2);margin-bottom:4px">Área</div>
         <div style="font-size:20px;font-weight:700">${u.area_m2} m²</div>
       </div>` : ''}
-      ${u.preco ? `<div style="background:var(--navy3);border-radius:8px;padding:14px;text-align:center">
+      ${(podeVerTabela && u.preco) ? `<div style="background:var(--navy3);border-radius:8px;padding:14px;text-align:center">
         <div style="font-size:10px;color:var(--text2);margin-bottom:4px">Preço</div>
         <div style="font-size:20px;font-weight:700;color:var(--success)">${fmt(u.preco)}</div>
       </div>` : ''}
     </div>`;
 
-  if (USUARIO.perfil === 'corretor') {
-    const podeReservar  = !window._espelhoHideReserva;
-    const podeVerTabela = !window._espelhoHidePreco;
-    // Remove o card de preço se não tiver permissão
-    const infoCorr = podeVerTabela ? infoCards : infoCards.replace(
-      /<div style="background:var\(--navy3\);border-radius:8px;padding:14px;text-align:center">[\s\S]*?<\/div>\s*<\/div>/,''
-    );
+  if (isCorretor) {
     let reservaHtml = '';
     if (u.status === 'disponivel') {
       if (podeReservar) {
@@ -11113,7 +11111,7 @@ async function abrirUnidade(unidadeId, empId) {
         ${u.status === 'reservado' ? '🟡 Esta unidade já está reservada.' : '🔴 Esta unidade já foi vendida.'}
       </div>`;
     }
-    document.getElementById('modal-body').innerHTML = infoCorr + reservaHtml;
+    document.getElementById('modal-body').innerHTML = infoCards + reservaHtml;
     document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
 
     // Carrega leads do corretor se modal de reserva aberto
