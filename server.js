@@ -8362,6 +8362,72 @@ Responda APENAS com JSON válido, sem markdown, neste formato exato:
   }
 });
 
+// ─── CORRETOR: CONTROLE DE ACESSO A EMPREENDIMENTOS ──────────────────────────
+
+try { db.exec(`CREATE TABLE IF NOT EXISTS corretor_empreendimento_acesso (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  corretor_id INTEGER NOT NULL REFERENCES corretores(id) ON DELETE CASCADE,
+  empreendimento_id INTEGER NOT NULL REFERENCES empreendimentos(id) ON DELETE CASCADE,
+  liberado INTEGER NOT NULL DEFAULT 1,
+  criado_em TEXT DEFAULT (datetime('now')),
+  UNIQUE(corretor_id, empreendimento_id)
+)`); } catch(_) {}
+
+// Empreendimentos acessíveis pelo corretor logado
+app.get('/api/corretor/empreendimentos', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['corretor','gestor','admin'].includes(u.perfil)) return err(res, 'Acesso restrito', 403);
+  if (u.perfil === 'admin' || u.perfil === 'gestor') {
+    return ok(res, db.prepare(`SELECT id, nome, cidade, estado, tipo, status, espelho_slug FROM empreendimentos ORDER BY nome`).all());
+  }
+  const cid = u.corretor_id;
+  if (!cid) return ok(res, []);
+  const temRegistro = db.prepare('SELECT 1 FROM corretor_empreendimento_acesso WHERE corretor_id=? LIMIT 1').get(cid);
+  if (!temRegistro) {
+    return ok(res, db.prepare(`SELECT id, nome, cidade, estado, tipo, status, espelho_slug FROM empreendimentos ORDER BY nome`).all());
+  }
+  ok(res, db.prepare(`
+    SELECT e.id, e.nome, e.cidade, e.estado, e.tipo, e.status, e.espelho_slug
+    FROM empreendimentos e
+    JOIN corretor_empreendimento_acesso a ON a.empreendimento_id = e.id AND a.corretor_id = ?
+    WHERE a.liberado = 1
+    ORDER BY e.nome
+  `).all(cid));
+});
+
+// Admin: lista empreendimentos com status de acesso para um corretor
+app.get('/api/admin/corretor/:id/empreendimentos', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor'].includes(u.perfil)) return err(res, 'Acesso restrito', 403);
+  const cid = parseInt(req.params.id);
+  const emps = db.prepare(`SELECT id, nome, cidade, estado, tipo, status FROM empreendimentos ORDER BY nome`).all();
+  const acessos = db.prepare('SELECT empreendimento_id, liberado FROM corretor_empreendimento_acesso WHERE corretor_id=?').all(cid);
+  const acessoMap = {};
+  acessos.forEach(a => { acessoMap[a.empreendimento_id] = a.liberado; });
+  const temRegistro = acessos.length > 0;
+  ok(res, emps.map(e => ({
+    ...e,
+    liberado: temRegistro ? (acessoMap[e.id] !== undefined ? acessoMap[e.id] : 1) : 1
+  })));
+});
+
+// Admin: toggle acesso de um corretor a um empreendimento
+app.post('/api/admin/corretor/:id/empreendimento-acesso', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor'].includes(u.perfil)) return err(res, 'Acesso restrito', 403);
+  const cid = parseInt(req.params.id);
+  const { empreendimento_id, liberado } = req.body;
+  if (!empreendimento_id) return err(res, 'empreendimento_id obrigatório');
+  const eid = parseInt(empreendimento_id);
+  const lib = liberado ? 1 : 0;
+  db.prepare(`
+    INSERT INTO corretor_empreendimento_acesso (corretor_id, empreendimento_id, liberado)
+    VALUES (?, ?, ?)
+    ON CONFLICT(corretor_id, empreendimento_id) DO UPDATE SET liberado=excluded.liberado
+  `).run(cid, eid, lib);
+  ok(res, { corretor_id: cid, empreendimento_id: eid, liberado: lib });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => console.log(`CRM R2X rodando em http://localhost:${PORT}`));

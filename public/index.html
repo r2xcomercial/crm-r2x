@@ -5803,7 +5803,14 @@ function openCorretorModal(c = {}) {
     ${isNovo ? `
     <div style="margin-top:14px;padding:10px 14px;background:rgba(0,196,180,.07);border:1px solid rgba(0,196,180,.2);border-radius:8px;font-size:12px;color:var(--text2)">
       🔑 O login será criado automaticamente usando o e-mail informado acima. Uma senha temporária será gerada e exibida após o cadastro.
-    </div>` : ''}
+    </div>` : `
+    <div style="margin-top:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🏗️ Acesso a Empreendimentos</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px">Desmarque para bloquear o acesso ao espelho deste empreendimento. Se todos estiverem marcados, o padrão é liberar tudo.</div>
+      <div id="corretor-emp-acesso" style="max-height:200px;overflow-y:auto">
+        <div style="font-size:12px;color:var(--text2)">Carregando...</div>
+      </div>
+    </div>`}
   `, async () => {
     const body = { nome: v('f-nome'), cpf: v('f-cpf'), creci: v('f-creci'), telefone: v('f-tel'), email: v('f-email'), imobiliaria: v('f-imob'), cidade: v('f-cidade'), estado: v('f-estado'), aniversario: v('f-aniv'), ativo: parseInt(v('f-ativo')) };
     if (!body.nome) return toast('Nome obrigatório', 'error');
@@ -5821,7 +5828,42 @@ function openCorretorModal(c = {}) {
       closeModal(); renderCorretores();
     }
   });
+
+  // Após abrir o modal de edição, carregar a seção de empreendimentos
+  if (!isNovo && c.id) {
+    _carregarAcessoEmpCorretor(c.id);
+  }
 }
+
+async function _carregarAcessoEmpCorretor(corretorId) {
+  const r = await get(`/api/admin/corretor/${corretorId}/empreendimentos`);
+  if (!r.ok) return;
+  const emps = r.data || [];
+  const container = document.getElementById('corretor-emp-acesso');
+  if (!container) return;
+  container.innerHTML = emps.length ? emps.map(e => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font-size:13px;font-weight:600">${e.nome}</div>
+        ${e.cidade ? `<div style="font-size:11px;color:var(--text2)">${e.cidade}${e.estado?'/'+e.estado:''}</div>` : ''}
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <span style="font-size:12px;color:var(--text2)">${e.liberado ? 'Liberado' : 'Bloqueado'}</span>
+        <input type="checkbox" id="emp-acesso-${e.id}" ${e.liberado ? 'checked' : ''}
+          onchange="_toggleEmpAcesso(${corretorId}, ${e.id}, this.checked)"
+          style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent)">
+      </label>
+    </div>`).join('') : '<div style="font-size:12px;color:var(--text2);padding:8px 0">Nenhum empreendimento cadastrado.</div>';
+}
+
+async function _toggleEmpAcesso(corretorId, empId, liberado) {
+  const r = await post(`/api/admin/corretor/${corretorId}/empreendimento-acesso`, { empreendimento_id: empId, liberado });
+  if (!r.ok) { toast(r.error || 'Erro ao salvar', 'error'); return; }
+  const lbl = document.querySelector(`#emp-acesso-${empId}`)?.closest('div')?.querySelector('span');
+  if (lbl) lbl.textContent = liberado ? 'Liberado' : 'Bloqueado';
+  toast(liberado ? '✅ Acesso liberado' : '🔒 Acesso bloqueado');
+}
+
 async function editCorretor(id) { openCorretorModal(currentData.corretores.find(c => c.id === id)); }
 async function deleteCorretor(id) { if(!confirm('Excluir?')) return; await del(`/api/corretores/${id}`); toast('Excluído'); renderCorretores(); }
 function copyLink(link) { navigator.clipboard.writeText(link); toast('Link copiado! 📋'); }
@@ -15232,20 +15274,19 @@ function compartilharSimulacaoWpp() {
 
 // ─── PAINEL DO CORRETOR ───────────────────────────────────────────────────────
 
-let _cpTab = 'r2x'; // aba ativa do painel: 'r2x' | 'proprias' | 'clientes' | 'agenda' | 'calc'
+let _cpTab = 'empreendimentos'; // aba ativa do painel corretor
 let _cpData = null; // cache do painel
 
 async function renderCorretorPainel(tab) {
   if (tab) _cpTab = tab;
 
-  // Auto-navega para o espelho se houver exatamente 1 empreendimento ativo (apenas no primeiro carregamento)
+  // Auto-navega para o espelho se corretor tiver exatamente 1 empreendimento liberado
   if (!tab && !window._corretorAutoNavDone) {
     window._corretorAutoNavDone = true;
-    const erEmp = await get('/api/empreendimentos');
+    const erEmp = await get('/api/corretor/empreendimentos');
     if (erEmp.ok) {
-      currentData.emp = erEmp.data || [];
-      const ativos = currentData.emp.filter(e => e.status === 'ativo' || e.status === 'lancamento' || !e.status);
-      if (ativos.length === 1) { verEspelho(ativos[0].id); return; }
+      const acessiveis = (erEmp.data || []).filter(e => e.status === 'ativo' || e.status === 'lancamento' || !e.status);
+      if (acessiveis.length === 1) { verEspelho(acessiveis[0].id); return; }
     }
   }
 
@@ -15372,6 +15413,7 @@ async function renderCorretorPainel(tab) {
 
     <!-- Abas -->
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      ${tabBtn('empreendimentos','🏗️', 'Empreendimentos')}
       ${tabBtn('r2x',        '🏢', 'Vendas R2X')}
       ${tabBtn('proprias',   '🏠', 'Minhas Vendas')}
       ${tabBtn('clientes',   '👥', 'Meus Clientes')}
@@ -15537,12 +15579,56 @@ async function _renderCpTab() {
     // Guarda cache local para filtro
     el._clientes = clientes;
 
+  } else if (_cpTab === 'empreendimentos') {
+    await _renderEmpCorretorTab(el);
+
   } else if (_cpTab === 'financeiro') {
     await _renderFinanceiroCorretor(el);
 
   } else if (_cpTab === 'calc') {
     renderCalculadora(el);
   }
+}
+
+async function _renderEmpCorretorTab(el) {
+  const r = await get('/api/corretor/empreendimentos');
+  if (!r.ok) { el.innerHTML = `<div style="padding:20px;color:var(--danger)">Erro ao carregar empreendimentos</div>`; return; }
+  const emps = r.data || [];
+  if (!emps.length) {
+    el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2)">
+      <div style="font-size:40px;margin-bottom:12px">🏗️</div>
+      <div style="font-weight:700;font-size:15px;margin-bottom:6px">Nenhum empreendimento liberado</div>
+      <div style="font-size:13px">Entre em contato com o administrador para solicitar acesso.</div>
+    </div>`;
+    return;
+  }
+  const baseUrl = window.location.origin;
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
+      ${emps.map(e => {
+        const slug = e.espelho_slug;
+        const link = slug ? `${baseUrl}/espelho/${slug}` : null;
+        const statusBadge = e.status === 'ativo' ? '<span class="badge badge-green">Ativo</span>'
+          : e.status === 'lancamento' ? '<span class="badge badge-blue">Lançamento</span>'
+          : `<span class="badge badge-gray">${e.status||'—'}</span>`;
+        return `
+          <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+              <div style="font-size:15px;font-weight:700;color:var(--text)">${e.nome}</div>
+              ${statusBadge}
+            </div>
+            ${e.cidade ? `<div style="font-size:12px;color:var(--text2)">📍 ${e.cidade}${e.estado?'/'+e.estado:''}</div>` : ''}
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+              <button onclick="verEspelho(${e.id})" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--navy);border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">
+                🏠 Ver Espelho
+              </button>
+              ${link ? `<button onclick="navigator.clipboard.writeText('${link}');toast('Link copiado!')" style="padding:8px 12px;background:var(--navy3);color:var(--text2);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer" title="Copiar link público">
+                🔗 Link
+              </button>` : ''}
+            </div>
+          </div>`;
+      }).join('')}
+    </div>`;
 }
 
 // ─── CORRETOR: FINANCEIRO ─────────────────────────────────────────────────────
