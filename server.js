@@ -2217,6 +2217,14 @@ app.get("/api/leads", (req, res) => {
 
 app.post("/api/leads", (req, res) => {
   const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, origem, observacoes, aniversario, tipo, creci, imobiliaria, cpf, rg, estado_civil, profissao, nome_pai, nome_mae, endereco, numero, complemento, bairro, cep, estado, pessoa_juridica, cnpj, razao_social, nome_fantasia, inscricao_estadual, inscricao_municipal, representante_nome, representante_cpf, representante_rg, representante_cargo } = req.body;
+  // Bloquear CPF duplicado entre corretores diferentes
+  if (cpf) {
+    const cpfLimpo = cpf.replace(/\D/g, '');
+    if (cpfLimpo.length >= 11) {
+      const existente = db.prepare("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(cpf,'.',''),'-',''),'/','')=? LIMIT 1").get(cpfLimpo);
+      if (existente) return err(res, 'Cliente já cadastrado, favor entrar em contato com a gestão da R2X', 409);
+    }
+  }
   const r = db.prepare(`INSERT INTO leads (nome,telefone,email,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,empreendimento_id,corretor_id,status,origem,observacoes,aniversario,tipo,creci,imobiliaria,cpf,rg,estado_civil,profissao,nome_pai,nome_mae,endereco,numero,complemento,bairro,cep,estado,pessoa_juridica,cnpj,razao_social,nome_fantasia,inscricao_estadual,inscricao_municipal,representante_nome,representante_cpf,representante_rg,representante_cargo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status || 'novo', origem || 'manual', observacoes, aniversario||null, tipo||null, creci||null, imobiliaria||null, cpf||null, rg||null, estado_civil||null, profissao||null, nome_pai||null, nome_mae||null, endereco||null, numero||null, complemento||null, bairro||null, cep||null, estado||null, pessoa_juridica?1:0, cnpj||null, razao_social||null, nome_fantasia||null, inscricao_estadual||null, inscricao_municipal||null, representante_nome||null, representante_cpf||null, representante_rg||null, representante_cargo||null);
   ok(res, { id: r.lastInsertRowid });
 });

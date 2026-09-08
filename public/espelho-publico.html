@@ -349,7 +349,7 @@
 <!-- Modal cadastrar lead -->
 <div id="modal-lead" class="modal-overlay">
   <div class="modal-box">
-    <h3>📋 Cadastrar Lead</h3>
+    <h3>📋 Cadastrar Cliente</h3>
     <p id="lead-unidade-desc" style="font-size:12px;color:#94a3b8;margin-bottom:4px"></p>
     <label>Nome do cliente *</label>
     <input id="lead-nome" type="text" placeholder="Nome completo">
@@ -500,7 +500,7 @@ async function enviarLead() {
     });
     const d = await r.json();
     if (!d.ok) { errEl.textContent = d.error||'Erro ao cadastrar.'; errEl.style.display='block'; btn.disabled=false; btn.textContent='Cadastrar'; return; }
-    okEl.textContent = d.data?.existente ? '✓ Lead já existe no sistema — corretor atualizado.' : '✓ Lead cadastrado com sucesso!';
+    okEl.textContent = d.data?.existente ? '✓ Cliente já existe no sistema — corretor atualizado.' : '✓ Cliente cadastrado com sucesso!';
     okEl.style.display = 'block';
     btn.textContent = '✓ Cadastrado';
     setTimeout(() => fecharModal('modal-lead'), 2000);
@@ -601,7 +601,7 @@ function abrirSimulacao(unitId) {
     '<div class="sim-field"><label>Observações</label><textarea id="sf-obs" rows="2" placeholder="Observações adicionais..."></textarea></div>'
   ].join('');
   const leadBtn = _corretorToken
-    ? `<button class="btn-sim" style="background:#0f766e;border:1px solid #0d9488" onclick="abrirCadastrarLead(${unitId})">📋 Lead</button>`
+    ? `<button class="btn-sim" style="background:#0f766e;border:1px solid #0d9488" onclick="abrirCadastrarLead(${unitId})">📋 Cliente</button>`
     : '';
   const footerContent = p && preco
     ? `<div class="sim-foot">

@@ -418,7 +418,7 @@
 
     <div class="nav-section">Comercial</div>
     <div class="nav-item" onclick="navigate('debora')"><span class="icon">🤖</span> Débora IA <span class="nav-badge" id="badge-debora" style="display:none"></span></div>
-    <div class="nav-item" onclick="navigate('leads')"><span class="icon">🎯</span> Leads <span class="nav-badge" id="badge-leads">0</span></div>
+    <div class="nav-item" onclick="navigate('leads')"><span class="icon">🎯</span> Clientes <span class="nav-badge" id="badge-leads">0</span></div>
     <div class="nav-item" onclick="navigate('kanban')"><span class="icon">📋</span> Kanban</div>
     <div class="nav-item" onclick="navigate('vendas')"><span class="icon">🏆</span> Vendas</div>
     <div class="nav-item" onclick="navigate('ranking')"><span class="icon">⭐</span> Ranking</div>
@@ -464,7 +464,7 @@
     <div class="nav-item" onclick="navigate('painel')"><span class="icon">🚀</span> Painel de Lançamento</div>
     <div class="nav-section">Comercial</div>
     <div class="nav-item" onclick="navigate('debora')"><span class="icon">🤖</span> Débora IA</div>
-    <div class="nav-item" onclick="navigate('leads')"><span class="icon">🎯</span> Leads <span class="nav-badge" id="badge-leads-g">0</span></div>
+    <div class="nav-item" onclick="navigate('leads')"><span class="icon">🎯</span> Clientes <span class="nav-badge" id="badge-leads-g">0</span></div>
     <div class="nav-item" onclick="navigate('kanban')"><span class="icon">📋</span> Kanban</div>
     <div class="nav-item" onclick="navigate('ranking')"><span class="icon">⭐</span> Ranking</div>
     <div class="nav-section">Cadastros</div>
@@ -571,7 +571,7 @@ function navigate(page) {
 }
 
 const pageTitles = {
-  dashboard: 'Dashboard', leads: 'Leads', kanban: 'Kanban de Leads', vendas: 'Vendas',
+  dashboard: 'Dashboard', leads: 'Clientes', kanban: 'Kanban de Clientes', vendas: 'Vendas',
   clientes: 'Incorporadores', empreendimentos: 'Empreendimentos', corretores: 'Corretores',
   financeiro: 'Financeiro', caixa: 'Caixa & Conferência Bancária', relatorios: 'Relatórios', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
   painel: 'Painel de Lançamento', usuarios: 'Usuários do Sistema', calculadora: 'Calculadora de Financiamento',
@@ -798,7 +798,7 @@ async function renderDashboard() {
             ${aniversarios_hoje.map(a => a.nome || '—').join(' · ')}
           </div>
           <div style="font-size:12px;color:var(--text2);margin-top:2px">
-            ${aniversarios_hoje.map(a => a.tipo === 'corretor' ? 'Corretor' : a.tipo === 'cliente' ? 'Incorporador' : 'Lead').join(' · ')}
+            ${aniversarios_hoje.map(a => a.tipo === 'corretor' ? 'Corretor' : a.tipo === 'cliente' ? 'Incorporador' : 'Cliente').join(' · ')}
           </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -814,7 +814,7 @@ async function renderDashboard() {
       </div>
     </div>` : ''}
     <div class="kpi-grid">
-      ${kpi('🎯', 'Leads Novos', kpis.leads_novos, `${kpis.leads_total} total`)}
+      ${kpi('🎯', 'Clientes Novos', kpis.leads_novos, `${kpis.leads_total} total`)}
       ${kpi('🏆', 'Vendas no Mês', fmt(kpis.vendas_mes), `${kpis.vendas_total} negócios ativos`)}
       ${!isGestor ? kpi('💰', 'Recebíveis Pendentes', fmt(kpis.entradas_pendentes), 'a receber') : ''}
       ${kpi('🏗️', 'Empreendimentos', kpis.empreendimentos, '')}
@@ -825,9 +825,9 @@ async function renderDashboard() {
     <div class="kpi-grid" style="margin-top:12px">
       ${kpi('📐', 'Ticket Médio', fmt(kpis.ticket_medio), `${fmt(kpis.ticket_medio_mes)} no mês`)}
       ${kpi('📉', 'Taxa de Distrato', `${kpis.taxa_distrato.toFixed(1)}%`, 'sobre vendas + distratos')}
-      ${kpi('⏱️', 'Ciclo Médio de Venda', `${Math.round(kpis.ciclo_medio_dias)} dias`, 'do lead à venda')}
-      ${kpi('🔁', 'Conversão Geral', `${kpis.taxa_conversao_geral.toFixed(1)}%`, 'leads → vendas')}
-      ${!isGestor ? kpi('💸', 'CAC por Lead', fmt(kpis.cac_por_lead), `${fmt(kpis.gasto_marketing_mes)} em mkt/mês`) : ''}
+      ${kpi('⏱️', 'Ciclo Médio de Venda', `${Math.round(kpis.ciclo_medio_dias)} dias`, 'do cliente à venda')}
+      ${kpi('🔁', 'Conversão Geral', `${kpis.taxa_conversao_geral.toFixed(1)}%`, 'clientes → vendas')}
+      ${!isGestor ? kpi('💸', 'CAC por Cliente', fmt(kpis.cac_por_lead), `${fmt(kpis.gasto_marketing_mes)} em mkt/mês`) : ''}
       ${!isGestor ? kpi('🎯', 'CAC por Venda', fmt(kpis.cac_por_venda), 'custo de aquisição') : ''}
     </div>
 
@@ -887,10 +887,10 @@ async function renderDashboard() {
     </div>
 
     <div class="mini-card" style="margin-bottom:20px">
-      <h4>📊 Leads por Origem — Volume e Taxa de Conversão</h4>
+      <h4>📊 Clientes por Origem — Volume e Taxa de Conversão</h4>
       <div style="margin-top:8px">
         <table style="width:100%;font-size:12px">
-          <thead><tr style="color:var(--text2)"><th style="text-align:left;padding:4px 0">Origem</th><th style="text-align:right">Leads</th><th style="text-align:right">Convertidos</th><th style="text-align:right">Taxa de conversão</th></tr></thead>
+          <thead><tr style="color:var(--text2)"><th style="text-align:left;padding:4px 0">Origem</th><th style="text-align:right">Clientes</th><th style="text-align:right">Convertidos</th><th style="text-align:right">Taxa de conversão</th></tr></thead>
           <tbody>
             ${leads_por_origem && leads_por_origem.length ? leads_por_origem.map(o => `
               <tr style="border-top:1px solid var(--border)">
@@ -900,7 +900,7 @@ async function renderDashboard() {
                 <td style="text-align:right">
                   <span style="font-weight:600;color:${o.taxa_conversao>=15?'#22C55E':o.taxa_conversao>=5?'#FBBF24':'#EF4444'}">${o.taxa_conversao.toFixed(1)}%</span>
                 </td>
-              </tr>`).join('') : `<tr><td style="color:var(--text2);padding:8px 0">Sem leads cadastrados</td></tr>`}
+              </tr>`).join('') : `<tr><td style="color:var(--text2);padding:8px 0">Sem clientes cadastrados</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -941,7 +941,7 @@ async function renderDashboard() {
                 </div>
                 <div style="flex:1;min-width:0">
                   <div style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.nome||'—'}</div>
-                  <div style="font-size:11px;color:var(--text2)">${a.tipo==='corretor'?'👤 Corretor':a.tipo==='cliente'?'🏢 Incorporador':'🎯 Lead'}</div>
+                  <div style="font-size:11px;color:var(--text2)">${a.tipo==='corretor'?'👤 Corretor':a.tipo==='cliente'?'🏢 Incorporador':'🎯 Cliente'}</div>
                 </div>
                 ${wppLink ? `<a href="${wppLink}" target="_blank" style="background:#25D366;color:#fff;border-radius:6px;padding:6px 12px;text-decoration:none;font-size:12px;font-weight:700;white-space:nowrap">📱 Parabenizar</a>` : '<span style="font-size:11px;color:var(--text2)">sem tel.</span>'}
               </div>`;
@@ -950,7 +950,7 @@ async function renderDashboard() {
                 <div style="background:${ehHoje?'#f59e0b':'var(--navy3)'};color:${ehHoje?'#0f172a':'var(--text2)'};border-radius:8px;padding:4px 8px;font-weight:700;font-size:13px;min-width:34px;text-align:center">${dia}</div>
                 <div style="flex:1;min-width:0">
                   <div style="font-weight:${ehHoje?700:500};font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.nome||'—'}${ehHoje?' 🎂':''}</div>
-                  <div style="font-size:11px;color:var(--text2)">${a.tipo==='corretor'?'👤 Corretor':a.tipo==='cliente'?'🏢 Incorporador':'🎯 Lead'}</div>
+                  <div style="font-size:11px;color:var(--text2)">${a.tipo==='corretor'?'👤 Corretor':a.tipo==='cliente'?'🏢 Incorporador':'🎯 Cliente'}</div>
                 </div>
                 ${wppLink ? `<a href="${wppLink}" target="_blank" style="background:#25D366;color:#fff;border-radius:6px;padding:4px 10px;text-decoration:none;font-size:12px;font-weight:600;white-space:nowrap">📱 Parabenizar</a>` : '<span style="font-size:11px;color:var(--text2)">sem tel.</span>'}
               </div>`;
@@ -1110,7 +1110,7 @@ async function renderLeads(filter = '') {
           <th>Corretor</th><th>Empreendimento</th><th>Origem</th><th></th>
         </tr></thead>
         <tbody id="leads-tbody">
-          ${leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="9">Nenhum lead encontrado</td></tr>'}
+          ${leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="9">Nenhum cliente encontrado</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -1133,7 +1133,7 @@ function aplicarFiltrosLead() {
   const statusColors = { novo:'badge-accent', qualificado:'badge-blue', com_corretor:'badge-blue', visitou:'badge-purple', proposta:'badge-yellow', reserva:'badge-orange', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
   const tbody = document.getElementById('leads-tbody');
   const count = document.getElementById('leads-count');
-  if (tbody) tbody.innerHTML = leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="9">Nenhum lead encontrado</td></tr>';
+  if (tbody) tbody.innerHTML = leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="9">Nenhum cliente encontrado</td></tr>';
   if (count) count.textContent = leads.length;
 }
 
@@ -1145,7 +1145,7 @@ function filterLeadStatus(status) {
 function renderLeadsFiltered(leads) {
   const statusColors = { novo:'badge-accent', qualificado:'badge-blue', com_corretor:'badge-blue', visitou:'badge-purple', proposta:'badge-yellow', reserva:'badge-orange', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
   const tbody = document.getElementById('leads-tbody') || document.querySelector('#content tbody');
-  if (tbody) tbody.innerHTML = leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="9">Nenhum lead</td></tr>';
+  if (tbody) tbody.innerHTML = leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="9">Nenhum cliente</td></tr>';
 }
 
 function exportarLeadsPDF() {
@@ -1159,7 +1159,7 @@ function exportarLeadsPDF() {
   ].filter(Boolean).join(' · ') || 'Todos';
 
   const html = `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><title>Leads — R2X</title>
+<meta charset="UTF-8"><title>Clientes — R2X</title>
 <style>
   * { box-sizing:border-box; margin:0; padding:0 }
   body { font-family:Arial,sans-serif; padding:16px; color:#111; font-size:12px }
@@ -1181,12 +1181,12 @@ function exportarLeadsPDF() {
 </style></head><body>
 <div class="header">
   <div>
-    <h1>🎯 Leads — R2X Aceleradora de Vendas</h1>
+    <h1>🎯 Clientes — R2X Aceleradora de Vendas</h1>
     <div class="sub">Filtros: ${filtroDesc} · Gerado em ${new Date().toLocaleString('pt-BR')}</div>
   </div>
   <div style="text-align:right">
     <div style="font-size:22px;font-weight:900">${leads.length}</div>
-    <div style="font-size:10px;color:#6b7280">leads</div>
+    <div style="font-size:10px;color:#6b7280">clientes</div>
   </div>
 </div>
 <div class="stats">
@@ -1290,7 +1290,7 @@ function renderLeadRow(l, statusColors) {
       <button class="btn-icon" title="Follow-up" onclick='openFollowupModal(${JSON.stringify({id:l.id,nome:l.nome})})'>📞</button>
       <button class="btn-icon" title="Proposta Comercial" onclick="abrirProposta(${l.id})" style="color:var(--accent2)">📋</button>
       ${isCorretorLead ? `<button class="btn-icon" title="Converter em Parceiro" onclick="converterLeadCorretor(${l.id},'${(l.nome||'').replace(/'/g,"\\'")}',event)" style="color:#60a5fa">🤝</button>` : ''}
-      <button class="btn-icon" title="Copiar dados do lead" onclick="copiarDadosLead(${l.id})">📤</button>
+      <button class="btn-icon" title="Copiar dados do cliente" onclick="copiarDadosLead(${l.id})">📤</button>
       <button class="btn-icon btn-edit" onclick="editLead(${l.id})">✏️</button>
       <button class="btn-icon btn-delete" onclick="deleteLead(${l.id})">🗑️</button>
     </td>
@@ -1299,22 +1299,22 @@ function renderLeadRow(l, statusColors) {
 
 function openLeadModal(lead = {}, onSave = null) {
   const isCorretor = lead.tipo === 'corretor';
-  openModal(lead.id ? 'Editar Lead' : 'Novo Lead', `
+  openModal(lead.id ? 'Editar Cliente' : 'Novo Cliente', `
     ${lead.tipo === 'corretor' ? `
     <div style="background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.3);border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
       <span style="font-size:18px">🏷️</span>
       <div>
-        <div style="font-size:13px;font-weight:600;color:#60a5fa">Lead qualificado como Corretor Parceiro</div>
+        <div style="font-size:13px;font-weight:600;color:#60a5fa">Cliente qualificado como Corretor Parceiro</div>
         <div style="font-size:11px;color:var(--text2)">CRECI e imobiliária visíveis abaixo</div>
       </div>
     </div>` : ''}
     <div class="form-grid">
-      <div class="form-group"><label>Nome</label><input id="f-nome" value="${lead.nome||''}" placeholder="Nome do lead"></div>
+      <div class="form-group"><label>Nome</label><input id="f-nome" value="${lead.nome||''}" placeholder="Nome do cliente"></div>
       <div class="form-group"><label>Telefone</label><input id="f-tel" value="${lead.telefone||''}" placeholder="48999999999" oninput="verificarDuplicidadeLead(this.value)"></div>
       <div id="aviso-dup-tel" class="form-group span2" style="display:none;padding:8px 12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:8px;font-size:12px;color:var(--warning)"></div>
       <div class="form-group"><label>Email</label><input id="f-email" type="email" value="${lead.email||''}"></div>
       <div class="form-group"><label>Cidade</label><input id="f-cidade" value="${lead.cidade||''}"></div>
-      <div class="form-group"><label>Tipo de Lead</label>
+      <div class="form-group"><label>Tipo de Cliente</label>
         <select id="f-tipo-lead" onchange="toggleCamposCorretor(this.value)">
           <option value="" ${!lead.tipo?'selected':''}>— Comprador —</option>
           <option value="corretor" ${lead.tipo==='corretor'?'selected':''}>🏷️ Corretor Parceiro</option>
@@ -2121,7 +2121,7 @@ async function moverLead(id, novoStatus) {
       const body = { ...lead, status: 'sem_venda', motivo_perda: motivo, motivo_perda_outro: motivo==='outro'?outro:null, corretor_id: lead.corretor_id||null, empreendimento_id: lead.empreendimento_id||null };
       const r = await put(`/api/leads/${id}`, body);
       if (!r.ok) return toast(r.error, 'error');
-      toast('Lead encerrado e motivo registrado ✅');
+      toast('Cliente encerrado e motivo registrado ✅');
       closeModal();
       renderKanban();
     }, { saveLabel: '❌ Confirmar encerramento' });
@@ -2131,7 +2131,7 @@ async function moverLead(id, novoStatus) {
   const body = { ...lead, status: novoStatus, corretor_id: lead.corretor_id||null, empreendimento_id: lead.empreendimento_id||null };
   const r = await put(`/api/leads/${id}`, body);
   if (!r.ok) return toast(r.error, 'error');
-  toast(`Lead movido para ${col?.label || novoStatus} ✅`);
+  toast(`Cliente movido para ${col?.label || novoStatus} ✅`);
   renderKanban();
 }
 
@@ -2165,12 +2165,12 @@ function abrirLeadRapido() {
     ['whatsapp','💬 WhatsApp'],['indicacao_corretor','🤝 Indicação corretor'],
     ['plantao','🏠 Plantão'],['portal','🌐 Portal'],['manual','✍️ Outro / Manual']
   ].map(([v,l]) => `<option value="${v}">${l}</option>`).join('');
-  openModal('➕ Cadastro Rápido de Lead', `
+  openModal('➕ Cadastro Rápido de Cliente', `
     <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Campos essenciais — você pode completar depois editando o lead.</div>
     <div class="form-grid">
       <div class="form-group span2">
         <label>Nome *</label>
-        <input id="ql-nome" placeholder="Nome do lead" autofocus>
+        <input id="ql-nome" placeholder="Nome do cliente" autofocus>
       </div>
       <div class="form-group">
         <label>Telefone *</label>
@@ -2206,7 +2206,7 @@ function abrirLeadRapido() {
     if (!tel)  return toast('Informe o telefone', 'error');
     const r = await post('/api/leads', { nome, telefone: tel, origem: orig, empreendimento_id: emp||null, corretor_id: cor||null, status: cor ? 'com_corretor' : 'novo' });
     if (!r.ok) return toast(r.error || 'Erro ao criar lead', 'error');
-    toast(`✅ Lead "${nome}" cadastrado!`);
+    toast(`✅ Cliente "${nome}" cadastrado!`);
     closeModal();
     if (window.leadsData !== undefined) { const lr = await get('/api/leads'); leadsData = lr.data || []; }
     if (currentPage === 'leads') renderLeads();
@@ -2454,7 +2454,7 @@ async function renderVendas(filter = '') {
         </div>
       </div>
       <table>
-        <thead><tr><th>Data</th><th>Lead</th><th>Imóvel</th><th>Valor</th><th>Corretor</th><th>Empreendimento</th><th>Incorporador</th><th>Status</th><th>Comissão Corretor</th><th>Comissão R2X</th><th></th></tr></thead>
+        <thead><tr><th>Data</th><th>Cliente</th><th>Imóvel</th><th>Valor</th><th>Corretor</th><th>Empreendimento</th><th>Incorporador</th><th>Status</th><th>Comissão Corretor</th><th>Comissão R2X</th><th></th></tr></thead>
         <tbody>
           ${vendas.length ? vendas.map(v => `
             <tr>
@@ -2952,7 +2952,7 @@ function openVendaModal(venda = {}) {
       </div>
 
       <div class="form-group" style="position:relative">
-        <label>Lead</label>
+        <label>Cliente</label>
         <input id="f-lead-search" type="text" autocomplete="off"
           placeholder="Buscar lead pelo nome ou telefone..."
           value="${venda.lead_id ? ((leads||[]).find(l=>l.id==venda.lead_id)?.nome || '') : ''}"
@@ -3240,7 +3240,7 @@ async function importarContrato(input) {
       }
       leadInfo = d.lead_criado
         ? `<br>👤 <b>Novo lead criado:</b> ${leadNome}`
-        : `<br>👤 <b>Lead vinculado:</b> ${leadNome}`;
+        : `<br>👤 <b>Cliente vinculado:</b> ${leadNome}`;
     }
 
     // Preenche valor de entrada e parcelas
@@ -8861,9 +8861,9 @@ async function renderRankingTab() {
     const rows = r.data || [];
     el.innerHTML = `
       <div class="table-card">
-        <div class="table-header"><div class="table-title">📊 Taxa de Conversão — Leads → Vendas</div></div>
+        <div class="table-header"><div class="table-title">📊 Taxa de Conversão — Clientes → Vendas</div></div>
         <table>
-          <thead><tr><th>Corretor</th><th>Imobiliária</th><th>Leads Recebidos</th><th>Vendas</th><th>Taxa de Conversão</th></tr></thead>
+          <thead><tr><th>Corretor</th><th>Imobiliária</th><th>Clientes Recebidos</th><th>Vendas</th><th>Taxa de Conversão</th></tr></thead>
           <tbody>
             ${rows.length ? rows.map(r => {
               const pct = parseFloat(r.taxa_conversao)||0;
@@ -11084,7 +11084,7 @@ async function abrirUnidade(unidadeId, empId) {
     if (u.status === 'disponivel') {
       if (podeReservar) {
         reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px" id="reserva-lead-area">
-          <div style="font-size:12px;font-weight:600;color:var(--text1);margin-bottom:10px">👤 Selecionar Lead para Reserva</div>
+          <div style="font-size:12px;font-weight:600;color:var(--text1);margin-bottom:10px">👤 Selecionar Cliente para Reserva</div>
           <div id="reserva-lead-loading" style="font-size:13px;color:var(--text2)">Carregando seus leads...</div>
         </div>`;
       } else {
@@ -11206,14 +11206,14 @@ async function _carregarLeadsParaReserva(unidadeId, empId) {
         <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Cadastre o cliente como lead antes de fazer a reserva.</div>
         <button onclick="closeModal();_cpTab='clientes';renderCorretorPainel('clientes')"
           style="padding:8px 16px;border-radius:8px;border:none;background:var(--accent);color:var(--navy);font-weight:700;font-size:13px;cursor:pointer">
-          + Cadastrar Lead agora
+          + Cadastrar Cliente agora
         </button>
       </div>`;
     return;
   }
 
   loading.innerHTML = `
-    <input id="rr-lead-search" type="text" placeholder="🔍 Buscar lead por nome ou telefone..."
+    <input id="rr-lead-search" type="text" placeholder="🔍 Buscar cliente por nome ou telefone..."
       oninput="_filtrarLeadsReserva()"
       style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-size:13px;margin-bottom:8px">
     <div id="rr-lead-lista" style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
@@ -11247,7 +11247,7 @@ function _filtrarLeadsReserva() {
              background:${window._rrLeadId===l.id?'rgba(0,196,180,.1)':'transparent'};transition:all .1s">
       <div style="font-size:13px;font-weight:600;color:${window._rrLeadId===l.id?'var(--accent)':'var(--text)'}">${l.nome||'—'}</div>
       <div style="font-size:11px;color:var(--text2)">${l.telefone||''}</div>
-    </div>`).join('') || '<div style="font-size:12px;color:var(--text2);padding:8px">Nenhum lead encontrado.</div>';
+    </div>`).join('') || '<div style="font-size:12px;color:var(--text2);padding:8px">Nenhum cliente encontrado.</div>';
 }
 
 function _selecionarLeadReserva(id, nome, tel) {
@@ -11651,7 +11651,7 @@ async function gerarRelatorio(empId) {
 
   <h2>📋 Lista de Vendas</h2>
   <table>
-    <thead><tr><th>Data</th><th>Lead</th><th>Imóvel</th><th>Corretor</th><th>Valor</th></tr></thead>
+    <thead><tr><th>Data</th><th>Cliente</th><th>Imóvel</th><th>Corretor</th><th>Valor</th></tr></thead>
     <tbody>
       ${vendas.length ? vendas.map(v => `<tr>
         <td>${fmtDate(v.data_venda)}</td>
@@ -11833,7 +11833,7 @@ async function gerarRelatorioCorretor(corretorId) {
   <div class="kpi-row">
     <div class="kpi"><label>Total de Vendas</label><strong>${vendas.length}</strong><small>negócios ativos</small></div>
     <div class="kpi"><label>VGV Gerado</label><strong style="font-size:14px">${fmt(vgvTotal)}</strong><small>em vendas ativas</small></div>
-    <div class="kpi"><label>Leads Recebidos</label><strong>${leads.length}</strong><small>${leadsAtivos} em andamento</small></div>
+    <div class="kpi"><label>Clientes Recebidos</label><strong>${leads.length}</strong><small>${leadsAtivos} em andamento</small></div>
     <div class="kpi"><label>Taxa de Conversão</label><strong class="${parseFloat(taxaConv)>=30?'g':parseFloat(taxaConv)>=15?'y':'r'}">${taxaConv}%</strong><small>${leadsConv} de ${leads.length} leads</small></div>
   </div>
   <div class="kpi-row">
@@ -11898,7 +11898,7 @@ async function gerarRelatorioCorretor(corretorId) {
 
   <!-- FUNIL DE LEADS -->
   ${leads.length ? `
-  <h2 class="section">🎯 Funil de Leads</h2>
+  <h2 class="section">🎯 Funil de Clientes</h2>
   <div style="max-width:400px;margin-bottom:20px">
     ${funil.filter(f=>f.n>0).map(f => {
       const pct = Math.round((f.n/leads.length)*100);
@@ -11914,7 +11914,7 @@ async function gerarRelatorioCorretor(corretorId) {
   <!-- LISTA DE VENDAS -->
   <h2 class="section">🏆 Lista de Vendas</h2>
   <table>
-    <thead><tr><th>Data</th><th>Lead</th><th>Empreendimento</th><th>Imóvel</th><th>Valor</th><th>Comissão</th><th>Status Com.</th></tr></thead>
+    <thead><tr><th>Data</th><th>Cliente</th><th>Empreendimento</th><th>Imóvel</th><th>Valor</th><th>Comissão</th><th>Status Com.</th></tr></thead>
     <tbody>
       ${vendas.length ? vendas.map(v => `<tr>
         <td>${fmtDate(v.data_venda)}</td>
@@ -11930,7 +11930,7 @@ async function gerarRelatorioCorretor(corretorId) {
 
   <!-- LEADS ATIVOS -->
   ${leadsAtivos > 0 ? `
-  <h2 class="section">🎯 Leads em Andamento (${leadsAtivos})</h2>
+  <h2 class="section">🎯 Clientes em Andamento (${leadsAtivos})</h2>
   <table>
     <thead><tr><th>Nome</th><th>Telefone</th><th>Cidade</th><th>Interesse</th><th>Faixa</th><th>Status</th></tr></thead>
     <tbody>
@@ -14150,7 +14150,7 @@ function exportarVendasPDF() {
   <div class="stat"><div class="n">${fmtV(comCor)}</div><div class="l">Comissão Corretor</div></div>
 </div>
 <table>
-  <thead><tr><th>#</th><th>Data</th><th>Lead/Cliente</th><th>Imóvel</th><th>Empreendimento</th><th>Corretor</th><th>Status</th><th>Valor</th><th>Com. R2X</th><th>Com. Corretor</th></tr></thead>
+  <thead><tr><th>#</th><th>Data</th><th>Cliente</th><th>Imóvel</th><th>Empreendimento</th><th>Corretor</th><th>Status</th><th>Valor</th><th>Com. R2X</th><th>Com. Corretor</th></tr></thead>
   <tbody>
     ${vendas.map((v,i) => {
       const bg = v.status==='ativo'?'#16a34a':v.status==='reserva'?'#d97706':'#dc2626';
@@ -14712,7 +14712,7 @@ async function renderRelatorios() {
     </div>
 
     <div style="display:flex;gap:4px;margin-bottom:14px;border-bottom:2px solid var(--border);padding-bottom:0">
-      ${[['financeiro','💰 Financeiro'],['vendas','🏆 Vendas'],['corretores','👥 Corretores'],['leads','🎯 Leads']].map(([id,label])=>`
+      ${[['financeiro','💰 Financeiro'],['vendas','🏆 Vendas'],['corretores','👥 Corretores'],['leads','🎯 Clientes']].map(([id,label])=>`
         <button onclick="relAba('${id}')" id="rel-tab-${id}" style="padding:9px 18px;border:none;border-bottom:2px solid ${_relFiltros.aba===id?'var(--accent)':'transparent'};margin-bottom:-2px;background:none;color:${_relFiltros.aba===id?'var(--accent)':'var(--text2)'};font-size:13px;font-weight:${_relFiltros.aba===id?700:500};cursor:pointer">${label}</button>
       `).join('')}
     </div>
@@ -14889,11 +14889,11 @@ function relRenderCorpo() {
         ${kpi('👥','Corretores Ativos', d.corretores.length, 'com atividade no período')}
         ${kpi('🏆','Vendas Totais', totalVendas, 'soma de todos')}
         ${kpi('💎','VGV Total', fmt(totalVGV), 'soma de todos')}
-        ${kpi('🎯','Leads Distribuídos', totalLeads, 'no período')}
+        ${kpi('🎯','Clientes Distribuídos', totalLeads, 'no período')}
       </div>
       <div class="table-card">
         <div class="table-header"><div class="table-title">👥 Ranking de Corretores</div></div>
-        <table><thead><tr><th>#</th><th>Corretor</th><th class="right">Leads</th><th class="right">Vendas</th><th class="right">Conversão</th><th class="right">VGV Total</th><th class="right">Ticket Médio</th></tr></thead>
+        <table><thead><tr><th>#</th><th>Corretor</th><th class="right">Clientes</th><th class="right">Vendas</th><th class="right">Conversão</th><th class="right">VGV Total</th><th class="right">Ticket Médio</th></tr></thead>
         <tbody>${d.corretores.length ? d.corretores.map((c,i)=>{
           const conv   = c.total_leads>0 ? Math.round(c.total_vendas/c.total_leads*100) : 0;
           const ticket = c.total_vendas>0 ? c.vgv_total/c.total_vendas : 0;
@@ -14966,7 +14966,7 @@ function exportarRelatorioPDF() {
   if (!_relDados) { toast('Carregue o relatório primeiro (clique em Filtrar)', 'error'); return; }
   const d   = _relDados;
   const aba = _relFiltros.aba;
-  const abaLabels = { financeiro:'Financeiro', vendas:'Vendas', corretores:'Corretores', leads:'Leads' };
+  const abaLabels = { financeiro:'Financeiro', vendas:'Vendas', corretores:'Corretores', leads:'Clientes' };
   const titulo    = abaLabels[aba] || aba;
   const hoje      = new Date().toLocaleDateString('pt-BR');
   const fmtD = s  => s ? s.split('T')[0].split('-').reverse().join('/') : '—';
@@ -15044,10 +15044,10 @@ function exportarRelatorioPDF() {
         <div class="kpi"><div class="kpi-l">👥 Corretores</div><div class="kpi-v">${d.corretores.length}</div><div class="kpi-s">com atividade</div></div>
         <div class="kpi"><div class="kpi-l">🏆 Vendas</div><div class="kpi-v">${totalVendas}</div><div class="kpi-s">soma de todos</div></div>
         <div class="kpi"><div class="kpi-l">💎 VGV Total</div><div class="kpi-v green">${fmtV(totalVGV)}</div><div class="kpi-s">soma de todos</div></div>
-        <div class="kpi"><div class="kpi-l">🎯 Leads</div><div class="kpi-v">${totalLeads}</div><div class="kpi-s">distribuídos</div></div>
+        <div class="kpi"><div class="kpi-l">🎯 Clientes</div><div class="kpi-v">${totalLeads}</div><div class="kpi-s">distribuídos</div></div>
       </div>
       <h3>👥 Ranking de Corretores</h3>
-      <table><thead><tr><th>#</th><th>Corretor</th><th class="r">Leads</th><th class="r">Vendas</th><th class="r">Conversão</th><th class="r">VGV Total</th><th class="r">Ticket Médio</th></tr></thead><tbody>
+      <table><thead><tr><th>#</th><th>Corretor</th><th class="r">Clientes</th><th class="r">Vendas</th><th class="r">Conversão</th><th class="r">VGV Total</th><th class="r">Ticket Médio</th></tr></thead><tbody>
       ${d.corretores.length?d.corretores.map((c,i)=>{
         const conv=c.total_leads>0?Math.round(c.total_vendas/c.total_leads*100):0;
         const ticket=c.total_vendas>0?c.vgv_total/c.total_vendas:0;
@@ -15083,7 +15083,7 @@ function exportarRelatorioPDF() {
       </div>
       <h3 style="margin-top:12px">🎯 Leads no Período (${d.leads.length})</h3>
       <table><thead><tr><th>Data</th><th>Nome</th><th>Status</th><th>Empreendimento</th><th>Corretor</th></tr></thead><tbody>
-      ${d.leads.length?d.leads.map(l=>`<tr><td>${fmtD(l.data)}</td><td><strong>${l.nome||'—'}</strong></td><td style="color:${SC[l.status]||'#374151'};font-weight:700;font-size:9px">${SL[l.status]||l.status}</td><td>${l.empreendimento_nome||'—'}</td><td>${l.corretor_nome||'—'}</td></tr>`).join(''):'<tr><td colspan="5" class="em">Nenhum lead</td></tr>'}
+      ${d.leads.length?d.leads.map(l=>`<tr><td>${fmtD(l.data)}</td><td><strong>${l.nome||'—'}</strong></td><td style="color:${SC[l.status]||'#374151'};font-weight:700;font-size:9px">${SL[l.status]||l.status}</td><td>${l.empreendimento_nome||'—'}</td><td>${l.corretor_nome||'—'}</td></tr>`).join(''):'<tr><td colspan="5" class="em">Nenhum cliente</td></tr>'}
       </tbody></table>`;
   }
 
