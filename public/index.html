@@ -9930,12 +9930,10 @@ async function verEspelho(empId) {
   document.getElementById('page-title').textContent = `Espelho — ${emp.nome||''}`;
   document.getElementById('content').innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)">Carregando espelho de vendas...</div>';
 
-  // Carregar permissões do corretor para este empreendimento
+  // Carregar permissões do corretor — sempre fresh para refletir mudanças do admin
   if (USUARIO.perfil === 'corretor') {
-    if (!window._corretorEmpPerms[empId]) {
-      const pr = await get('/api/corretor/empreendimentos');
-      if (pr.ok) (pr.data||[]).forEach(e => { window._corretorEmpPerms[e.id] = { pode_ver_tabela: e.pode_ver_tabela, pode_reservar: e.pode_reservar }; });
-    }
+    const pr = await get('/api/corretor/empreendimentos');
+    if (pr.ok) (pr.data||[]).forEach(e => { window._corretorEmpPerms[e.id] = { pode_ver_tabela: e.pode_ver_tabela, pode_reservar: e.pode_reservar }; });
     const perms = window._corretorEmpPerms[empId] || { pode_ver_tabela: 1, pode_reservar: 1 };
     window._espelhoHidePreco   = !perms.pode_ver_tabela;
     window._espelhoHideReserva = !perms.pode_reservar;
@@ -11021,6 +11019,14 @@ ${obsLines.length ? `<div class="obs-box">
 
 async function abrirUnidade(unidadeId, empId) {
   const emp   = (currentData.emp||[]).find(e => e.id === empId) || {};
+  // Atualizar permissões antes de renderizar para garantir dados frescos
+  if (USUARIO.perfil === 'corretor') {
+    const pr = await get('/api/corretor/empreendimentos');
+    if (pr.ok) (pr.data||[]).forEach(e => { window._corretorEmpPerms[e.id] = { pode_ver_tabela: e.pode_ver_tabela, pode_reservar: e.pode_reservar }; });
+    const perms = window._corretorEmpPerms[empId] || { pode_ver_tabela: 1, pode_reservar: 1 };
+    window._espelhoHidePreco   = !perms.pode_ver_tabela;
+    window._espelhoHideReserva = !perms.pode_reservar;
+  }
   const [ur, vagasR, todasVagasR] = await Promise.all([
     get(`/api/empreendimentos/${empId}/unidades`),
     get(`/api/unidades/${unidadeId}/vagas`),
