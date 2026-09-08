@@ -3030,9 +3030,21 @@ app.get("/api/vendas/:id/unidades", autenticar, (req, res) => {
 
 // ─── RESERVA RÁPIDA ──────────────────────────────────────────────────────────
 app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
-  const { empreendimento_id, unidade_id, lead_nome, lead_telefone, corretor_id } = req.body;
+  const u = req.usuario;
+  const { empreendimento_id, unidade_id, lead_id, lead_nome, lead_telefone, corretor_id } = req.body;
   if (!empreendimento_id || !unidade_id) return err(res, "Empreendimento e unidade obrigatórios");
-  if (!lead_nome || !lead_telefone) return err(res, "Nome e telefone do cliente obrigatórios");
+
+  // Corretor deve obrigatoriamente fornecer um lead_id já cadastrado
+  if (u?.perfil === 'corretor') {
+    if (!lead_id) return err(res, "Selecione um lead cadastrado antes de reservar a unidade");
+    const leadCheck = db.prepare("SELECT id, corretor_id FROM leads WHERE id=?").get(parseInt(lead_id));
+    if (!leadCheck) return err(res, "Lead não encontrado");
+    if (leadCheck.corretor_id && u.corretor_id && leadCheck.corretor_id !== u.corretor_id)
+      return err(res, "Este lead não pertence ao seu cadastro");
+  } else {
+    // Admin/gestor: aceita lead_id ou nome+telefone legados
+    if (!lead_id && (!lead_nome || !lead_telefone)) return err(res, "Informe o lead ou nome e telefone do cliente");
+  }
 
   try {
     const resultado = db.transaction(() => {
@@ -3046,21 +3058,29 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
       }
 
       const hoje = new Date().toISOString().slice(0, 10);
-      let lead = db.prepare("SELECT id FROM leads WHERE telefone=? LIMIT 1").get(lead_telefone);
-      if (!lead) {
-        const r = db.prepare("INSERT INTO leads (nome, telefone, status, empreendimento_id) VALUES (?,?,?,?)")
-          .run(lead_nome.trim(), lead_telefone.trim(), 'reserva', empreendimento_id);
-        lead = { id: r.lastInsertRowid };
+      let lead;
+      if (lead_id) {
+        lead = db.prepare("SELECT id FROM leads WHERE id=?").get(parseInt(lead_id));
+      } else {
+        lead = db.prepare("SELECT id FROM leads WHERE telefone=? LIMIT 1").get(lead_telefone);
+        if (!lead) {
+          const r = db.prepare("INSERT INTO leads (nome, telefone, status, empreendimento_id) VALUES (?,?,?,?)")
+            .run(lead_nome.trim(), lead_telefone.trim(), 'reserva', empreendimento_id);
+          lead = { id: r.lastInsertRowid };
+        }
       }
 
+      const cid = u?.corretor_id || corretor_id || null;
       const preco = unidade.preco || 0;
       const rv = db.prepare(`INSERT INTO vendas
         (lead_id, empreendimento_id, corretor_id, unidade_id, valor, valor_total, data_venda, status, observacoes)
         VALUES (?,?,?,?,?,?,?,'reserva','Reserva rápida — dados pendentes')`)
-        .run(lead.id, empreendimento_id, corretor_id || null, unidade_id, preco, preco, hoje);
+        .run(lead.id, empreendimento_id, cid, unidade_id, preco, preco, hoje);
 
       db.prepare("UPDATE unidades SET status='reservado' WHERE id=?").run(unidade_id);
       db.prepare("INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id) VALUES (?,?)").run(rv.lastInsertRowid, unidade_id);
+      // Atualiza status do lead para reserva
+      db.prepare("UPDATE leads SET status='reserva', empreendimento_id=COALESCE(empreendimento_id,?) WHERE id=?").run(empreendimento_id, lead.id);
       return { venda_id: rv.lastInsertRowid, lead_id: lead.id };
     })();
 

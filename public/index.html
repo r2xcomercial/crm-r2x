@@ -11083,18 +11083,10 @@ async function abrirUnidade(unidadeId, empId) {
     let reservaHtml = '';
     if (u.status === 'disponivel') {
       if (podeReservar) {
-        reservaHtml = `
-          <div style="border-top:1px solid var(--border);padding-top:16px">
-            <div style="font-size:12px;font-weight:600;color:var(--text1);margin-bottom:12px">Dados do cliente para reserva</div>
-            <div style="display:flex;flex-direction:column;gap:8px">
-              <input id="rr-esp-nome" type="text" placeholder="Nome completo *" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
-              <input id="rr-esp-tel" type="tel" placeholder="Telefone / WhatsApp *" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
-              <button onclick="reservarDoEspelho(${u.id},${empId})"
-                style="margin-top:4px;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-size:14px;font-weight:700;cursor:pointer">
-                ⚡ Reservar agora
-              </button>
-            </div>
-          </div>`;
+        reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px" id="reserva-lead-area">
+          <div style="font-size:12px;font-weight:600;color:var(--text1);margin-bottom:10px">👤 Selecionar Lead para Reserva</div>
+          <div id="reserva-lead-loading" style="font-size:13px;color:var(--text2)">Carregando seus leads...</div>
+        </div>`;
       } else {
         reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px;text-align:center;color:var(--text2);font-size:13px">✅ Unidade disponível. Reservas serão liberadas em breve.</div>`;
       }
@@ -11105,6 +11097,11 @@ async function abrirUnidade(unidadeId, empId) {
     }
     document.getElementById('modal-body').innerHTML = infoCorr + reservaHtml;
     document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
+
+    // Carrega leads do corretor se modal de reserva aberto
+    if (podeReservar && u.status === 'disponivel') {
+      _carregarLeadsParaReserva(u.id, empId);
+    }
   } else {
     document.getElementById('modal-body').innerHTML = infoCards + `
       <!-- Editar Unidade -->
@@ -11193,7 +11190,105 @@ async function salvarEdicaoUnidade(unidadeId, empId) {
   }
 }
 
+async function _carregarLeadsParaReserva(unidadeId, empId) {
+  const area = document.getElementById('reserva-lead-area');
+  if (!area) return;
+  const r = await get('/api/leads');
+  const leads = (r.data || []).filter(l => l.status !== 'reserva' && l.status !== 'vendido');
+  const loading = document.getElementById('reserva-lead-loading');
+  if (!loading) return;
+
+  if (!leads.length) {
+    loading.innerHTML = `
+      <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:14px;text-align:center">
+        <div style="font-size:20px;margin-bottom:6px">📋</div>
+        <div style="font-size:13px;font-weight:600;color:var(--warning);margin-bottom:4px">Nenhum lead cadastrado</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Cadastre o cliente como lead antes de fazer a reserva.</div>
+        <button onclick="closeModal();_cpTab='clientes';renderCorretorPainel('clientes')"
+          style="padding:8px 16px;border-radius:8px;border:none;background:var(--accent);color:var(--navy);font-weight:700;font-size:13px;cursor:pointer">
+          + Cadastrar Lead agora
+        </button>
+      </div>`;
+    return;
+  }
+
+  loading.innerHTML = `
+    <input id="rr-lead-search" type="text" placeholder="🔍 Buscar lead por nome ou telefone..."
+      oninput="_filtrarLeadsReserva()"
+      style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-size:13px;margin-bottom:8px">
+    <div id="rr-lead-lista" style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
+    <div id="rr-lead-selecionado" style="display:none;margin-top:10px;background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.3);border-radius:8px;padding:10px 12px">
+      <div style="font-size:11px;color:var(--accent);font-weight:700;margin-bottom:2px">LEAD SELECIONADO</div>
+      <div id="rr-lead-nome-sel" style="font-size:14px;font-weight:700"></div>
+      <div id="rr-lead-tel-sel" style="font-size:12px;color:var(--text2);margin-top:2px"></div>
+    </div>
+    <button id="btn-reservar-lead" onclick="reservarDoEspelho(${unidadeId},${empId})" disabled
+      style="margin-top:10px;width:100%;padding:10px;border-radius:8px;border:none;
+             background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-size:14px;font-weight:700;
+             cursor:not-allowed;opacity:.45">
+      ⚡ Reservar agora
+    </button>`;
+
+  window._rrLeads = leads;
+  window._rrLeadId = null;
+  _filtrarLeadsReserva();
+}
+
+function _filtrarLeadsReserva() {
+  const q = (document.getElementById('rr-lead-search')?.value || '').toLowerCase();
+  const lista = document.getElementById('rr-lead-lista');
+  if (!lista || !window._rrLeads) return;
+  const filtrados = q
+    ? window._rrLeads.filter(l => (l.nome||'').toLowerCase().includes(q) || (l.telefone||'').includes(q))
+    : window._rrLeads;
+  lista.innerHTML = filtrados.slice(0, 20).map(l => `
+    <div onclick="_selecionarLeadReserva(${l.id},'${(l.nome||'').replace(/'/g,"\\'")}',' ${(l.telefone||'').replace(/'/g,"\\'")}')"
+      style="padding:8px 10px;border-radius:7px;cursor:pointer;border:1px solid ${window._rrLeadId===l.id?'var(--accent)':'var(--border)'};
+             background:${window._rrLeadId===l.id?'rgba(0,196,180,.1)':'transparent'};transition:all .1s">
+      <div style="font-size:13px;font-weight:600;color:${window._rrLeadId===l.id?'var(--accent)':'var(--text)'}">${l.nome||'—'}</div>
+      <div style="font-size:11px;color:var(--text2)">${l.telefone||''}</div>
+    </div>`).join('') || '<div style="font-size:12px;color:var(--text2);padding:8px">Nenhum lead encontrado.</div>';
+}
+
+function _selecionarLeadReserva(id, nome, tel) {
+  window._rrLeadId = id;
+  const nomeSel = document.getElementById('rr-lead-nome-sel');
+  const telSel  = document.getElementById('rr-lead-tel-sel');
+  const sel     = document.getElementById('rr-lead-selecionado');
+  const btn     = document.getElementById('btn-reservar-lead');
+  if (nomeSel) nomeSel.textContent = nome;
+  if (telSel)  telSel.textContent  = tel;
+  if (sel)     sel.style.display   = 'block';
+  if (btn)     { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
+  _filtrarLeadsReserva(); // re-render para marcar selecionado
+}
+
 async function reservarDoEspelho(unidadeId, empId) {
+  const isCorretor = USUARIO.perfil === 'corretor';
+  if (isCorretor) {
+    const leadId = window._rrLeadId;
+    if (!leadId) return toast('Selecione um lead antes de reservar', 'error');
+    const btn = document.getElementById('btn-reservar-lead');
+    if (btn) { btn.disabled = true; btn.textContent = 'Reservando...'; }
+    const r = await post('/api/vendas/reserva-rapida', {
+      empreendimento_id: empId,
+      unidade_id: unidadeId,
+      lead_id: leadId,
+    });
+    if (!r.ok) {
+      if (btn) { btn.disabled = false; btn.textContent = '⚡ Reservar agora'; }
+      toast(r.error || 'Erro ao reservar', 'error');
+      if ((r.error || '').includes('reservada') || (r.error || '').includes('disponível')) {
+        closeModal(); await carregarDados(); verEspelho(empId);
+      }
+      return;
+    }
+    toast('✅ Unidade reservada com sucesso!');
+    closeModal(); await carregarDados(); verEspelho(empId);
+    return;
+  }
+
+  // Admin/gestor: fluxo legado com nome+telefone
   const nome = document.getElementById('rr-esp-nome')?.value?.trim();
   const tel  = document.getElementById('rr-esp-tel')?.value?.trim();
   if (!nome) return toast('Informe o nome do cliente', 'error');
@@ -11210,11 +11305,8 @@ async function reservarDoEspelho(unidadeId, empId) {
   if (!r.ok) {
     if (btn) { btn.disabled = false; btn.textContent = '⚡ Reservar agora'; }
     toast(r.error || 'Erro ao reservar', 'error');
-    // Se unidade já foi reservada por outro, fecha o modal e atualiza o espelho
     if ((r.error || '').includes('reservada') || (r.error || '').includes('disponível')) {
-      closeModal();
-      await carregarDados();
-      verEspelho(empId);
+      closeModal(); await carregarDados(); verEspelho(empId);
     }
     return;
   }
