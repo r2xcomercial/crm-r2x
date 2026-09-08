@@ -1299,21 +1299,21 @@ function renderLeadRow(l, statusColors) {
 
 function openLeadModal(lead = {}, onSave = null) {
   const isCorretor = lead.tipo === 'corretor';
+  const sec = (icon, title) => `<div style="display:flex;align-items:center;gap:8px;margin:20px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border)"><span style="font-size:15px">${icon}</span><span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2)">${title}</span></div>`;
   openModal(lead.id ? 'Editar Cliente' : 'Novo Cliente', `
-    ${lead.tipo === 'corretor' ? `
-    <div style="background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.3);border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
-      <span style="font-size:18px">🏷️</span>
-      <div>
-        <div style="font-size:13px;font-weight:600;color:#60a5fa">Cliente qualificado como Corretor Parceiro</div>
-        <div style="font-size:11px;color:var(--text2)">CRECI e imobiliária visíveis abaixo</div>
-      </div>
-    </div>` : ''}
+    ${lead.tipo === 'corretor' ? `<div style="background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.3);border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="font-size:18px">🏷️</span><div><div style="font-size:13px;font-weight:600;color:#60a5fa">Cliente qualificado como Corretor Parceiro</div><div style="font-size:11px;color:var(--text2)">CRECI e imobiliária visíveis abaixo</div></div></div>` : ''}
+
+    ${sec('👤','Identificação')}
     <div class="form-grid">
-      <div class="form-group"><label>Nome</label><input id="f-nome" value="${lead.nome||''}" placeholder="Nome do cliente"></div>
-      <div class="form-group"><label>Telefone</label><input id="f-tel" value="${lead.telefone||''}" placeholder="48999999999" oninput="verificarDuplicidadeLead(this.value)"></div>
+      <div class="form-group"><label>Nome *</label><input id="f-nome" value="${lead.nome||''}" placeholder="Nome completo do cliente"></div>
+      <div class="form-group"><label>Telefone *</label><input id="f-tel" value="${lead.telefone||''}" placeholder="48999999999" oninput="verificarDuplicidadeLead(this.value)"></div>
       <div id="aviso-dup-tel" class="form-group span2" style="display:none;padding:8px 12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:8px;font-size:12px;color:var(--warning)"></div>
       <div class="form-group"><label>Email</label><input id="f-email" type="email" value="${lead.email||''}"></div>
-      <div class="form-group"><label>Cidade</label><input id="f-cidade" value="${lead.cidade||''}"></div>
+      <div class="form-group"><label>Aniversário</label><input id="f-aniv" type="date" value="${lead.aniversario||''}"></div>
+    </div>
+
+    ${sec('🎯','Qualificação')}
+    <div class="form-grid">
       <div class="form-group"><label>Tipo de Cliente</label>
         <select id="f-tipo-lead" onchange="toggleCamposCorretor(this.value)">
           <option value="" ${!lead.tipo?'selected':''}>— Comprador —</option>
@@ -1321,16 +1321,16 @@ function openLeadModal(lead = {}, onSave = null) {
           <option value="investidor" ${lead.tipo==='investidor'?'selected':''}>💼 Investidor</option>
         </select>
       </div>
-      <div class="form-group"><label>Origem *</label>
+      <div class="form-group"><label>Origem</label>
         <select id="f-origem">
-          <option value="meta_ads"         ${(lead.origem||'manual')==='meta_ads'?'selected':''}>📘 Meta Ads</option>
-          <option value="google"            ${lead.origem==='google'?'selected':''}>🔍 Google</option>
-          <option value="instagram"         ${lead.origem==='instagram'?'selected':''}>📸 Instagram orgânico</option>
-          <option value="whatsapp"          ${lead.origem==='whatsapp'?'selected':''}>💬 WhatsApp</option>
+          <option value="meta_ads" ${(lead.origem||'manual')==='meta_ads'?'selected':''}>📘 Meta Ads</option>
+          <option value="google" ${lead.origem==='google'?'selected':''}>🔍 Google</option>
+          <option value="instagram" ${lead.origem==='instagram'?'selected':''}>📸 Instagram orgânico</option>
+          <option value="whatsapp" ${lead.origem==='whatsapp'?'selected':''}>💬 WhatsApp</option>
           <option value="indicacao_corretor" ${lead.origem==='indicacao_corretor'?'selected':''}>🤝 Indicação corretor</option>
-          <option value="plantao"           ${lead.origem==='plantao'?'selected':''}>🏠 Plantão</option>
-          <option value="portal"            ${lead.origem==='portal'?'selected':''}>🌐 Portal</option>
-          <option value="manual"            ${(!lead.origem||lead.origem==='manual'||lead.origem==='importado')?'selected':''}>✍️ Outro / Manual</option>
+          <option value="plantao" ${lead.origem==='plantao'?'selected':''}>🏠 Plantão</option>
+          <option value="portal" ${lead.origem==='portal'?'selected':''}>🌐 Portal</option>
+          <option value="manual" ${(!lead.origem||lead.origem==='manual'||lead.origem==='importado')?'selected':''}>✍️ Outro / Manual</option>
         </select>
       </div>
       <div class="form-group"><label>Status</label>
@@ -1338,24 +1338,6 @@ function openLeadModal(lead = {}, onSave = null) {
           ${[['novo','📥 Captado'],['qualificado','✅ Qualificado'],['com_corretor','👤 Distribuído'],['visitou','🏠 Atend./Visita'],['proposta','📋 Proposta'],['reserva','🔒 Reserva'],['vendido','🏆 Venda'],['sem_venda','❌ Sem venda']].map(([v,l]) => `<option value="${v}" ${(lead.status===v||(v==='sem_venda'&&lead.status==='perdido'))?'selected':''}>${l}</option>`).join('')}
         </select>
       </div>
-      <div id="bloco-motivo-perda" style="display:${['sem_venda','perdido'].includes(lead.status)?'contents':'none'}">
-        <div class="form-group"><label>Motivo da perda</label>
-          <select id="f-motivo-perda" onchange="document.getElementById('bloco-outro-motivo').style.display=this.value==='outro'?'block':'none'">
-            <option value="">— Selecione —</option>
-            ${['preço','prazo','financiamento','concorrente','sem_resposta','outro'].map(m=>`<option value="${m}" ${lead.motivo_perda===m?'selected':''}>${{preço:'💰 Preço',prazo:'📅 Prazo',financiamento:'🏦 Financiamento',concorrente:'🏁 Concorrente',sem_resposta:'📵 Sem resposta',outro:'✏️ Outro'}[m]}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group" id="bloco-outro-motivo" style="display:${lead.motivo_perda==='outro'?'block':'none'}">
-          <label>Descreva o motivo</label>
-          <input id="f-motivo-outro" value="${lead.motivo_perda_outro||''}" placeholder="Descreva o motivo da perda">
-        </div>
-      </div>
-
-      <div id="campos-corretor" style="display:${isCorretor?'contents':'none'}">
-        <div class="form-group"><label>CRECI</label><input id="f-creci" value="${lead.creci||''}" placeholder="CRECI 12345-F"></div>
-        <div class="form-group"><label>Imobiliária</label><input id="f-imob" value="${lead.imobiliaria||''}" placeholder="Nome da imobiliária"></div>
-      </div>
-
       <div class="form-group"><label>Objetivo</label>
         <select id="f-obj"><option value="">—</option><option ${lead.objetivo==='morar'?'selected':''}>morar</option><option ${lead.objetivo==='investir'?'selected':''}>investir</option><option ${lead.objetivo==='ambos'?'selected':''}>ambos</option></select>
       </div>
@@ -1375,109 +1357,111 @@ function openLeadModal(lead = {}, onSave = null) {
           ${empData.map(e => `<option value="${e.id}" ${lead.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group"><label>Aniversário</label><input id="f-aniv" type="date" value="${lead.aniversario||''}"></div>
+      <div id="bloco-motivo-perda" style="display:${['sem_venda','perdido'].includes(lead.status)?'contents':'none'}">
+        <div class="form-group"><label>Motivo da perda</label>
+          <select id="f-motivo-perda" onchange="document.getElementById('bloco-outro-motivo').style.display=this.value==='outro'?'block':'none'">
+            <option value="">— Selecione —</option>
+            ${['preço','prazo','financiamento','concorrente','sem_resposta','outro'].map(m=>`<option value="${m}" ${lead.motivo_perda===m?'selected':''}>${{preço:'💰 Preço',prazo:'📅 Prazo',financiamento:'🏦 Financiamento',concorrente:'🏁 Concorrente',sem_resposta:'📵 Sem resposta',outro:'✏️ Outro'}[m]}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group" id="bloco-outro-motivo" style="display:${lead.motivo_perda==='outro'?'block':'none'}">
+          <label>Descreva o motivo</label>
+          <input id="f-motivo-outro" value="${lead.motivo_perda_outro||''}" placeholder="Descreva o motivo da perda">
+        </div>
+      </div>
+      <div id="campos-corretor" style="display:${isCorretor?'contents':'none'}">
+        <div class="form-group"><label>CRECI</label><input id="f-creci" value="${lead.creci||''}" placeholder="CRECI 12345-F"></div>
+        <div class="form-group"><label>Imobiliária</label><input id="f-imob" value="${lead.imobiliaria||''}" placeholder="Nome da imobiliária"></div>
+      </div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${lead.observacoes||''}</textarea></div>
     </div>
 
-    <div style="margin-top:18px">
-      <button type="button" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('span').textContent=this.nextElementSibling.style.display==='none'?'▶':'▼'" style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px;padding:0">
-        <span>${(lead.cpf||lead.rg||lead.cnpj||lead.razao_social||lead.endereco)?'▼':'▶'}</span> 📄 Dados para Contrato
-      </button>
-      <div style="display:${(lead.cpf||lead.rg||lead.cnpj||lead.razao_social||lead.endereco)?'block':'none'}">
+    ${sec('📄','Documento')}
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button type="button" id="btn-pf" onclick="togglePjLead(false)" style="flex:1;padding:9px;border-radius:8px;border:2px solid ${!lead.pessoa_juridica?'var(--accent)':'var(--border)'};background:${!lead.pessoa_juridica?'rgba(250,204,21,.08)':'var(--navy3)'};color:${!lead.pessoa_juridica?'var(--accent)':'var(--text2)'};font-weight:700;font-size:13px;cursor:pointer">👤 Pessoa Física</button>
+      <button type="button" id="btn-pj" onclick="togglePjLead(true)" style="flex:1;padding:9px;border-radius:8px;border:2px solid ${lead.pessoa_juridica?'var(--accent)':'var(--border)'};background:${lead.pessoa_juridica?'rgba(250,204,21,.08)':'var(--navy3)'};color:${lead.pessoa_juridica?'var(--accent)':'var(--text2)'};font-weight:700;font-size:13px;cursor:pointer">🏢 Pessoa Jurídica</button>
+    </div>
+    <input type="hidden" id="f-pessoa-juridica" value="${lead.pessoa_juridica?'1':'0'}">
 
-        <!-- Toggle PF / PJ -->
-        <div style="display:flex;gap:8px;margin-top:14px;margin-bottom:14px">
-          <button type="button" id="btn-pf" onclick="togglePjLead(false)" style="flex:1;padding:8px;border-radius:8px;border:2px solid ${!lead.pessoa_juridica?'var(--accent)':'var(--border)'};background:${!lead.pessoa_juridica?'rgba(250,204,21,.08)':'var(--navy3)'};color:${!lead.pessoa_juridica?'var(--accent)':'var(--text2)'};font-weight:700;font-size:13px;cursor:pointer">👤 Pessoa Física</button>
-          <button type="button" id="btn-pj" onclick="togglePjLead(true)"  style="flex:1;padding:8px;border-radius:8px;border:2px solid ${lead.pessoa_juridica?'var(--accent)':'var(--border)'};background:${lead.pessoa_juridica?'rgba(250,204,21,.08)':'var(--navy3)'};color:${lead.pessoa_juridica?'var(--accent)':'var(--text2)'};font-weight:700;font-size:13px;cursor:pointer">🏢 Pessoa Jurídica</button>
+    <div id="bloco-pf" style="display:${lead.pessoa_juridica?'none':'block'}">
+      <div style="margin-bottom:12px;padding:10px 14px;background:rgba(96,165,250,.06);border:1px dashed rgba(96,165,250,.3);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text2);flex:1;min-width:140px">📷 Envie a CNH ou RG para preencher automaticamente</span>
+        <label style="cursor:pointer;background:var(--accent);color:var(--navy);border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px">
+          <span id="doc-btn-txt">📄 Carregar CNH / RG</span>
+          <input type="file" accept="image/*,application/pdf" style="display:none" onchange="extrairDocumento(this,'identidade')">
+        </label>
+        <span id="doc-status" style="font-size:11px;color:var(--text2)"></span>
+      </div>
+      <div class="form-grid">
+        <div class="form-group"><label>CPF</label><input id="f-cpf" value="${lead.cpf||''}" placeholder="000.000.000-00"></div>
+        <div class="form-group"><label>RG</label><input id="f-rg" value="${lead.rg||''}" placeholder="00.000.000-0"></div>
+        <div class="form-group"><label>Estado Civil</label>
+          <select id="f-estado-civil"><option value="">—</option>${(()=>{const ec=lead.estado_civil||'';const lb={solteiro:'Solteiro(a)',casado:'Casado(a)',divorciado:'Divorciado(a)',viuvo:'Viúvo(a)',uniao_estavel:'União Estável'};return['solteiro','casado','divorciado','viuvo','uniao_estavel'].map(v=>'<option value="'+v+'" '+(ec===v?'selected':'')+'>'+lb[v]+'</option>').join('');})()}</select>
         </div>
-        <input type="hidden" id="f-pessoa-juridica" value="${lead.pessoa_juridica?'1':'0'}">
-
-        <!-- BLOCO PF -->
-        <div id="bloco-pf" style="display:${lead.pessoa_juridica?'none':'block'}">
-          <div style="margin-bottom:12px;padding:10px 14px;background:rgba(96,165,250,.06);border:1px dashed rgba(96,165,250,.3);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <span style="font-size:12px;color:var(--text2);flex:1;min-width:140px">📷 Envie a CNH ou RG para preencher automaticamente</span>
-            <label style="cursor:pointer;background:var(--accent);color:var(--navy);border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px">
-              <span id="doc-btn-txt">📄 Carregar CNH / RG</span>
-              <input type="file" accept="image/*,application/pdf" style="display:none" onchange="extrairDocumento(this,'identidade')">
-            </label>
-            <span id="doc-status" style="font-size:11px;color:var(--text2)"></span>
-          </div>
-          <div class="form-grid">
-            <div class="form-group"><label>CPF</label><input id="f-cpf" value="${lead.cpf||''}" placeholder="000.000.000-00"></div>
-            <div class="form-group"><label>RG</label><input id="f-rg" value="${lead.rg||''}" placeholder="00.000.000-0"></div>
-            <div class="form-group"><label>Estado Civil</label>
-              <select id="f-estado-civil">
-                <option value="">—</option>
-                ${(()=>{const ec=lead.estado_civil||'';const lb={solteiro:'Solteiro(a)',casado:'Casado(a)',divorciado:'Divorciado(a)',viuvo:'Viúvo(a)',uniao_estavel:'União Estável'};return['solteiro','casado','divorciado','viuvo','uniao_estavel'].map(v=>'<option value="'+v+'" '+(ec===v?'selected':'')+'>'+lb[v]+'</option>').join('');})()}
-              </select>
-            </div>
-            <div class="form-group"><label>Profissão</label><input id="f-profissao" value="${lead.profissao||''}" placeholder="ex: Empresário"></div>
-            <div class="form-group"><label>Nome do Pai</label><input id="f-nome-pai" value="${lead.nome_pai||''}"></div>
-            <div class="form-group"><label>Nome da Mãe</label><input id="f-nome-mae" value="${lead.nome_mae||''}"></div>
-          </div>
-        </div>
-
-        <!-- BLOCO PJ -->
-        <div id="bloco-pj" style="display:${lead.pessoa_juridica?'block':'none'}">
-          <div style="margin-bottom:12px;padding:10px 14px;background:rgba(96,165,250,.06);border:1px dashed rgba(96,165,250,.3);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <span style="font-size:12px;color:var(--text2);flex:1;min-width:140px">📷 Envie o Cartão CNPJ ou Contrato Social para preencher automaticamente</span>
-            <label style="cursor:pointer;background:var(--accent);color:var(--navy);border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px">
-              <span id="doc-btn-pj-txt">📄 Carregar documento</span>
-              <input type="file" accept="image/*,application/pdf" style="display:none" onchange="extrairDocumento(this,'empresa')">
-            </label>
-            <span id="doc-status-pj" style="font-size:11px;color:var(--text2)"></span>
-          </div>
-          <div class="form-grid">
-            <div class="form-group"><label>CNPJ</label>
-              <div style="display:flex;gap:6px">
-                <input id="f-cnpj" value="${lead.cnpj||''}" placeholder="00.000.000/0000-00" style="flex:1" oninput="agendarBuscaCnpj(this.value)">
-                <button type="button" onclick="buscarCnpj()" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:0 10px;cursor:pointer;font-size:12px;white-space:nowrap" title="Buscar CNPJ">🔍</button>
-              </div>
-            </div>
-            <div class="form-group"><label>Razão Social</label><input id="f-razao-social" value="${lead.razao_social||''}"></div>
-            <div class="form-group"><label>Nome Fantasia</label><input id="f-nome-fantasia" value="${lead.nome_fantasia||''}"></div>
-            <div class="form-group"><label>Inscrição Estadual</label><input id="f-ie" value="${lead.inscricao_estadual||''}"></div>
-            <div class="form-group"><label>Inscrição Municipal</label><input id="f-im" value="${lead.inscricao_municipal||''}"></div>
-          </div>
-          <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px;font-weight:600">👤 Representante Legal</div>
-          <div class="form-grid">
-            <div class="form-group"><label>Nome</label><input id="f-rep-nome" value="${lead.representante_nome||''}"></div>
-            <div class="form-group"><label>CPF</label><input id="f-rep-cpf" value="${lead.representante_cpf||''}" placeholder="000.000.000-00"></div>
-            <div class="form-group"><label>RG</label><input id="f-rep-rg" value="${lead.representante_rg||''}"></div>
-            <div class="form-group"><label>Cargo</label><input id="f-rep-cargo" value="${lead.representante_cargo||''}" placeholder="ex: Sócio-Administrador"></div>
-          </div>
-        </div>
-
-        <!-- ENDEREÇO -->
-        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px;font-weight:600">📍 Endereço</div>
-        <div style="margin-bottom:10px;padding:8px 12px;background:rgba(96,165,250,.06);border:1px dashed rgba(96,165,250,.3);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <span style="font-size:12px;color:var(--text2);flex:1;min-width:140px">📋 Envie um comprovante de residência para preencher o endereço</span>
-          <label style="cursor:pointer;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px">
-            <span id="end-btn-txt">📄 Carregar comprovante</span>
-            <input type="file" accept="image/*,application/pdf" style="display:none" onchange="extrairDocumento(this,'endereco')">
-          </label>
-          <span id="end-status" style="font-size:11px;color:var(--text2)"></span>
-        </div>
-        <div class="form-grid">
-          <div class="form-group span2"><label>Logradouro</label><input id="f-endereco" value="${lead.endereco||''}" placeholder="Rua, Avenida, etc."></div>
-          <div class="form-group"><label>Número</label><input id="f-numero" value="${lead.numero||''}"></div>
-          <div class="form-group"><label>Complemento</label><input id="f-complemento" value="${lead.complemento||''}" placeholder="Apto, Bloco..."></div>
-          <div class="form-group"><label>Bairro</label><input id="f-bairro" value="${lead.bairro||''}"></div>
-          <div class="form-group"><label>CEP</label><input id="f-cep" value="${lead.cep||''}" placeholder="00000-000" onblur="buscarCepLead(this.value)"></div>
-          <div class="form-group"><label>Cidade</label><input id="f-cidade-end" value="${lead.cidade||''}"></div>
-          <div class="form-group"><label>Estado (UF)</label>
-            <select id="f-estado-uf">
-              <option value="">—</option>
-              ${(()=>{const eu=(lead.estado||'').toUpperCase();return['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map(uf=>'<option value="'+uf+'" '+(eu===uf?'selected':'')+'>'+uf+'</option>').join('');})()}
-            </select>
-          </div>
-        </div>
-
-        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px;font-weight:600">👥 Compradores Adicionais <span style="text-transform:none;font-weight:400;font-size:10px">(cônjuge, sócio, condomínio)</span></div>
-        <div id="compradores-list" style="display:flex;flex-direction:column;gap:10px"></div>
-        <button type="button" onclick="adicionarComprador()" style="margin-top:8px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600">➕ Adicionar comprador</button>
+        <div class="form-group"><label>Profissão</label><input id="f-profissao" value="${lead.profissao||''}" placeholder="ex: Empresário"></div>
+        <div class="form-group"><label>Nome do Pai</label><input id="f-nome-pai" value="${lead.nome_pai||''}"></div>
+        <div class="form-group"><label>Nome da Mãe</label><input id="f-nome-mae" value="${lead.nome_mae||''}"></div>
       </div>
     </div>
+
+    <div id="bloco-pj" style="display:${lead.pessoa_juridica?'block':'none'}">
+      <div style="margin-bottom:12px;padding:10px 14px;background:rgba(96,165,250,.06);border:1px dashed rgba(96,165,250,.3);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text2);flex:1;min-width:140px">📷 Envie o Cartão CNPJ ou Contrato Social para preencher automaticamente</span>
+        <label style="cursor:pointer;background:var(--accent);color:var(--navy);border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px">
+          <span id="doc-btn-pj-txt">📄 Carregar documento</span>
+          <input type="file" accept="image/*,application/pdf" style="display:none" onchange="extrairDocumento(this,'empresa')">
+        </label>
+        <span id="doc-status-pj" style="font-size:11px;color:var(--text2)"></span>
+      </div>
+      <div class="form-grid">
+        <div class="form-group"><label>CNPJ</label>
+          <div style="display:flex;gap:6px">
+            <input id="f-cnpj" value="${lead.cnpj||''}" placeholder="00.000.000/0000-00" style="flex:1" oninput="agendarBuscaCnpj(this.value)">
+            <button type="button" onclick="buscarCnpj()" style="background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:0 10px;cursor:pointer;font-size:12px;white-space:nowrap">🔍</button>
+          </div>
+        </div>
+        <div class="form-group"><label>Razão Social</label><input id="f-razao-social" value="${lead.razao_social||''}"></div>
+        <div class="form-group"><label>Nome Fantasia</label><input id="f-nome-fantasia" value="${lead.nome_fantasia||''}"></div>
+        <div class="form-group"><label>Inscrição Estadual</label><input id="f-ie" value="${lead.inscricao_estadual||''}"></div>
+        <div class="form-group"><label>Inscrição Municipal</label><input id="f-im" value="${lead.inscricao_municipal||''}"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px;font-weight:600">👤 Representante Legal</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Nome</label><input id="f-rep-nome" value="${lead.representante_nome||''}"></div>
+        <div class="form-group"><label>CPF</label><input id="f-rep-cpf" value="${lead.representante_cpf||''}" placeholder="000.000.000-00"></div>
+        <div class="form-group"><label>RG</label><input id="f-rep-rg" value="${lead.representante_rg||''}"></div>
+        <div class="form-group"><label>Cargo</label><input id="f-rep-cargo" value="${lead.representante_cargo||''}" placeholder="ex: Sócio-Administrador"></div>
+      </div>
+    </div>
+
+    ${sec('📍','Endereço')}
+    <div style="margin-bottom:12px;padding:8px 12px;background:rgba(96,165,250,.06);border:1px dashed rgba(96,165,250,.3);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text2);flex:1;min-width:140px">📋 Envie um comprovante de residência para preencher automaticamente</span>
+      <label style="cursor:pointer;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px">
+        <span id="end-btn-txt">📄 Carregar comprovante</span>
+        <input type="file" accept="image/*,application/pdf" style="display:none" onchange="extrairDocumento(this,'endereco')">
+      </label>
+      <span id="end-status" style="font-size:11px;color:var(--text2)"></span>
+    </div>
+    <div class="form-grid">
+      <div class="form-group span2"><label>Logradouro</label><input id="f-endereco" value="${lead.endereco||''}" placeholder="Rua, Avenida, etc."></div>
+      <div class="form-group"><label>Número</label><input id="f-numero" value="${lead.numero||''}"></div>
+      <div class="form-group"><label>Complemento</label><input id="f-complemento" value="${lead.complemento||''}" placeholder="Apto, Bloco..."></div>
+      <div class="form-group"><label>Bairro</label><input id="f-bairro" value="${lead.bairro||''}"></div>
+      <div class="form-group"><label>CEP</label><input id="f-cep" value="${lead.cep||''}" placeholder="00000-000" onblur="buscarCepLead(this.value)"></div>
+      <div class="form-group"><label>Cidade</label><input id="f-cidade-end" value="${lead.cidade||''}"></div>
+      <div class="form-group"><label>Estado (UF)</label>
+        <select id="f-estado-uf"><option value="">—</option>${(()=>{const eu=(lead.estado||'').toUpperCase();return['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map(uf=>'<option value="'+uf+'" '+(eu===uf?'selected':'')+'>'+uf+'</option>').join('');})()}</select>
+      </div>
+    </div>
+
+    ${sec('👥','Compradores Adicionais')}
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Cônjuge, sócio, condomínio — serão incluídos no contrato.</div>
+    <div id="compradores-list" style="display:flex;flex-direction:column;gap:10px"></div>
+    <button type="button" onclick="adicionarComprador()" style="margin-top:8px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600">➕ Adicionar comprador</button>
+
+    <!-- campo cidade oculto para compatibilidade com save -->
+    <input type="hidden" id="f-cidade" value="${lead.cidade||''}">
 
     ${lead.telefone ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📱 Ação Rápida WhatsApp</div>
@@ -1558,6 +1542,7 @@ function openLeadModal(lead = {}, onSave = null) {
     if (onSave) { await onSave(leadId, body); }
     else { if (currentPage === 'kanban') renderKanban(); else renderLeads(); }
   });
+  document.getElementById('modal').classList.add('modal-wide');
   if (lead.id) { carregarTimeline(lead.id); carregarVisitas(lead.id); carregarCompradores(lead.id); }
 }
 
