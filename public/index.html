@@ -15571,6 +15571,9 @@ async function renderCorretorPainel(tab) {
         <div style="font-size:20px;font-weight:700">Olá, ${corretor?.nome || USUARIO.nome}! 👋</div>
         <div style="font-size:13px;color:var(--text2);margin-top:4px">Sua central de gestão de vendas</div>
       </div>
+      <button onclick="openLeadModal({});_cpTab='clientes'" style="display:flex;align-items:center;gap:8px;padding:10px 18px;background:var(--accent);color:var(--navy);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;box-shadow:0 4px 14px rgba(250,204,21,.3)">
+        <span style="font-size:18px">➕</span> Cadastrar Cliente
+      </button>
     </div>
 
     <!-- Alerta de tarefas -->
