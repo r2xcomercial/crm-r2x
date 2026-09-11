@@ -4887,11 +4887,10 @@ async function excluirItemChecklist(id) {
 }
 
 // ─── RESERVA RÁPIDA ──────────────────────────────────────────────────────────
-function openReservaRapida() {
+function openReservaRapida(preEmpId, preUnidadeId) {
   const overlay = document.getElementById('rr-overlay');
   if (!overlay) return;
-  // Preencher empreendimentos
-  const empSel = document.getElementById('rr-emp');
+  const empSel  = document.getElementById('rr-emp');
   const corrSel = document.getElementById('rr-corretor');
   const { emp, corretores } = currentData;
   empSel.innerHTML = '<option value="">— Selecione —</option>' +
@@ -4904,6 +4903,13 @@ function openReservaRapida() {
   const st = document.getElementById('rr-status');
   st.style.display = 'none'; st.textContent = '';
   overlay.style.display = 'flex';
+  // Pré-selecionar empreendimento e unidade se fornecidos
+  if (preEmpId) {
+    empSel.value = preEmpId;
+    carregarUnidadesRR(preEmpId).then(() => {
+      if (preUnidadeId) document.getElementById('rr-unidade').value = preUnidadeId;
+    });
+  }
   setTimeout(() => document.getElementById('rr-nome').focus(), 100);
 }
 
@@ -9150,7 +9156,7 @@ async function verUnidades(empId) {
               <td id="preco-cell-${u.id}" data-preco="${u.preco||''}" style="color:var(--success);cursor:${USUARIO.perfil!=='corretor'?'pointer':'default'}" ${USUARIO.perfil!=='corretor'?`onclick="editarPrecoUnidade(${u.id},${empId})" title="Clique para editar o preço"`:''}>${u.preco?fmt(u.preco):'—'}${USUARIO.perfil!=='corretor'?` <span style="font-size:10px;color:var(--text2);opacity:.6">✏️</span>`:''}</td>
               <td><span class="badge ${statusBadge[u.status]||'badge-gray'}">${statusLabel[u.status]||u.status}</span></td>
               <td style="white-space:nowrap">
-                ${u.status==='disponivel'?`<button class="btn-icon" title="Reservar" onclick="updateUnidadeStatus(${u.id},'reservado',${empId})">🟡 Reservar</button>`:''}
+                ${u.status==='disponivel'?`<button class="btn-icon" title="Reservar com cliente" onclick="closeModal();openReservaRapida(${empId},${u.id})">🟡 Reservar</button>`:''}
                 ${u.status==='reservado'?`<button class="btn-icon" title="Liberar reserva" onclick="updateUnidadeStatus(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
               </td>
             </tr>
@@ -11408,7 +11414,7 @@ async function abrirUnidade(unidadeId, empId) {
         <div style="font-size:11px;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">Alterar Status</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${u.status!=='disponivel'   ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(34,197,94,.4);color:#4ade80" onclick="mudarStatusEspelho(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
-          ${u.status!=='reservado'    ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(245,158,11,.4);color:#fbbf24" onclick="mudarStatusEspelho(${u.id},'reservado',${empId})">🟡 Reservar</button>`:''}
+          ${u.status!=='reservado'    ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(245,158,11,.4);color:#fbbf24" onclick="closeModal();openReservaRapida(${empId},${u.id})">🟡 Reservar</button>`:''}
           ${u.status!=='vendido'      ?`<button class="btn btn-danger"    style="flex:1" onclick="mudarStatusEspelho(${u.id},'vendido',${empId})">🔴 Marcar Vendido</button>`:''}
           ${u.status!=='indisponivel' ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(100,116,139,.4);color:#94a3b8" onclick="mudarStatusEspelho(${u.id},'indisponivel',${empId})">⛔ Indisponível</button>`:''}
         </div>

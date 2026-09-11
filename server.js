@@ -1914,7 +1914,20 @@ app.post("/api/empreendimentos/:id/unidades", (req, res) => {
 app.put("/api/unidades/:id/status", (req, res) => {
   const { status } = req.body;
   if (!['disponivel','reservado','vendido','indisponivel'].includes(status)) return err(res, "Status inválido");
-  db.prepare("UPDATE unidades SET status=? WHERE id=?").run(status, req.params.id);
+  const unidadeId = parseInt(req.params.id);
+  db.transaction(() => {
+    db.prepare("UPDATE unidades SET status=? WHERE id=?").run(status, unidadeId);
+    // Ao liberar uma unidade reservada, cancela a venda ativa e reverte o lead
+    if (status === 'disponivel') {
+      const venda = db.prepare(
+        "SELECT id, lead_id FROM vendas WHERE unidade_id=? AND status IN ('reserva','proposta') ORDER BY id DESC LIMIT 1"
+      ).get(unidadeId);
+      if (venda) {
+        db.prepare("UPDATE vendas SET status='cancelado' WHERE id=?").run(venda.id);
+        db.prepare("UPDATE leads SET status='novo' WHERE id=? AND status IN ('reserva','proposta')").run(venda.lead_id);
+      }
+    }
+  })();
   ok(res, {});
 });
 
