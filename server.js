@@ -3057,20 +3057,24 @@ app.get("/api/vendas/:id/unidades", autenticar, (req, res) => {
 // ─── RESERVA RÁPIDA ──────────────────────────────────────────────────────────
 app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
   const u = req.usuario;
-  const { empreendimento_id, unidade_id, lead_id, lead_nome, lead_telefone, corretor_id } = req.body;
+  const { empreendimento_id, unidade_id, lead_id, lead_nome, lead_telefone, corretor_id, condicao_proposta } = req.body;
   if (!empreendimento_id || !unidade_id) return err(res, "Empreendimento e unidade obrigatórios");
 
-  // Corretor deve obrigatoriamente fornecer um lead_id já cadastrado
+  // Corretor deve obrigatoriamente fornecer lead_id + condição de proposta
   if (u?.perfil === 'corretor') {
     if (!lead_id) return err(res, "Selecione um lead cadastrado antes de reservar a unidade");
+    if (!condicao_proposta) return err(res, "Informe a condição de pagamento da proposta");
     const leadCheck = db.prepare("SELECT id, corretor_id FROM leads WHERE id=?").get(parseInt(lead_id));
     if (!leadCheck) return err(res, "Lead não encontrado");
     if (leadCheck.corretor_id && u.corretor_id && leadCheck.corretor_id !== u.corretor_id)
       return err(res, "Este lead não pertence ao seu cadastro");
   } else {
-    // Admin/gestor: aceita lead_id ou nome+telefone legados
+    // Admin/gestor: aceita lead_id ou nome+telefone
     if (!lead_id && (!lead_nome || !lead_telefone)) return err(res, "Informe o lead ou nome e telefone do cliente");
   }
+
+  // Se condicao_proposta fornecida, venda entra direto em 'proposta'
+  const statusInicial = condicao_proposta ? 'proposta' : 'reserva';
 
   try {
     const resultado = db.transaction(() => {
@@ -3091,23 +3095,26 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
         lead = db.prepare("SELECT id FROM leads WHERE telefone=? LIMIT 1").get(lead_telefone);
         if (!lead) {
           const r = db.prepare("INSERT INTO leads (nome, telefone, status, empreendimento_id) VALUES (?,?,?,?)")
-            .run(lead_nome.trim(), lead_telefone.trim(), 'reserva', empreendimento_id);
+            .run(lead_nome.trim(), lead_telefone.trim(), statusInicial, empreendimento_id);
           lead = { id: r.lastInsertRowid };
         }
       }
 
       const cid = u?.corretor_id || corretor_id || null;
       const preco = unidade.preco || 0;
+      const cpJson = condicao_proposta ? JSON.stringify(condicao_proposta) : null;
+      const valorTotal = condicao_proposta?.valor_total || preco;
       const rv = db.prepare(`INSERT INTO vendas
-        (lead_id, empreendimento_id, corretor_id, unidade_id, valor, valor_total, data_venda, status, observacoes)
-        VALUES (?,?,?,?,?,?,?,'reserva','Reserva rápida — dados pendentes')`)
-        .run(lead.id, empreendimento_id, cid, unidade_id, preco, preco, hoje);
+        (lead_id, empreendimento_id, corretor_id, unidade_id, valor, valor_total, data_venda, status, condicao_proposta, observacoes)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`)
+        .run(lead.id, empreendimento_id, cid, unidade_id, preco, valorTotal, hoje, statusInicial, cpJson,
+          condicao_proposta ? null : 'Reserva rápida — dados pendentes');
 
       db.prepare("UPDATE unidades SET status='reservado' WHERE id=?").run(unidade_id);
       db.prepare("INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id) VALUES (?,?)").run(rv.lastInsertRowid, unidade_id);
-      // Atualiza status do lead para reserva
-      db.prepare("UPDATE leads SET status='reserva', empreendimento_id=COALESCE(empreendimento_id,?) WHERE id=?").run(empreendimento_id, lead.id);
-      return { venda_id: rv.lastInsertRowid, lead_id: lead.id };
+      db.prepare("UPDATE leads SET status=?, empreendimento_id=COALESCE(empreendimento_id,?) WHERE id=?")
+        .run(statusInicial, empreendimento_id, lead.id);
+      return { venda_id: rv.lastInsertRowid, lead_id: lead.id, status: statusInicial };
     })();
 
     ok(res, resultado);
@@ -3148,9 +3155,10 @@ app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
     allVendas = db.prepare(vendasBase + ' ORDER BY v.criado_em DESC').all(empId);
   }
 
-  const byStatus = { reserva: [], proposta: [], aprovado: [], ativo: [] };
+  // reserva e proposta agora são a mesma coluna — ambos aparecem em "proposta"
+  const byStatus = { proposta: [], aprovado: [], ativo: [] };
   allVendas.forEach(v => {
-    const col = byStatus[v.status];
+    const col = v.status === 'reserva' ? byStatus.proposta : byStatus[v.status];
     if (col) {
       col.push({ ...v, condicao_proposta: v.condicao_proposta ? JSON.parse(v.condicao_proposta) : null });
     }
@@ -3180,13 +3188,11 @@ app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
 
   ok(res, {
     cadastros,
-    reserva:  byStatus.reserva,
     proposta: byStatus.proposta,
     aprovado: byStatus.aprovado,
     ativo:    byStatus.ativo,
     funil: {
       cadastros: cadastros.length,
-      reserva:   byStatus.reserva.length,
       proposta:  byStatus.proposta.length,
       aprovado:  byStatus.aprovado.length,
       ativo:     byStatus.ativo.length,

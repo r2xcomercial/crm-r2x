@@ -10107,11 +10107,10 @@ async function verEspelho(empId) {
 
 // ── KANBAN POR EMPREENDIMENTO ────────────────────────────────────────────────
 const EMP_KB_COLS = [
-  { status: 'cadastros', label: '👥 Cadastros',  color: '#94a3b8' },
-  { status: 'reserva',   label: '🔒 Reserva',    color: '#f59e0b' },
-  { status: 'proposta',  label: '📋 Proposta',   color: '#60a5fa' },
-  { status: 'aprovado',  label: '✅ Venda',      color: '#4ade80' },
-  { status: 'ativo',     label: '📄 Contrato',   color: '#a78bfa' },
+  { status: 'cadastros', label: '👥 Cadastros', color: '#94a3b8' },
+  { status: 'proposta',  label: '📋 Proposta',  color: '#60a5fa' },
+  { status: 'aprovado',  label: '✅ Venda',     color: '#4ade80' },
+  { status: 'ativo',     label: '📄 Contrato',  color: '#a78bfa' },
 ];
 
 async function renderEmpKanban(empId) {
@@ -10127,7 +10126,7 @@ async function renderEmpKanban(empId) {
   const fmt = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0}) : '—';
 
   // Funil de conversão
-  const total = funil.cadastros + funil.reserva + funil.proposta + funil.aprovado + funil.ativo;
+  const total = funil.cadastros + funil.proposta + funil.aprovado + funil.ativo;
   const funilHtml = `
     <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;align-items:center">
       ${EMP_KB_COLS.map((c,i) => {

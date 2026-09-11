@@ -1870,17 +1870,7 @@ async function reservarEEnviarProposta() {
     const empId  = window._empId;
     if (!leadId || !unitId || !empId) throw new Error('Dados incompletos. Recarregue e tente novamente.');
 
-    // 1. Reservar
-    const rv = await fetch('/api/vendas/reserva-rapida', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-crm-token': _corretorToken },
-      body: JSON.stringify({ empreendimento_id: empId, unidade_id: unitId, lead_id: leadId })
-    });
-    const rdData = await rv.json();
-    if (!rdData.ok) throw new Error(rdData.error || 'Erro ao reservar');
-    const vendaId = rdData.data.venda_id;
-
-    // 2. Montar condição de proposta
+    // Montar condição de proposta
     const p = _simParams;
     const condIdx = window._propostaCondIdx || 0;
     const c = p.condicoes[condIdx];
@@ -1899,14 +1889,14 @@ async function reservarEEnviarProposta() {
       data_proposta: new Date().toISOString().slice(0, 10)
     };
 
-    // 3. Enviar proposta
-    const pr = await fetch('/api/vendas/' + vendaId + '/kanban-status', {
-      method: 'PUT',
+    // Reservar + proposta em uma única chamada
+    const rv = await fetch('/api/vendas/reserva-rapida', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-crm-token': _corretorToken },
-      body: JSON.stringify({ status: 'proposta', condicao_proposta })
+      body: JSON.stringify({ empreendimento_id: empId, unidade_id: unitId, lead_id: leadId, condicao_proposta })
     });
-    const prData = await pr.json();
-    if (!prData.ok) throw new Error(prData.error || 'Erro ao enviar proposta');
+    const rdData = await rv.json();
+    if (!rdData.ok) throw new Error(rdData.error || 'Erro ao reservar');
 
     errEl.style.color = '#34d399';
     errEl.textContent = '✅ Reserva e proposta enviadas com sucesso! Aguarde aprovação do gestor.';
