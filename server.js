@@ -3200,12 +3200,23 @@ app.put('/api/vendas/:id/kanban-status', autenticar, (req, res) => {
   const { status: novoStatus, condicao_proposta } = req.body;
   const u = req.usuario;
 
-  const VALIDOS = ['reserva', 'proposta', 'aprovado', 'ativo'];
+  const VALIDOS = ['cadastros', 'reserva', 'proposta', 'aprovado', 'ativo'];
   if (!VALIDOS.includes(novoStatus)) return err(res, 'Status inválido');
 
   const venda = db.prepare('SELECT * FROM vendas WHERE id=?').get(vendaId);
   if (!venda) return err(res, 'Venda não encontrada', 404);
   if (venda.status === novoStatus) return ok(res, { id: vendaId, status: novoStatus });
+
+  // Mover para cadastros = cancelar reserva e liberar unidade
+  if (novoStatus === 'cadastros') {
+    if (!['admin','gestor'].includes(u?.perfil)) return err(res, 'Sem permissão', 403);
+    db.transaction(() => {
+      db.prepare("UPDATE vendas SET status='cancelado' WHERE id=?").run(vendaId);
+      db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(venda.unidade_id);
+      db.prepare("UPDATE leads SET status='novo' WHERE id=?").run(venda.lead_id);
+    })();
+    return ok(res, { id: vendaId, status: 'cancelado' });
+  }
 
   // Corretor só pode mover reserva → proposta (com condição obrigatória)
   if (u?.perfil === 'corretor') {

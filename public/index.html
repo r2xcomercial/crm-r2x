@@ -10200,7 +10200,7 @@ async function renderEmpKanban(empId) {
     const items = kb[col.status] || [];
     const cards = items.map(i => renderCard(i, col.status)).join('') ||
       `<div style="color:var(--text2);font-size:12px;text-align:center;padding:20px 0">Vazio</div>`;
-    const canDrop = isGestor && col.status !== 'cadastros';
+    const canDrop = isGestor;
     return `<div class="kanban-col"
       data-emp-col="${col.status}"
       ${canDrop ? `ondragover="empKbDragOver(event)" ondragleave="empKbDragLeave(event)" ondrop="empKbDrop(event,'${col.status}',${empId})"` : ''}>
@@ -10233,6 +10233,8 @@ function empKbDragOver(e) {
   e.preventDefault();
   const el = e.currentTarget;
   const colStatus = el.dataset.empCol;
+  // Bloquear drop de lead (cadastros) em outras colunas — lead não tem venda
+  if (_empKbDragFrom === 'cadastros' && colStatus !== 'cadastros') { e.dataTransfer.dropEffect = 'none'; return; }
   const col = EMP_KB_COLS.find(c => c.status === colStatus);
   if (col) el.style.outline = `2px dashed ${col.color}`;
 }
@@ -10241,6 +10243,8 @@ async function empKbDrop(e, targetCol, empId) {
   e.preventDefault();
   e.currentTarget.style.outline = '';
   if (!_empKbDragId || _empKbDragFrom === targetCol) return;
+  // Leads (cadastros) não podem ser movidos via drag — precisam de reserva
+  if (_empKbDragFrom === 'cadastros') return;
   await moverEmpKanban(_empKbDragId, targetCol, empId);
 }
 
