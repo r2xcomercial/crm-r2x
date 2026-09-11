@@ -376,9 +376,19 @@
     <textarea id="lead-obs" placeholder="Interesse, timing, perfil..."></textarea>
     <div id="lead-err" class="modal-err"></div>
     <div id="lead-ok"  class="modal-ok"></div>
-    <div class="modal-btns">
+    <div class="modal-btns" id="lead-btns-cadastrar">
       <button class="btn-cancel" onclick="fecharModal('modal-lead')">Cancelar</button>
       <button id="lead-submit-btn" class="btn-confirm" onclick="enviarLead()">Cadastrar</button>
+    </div>
+    <!-- Seção pós-cadastro: reservar + proposta -->
+    <div id="lead-proposta-section" style="display:none;margin-top:12px;border-top:1px solid #334155;padding-top:12px">
+      <div style="font-size:13px;font-weight:700;color:#34d399;margin-bottom:8px">✅ Cliente cadastrado! Deseja reservar e enviar proposta?</div>
+      <div id="lead-conds-html" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+      <div id="lead-proposta-err" class="modal-err"></div>
+      <div class="modal-btns">
+        <button class="btn-cancel" onclick="fecharModal('modal-lead')">Só cadastrar</button>
+        <button id="lead-proposta-btn" class="btn-confirm" style="background:#0f766e;border-color:#0d9488" onclick="reservarEEnviarProposta()">🏠 Reservar + Proposta</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1755,6 +1765,11 @@ function abrirCadastrarLead(unitId) {
   document.getElementById('lead-ok').textContent  = '';
   document.getElementById('lead-submit-btn').disabled  = false;
   document.getElementById('lead-submit-btn').textContent = 'Cadastrar';
+  document.getElementById('lead-btns-cadastrar').style.display = '';
+  document.getElementById('lead-proposta-section').style.display = 'none';
+  document.getElementById('lead-proposta-err').textContent = '';
+  window._leadNovoId = null;
+  window._propostaCondIdx = 0;
   document.getElementById('modal-lead').classList.add('open');
   setTimeout(() => document.getElementById('lead-nome').focus(), 80);
 }
@@ -1788,13 +1803,119 @@ async function enviarLead() {
     });
     const data = await r.json();
     if (!data.ok) throw new Error(data.error || 'Erro ao cadastrar');
-    okEl.textContent  = '✅ Cliente cadastrado com sucesso!';
-    btn.textContent   = 'Salvo ✓';
-    setTimeout(() => fecharModal('modal-lead'), 1800);
+    window._leadNovoId = data.data?.id || null;
+
+    // Se há unidade disponível selecionada e params de simulação, oferecer reserva+proposta
+    const u = _leadUnitId ? (window._units || []).find(x => x.id === _leadUnitId) : null;
+    const p = _simParams;
+    if (u && u.status === 'disponivel' && p && p.condicoes?.length && u.preco && !window._hideReserva) {
+      const preco = u.preco;
+      const entV = p.entrada_tipo === 'valor' ? (p.entrada_valor || 0) : preco * ((p.entrada_pct || 0) / 100);
+      const totalRef = preco * ((p.pRef || 0) / 100);
+      const saldo = preco - entV - totalRef;
+      window._propostaEntV = entV;
+      window._propostaSaldo = saldo;
+      window._propostaPreco = preco;
+      window._propostaCondIdx = 0;
+      const condsHtml = p.condicoes.map((c, i) => {
+        const pmv = calcPMT(saldo, c.nParc, c.juros || 0);
+        const total = entV + totalRef + c.nParc * pmv;
+        return `<label style="display:flex;align-items:flex-start;gap:8px;background:${i===0?'rgba(52,211,153,.1)':'rgba(51,65,85,.5)'};border:1px solid ${i===0?'#34d399':'#334155'};border-radius:8px;padding:8px 10px;cursor:pointer" id="lead-cond-card-${i}" onclick="selLeadCond(${i})">
+          <input type="radio" name="lead-cond" value="${i}" ${i===0?'checked':''} style="margin-top:2px">
+          <div>
+            <div style="font-size:12px;font-weight:700;color:#e2e8f0">${c.label || c.nParc+'x'} ${c.juros > 0 ? '· '+c.juros.toFixed(2)+'% a.m.' : '· sem juros'}</div>
+            <div style="font-size:11px;color:#94a3b8">${c.nParc}× ${fmt.format(pmv)}/mês · Total ${fmt0.format(total)}</div>
+          </div>
+        </label>`;
+      }).join('');
+      document.getElementById('lead-conds-html').innerHTML = condsHtml;
+      document.getElementById('lead-btns-cadastrar').style.display = 'none';
+      document.getElementById('lead-proposta-section').style.display = 'block';
+      btn.textContent = 'Salvo ✓';
+    } else {
+      okEl.textContent = '✅ Cliente cadastrado com sucesso!';
+      btn.textContent  = 'Salvo ✓';
+      setTimeout(() => fecharModal('modal-lead'), 1800);
+    }
   } catch(e) {
     errEl.textContent = e.message;
     btn.disabled = false;
     btn.textContent = 'Cadastrar';
+  }
+}
+
+function selLeadCond(idx) {
+  const p = _simParams;
+  if (!p) return;
+  window._propostaCondIdx = idx;
+  p.condicoes.forEach((_, i) => {
+    const card = document.getElementById('lead-cond-card-' + i);
+    if (!card) return;
+    card.style.background = i === idx ? 'rgba(52,211,153,.1)' : 'rgba(51,65,85,.5)';
+    card.style.borderColor = i === idx ? '#34d399' : '#334155';
+    const radio = card.querySelector('input[type=radio]');
+    if (radio) radio.checked = (i === idx);
+  });
+}
+
+async function reservarEEnviarProposta() {
+  const errEl = document.getElementById('lead-proposta-err');
+  const btn   = document.getElementById('lead-proposta-btn');
+  errEl.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Processando…';
+  try {
+    const leadId = window._leadNovoId;
+    const unitId = _leadUnitId;
+    const empId  = window._empId;
+    if (!leadId || !unitId || !empId) throw new Error('Dados incompletos. Recarregue e tente novamente.');
+
+    // 1. Reservar
+    const rv = await fetch('/api/vendas/reserva-rapida', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-crm-token': _corretorToken },
+      body: JSON.stringify({ empreendimento_id: empId, unidade_id: unitId, lead_id: leadId })
+    });
+    const rdData = await rv.json();
+    if (!rdData.ok) throw new Error(rdData.error || 'Erro ao reservar');
+    const vendaId = rdData.data.venda_id;
+
+    // 2. Montar condição de proposta
+    const p = _simParams;
+    const condIdx = window._propostaCondIdx || 0;
+    const c = p.condicoes[condIdx];
+    const entV  = window._propostaEntV;
+    const saldo = window._propostaSaldo;
+    const preco = window._propostaPreco;
+    const totalRef = preco - entV - saldo;
+    const pmv   = calcPMT(saldo, c.nParc, c.juros || 0);
+    const condicao_proposta = {
+      label: c.label || (c.nParc + 'x'),
+      nParc: c.nParc,
+      juros: c.juros || 0,
+      valor_entrada: Math.round(entV * 100) / 100,
+      parcela_mensal: Math.round(pmv * 100) / 100,
+      valor_total: Math.round((entV + totalRef + c.nParc * pmv) * 100) / 100,
+      data_proposta: new Date().toISOString().slice(0, 10)
+    };
+
+    // 3. Enviar proposta
+    const pr = await fetch('/api/vendas/' + vendaId + '/kanban-status', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-crm-token': _corretorToken },
+      body: JSON.stringify({ status: 'proposta', condicao_proposta })
+    });
+    const prData = await pr.json();
+    if (!prData.ok) throw new Error(prData.error || 'Erro ao enviar proposta');
+
+    errEl.style.color = '#34d399';
+    errEl.textContent = '✅ Reserva e proposta enviadas com sucesso! Aguarde aprovação do gestor.';
+    btn.textContent = 'Enviado ✓';
+    setTimeout(() => { fecharModal('modal-lead'); carregar(); }, 2200);
+  } catch(e) {
+    errEl.textContent = e.message;
+    btn.disabled = false;
+    btn.textContent = '🏠 Reservar + Proposta';
   }
 }
 

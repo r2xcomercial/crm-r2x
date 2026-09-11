@@ -3103,6 +3103,132 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
   }
 });
 
+// ─── KANBAN POR EMPREENDIMENTO ───────────────────────────────────────────────
+
+// GET /api/empreendimentos/:id/kanban — retorna dados das 5 colunas do funil
+app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
+  const empId = parseInt(req.params.id);
+  if (!empId) return err(res, 'ID inválido');
+  const u = req.usuario;
+
+  // Colunas de vendas ativas
+  const KANBAN_STATUS = ['reserva', 'proposta', 'aprovado', 'ativo'];
+  const vendasBase = `
+    SELECT v.id, v.status, v.valor, v.valor_total, v.condicao_proposta,
+           v.data_venda, v.criado_em, v.unidade_id, v.corretor_id,
+           l.id as lead_id, l.nome as lead_nome, l.telefone as lead_tel,
+           l.email as lead_email, l.cpf as lead_cpf,
+           u.lote, u.quadra, u.area_m2, u.preco as unidade_preco,
+           c.nome as corretor_nome
+    FROM vendas v
+    JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN unidades u ON u.id = v.unidade_id
+    LEFT JOIN corretores c ON c.id = v.corretor_id
+    WHERE v.empreendimento_id = ?
+      AND v.status IN ('reserva','proposta','aprovado','ativo')
+  `;
+  let allVendas;
+  if (u?.perfil === 'corretor' && u?.corretor_id) {
+    allVendas = db.prepare(vendasBase + ' AND v.corretor_id = ? ORDER BY v.criado_em DESC')
+      .all(empId, u.corretor_id);
+  } else {
+    allVendas = db.prepare(vendasBase + ' ORDER BY v.criado_em DESC').all(empId);
+  }
+
+  const byStatus = { reserva: [], proposta: [], aprovado: [], ativo: [] };
+  allVendas.forEach(v => {
+    const col = byStatus[v.status];
+    if (col) {
+      col.push({ ...v, condicao_proposta: v.condicao_proposta ? JSON.parse(v.condicao_proposta) : null });
+    }
+  });
+
+  // Coluna Cadastros: leads com empreendimento_id=X sem venda ativa neste empreendimento
+  const cadastrosQuery = `
+    SELECT l.id, l.nome, l.telefone, l.email, l.status as lead_status,
+           l.corretor_id, l.criado_em,
+           c.nome as corretor_nome
+    FROM leads l
+    LEFT JOIN corretores c ON c.id = l.corretor_id
+    WHERE l.empreendimento_id = ?
+      AND NOT EXISTS (
+        SELECT 1 FROM vendas v
+        WHERE v.lead_id = l.id AND v.empreendimento_id = ?
+          AND v.status NOT IN ('distrato','cancelado')
+      )
+  `;
+  let cadastros;
+  if (u?.perfil === 'corretor' && u?.corretor_id) {
+    cadastros = db.prepare(cadastrosQuery + ' AND l.corretor_id = ? ORDER BY l.criado_em DESC')
+      .all(empId, empId, u.corretor_id);
+  } else {
+    cadastros = db.prepare(cadastrosQuery + ' ORDER BY l.criado_em DESC').all(empId, empId);
+  }
+
+  ok(res, {
+    cadastros,
+    reserva:  byStatus.reserva,
+    proposta: byStatus.proposta,
+    aprovado: byStatus.aprovado,
+    ativo:    byStatus.ativo,
+    funil: {
+      cadastros: cadastros.length,
+      reserva:   byStatus.reserva.length,
+      proposta:  byStatus.proposta.length,
+      aprovado:  byStatus.aprovado.length,
+      ativo:     byStatus.ativo.length,
+    }
+  });
+});
+
+// PUT /api/vendas/:id/kanban-status — move card entre colunas do funil
+app.put('/api/vendas/:id/kanban-status', autenticar, (req, res) => {
+  const vendaId = parseInt(req.params.id);
+  const { status: novoStatus, condicao_proposta } = req.body;
+  const u = req.usuario;
+
+  const VALIDOS = ['proposta', 'aprovado', 'ativo'];
+  if (!VALIDOS.includes(novoStatus)) return err(res, 'Status inválido');
+
+  const venda = db.prepare('SELECT * FROM vendas WHERE id=?').get(vendaId);
+  if (!venda) return err(res, 'Venda não encontrada', 404);
+
+  // Corretor só pode mover reserva → proposta (com condição obrigatória)
+  if (u?.perfil === 'corretor') {
+    if (venda.corretor_id !== u.corretor_id) return err(res, 'Sem permissão', 403);
+    if (novoStatus !== 'proposta') return err(res, 'Corretores só podem enviar proposta', 403);
+    if (venda.status !== 'reserva') return err(res, 'Apenas reservas podem virar proposta');
+    if (!condicao_proposta) return err(res, 'Informe a condição de pagamento da proposta');
+  } else {
+    // Gestor/admin: sequência obrigatória
+    const FLUXO = { reserva: ['proposta'], proposta: ['aprovado'], aprovado: ['ativo'] };
+    const permitidos = FLUXO[venda.status] || [];
+    if (!permitidos.includes(novoStatus))
+      return err(res, `Não é possível mover de "${venda.status}" para "${novoStatus}"`);
+  }
+
+  const updates = ['status=?'];
+  const params = [novoStatus];
+  if (condicao_proposta) { updates.push('condicao_proposta=?'); params.push(JSON.stringify(condicao_proposta)); }
+  // Quando aprovado pelo gestor, atualiza data_venda se era reserva/proposta
+  if (novoStatus === 'ativo') { updates.push('data_venda=?'); params.push(new Date().toISOString().slice(0,10)); }
+  params.push(vendaId);
+
+  db.prepare(`UPDATE vendas SET ${updates.join(',')} WHERE id=?`).run(...params);
+
+  // Atualiza status do lead conforme funil
+  const leadStatus = { proposta: 'proposta', aprovado: 'vendido', ativo: 'vendido' };
+  if (leadStatus[novoStatus]) {
+    db.prepare("UPDATE leads SET status=? WHERE id=?").run(leadStatus[novoStatus], venda.lead_id);
+  }
+  // Quando contrato: marca unidade como vendido
+  if (novoStatus === 'ativo') {
+    db.prepare("UPDATE unidades SET status='vendido' WHERE id=?").run(venda.unidade_id);
+  }
+
+  ok(res, { id: vendaId, status: novoStatus });
+});
+
 // ─── ASSINATURA DIGITAL (ClickSign) ──────────────────────────────────────────
 
 app.post("/api/vendas/:id/enviar-assinatura", autenticar, async (req, res) => {
@@ -4561,6 +4687,7 @@ try { db.exec('ALTER TABLE vendas ADD COLUMN distrato_data TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vendas ADD COLUMN distrato_motivo TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vendas ADD COLUMN distrato_comissao_r2x TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vendas ADD COLUMN valor_total REAL'); } catch(_) {}
+try { db.exec('ALTER TABLE vendas ADD COLUMN condicao_proposta TEXT'); } catch(_) {}
 
 // Tabela de compradores adicionais (cônjuge, sócio, condomínio)
 db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (

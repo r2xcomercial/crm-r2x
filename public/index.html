@@ -10038,6 +10038,7 @@ async function verEspelho(empId) {
       <button class="btn btn-secondary" onclick="verUnidades(${empId})" style="font-size:12px;padding:6px 12px">📋 Lista</button>
       <button class="btn btn-secondary" onclick="abrirReajusteTabela(${empId})" style="font-size:12px;padding:6px 12px;color:#60a5fa;border-color:rgba(96,165,250,.4)" title="Reajustar preços da tabela de unidades">📈 Reajustar</button>
       <button class="btn btn-secondary" onclick="abrirExportarTabela(${empId})" style="font-size:12px;padding:6px 12px;color:#4ade80;border-color:rgba(74,222,128,.4)" title="Gerar tabela de vendas com simulação de pagamento">📄 Exportar Tabela</button>
+      <button class="btn btn-secondary" onclick="renderEmpKanban(${empId})" style="font-size:12px;padding:6px 12px;color:#34d399;border-color:rgba(52,211,153,.4)" title="Funil de vendas Kanban">📊 Kanban</button>
       <label class="btn btn-secondary" style="font-size:12px;padding:6px 12px;cursor:pointer" title="Envie o PDF ou imagem da planta urbanística para importar lotes automaticamente">
         📐 Importar da Planta
         <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" style="display:none" onchange="analisarPlanta(this,${empId},'${(emp.nome||'').replace(/'/g,"\\'")}')">
@@ -10094,6 +10095,234 @@ async function verEspelho(empId) {
       ${isPredio ? renderEspelhoPredio(grupoKeys, grupos, empId) : renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId)}
     </div>
   `;
+}
+
+// ── KANBAN POR EMPREENDIMENTO ────────────────────────────────────────────────
+const EMP_KB_COLS = [
+  { status: 'cadastros', label: '👥 Cadastros',  color: '#94a3b8' },
+  { status: 'reserva',   label: '🔒 Reserva',    color: '#f59e0b' },
+  { status: 'proposta',  label: '📋 Proposta',   color: '#60a5fa' },
+  { status: 'aprovado',  label: '✅ Venda',      color: '#4ade80' },
+  { status: 'ativo',     label: '📄 Contrato',   color: '#a78bfa' },
+];
+
+async function renderEmpKanban(empId) {
+  const emp = (currentData.emp||[]).find(e => e.id === empId) || {};
+  document.getElementById('page-title').textContent = `Kanban — ${emp.nome||''}`;
+  document.getElementById('content').innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)">Carregando funil...</div>';
+
+  const r = await get(`/api/empreendimentos/${empId}/kanban`);
+  if (!r.ok) { document.getElementById('content').innerHTML = `<div style="padding:40px;color:var(--danger)">❌ ${r.error}</div>`; return; }
+  const kb = r.data;
+  const funil = kb.funil;
+  const isGestor = ['admin','gestor'].includes(USUARIO.perfil);
+  const fmt = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0}) : '—';
+
+  // Funil de conversão
+  const total = funil.cadastros + funil.reserva + funil.proposta + funil.aprovado + funil.ativo;
+  const funilHtml = `
+    <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;align-items:center">
+      ${EMP_KB_COLS.map((c,i) => {
+        const n = funil[c.status] || 0;
+        const pct = i === 0 ? 100 : (total > 0 ? (n / (funil.cadastros||1) * 100).toFixed(0) : 0);
+        return `<div style="background:var(--card);border:1px solid var(--border);border-top:3px solid ${c.color};border-radius:8px;padding:8px 14px;min-width:80px;text-align:center">
+          <div style="font-size:20px;font-weight:900;color:${c.color}">${n}</div>
+          <div style="font-size:10px;color:var(--text2);margin-top:1px">${c.label.replace(/[^ ]* /,'')}</div>
+          ${i>0?`<div style="font-size:9px;color:var(--text2);margin-top:1px">${pct}% do total</div>`:''}
+        </div>
+        ${i < EMP_KB_COLS.length-1 ? `<span style="color:var(--text2);font-size:16px">→</span>` : ''}`;
+      }).join('')}
+      <button onclick="verEspelho(${empId})" class="btn btn-secondary" style="font-size:12px;padding:6px 12px;margin-left:auto">← Espelho</button>
+      <button onclick="renderEmpKanban(${empId})" class="btn btn-secondary" style="font-size:12px;padding:6px 12px">🔄</button>
+    </div>`;
+
+  // Renderiza cards por coluna
+  const renderCard = (item, col) => {
+    const isCad = col === 'cadastros';
+    const nome  = isCad ? item.nome : item.lead_nome;
+    const tel   = isCad ? item.telefone : item.lead_tel;
+    const cor   = item.corretor_nome ? `👤 ${item.corretor_nome.split(' ')[0]}` : '';
+    const unid  = !isCad && item.lote ? `Lote ${item.lote}${item.quadra?' · Q'+item.quadra:''}` : '';
+    const valor = !isCad && item.valor ? `💰 ${fmt(item.valor)}` : '';
+    const cond  = !isCad && item.condicao_proposta ? `📋 ${item.condicao_proposta.label||''} · ${fmt(item.condicao_proposta.parcela_mensal)}/mês` : '';
+
+    // Botões de ação por perfil e coluna
+    let acoes = '';
+    if (isGestor && !isCad) {
+      if (col === 'proposta') {
+        acoes = `
+          <div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap" onclick="event.stopPropagation()">
+            <button onclick="moverEmpKanban(${item.id},'aprovado',${empId})" style="flex:1;padding:5px 8px;border-radius:6px;border:none;background:rgba(74,222,128,.2);color:#4ade80;font-size:11px;font-weight:700;cursor:pointer">✅ Aprovar Venda</button>
+            <button onclick="verDetalheVendaKanban(${item.id})" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:11px;cursor:pointer">👁</button>
+          </div>`;
+      } else if (col === 'aprovado') {
+        acoes = `
+          <div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap" onclick="event.stopPropagation()">
+            <button onclick="moverEmpKanban(${item.id},'ativo',${empId})" style="flex:1;padding:5px 8px;border-radius:6px;border:none;background:rgba(167,139,250,.2);color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer">📄 Gerar Contrato</button>
+            <button onclick="verDetalheVendaKanban(${item.id})" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:11px;cursor:pointer">👁</button>
+          </div>`;
+      } else if (col === 'ativo') {
+        acoes = `<div style="margin-top:8px" onclick="event.stopPropagation()">
+          <button onclick="verDetalheVendaKanban(${item.id})" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:11px;cursor:pointer">📄 Ver Contrato</button>
+        </div>`;
+      }
+    }
+    if (!isGestor && col === 'reserva') {
+      acoes = `<div style="margin-top:8px" onclick="event.stopPropagation()">
+        <button onclick="abrirPropostaCorretor(${item.id},${empId})" style="width:100%;padding:5px 8px;border-radius:6px;border:none;background:rgba(96,165,250,.2);color:#60a5fa;font-size:11px;font-weight:700;cursor:pointer">📋 Enviar Proposta</button>
+      </div>`;
+    }
+
+    return `<div class="kanban-card emp-kb-card"
+      ${!isCad && isGestor && col !== 'cadastros' && col !== 'ativo' ? `draggable="true" ondragstart="empKbDragStart(event,${item.id},'${col}')" ondragend="empKbDragEnd(event)"` : ''}
+      onclick="${isCad ? `editLead(${item.id})` : `verDetalheVendaKanban(${item.id})`}">
+      <div class="kc-nome">${nome||'—'}</div>
+      ${tel ? `<div class="kc-tel"><a href="https://wa.me/55${(tel||'').replace(/\D/g,'')}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:none">📱 ${tel}</a></div>` : ''}
+      <div class="kc-meta" style="display:flex;flex-direction:column;gap:2px;margin-top:4px">
+        ${unid ? `<span>${unid}</span>` : ''}
+        ${valor ? `<span style="color:var(--success)">${valor}</span>` : ''}
+        ${cor ? `<span>${cor}</span>` : ''}
+        ${cond ? `<span style="color:var(--accent2);font-size:10px">${cond}</span>` : ''}
+      </div>
+      ${acoes}
+    </div>`;
+  };
+
+  const colsHtml = EMP_KB_COLS.map(col => {
+    const items = kb[col.status] || [];
+    const cards = items.map(i => renderCard(i, col.status)).join('') ||
+      `<div style="color:var(--text2);font-size:12px;text-align:center;padding:20px 0">Vazio</div>`;
+    const canDrop = isGestor && col.status !== 'cadastros';
+    return `<div class="kanban-col"
+      data-emp-col="${col.status}"
+      ${canDrop ? `ondragover="empKbDragOver(event)" ondragleave="empKbDragLeave(event)" ondrop="empKbDrop(event,'${col.status}',${empId})"` : ''}>
+      <div class="kanban-col-head" style="border-top:3px solid ${col.color}">
+        <span style="color:${col.color}">${col.label}</span>
+        <span style="background:${col.color}22;color:${col.color};padding:2px 8px;border-radius:10px;font-size:11px">${items.length}</span>
+      </div>
+      <div class="kanban-col-body" data-emp-col="${col.status}"
+        ${canDrop ? `ondragover="empKbDragOver(event)" ondragleave="empKbDragLeave(event)" ondrop="empKbDrop(event,'${col.status}',${empId})"` : ''}>${cards}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('content').innerHTML = funilHtml + `<div class="kanban-board">${colsHtml}</div>`;
+}
+
+// Drag-and-drop do kanban de empreendimento
+let _empKbDragId = null, _empKbDragFrom = null;
+
+function empKbDragStart(e, vendaId, fromCol) {
+  _empKbDragId = vendaId; _empKbDragFrom = fromCol;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => { if (e.target) e.target.style.opacity = '0.4'; }, 0);
+}
+function empKbDragEnd(e) {
+  if (e.target) e.target.style.opacity = '';
+  document.querySelectorAll('[data-emp-col]').forEach(el => { el.style.outline = ''; });
+  _empKbDragId = null; _empKbDragFrom = null;
+}
+function empKbDragOver(e) {
+  e.preventDefault();
+  const el = e.currentTarget;
+  const colStatus = el.dataset.empCol;
+  const col = EMP_KB_COLS.find(c => c.status === colStatus);
+  if (col) el.style.outline = `2px dashed ${col.color}`;
+}
+function empKbDragLeave(e) { e.currentTarget.style.outline = ''; }
+async function empKbDrop(e, targetCol, empId) {
+  e.preventDefault();
+  e.currentTarget.style.outline = '';
+  if (!_empKbDragId || _empKbDragFrom === targetCol) return;
+  await moverEmpKanban(_empKbDragId, targetCol, empId);
+}
+
+async function moverEmpKanban(vendaId, novoStatus, empId) {
+  const r = await put(`/api/vendas/${vendaId}/kanban-status`, { status: novoStatus });
+  if (!r.ok) { toast(r.error || 'Erro ao mover card', 'error'); return; }
+  toast('Movido ✓');
+  renderEmpKanban(empId);
+}
+
+function verDetalheVendaKanban(vendaId) {
+  navigate('vendas');
+  // Abre o detalhe da venda após navegar
+  setTimeout(() => openVendaDetalhe && openVendaDetalhe(vendaId), 500);
+}
+
+async function abrirPropostaCorretor(vendaId, empId) {
+  // Busca dados do empreendimento para pegar espelho_params
+  const empObj = (currentData.emp||[]).find(e => e.id === empId) || {};
+  let params = null;
+  try { params = empObj.espelho_params ? JSON.parse(empObj.espelho_params) : null; } catch(_) {}
+
+  if (!params || !params.condicoes?.length) {
+    openModal('📋 Enviar Proposta', `
+      <div style="padding:16px;text-align:center;color:var(--text2)">
+        <div style="font-size:32px;margin-bottom:10px">⚙️</div>
+        <div style="font-weight:700;margin-bottom:6px">Condições de pagamento não configuradas</div>
+        <div style="font-size:13px">O gestor precisa configurar as condições de parcelamento no Espelho Público deste empreendimento antes de enviar propostas.</div>
+      </div>`);
+    return;
+  }
+
+  const fmt = v => Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0});
+  const pmt = (saldo, n, j) => {
+    if (!n) return 0; if (!j) return saldo/n;
+    const i = j/100; return saldo*(i*Math.pow(1+i,n))/(Math.pow(1+i,n)-1);
+  };
+
+  // Precisamos do valor da unidade — buscar via venda
+  const vR = await get(`/api/vendas/${vendaId}`).catch(()=>({ok:false}));
+  const valorUnidade = vR.ok ? (vR.data?.valor || 0) : 0;
+  const entFixo = params.entrada_tipo === 'valor';
+  const entV = entFixo ? (params.entrada_valor||0) : valorUnidade * ((params.entrada_pct||0)/100);
+  const saldo = valorUnidade - entV;
+
+  const condicoesHtml = params.condicoes.map((c,i) => {
+    const parcMensal = pmt(saldo, c.nParc, c.juros||0);
+    return `<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;border:2px solid var(--border);cursor:pointer;transition:border-color .15s" id="cond-label-${i}">
+      <input type="radio" name="cond-proposta" value="${i}" style="margin-top:2px" onchange="selecionarCondProposta(${i})">
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:13px">${c.label || c.nParc+'x'}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">${c.nParc}x ${fmt(parcMensal)}/mês${c.juros?` · ${c.juros}% a.m.`:' · sem juros'}</div>
+        <div style="font-size:11px;color:var(--success);margin-top:1px">Entrada: ${fmt(entV)} · Total: ${fmt(entV + c.nParc*parcMensal)}</div>
+      </div>
+    </label>`;
+  }).join('');
+
+  openModal('📋 Enviar Proposta', `
+    <div style="margin-bottom:12px">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:10px">Selecione a condição de pagamento acordada com o cliente:</div>
+      <div style="display:flex;flex-direction:column;gap:8px" id="lista-conds-proposta">${condicoesHtml}</div>
+    </div>
+    <div id="prop-err" style="color:var(--danger);font-size:12px;margin-top:4px"></div>`,
+    async () => {
+      const sel = document.querySelector('input[name="cond-proposta"]:checked');
+      if (!sel) { document.getElementById('prop-err').textContent = 'Selecione uma condição.'; throw new Error(''); }
+      const idx = parseInt(sel.value);
+      const c = params.condicoes[idx];
+      const parcMensal = pmt(saldo, c.nParc, c.juros||0);
+      const cp = {
+        label: c.label || c.nParc+'x',
+        nParc: c.nParc,
+        juros: c.juros||0,
+        valor_entrada: entV,
+        parcela_mensal: Math.round(parcMensal*100)/100,
+        valor_total: Math.round((entV + c.nParc*parcMensal)*100)/100,
+        data_proposta: new Date().toISOString().slice(0,10)
+      };
+      const r = await put(`/api/vendas/${vendaId}/kanban-status`, { status: 'proposta', condicao_proposta: cp });
+      if (!r.ok) throw new Error(r.error || 'Erro ao enviar proposta');
+      toast('✅ Proposta enviada!');
+      setTimeout(() => renderEmpKanban(empId), 300);
+    });
+}
+
+function selecionarCondProposta(idx) {
+  document.querySelectorAll('[id^="cond-label-"]').forEach((el,i) => {
+    el.style.borderColor = i === idx ? 'var(--accent)' : 'var(--border)';
+    el.style.background  = i === idx ? 'rgba(0,196,180,.06)' : '';
+  });
 }
 
 async function gerenciarEspelhoPublico(empId) {
