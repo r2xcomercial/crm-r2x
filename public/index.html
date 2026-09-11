@@ -11206,7 +11206,7 @@ async function _carregarLeadsParaReserva(unidadeId, empId) {
   const area = document.getElementById('reserva-lead-area');
   if (!area) return;
   const r = await get('/api/leads');
-  const leads = (r.data || []).filter(l => l.status !== 'reserva' && l.status !== 'vendido');
+  const leads = (r.data || []);
   const loading = document.getElementById('reserva-lead-loading');
   if (!loading) return;
 
@@ -11214,8 +11214,8 @@ async function _carregarLeadsParaReserva(unidadeId, empId) {
     loading.innerHTML = `
       <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:14px;text-align:center">
         <div style="font-size:20px;margin-bottom:6px">📋</div>
-        <div style="font-size:13px;font-weight:600;color:var(--warning);margin-bottom:4px">Nenhum lead cadastrado</div>
-        <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Cadastre o cliente como lead antes de fazer a reserva.</div>
+        <div style="font-size:13px;font-weight:600;color:var(--warning);margin-bottom:4px">Nenhum cliente cadastrado</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:10px">Cadastre o cliente antes de fazer a reserva.</div>
         <button onclick="closeModal();_cpTab='clientes';renderCorretorPainel('clientes')"
           style="padding:8px 16px;border-radius:8px;border:none;background:var(--accent);color:var(--navy);font-weight:700;font-size:13px;cursor:pointer">
           + Cadastrar Cliente agora
@@ -11253,12 +11253,17 @@ function _filtrarLeadsReserva() {
   const filtrados = q
     ? window._rrLeads.filter(l => (l.nome||'').toLowerCase().includes(q) || (l.telefone||'').includes(q))
     : window._rrLeads;
-  lista.innerHTML = filtrados.slice(0, 20).map(l => `
+  const statusLabel = {novo:'Captado',qualificado:'Qualificado',com_corretor:'Distribuído',visitou:'Visita',proposta:'Proposta',reserva:'Reserva',vendido:'Venda',sem_venda:'Sem venda',perdido:'Sem venda'};
+  const statusColor = {novo:'#94a3b8',qualificado:'#60a5fa',com_corretor:'#818cf8',visitou:'#34d399',proposta:'#f59e0b',reserva:'#f97316',vendido:'#4ade80',sem_venda:'#f87171',perdido:'#f87171'};
+  lista.innerHTML = filtrados.slice(0, 50).map(l => `
     <div onclick="_selecionarLeadReserva(${l.id},'${(l.nome||'').replace(/'/g,"\\'")}',' ${(l.telefone||'').replace(/'/g,"\\'")}')"
       style="padding:8px 10px;border-radius:7px;cursor:pointer;border:1px solid ${window._rrLeadId===l.id?'var(--accent)':'var(--border)'};
-             background:${window._rrLeadId===l.id?'rgba(0,196,180,.1)':'transparent'};transition:all .1s">
-      <div style="font-size:13px;font-weight:600;color:${window._rrLeadId===l.id?'var(--accent)':'var(--text)'}">${l.nome||'—'}</div>
-      <div style="font-size:11px;color:var(--text2)">${l.telefone||''}</div>
+             background:${window._rrLeadId===l.id?'rgba(0,196,180,.1)':'transparent'};transition:all .1s;display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:${window._rrLeadId===l.id?'var(--accent)':'var(--text)'}">${l.nome||'—'}</div>
+        <div style="font-size:11px;color:var(--text2)">${l.telefone||''}</div>
+      </div>
+      <span style="font-size:10px;font-weight:700;color:${statusColor[l.status]||'#94a3b8'};white-space:nowrap">${statusLabel[l.status]||l.status||''}</span>
     </div>`).join('') || '<div style="font-size:12px;color:var(--text2);padding:8px">Nenhum cliente encontrado.</div>';
 }
 
