@@ -38,8 +38,10 @@
   .export-btn svg { flex-shrink:0; }
 
   /* Login corretor */
-  .corretor-logado { display:flex; align-items:center; gap:8px; font-size:12px; color:#4ade80; font-weight:600; white-space:nowrap; }
+  .corretor-logado { display:flex; align-items:center; gap:8px; font-size:12px; color:#4ade80; font-weight:600; white-space:nowrap; flex-wrap:wrap; }
   .corretor-logado button { background:transparent; border:1px solid #334155; border-radius:6px; color:#94a3b8; font-size:11px; padding:4px 8px; cursor:pointer; }
+  .btn-painel { display:inline-flex; align-items:center; gap:5px; background:#14b8a6; color:#fff; border:none; border-radius:7px; padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer; text-decoration:none; white-space:nowrap; transition:background .15s; }
+  .btn-painel:hover { background:#0d9488; }
 
   /* Tela de login fullscreen */
   #login-wall { display:none; position:fixed; inset:0; background:#0f172a; z-index:9999; align-items:center; justify-content:center; }
@@ -455,6 +457,10 @@ function renderCorretorArea() {
   el.innerHTML = `<div class="corretor-logado">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
     ${_corretorNome}
+    <a href="/" class="btn-painel">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Meu Painel
+    </a>
     <button onclick="fazerLogout()">Sair</button>
   </div>`;
 }
