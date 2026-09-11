@@ -239,6 +239,8 @@
   .kanban-col-body { padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto; max-height: calc(100vh - 200px); }
   .kanban-card { background: var(--card2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; cursor: pointer; transition: border-color .15s, transform .1s; }
   .kanban-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .kanban-card[draggable="true"] { cursor: grab; }
+  .kanban-card[draggable="true"]:active { cursor: grabbing; }
   .kanban-card .kc-nome { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
   .kanban-card .kc-tel { font-size: 12px; color: var(--accent); margin-bottom: 3px; }
   .kanban-card .kc-meta { font-size: 11px; color: var(--text2); }
@@ -10180,7 +10182,7 @@ async function renderEmpKanban(empId) {
     }
 
     return `<div class="kanban-card emp-kb-card"
-      ${!isCad && isGestor && col !== 'cadastros' && col !== 'ativo' ? `draggable="true" ondragstart="empKbDragStart(event,${item.id},'${col}')" ondragend="empKbDragEnd(event)"` : ''}
+      ${!isCad && isGestor ? `draggable="true" ondragstart="empKbDragStart(event,${item.id},'${col}')" ondragend="empKbDragEnd(event)"` : ''}
       onclick="${isCad ? `editLead(${item.id})` : `verDetalheVendaKanban(${item.id})`}">
       <div class="kc-nome">${nome||'—'}</div>
       ${tel ? `<div class="kc-tel"><a href="https://wa.me/55${(tel||'').replace(/\D/g,'')}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:none">📱 ${tel}</a></div>` : ''}

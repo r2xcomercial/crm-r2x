@@ -3200,11 +3200,12 @@ app.put('/api/vendas/:id/kanban-status', autenticar, (req, res) => {
   const { status: novoStatus, condicao_proposta } = req.body;
   const u = req.usuario;
 
-  const VALIDOS = ['proposta', 'aprovado', 'ativo'];
+  const VALIDOS = ['reserva', 'proposta', 'aprovado', 'ativo'];
   if (!VALIDOS.includes(novoStatus)) return err(res, 'Status inválido');
 
   const venda = db.prepare('SELECT * FROM vendas WHERE id=?').get(vendaId);
   if (!venda) return err(res, 'Venda não encontrada', 404);
+  if (venda.status === novoStatus) return ok(res, { id: vendaId, status: novoStatus });
 
   // Corretor só pode mover reserva → proposta (com condição obrigatória)
   if (u?.perfil === 'corretor') {
@@ -3212,32 +3213,33 @@ app.put('/api/vendas/:id/kanban-status', autenticar, (req, res) => {
     if (novoStatus !== 'proposta') return err(res, 'Corretores só podem enviar proposta', 403);
     if (venda.status !== 'reserva') return err(res, 'Apenas reservas podem virar proposta');
     if (!condicao_proposta) return err(res, 'Informe a condição de pagamento da proposta');
-  } else {
-    // Gestor/admin: sequência obrigatória
-    const FLUXO = { reserva: ['proposta'], proposta: ['aprovado'], aprovado: ['ativo'] };
-    const permitidos = FLUXO[venda.status] || [];
-    if (!permitidos.includes(novoStatus))
-      return err(res, `Não é possível mover de "${venda.status}" para "${novoStatus}"`);
   }
+  // Gestor/admin: movimento livre entre todos os status de venda
 
   const updates = ['status=?'];
   const params = [novoStatus];
   if (condicao_proposta) { updates.push('condicao_proposta=?'); params.push(JSON.stringify(condicao_proposta)); }
-  // Quando aprovado pelo gestor, atualiza data_venda se era reserva/proposta
   if (novoStatus === 'ativo') { updates.push('data_venda=?'); params.push(new Date().toISOString().slice(0,10)); }
   params.push(vendaId);
 
-  db.prepare(`UPDATE vendas SET ${updates.join(',')} WHERE id=?`).run(...params);
+  db.transaction(() => {
+    db.prepare(`UPDATE vendas SET ${updates.join(',')} WHERE id=?`).run(...params);
 
-  // Atualiza status do lead conforme funil
-  const leadStatus = { proposta: 'proposta', aprovado: 'vendido', ativo: 'vendido' };
-  if (leadStatus[novoStatus]) {
-    db.prepare("UPDATE leads SET status=? WHERE id=?").run(leadStatus[novoStatus], venda.lead_id);
-  }
-  // Quando contrato: marca unidade como vendido
-  if (novoStatus === 'ativo') {
-    db.prepare("UPDATE unidades SET status='vendido' WHERE id=?").run(venda.unidade_id);
-  }
+    // Sincroniza status do lead conforme posição no funil
+    const leadStatus = { reserva: 'reserva', proposta: 'proposta', aprovado: 'vendido', ativo: 'vendido' };
+    if (leadStatus[novoStatus]) {
+      db.prepare("UPDATE leads SET status=? WHERE id=?").run(leadStatus[novoStatus], venda.lead_id);
+    }
+
+    // Sincroniza status da unidade
+    if (novoStatus === 'ativo') {
+      // Chegou no contrato → unidade vendida
+      db.prepare("UPDATE unidades SET status='vendido' WHERE id=?").run(venda.unidade_id);
+    } else if (venda.status === 'ativo') {
+      // Saiu do contrato (movimento regressivo) → volta pra reservado
+      db.prepare("UPDATE unidades SET status='reservado' WHERE id=?").run(venda.unidade_id);
+    }
+  })();
 
   ok(res, { id: vendaId, status: novoStatus });
 });
