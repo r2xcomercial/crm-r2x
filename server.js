@@ -4560,6 +4560,7 @@ try { db.exec('ALTER TABLE vendas ADD COLUMN comissao_corretor_detalhes TEXT'); 
 try { db.exec('ALTER TABLE vendas ADD COLUMN distrato_data TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vendas ADD COLUMN distrato_motivo TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vendas ADD COLUMN distrato_comissao_r2x TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE vendas ADD COLUMN valor_total REAL'); } catch(_) {}
 
 // Tabela de compradores adicionais (cônjuge, sócio, condomínio)
 db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (
