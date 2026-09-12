@@ -412,10 +412,11 @@ let _empTipo = 'loteamento';
 let _simParams = null;
 
 // ── Auth corretor ─────────────────────────────────────────────────────────────
-let _corretorToken = localStorage.getItem('espelho_token')    || null;
-let _corretorNome  = localStorage.getItem('espelho_nome')     || null;
-let _corretorId    = localStorage.getItem('espelho_corretor') || null;
-let _leadUnitId    = null;
+let _corretorToken  = localStorage.getItem('espelho_token')    || null;
+let _corretorNome   = localStorage.getItem('espelho_nome')     || null;
+let _corretorId     = localStorage.getItem('espelho_corretor') || null;
+let _corretorPerfil = localStorage.getItem('espelho_perfil')   || null;
+let _leadUnitId     = null;
 
 function fecharModal(id) {
   document.getElementById(id).classList.remove('open');
@@ -441,15 +442,17 @@ async function fazerLogin() {
     const r = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email, senha}) });
     const d = await r.json();
     if (!d.ok) { errEl.textContent = d.error || 'Credenciais inválidas.'; errEl.style.display = 'block'; btn.disabled=false; btn.textContent='Entrar'; return; }
-    if (!['corretor','gestor','admin'].includes(d.data?.perfil)) {
+    if (!['corretor','gestor','admin','incorporador'].includes(d.data?.perfil)) {
       errEl.textContent = 'Acesso permitido apenas para corretores.'; errEl.style.display = 'block'; btn.disabled=false; btn.textContent='Entrar'; return;
     }
-    _corretorToken = d.data.token;
-    _corretorNome  = d.data.nome;
-    _corretorId    = d.data.corretor_id;
+    _corretorToken  = d.data.token;
+    _corretorNome   = d.data.nome;
+    _corretorId     = d.data.corretor_id;
+    _corretorPerfil = d.data.perfil;
     localStorage.setItem('espelho_token',    _corretorToken);
     localStorage.setItem('espelho_nome',     _corretorNome);
     localStorage.setItem('espelho_corretor', _corretorId||'');
+    localStorage.setItem('espelho_perfil',   _corretorPerfil||'');
     document.getElementById('login-wall').classList.remove('active');
     renderCorretorArea();
     carregar().then(iniciarContador);
@@ -459,12 +462,13 @@ async function fazerLogin() {
 }
 
 function fazerLogout() {
-  _corretorToken = null; _corretorNome = null; _corretorId = null;
+  _corretorToken = null; _corretorNome = null; _corretorId = null; _corretorPerfil = null;
   const fab = document.getElementById('fab-lead');
   if (fab) fab.style.display = 'none';
   localStorage.removeItem('espelho_token');
   localStorage.removeItem('espelho_nome');
   localStorage.removeItem('espelho_corretor');
+  localStorage.removeItem('espelho_perfil');
   clearInterval(timer);
   document.getElementById('conteudo').innerHTML = '<div class="loading">Carregando espelho de vendas...</div>';
   document.getElementById('login-wall').classList.add('active');
@@ -478,7 +482,7 @@ function fazerLogout() {
 
 function renderCorretorArea() {
   const fab = document.getElementById('fab-lead');
-  if (fab) fab.style.display = 'flex';
+  if (fab) fab.style.display = _corretorPerfil === 'incorporador' ? 'none' : 'flex';
   const el = document.getElementById('corretor-area');
   if (!el) return;
   el.innerHTML = `<div class="corretor-logado">
