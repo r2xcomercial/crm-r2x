@@ -15725,16 +15725,10 @@ window._corretorEmpPerms = {}; // empId → { pode_ver_tabela, pode_reservar }
 async function renderCorretorPainel(tab) {
   if (tab) _cpTab = tab;
 
-  // Auto-navega para o espelho se corretor tiver exatamente 1 empreendimento liberado
-  if (!tab && !window._corretorAutoNavDone) {
-    window._corretorAutoNavDone = true;
+  // Pré-carrega empreendimentos no cache para verEspelho encontrá-los sem "undefined"
+  if (!currentData.emp?.length) {
     const erEmp = await get('/api/corretor/empreendimentos');
-    if (erEmp.ok) {
-      const acessiveis = (erEmp.data || []).filter(e => e.status === 'ativo' || e.status === 'lancamento' || !e.status);
-      // Garante que currentData.emp contém os dados para verEspelho encontrá-los
-      if (!currentData.emp?.length) currentData.emp = erEmp.data || [];
-      if (acessiveis.length === 1) { verEspelho(acessiveis[0].id); return; }
-    }
+    if (erEmp.ok) currentData.emp = erEmp.data || [];
   }
 
   const r = await get('/api/corretor/painel');
