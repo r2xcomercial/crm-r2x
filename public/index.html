@@ -13688,6 +13688,7 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
         <div class="table-card" style="margin-bottom:16px">
           <div class="table-header" style="flex-wrap:wrap;gap:8px">
             <div>
+              <div>
               <div style="font-size:15px;font-weight:800">${emp.nome}</div>
               <div style="font-size:12px;color:var(--text2);margin-top:2px">
                 ${emp.cidade||''}${emp.estado?'/'+emp.estado:''} ·
@@ -13695,7 +13696,13 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
                 ${emp.data_lancamento?` · Lançamento: ${fmtDate(emp.data_lancamento)}`:''}
               </div>
             </div>
-            <div style="font-size:18px;font-weight:700;color:var(--success)">${fmt(emp.vgv_vendido||0)}</div>
+            <div style="display:flex;align-items:center;gap:10px">
+              ${emp.espelho_slug ? `<a href="/espelho-publico.html?slug=${emp.espelho_slug}" target="_blank"
+                style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:7px;border:1px solid var(--accent);color:var(--accent);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap">
+                🔗 Espelho Público
+              </a>` : ''}
+              <div style="font-size:18px;font-weight:700;color:var(--success)">${fmt(emp.vgv_vendido||0)}</div>
+            </div>
           </div>
           <div style="padding:14px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;border-bottom:1px solid var(--border)">
             <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Total</div><div style="font-weight:700;font-size:20px">${total}</div></div>

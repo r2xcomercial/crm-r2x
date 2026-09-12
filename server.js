@@ -72,11 +72,13 @@ function autenticar(req, res, next) {
 
 app.use(autenticar);
 
-// Incorporador só pode acessar /api/auth/* e /api/incorporador/*
+// Incorporador só pode acessar /api/auth/*, /api/incorporador/* e espelho público (leitura)
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
   if (req.usuario?.perfil === 'incorporador') {
-    const permitido = req.path.startsWith('/api/auth/') || req.path.startsWith('/api/incorporador/');
+    const permitido = req.path.startsWith('/api/auth/')
+      || req.path.startsWith('/api/incorporador/')
+      || (req.method === 'GET' && req.path.startsWith('/api/espelho-publico/'));
     if (!permitido) return err(res, 'Acesso não autorizado', 403);
   }
   next();
