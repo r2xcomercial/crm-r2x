@@ -496,13 +496,38 @@ function renderCorretorArea() {
   </div>`;
 }
 
-// Verificar sessão ao carregar: sem token → mostrar tela de login
-if (!(_corretorToken && _corretorNome)) {
-  document.getElementById('login-wall').classList.add('active');
-  setTimeout(() => document.getElementById('login-email').focus(), 100);
-} else {
-  renderCorretorArea();
-}
+// Verificar sessão ao carregar
+// Prioridade: ?token= na URL (CRM já logado) > localStorage
+(async () => {
+  const urlToken = new URLSearchParams(location.search).get('token');
+  if (urlToken && !_corretorToken) {
+    // Valida o token via /api/auth/me e preenche a sessão do espelho
+    try {
+      const r = await fetch('/api/auth/me', { headers: { 'x-crm-token': urlToken } });
+      const d = await r.json();
+      if (d.ok && ['corretor','gestor','admin','incorporador'].includes(d.data?.perfil)) {
+        _corretorToken  = urlToken;
+        _corretorNome   = d.data.nome;
+        _corretorId     = d.data.corretor_id || null;
+        _corretorPerfil = d.data.perfil;
+        localStorage.setItem('espelho_token',    _corretorToken);
+        localStorage.setItem('espelho_nome',     _corretorNome);
+        localStorage.setItem('espelho_corretor', _corretorId||'');
+        localStorage.setItem('espelho_perfil',   _corretorPerfil);
+        // Remove token da URL sem recarregar
+        const url = new URL(location.href);
+        url.searchParams.delete('token');
+        history.replaceState(null, '', url.toString());
+      }
+    } catch(_) {}
+  }
+  if (!(_corretorToken && _corretorNome)) {
+    document.getElementById('login-wall').classList.add('active');
+    setTimeout(() => document.getElementById('login-email').focus(), 100);
+  } else {
+    renderCorretorArea();
+  }
+})();
 
 let _markerSize = 20;
 let _mapsUrl = null;

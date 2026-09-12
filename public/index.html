@@ -13697,7 +13697,7 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
               </div>
             </div>
             <div style="display:flex;align-items:center;gap:10px">
-              ${emp.espelho_slug ? `<a href="/espelho-publico.html?slug=${emp.espelho_slug}" target="_blank"
+              ${emp.espelho_slug ? `<a href="/espelho-publico.html?slug=${emp.espelho_slug}&token=${encodeURIComponent(TOKEN)}" target="_blank"
                 style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:7px;border:1px solid var(--accent);color:var(--accent);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap">
                 🔗 Espelho Público
               </a>` : ''}
