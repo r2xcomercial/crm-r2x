@@ -10139,6 +10139,7 @@ const EMP_KB_COLS = [
   { status: 'proposta',  label: '📋 Proposta',  color: '#60a5fa' },
   { status: 'aprovado',  label: '✅ Venda',     color: '#4ade80' },
   { status: 'ativo',     label: '📄 Contrato',  color: '#a78bfa' },
+  { status: 'perdida',   label: '❌ Perdida',   color: '#f87171' },
 ];
 
 async function renderEmpKanban(empId) {
@@ -10187,30 +10188,29 @@ async function renderEmpKanban(empId) {
       if (col === 'proposta') {
         acoes = `
           <div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap" onclick="event.stopPropagation()">
-            <button onclick="moverEmpKanban(${item.id},'aprovado',${empId})" style="flex:1;padding:5px 8px;border-radius:6px;border:none;background:rgba(74,222,128,.2);color:#4ade80;font-size:11px;font-weight:700;cursor:pointer">✅ Aprovar Venda</button>
-            <button onclick="verDetalheVendaKanban(${item.id})" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:11px;cursor:pointer">👁</button>
+            <button onclick="abrirDetalhePropostaAdmin(${item.id},${empId})" style="flex:1;padding:5px 8px;border-radius:6px;border:none;background:rgba(96,165,250,.2);color:#60a5fa;font-size:11px;font-weight:700;cursor:pointer">📋 Ver Proposta</button>
           </div>`;
       } else if (col === 'aprovado') {
         acoes = `
           <div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap" onclick="event.stopPropagation()">
             <button onclick="moverEmpKanban(${item.id},'ativo',${empId})" style="flex:1;padding:5px 8px;border-radius:6px;border:none;background:rgba(167,139,250,.2);color:#a78bfa;font-size:11px;font-weight:700;cursor:pointer">📄 Gerar Contrato</button>
-            <button onclick="verDetalheVendaKanban(${item.id})" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:11px;cursor:pointer">👁</button>
+            <button onclick="editVenda(${item.id})" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:11px;cursor:pointer" onclick="event.stopPropagation()">✏️</button>
           </div>`;
       } else if (col === 'ativo') {
         acoes = `<div style="margin-top:8px" onclick="event.stopPropagation()">
-          <button onclick="verDetalheVendaKanban(${item.id})" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:11px;cursor:pointer">📄 Ver Contrato</button>
+          <button onclick="editVenda(${item.id})" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:11px;cursor:pointer">📄 Ver/Editar Venda</button>
         </div>`;
       }
     }
-    if (!isGestor && col === 'reserva') {
+    if (!isGestor && (col === 'reserva' || col === 'proposta')) {
       acoes = `<div style="margin-top:8px" onclick="event.stopPropagation()">
         <button onclick="abrirPropostaCorretor(${item.id},${empId})" style="width:100%;padding:5px 8px;border-radius:6px;border:none;background:rgba(96,165,250,.2);color:#60a5fa;font-size:11px;font-weight:700;cursor:pointer">📋 Enviar Proposta</button>
       </div>`;
     }
 
     return `<div class="kanban-card emp-kb-card"
-      ${!isCad && isGestor ? `draggable="true" ondragstart="empKbDragStart(event,${item.id},'${col}')" ondragend="empKbDragEnd(event)"` : ''}
-      onclick="${isCad ? `editLead(${item.id})` : `verDetalheVendaKanban(${item.id})`}">
+      ${!isCad && isGestor && col !== 'perdida' ? `draggable="true" ondragstart="empKbDragStart(event,${item.id},'${col}')" ondragend="empKbDragEnd(event)"` : ''}
+      onclick="${isCad ? `editLead(${item.id})` : col === 'proposta' ? `abrirDetalhePropostaAdmin(${item.id},${empId})` : col === 'perdida' ? '' : `editVenda(${item.id})`}">
       <div class="kc-nome">${nome||'—'}</div>
       ${tel ? `<div class="kc-tel"><a href="https://wa.me/55${(tel||'').replace(/\D/g,'')}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:none">📱 ${tel}</a></div>` : ''}
       <div class="kc-meta" style="display:flex;flex-direction:column;gap:2px;margin-top:4px">
@@ -10283,9 +10283,97 @@ async function moverEmpKanban(vendaId, novoStatus, empId) {
 }
 
 function verDetalheVendaKanban(vendaId) {
-  navigate('vendas');
-  // Abre o detalhe da venda após navegar
-  setTimeout(() => openVendaDetalhe && openVendaDetalhe(vendaId), 500);
+  editVenda(vendaId);
+}
+
+async function abrirDetalhePropostaAdmin(vendaId, empId) {
+  openModal('📋 Proposta', '<div style="text-align:center;padding:30px;color:var(--text2)">Carregando...</div>');
+  const r = await get(`/api/unidades/${vendaId}/reserva`).catch(() => ({ok:false,data:null}));
+  // r.data tem: venda info + lead + corretor
+  // Vamos buscar a venda completa
+  const vr = await get(`/api/vendas/${vendaId}`).catch(() => ({ok:false}));
+  if (!vr.ok) { document.getElementById('modal-body').innerHTML = '<div style="color:var(--danger);padding:20px">Erro ao carregar proposta.</div>'; return; }
+  const v = vr.data;
+  const cp = v.condicao_proposta ? (typeof v.condicao_proposta === 'string' ? JSON.parse(v.condicao_proposta) : v.condicao_proposta) : null;
+  const fmt  = n => Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2});
+  const fmt0 = n => Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0});
+  const isReserva = v.status === 'reserva';
+
+  const condBlock = cp ? `
+    <div style="background:rgba(0,196,180,.06);border:1px solid rgba(0,196,180,.25);border-radius:10px;padding:16px;margin-top:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">💳 Condição de Pagamento</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${cp.valor_entrada != null ? `<div><div style="font-size:10px;color:var(--text2);margin-bottom:2px">ENTRADA</div><div style="font-size:16px;font-weight:700;color:var(--success)">${fmt0(cp.valor_entrada)}</div>${cp.entrada_pct ? `<div style="font-size:11px;color:var(--text2)">${cp.entrada_pct}% do valor</div>` : ''}</div>` : ''}
+        ${cp.parcela_mensal != null ? `<div><div style="font-size:10px;color:var(--text2);margin-bottom:2px">${cp.nParc}× PARCELAS</div><div style="font-size:16px;font-weight:700;color:var(--accent)">${fmt0(cp.parcela_mensal)}<span style="font-size:11px;font-weight:400">/mês</span></div>${cp.juros > 0 ? `<div style="font-size:11px;color:var(--warning)">${cp.juros}% a.m.</div>` : `<div style="font-size:11px;color:var(--text2)">sem juros</div>`}</div>` : ''}
+        ${cp.valor_total != null ? `<div><div style="font-size:10px;color:var(--text2);margin-bottom:2px">TOTAL</div><div style="font-size:15px;font-weight:700">${fmt0(cp.valor_total)}</div></div>` : ''}
+        ${cp.saldo != null ? `<div><div style="font-size:10px;color:var(--text2);margin-bottom:2px">SALDO FINANCIADO</div><div style="font-size:15px;font-weight:700">${fmt0(cp.saldo)}</div></div>` : ''}
+      </div>
+      ${cp.label ? `<div style="margin-top:8px;font-size:12px;color:var(--text2);font-style:italic">"${cp.label}"</div>` : ''}
+    </div>` : `
+    <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:12px;margin-top:12px;font-size:13px;color:var(--warning)">
+      ⚠️ ${isReserva ? 'Reserva sem condição de pagamento definida.' : 'Proposta sem detalhes de pagamento.'}
+    </div>`;
+
+  const unidDesc = v.unidade?.lote ? `Lote ${v.unidade.lote}${v.unidade.quadra ? ' · Q'+v.unidade.quadra : ''}` : '—';
+
+  document.getElementById('modal-title').textContent = `📋 ${isReserva ? 'Reserva' : 'Proposta'} — ${unidDesc}`;
+  document.getElementById('modal-body').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:0">
+      <!-- Cliente e Corretor -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+        <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px">
+          <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">👤 Cliente</div>
+          <div style="font-size:15px;font-weight:700">${v.lead_nome||'—'}</div>
+          ${v.lead_cpf ? `<div style="font-size:12px;color:var(--text2);margin-top:2px">CPF: ${v.lead_cpf}</div>` : ''}
+          ${v.lead_telefone ? `<a href="https://wa.me/55${(v.lead_telefone||'').replace(/\D/g,'')}" target="_blank" style="font-size:12px;color:var(--accent);display:block;margin-top:4px;text-decoration:none">📱 ${fmtPhone(v.lead_telefone)}</a>` : ''}
+        </div>
+        <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px">
+          <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">🏷️ Corretor</div>
+          <div style="font-size:15px;font-weight:700">${v.corretor_nome||'—'}</div>
+          ${v.corretor_telefone ? `<a href="https://wa.me/55${(v.corretor_telefone||'').replace(/\D/g,'')}" target="_blank" style="font-size:12px;color:var(--accent);display:block;margin-top:4px;text-decoration:none">📱 ${fmtPhone(v.corretor_telefone)}</a>` : ''}
+        </div>
+      </div>
+      <!-- Unidade -->
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">🏗️ Unidade</div>
+          <div style="font-size:15px;font-weight:700">${unidDesc}</div>
+          ${v.unidade?.area_m2 ? `<div style="font-size:12px;color:var(--text2)">${v.unidade.area_m2} m²</div>` : ''}
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:10px;color:var(--text2);margin-bottom:3px">VALOR TABELA</div>
+          <div style="font-size:17px;font-weight:700;color:var(--success)">${fmt0(v.valor||v.unidade?.preco)}</div>
+        </div>
+      </div>
+      ${condBlock}
+      <!-- Ações -->
+      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+        <button onclick="moverEmpKanban(${vendaId},'aprovado',${empId});closeModal()"
+          style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#4ade80,#16a34a);color:#fff;font-size:13px;font-weight:700;cursor:pointer">
+          ✅ Aprovar Venda
+        </button>
+        <button onclick="closeModal();editVenda(${vendaId})"
+          style="padding:10px 16px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;font-weight:600;cursor:pointer">
+          ✏️ Editar
+        </button>
+        <button onclick="rejeitarPropostaKanban(${vendaId},${empId})"
+          style="padding:10px 14px;border-radius:8px;border:none;background:rgba(248,113,113,.15);color:#f87171;font-size:13px;font-weight:600;cursor:pointer">
+          ❌ Rejeitar
+        </button>
+      </div>
+      ${v.lead_id ? `<button onclick="closeModal();openLeadModal({id:${v.lead_id}})"
+        style="margin-top:8px;width:100%;padding:7px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer">
+        📂 Abrir ficha completa do cliente
+      </button>` : ''}
+    </div>`;
+  document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+async function rejeitarPropostaKanban(vendaId, empId) {
+  if (!confirm('Rejeitar esta proposta? A unidade voltará a ficar disponível e o lead irá para "Sem venda".')) return;
+  await moverEmpKanban(vendaId, 'perdida', empId);
+  closeModal();
 }
 
 async function abrirPropostaCorretor(vendaId, empId) {
@@ -11403,7 +11491,7 @@ async function abrirUnidade(unidadeId, empId) {
 
     // Carrega leads do corretor se modal de reserva aberto
     if (podeReservar && u.status === 'disponivel') {
-      _carregarLeadsParaReserva(u.id, empId);
+      _carregarLeadsParaReserva(u.id, empId, u.preco || 0);
     }
   } else {
     // Card de reserva/venda para admin/gestor
@@ -11522,24 +11610,32 @@ async function salvarEdicaoUnidade(unidadeId, empId) {
   }
 }
 
-async function _carregarLeadsParaReserva(unidadeId, empId) {
+async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
   const area = document.getElementById('reserva-lead-area');
   if (!area) return;
   window._rrCondicao = null;
-  const [rLeads, rConds] = await Promise.all([
+  window._rrPreco = unidadePreco || 0;
+  window._rrEmpId = empId;
+
+  const [rLeads, rEmpConds] = await Promise.all([
     get('/api/corretor/clientes'),
     get(`/api/empreendimentos/${empId}/condicao-padrao`)
   ]);
   const leads = (rLeads.data || []);
-  let conds = [];
+
+  // Montar lista de condições simples a partir do espelho_params
+  const empObj = (currentData.emp||[]).find(e => e.id === empId) || {};
+  let simConds = [];
   try {
-    const raw = rConds.data || [];
-    // condicao_pagamento_padrao pode ser array de condições ou array de grupos
-    if (raw.length && raw[0].parcelas) {
-      conds = raw; // já é array de {nome, parcelas}
-    } else if (raw.length) {
-      conds = [{ nome: 'Condição padrão', parcelas: raw }];
-    }
+    const ep = empObj.espelho_params ? JSON.parse(empObj.espelho_params) : null;
+    if (ep?.condicoes?.length) simConds = ep.condicoes; // [{label, nParc, juros}]
+  } catch(_) {}
+
+  // Fallback: condicao_pagamento_padrao
+  let cpPadrao = null;
+  try {
+    const raw = rEmpConds.data || [];
+    cpPadrao = raw.length ? raw : null;
   } catch(_) {}
 
   const loading = document.getElementById('reserva-lead-loading');
@@ -11559,38 +11655,87 @@ async function _carregarLeadsParaReserva(unidadeId, empId) {
     return;
   }
 
-  // Monta bloco de condições de pagamento (se houver)
-  const condsHtml = conds.length ? `
-    <div style="margin-top:12px">
-      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">💳 Condição de Pagamento</div>
-      <div id="rr-conds-lista" style="display:flex;flex-direction:column;gap:6px">
-        ${conds.map((c, i) => `
-          <label id="rr-cond-card-${i}" onclick="_selecionarCondReserva(${i})"
-            style="display:flex;align-items:center;gap:8px;background:${i===0?'rgba(0,196,180,.1)':'rgba(51,65,85,.5)'};
-                   border:1px solid ${i===0?'var(--accent)':'var(--border)'};border-radius:8px;padding:8px 10px;cursor:pointer">
-            <input type="radio" name="rr-cond" value="${i}" ${i===0?'checked':''} style="margin:0;accent-color:var(--accent)">
-            <div style="font-size:13px;font-weight:600;color:var(--text1)">${c.nome || 'Condição ' + (i+1)}</div>
-          </label>`).join('')}
-      </div>
-    </div>` : '';
+  // Usa simConds (espelho) se houver, senão usa primeira condição do cpPadrao
+  const preco = unidadePreco || 0;
+  let defEntPct = 20, defNParc = 60, defJuros = 0;
+  if (simConds.length) {
+    const ep = empObj.espelho_params ? JSON.parse(empObj.espelho_params) : {};
+    defEntPct = ep.entrada_tipo === 'valor'
+      ? (preco > 0 ? Math.round((ep.entrada_valor||0) / preco * 100) : 20)
+      : (ep.entrada_pct || 20);
+    defNParc  = simConds[0].nParc || 60;
+    defJuros  = simConds[0].juros || 0;
+  }
 
-  // Seleciona primeira condição por padrão
-  if (conds.length) window._rrCondicao = { nome: conds[0].nome, parcelas: conds[0].parcelas };
-  window._rrConds = conds;
+  // Monta opções de condição (para o dropdown)
+  const condOpts = simConds.length
+    ? simConds.map((c, i) => `<option value="${i}">${c.label || c.nParc+'x'} ${c.juros > 0 ? '· '+c.juros+'% a.m.' : '· sem juros'}</option>`).join('')
+    : '<option value="">Livre</option>';
+  window._rrSimConds = simConds;
+
+  const fmt0 = n => Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0});
+  const pmtCalc = (s, n, j) => { if (!n) return 0; if (!j) return s/n; const i=j/100; return s*(i*Math.pow(1+i,n))/(Math.pow(1+i,n)-1); };
+  const entV0 = preco * (defEntPct / 100);
+  const saldo0 = preco - entV0;
+  const parc0 = pmtCalc(saldo0, defNParc, defJuros);
 
   loading.innerHTML = `
     <input id="rr-lead-search" type="text" placeholder="🔍 Buscar cliente por nome ou telefone..."
       oninput="_filtrarLeadsReserva()"
       style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-size:13px;margin-bottom:8px">
-    <div id="rr-lead-lista" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
-    <div id="rr-lead-selecionado" style="display:none;margin-top:10px;background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.3);border-radius:8px;padding:10px 12px">
-      <div style="font-size:11px;color:var(--accent);font-weight:700;margin-bottom:2px">LEAD SELECIONADO</div>
-      <div id="rr-lead-nome-sel" style="font-size:14px;font-weight:700"></div>
-      <div id="rr-lead-tel-sel" style="font-size:12px;color:var(--text2);margin-top:2px"></div>
+    <div id="rr-lead-lista" style="max-height:130px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
+    <div id="rr-lead-selecionado" style="display:none;margin-top:8px;background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.3);border-radius:8px;padding:8px 12px">
+      <div style="font-size:11px;color:var(--accent);font-weight:700;margin-bottom:1px">LEAD SELECIONADO</div>
+      <div id="rr-lead-nome-sel" style="font-size:13px;font-weight:700"></div>
+      <div id="rr-lead-tel-sel" style="font-size:11px;color:var(--text2)"></div>
     </div>
-    ${condsHtml}
+    ${preco > 0 ? `
+    <div style="margin-top:12px;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">💳 Proposta de Pagamento</div>
+      ${simConds.length > 1 ? `
+      <div style="margin-bottom:10px">
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Condição base</label>
+        <select id="rr-cond-sel" onchange="_rrAplicarCond(this.value)"
+          style="width:100%;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          ${condOpts}
+        </select>
+      </div>` : ''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Entrada (%)</label>
+          <input type="number" id="rr-ent-pct" min="0" max="100" step="1" value="${defEntPct}"
+            oninput="_rrRecalcular()"
+            style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Entrada (R$)</label>
+          <input type="number" id="rr-ent-val" min="0" step="1000" value="${Math.round(entV0)}"
+            oninput="_rrRecalcularDaEntrada()"
+            style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Parcelas (nº)</label>
+          <input type="number" id="rr-nparc" min="1" max="360" step="1" value="${defNParc}"
+            oninput="_rrRecalcular()"
+            style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Juros (% a.m.)</label>
+          <input type="number" id="rr-juros" min="0" max="5" step="0.01" value="${defJuros}"
+            oninput="_rrRecalcular()"
+            style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+        </div>
+      </div>
+      <!-- Resumo calculado -->
+      <div id="rr-resumo" style="background:rgba(0,196,180,.06);border:1px solid rgba(0,196,180,.2);border-radius:8px;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div><div style="font-size:10px;color:var(--text2)">PARCELA MENSAL</div><div id="rr-res-parc" style="font-size:17px;font-weight:700;color:var(--accent)">${fmt0(parc0)}</div></div>
+        <div><div style="font-size:10px;color:var(--text2)">SALDO FINANCIADO</div><div id="rr-res-saldo" style="font-size:15px;font-weight:700">${fmt0(saldo0)}</div></div>
+        <div><div style="font-size:10px;color:var(--text2)">TOTAL</div><div id="rr-res-total" style="font-size:15px;font-weight:700">${fmt0(entV0 + defNParc*parc0)}</div></div>
+        <div><div style="font-size:10px;color:var(--text2)">VALOR TABELA</div><div style="font-size:15px;font-weight:700;color:var(--success)">${fmt0(preco)}</div></div>
+      </div>
+    </div>` : ''}
     <button id="btn-reservar-lead" onclick="reservarDoEspelho(${unidadeId},${empId})" disabled
-      style="margin-top:10px;width:100%;padding:10px;border-radius:8px;border:none;
+      style="margin-top:10px;width:100%;padding:11px;border-radius:8px;border:none;
              background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-size:14px;font-weight:700;
              cursor:not-allowed;opacity:.45">
       ⚡ Reservar agora
@@ -11599,20 +11744,57 @@ async function _carregarLeadsParaReserva(unidadeId, empId) {
   window._rrLeads = leads;
   window._rrLeadId = null;
   _filtrarLeadsReserva();
+  _rrRecalcular();
 }
 
-function _selecionarCondReserva(idx) {
-  const conds = window._rrConds || [];
-  if (!conds[idx]) return;
-  window._rrCondicao = { nome: conds[idx].nome, parcelas: conds[idx].parcelas };
-  conds.forEach((_, i) => {
-    const card = document.getElementById('rr-cond-card-' + i);
-    if (!card) return;
-    card.style.background = i === idx ? 'rgba(0,196,180,.1)' : 'rgba(51,65,85,.5)';
-    card.style.borderColor = i === idx ? 'var(--accent)' : 'var(--border)';
-    const radio = card.querySelector('input[type=radio]');
-    if (radio) radio.checked = (i === idx);
-  });
+function _rrPMT(saldo, nParc, juros) {
+  if (!nParc) return 0;
+  if (!juros) return saldo / nParc;
+  const i = juros / 100;
+  return saldo * (i * Math.pow(1+i, nParc)) / (Math.pow(1+i, nParc) - 1);
+}
+
+function _rrRecalcular() {
+  const preco = window._rrPreco || 0;
+  const entPct = parseFloat(document.getElementById('rr-ent-pct')?.value) || 0;
+  const entV   = preco * (entPct / 100);
+  const entInput = document.getElementById('rr-ent-val');
+  if (entInput && document.activeElement !== entInput) entInput.value = Math.round(entV);
+  const nParc  = parseInt(document.getElementById('rr-nparc')?.value) || 60;
+  const juros  = parseFloat(document.getElementById('rr-juros')?.value) || 0;
+  const saldo  = preco - entV;
+  const parc   = _rrPMT(saldo, nParc, juros);
+  const total  = entV + nParc * parc;
+  const fmt0 = n => Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0});
+  const el = id => document.getElementById(id);
+  if (el('rr-res-parc'))  el('rr-res-parc').textContent  = fmt0(parc);
+  if (el('rr-res-saldo')) el('rr-res-saldo').textContent = fmt0(saldo);
+  if (el('rr-res-total')) el('rr-res-total').textContent = fmt0(total);
+  window._rrCondicao = { label: `${nParc}x ${juros>0?juros+'% a.m.':'sem juros'}`, nParc, juros, entrada_pct: entPct, valor_entrada: Math.round(entV), saldo: Math.round(saldo), parcela_mensal: Math.round(parc*100)/100, valor_total: Math.round(total) };
+}
+
+function _rrRecalcularDaEntrada() {
+  const preco = window._rrPreco || 0;
+  if (!preco) return;
+  const entV = parseFloat(document.getElementById('rr-ent-val')?.value) || 0;
+  const entPct = preco > 0 ? Math.round(entV / preco * 100 * 10) / 10 : 0;
+  const pctInput = document.getElementById('rr-ent-pct');
+  if (pctInput && document.activeElement !== pctInput) pctInput.value = entPct;
+  _rrRecalcular();
+}
+
+function _rrAplicarCond(idx) {
+  const conds = window._rrSimConds || [];
+  const c = conds[parseInt(idx)];
+  if (!c) return;
+  const empObj = (currentData.emp||[]).find(e => e.id == window._rrEmpId) || {};
+  let entPct = 20;
+  try { const ep = empObj.espelho_params ? JSON.parse(empObj.espelho_params) : {}; entPct = ep.entrada_pct || 20; } catch(_) {}
+  const nParcInput = document.getElementById('rr-nparc');
+  const jurosInput = document.getElementById('rr-juros');
+  if (nParcInput) nParcInput.value = c.nParc || 60;
+  if (jurosInput) jurosInput.value = c.juros || 0;
+  _rrRecalcular();
 }
 
 function _filtrarLeadsReserva() {

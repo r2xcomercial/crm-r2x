@@ -3215,7 +3215,7 @@ app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
     LEFT JOIN unidades u ON u.id = v.unidade_id
     LEFT JOIN corretores c ON c.id = v.corretor_id
     WHERE v.empreendimento_id = ?
-      AND v.status IN ('reserva','proposta','aprovado','ativo')
+      AND v.status IN ('reserva','proposta','aprovado','ativo','perdida')
   `;
   let allVendas;
   if (u?.perfil === 'corretor' && u?.corretor_id) {
@@ -3225,8 +3225,8 @@ app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
     allVendas = db.prepare(vendasBase + ' ORDER BY v.criado_em DESC').all(empId);
   }
 
-  // reserva e proposta agora são a mesma coluna — ambos aparecem em "proposta"
-  const byStatus = { proposta: [], aprovado: [], ativo: [] };
+  // reserva e proposta → mesma coluna "proposta"
+  const byStatus = { proposta: [], aprovado: [], ativo: [], perdida: [] };
   allVendas.forEach(v => {
     const col = v.status === 'reserva' ? byStatus.proposta : byStatus[v.status];
     if (col) {
@@ -3261,11 +3261,13 @@ app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
     proposta: byStatus.proposta,
     aprovado: byStatus.aprovado,
     ativo:    byStatus.ativo,
+    perdida:  byStatus.perdida,
     funil: {
       cadastros: cadastros.length,
       proposta:  byStatus.proposta.length,
       aprovado:  byStatus.aprovado.length,
       ativo:     byStatus.ativo.length,
+      perdida:   byStatus.perdida.length,
     }
   });
 });
@@ -3276,7 +3278,7 @@ app.put('/api/vendas/:id/kanban-status', autenticar, (req, res) => {
   const { status: novoStatus, condicao_proposta } = req.body;
   const u = req.usuario;
 
-  const VALIDOS = ['cadastros', 'reserva', 'proposta', 'aprovado', 'ativo'];
+  const VALIDOS = ['cadastros', 'reserva', 'proposta', 'aprovado', 'ativo', 'perdida'];
   if (!VALIDOS.includes(novoStatus)) return err(res, 'Status inválido');
 
   const venda = db.prepare('SELECT * FROM vendas WHERE id=?').get(vendaId);
@@ -3292,6 +3294,17 @@ app.put('/api/vendas/:id/kanban-status', autenticar, (req, res) => {
       db.prepare("UPDATE leads SET status='novo' WHERE id=?").run(venda.lead_id);
     })();
     return ok(res, { id: vendaId, status: 'cancelado' });
+  }
+
+  // Mover para perdida = rejeitar proposta, liberar unidade, lead → sem_venda
+  if (novoStatus === 'perdida') {
+    if (!['admin','gestor'].includes(u?.perfil)) return err(res, 'Sem permissão', 403);
+    db.transaction(() => {
+      db.prepare("UPDATE vendas SET status='perdida' WHERE id=?").run(vendaId);
+      db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(venda.unidade_id);
+      db.prepare("UPDATE leads SET status='sem_venda' WHERE id=?").run(venda.lead_id);
+    })();
+    return ok(res, { id: vendaId, status: 'perdida' });
   }
 
   // Corretor só pode mover reserva → proposta (com condição obrigatória)
@@ -3579,6 +3592,32 @@ app.post("/api/vendas", (req, res) => {
   const aviso = (empreendimento_id && !comissao) ? 'Atenção: empreendimento sem % R2X cadastrado. Comissão não foi gerada.' : null;
 
   ok(res, { id: vendaId, comissao_r2x: comissao, aviso });
+});
+
+app.get("/api/vendas/:id", autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u) return err(res, 'Não autenticado', 401);
+  const vendaId = parseInt(req.params.id);
+  const row = db.prepare(`
+    SELECT v.*, l.nome as lead_nome, l.telefone as lead_telefone, l.cpf as lead_cpf, l.id as lead_id,
+           c.nome as corretor_nome, c.telefone as corretor_telefone,
+           u.lote, u.quadra, u.area_m2, u.preco as unidade_preco,
+           e.nome as empreendimento_nome
+    FROM vendas v
+    LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN corretores c ON c.id = v.corretor_id
+    LEFT JOIN unidades u ON u.id = v.unidade_id
+    LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
+    WHERE v.id = ?
+  `).get(vendaId);
+  if (!row) return err(res, 'Venda não encontrada', 404);
+  if (u.perfil === 'corretor' && row.corretor_id !== u.corretor_id) return err(res, 'Sem acesso', 403);
+  const result = {
+    ...row,
+    condicao_proposta: row.condicao_proposta ? JSON.parse(row.condicao_proposta) : null,
+    unidade: { lote: row.lote, quadra: row.quadra, area_m2: row.area_m2, preco: row.unidade_preco },
+  };
+  ok(res, result);
 });
 
 app.put("/api/vendas/:id", (req, res) => {
