@@ -2956,7 +2956,19 @@ app.post("/api/corretor/meta", (req, res) => {
 // ─── CORRETOR: CLIENTES PRÓPRIOS ──────────────────────────────────────────────
 app.get("/api/corretor/clientes", (req, res) => {
   const cid = guardaCorretor(req, res); if (!cid) return;
-  ok(res, db.prepare(`SELECT * FROM corretor_clientes WHERE corretor_id=? ORDER BY nome ASC`).all(cid));
+  // Clientes cadastrados diretamente pelo corretor
+  const proprios = db.prepare(`SELECT *, 'proprio' AS origem_tipo FROM corretor_clientes WHERE corretor_id=?`).all(cid);
+  // Leads da tabela principal atribuídos a este corretor
+  const leadsAtrib = db.prepare(`
+    SELECT id, nome, cpf, telefone, email, cidade, estado, aniversario, observacoes,
+           empreendimento_id, status AS lead_status, criado_em, 'lead' AS origem_tipo
+    FROM leads WHERE corretor_id=? ORDER BY nome ASC
+  `).all(cid);
+  // Unifica: leads primeiro (mais completos), depois clientes próprios não duplicados por CPF
+  const cpfsSeen = new Set(leadsAtrib.filter(l => l.cpf).map(l => l.cpf));
+  const filtrados = proprios.filter(p => !p.cpf || !cpfsSeen.has(p.cpf));
+  const todos = [...leadsAtrib, ...filtrados].sort((a,b) => (a.nome||'').localeCompare(b.nome||''));
+  ok(res, todos);
 });
 
 app.post("/api/corretor/clientes", (req, res) => {

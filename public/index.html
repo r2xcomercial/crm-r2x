@@ -16370,6 +16370,11 @@ async function salvarConfigCorretor() {
 
 function _rowCorretorCliente(c) {
   const aniv = c.aniversario ? (() => { const [,m,d] = c.aniversario.split('-'); return `${d}/${m}`; })() : '—';
+  const isLead = c.origem_tipo === 'lead';
+  const acoes = isLead
+    ? `<span style="font-size:11px;color:var(--text2);padding:2px 7px;border-radius:10px;background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.25)">📋 Lead</span>`
+    : `<button class="btn-icon btn-edit" onclick="openCorretorClienteModal(${c.id})">✏️</button>
+       <button class="btn-icon btn-delete" onclick="deleteCorretorCliente(${c.id})">🗑️</button>`;
   return `<tr data-cc-id="${c.id}" data-cc-nome="${(c.nome||'').toLowerCase()}" data-cc-cidade="${(c.cidade||'').toLowerCase()}">
     <td><strong>${c.nome}</strong></td>
     <td>${c.cpf||'—'}</td>
@@ -16377,10 +16382,7 @@ function _rowCorretorCliente(c) {
     <td>${c.email ? `<a href="mailto:${c.email}" style="color:var(--accent)">${c.email}</a>` : '—'}</td>
     <td>${c.cidade||'—'}${c.estado?'/'+c.estado:''}</td>
     <td>${aniv}</td>
-    <td style="white-space:nowrap">
-      <button class="btn-icon btn-edit" onclick="openCorretorClienteModal(${c.id})">✏️</button>
-      <button class="btn-icon btn-delete" onclick="deleteCorretorCliente(${c.id})">🗑️</button>
-    </td>
+    <td style="white-space:nowrap">${acoes}</td>
   </tr>`;
 }
 
