@@ -902,6 +902,12 @@ app.put("/api/empreendimentos/:id", (req, res) => {
   ok(res, {});
 });
 
+app.get('/api/empreendimentos/:id', autenticar, (req, res) => {
+  const row = db.prepare('SELECT * FROM empreendimentos WHERE id=?').get(parseInt(req.params.id));
+  if (!row) return err(res, 'Não encontrado', 404);
+  ok(res, row);
+});
+
 app.get('/api/empreendimentos/:id/plano', autenticar, (req, res) => {
   const row = db.prepare('SELECT plano_json FROM empreendimentos WHERE id=?').get(req.params.id);
   if (!row) return err(res, 'Não encontrado', 404);

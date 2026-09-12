@@ -9944,7 +9944,18 @@ window._espelhoHidePreco   = false;
 window._espelhoHideReserva = false;
 
 async function verEspelho(empId) {
-  const emp = (currentData.emp||[]).find(e => e.id === empId) || {};
+  let emp = (currentData.emp||[]).find(e => e.id === empId);
+  if (!emp) {
+    // Corretor pode não ter currentData.emp populado — busca diretamente
+    const er = await get(`/api/empreendimentos/${empId}`);
+    if (er.ok) {
+      emp = er.data;
+      if (!currentData.emp) currentData.emp = [];
+      if (!currentData.emp.find(e => e.id === empId)) currentData.emp.push(emp);
+    } else {
+      emp = {};
+    }
+  }
   document.getElementById('page-title').textContent = `Espelho — ${emp.nome||''}`;
   document.getElementById('content').innerHTML = '<div style="text-align:center;padding:60px;color:var(--text2)">Carregando espelho de vendas...</div>';
 
@@ -15720,6 +15731,8 @@ async function renderCorretorPainel(tab) {
     const erEmp = await get('/api/corretor/empreendimentos');
     if (erEmp.ok) {
       const acessiveis = (erEmp.data || []).filter(e => e.status === 'ativo' || e.status === 'lancamento' || !e.status);
+      // Garante que currentData.emp contém os dados para verEspelho encontrá-los
+      if (!currentData.emp?.length) currentData.emp = erEmp.data || [];
       if (acessiveis.length === 1) { verEspelho(acessiveis[0].id); return; }
     }
   }
