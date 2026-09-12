@@ -16004,27 +16004,44 @@ async function _renderCpTab() {
       </div>`;
 
   } else if (_cpTab === 'clientes') {
-    // Carrega clientes e renderiza
     const rc = await get('/api/corretor/clientes');
     const clientes = rc.data || [];
+    // Opções únicas para filtros
+    const cidades = [...new Set(clientes.map(c => c.cidade).filter(Boolean))].sort();
+    const emps = [...new Map(clientes.filter(c => c.empreendimento_id).map(c => [c.empreendimento_id, c.empreendimento_nome])).entries()].sort((a,b) => (a[1]||'').localeCompare(b[1]||''));
     el.innerHTML = `
       <div class="table-card">
-        <div class="table-header">
-          <div class="table-title">👥 Meus Clientes (${clientes.length})</div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input id="cc-busca" placeholder="🔍 Buscar..." oninput="_filtrarCorretorClientes()"
-              style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;width:180px">
-            <button class="btn btn-primary" onclick="openCorretorClienteModal()" style="font-size:13px;padding:7px 14px">+ Novo Cliente</button>
+        <div class="table-header" style="flex-wrap:wrap;gap:8px">
+          <div class="table-title">👥 Meus Clientes (<span id="cc-count">${clientes.length}</span>)</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:1;justify-content:flex-end">
+            <input id="cc-busca" placeholder="🔍 Buscar nome, CPF..." oninput="_filtrarCorretorClientes()"
+              style="padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:160px">
+            <select id="cc-f-cidade" onchange="_filtrarCorretorClientes()"
+              style="padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px">
+              <option value="">Todas as cidades</option>
+              ${cidades.map(c => `<option value="${c}">${c}</option>`).join('')}
+            </select>
+            <select id="cc-f-emp" onchange="_filtrarCorretorClientes()"
+              style="padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px">
+              <option value="">Todos os empreendimentos</option>
+              ${emps.map(([id,nome]) => `<option value="${id}">${nome}</option>`).join('')}
+            </select>
+            <select id="cc-f-venda" onchange="_filtrarCorretorClientes()"
+              style="padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px">
+              <option value="">Todos os status</option>
+              <option value="sim">✅ Com venda</option>
+              <option value="nao">⏳ Sem venda</option>
+            </select>
+            <button class="btn btn-primary" onclick="openCorretorClienteModal()" style="font-size:13px;padding:7px 14px;white-space:nowrap">+ Novo Cliente</button>
           </div>
         </div>
         <table id="cc-tabela">
-          <thead><tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>Email</th><th>Cidade</th><th>Aniversário</th><th></th></tr></thead>
+          <thead><tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>Email</th><th>Cidade</th><th>Empreendimento</th><th>Aniversário</th><th></th></tr></thead>
           <tbody id="cc-tbody">
-            ${clientes.length ? clientes.map(c => _rowCorretorCliente(c)).join('') : '<tr class="empty-row"><td colspan="7">Nenhum cliente cadastrado<br><small>Clique em "+ Novo Cliente" para começar</small></td></tr>'}
+            ${clientes.length ? clientes.map(c => _rowCorretorCliente(c)).join('') : '<tr class="empty-row"><td colspan="8">Nenhum cliente cadastrado<br><small>Clique em "+ Novo Cliente" para começar</small></td></tr>'}
           </tbody>
         </table>
       </div>`;
-    // Guarda cache local para filtro
     el._clientes = clientes;
 
   } else if (_cpTab === 'empreendimentos') {
@@ -16375,29 +16392,40 @@ async function salvarConfigCorretor() {
 function _rowCorretorCliente(c) {
   const aniv = c.aniversario ? (() => { const [,m,d] = c.aniversario.split('-'); return `${d}/${m}`; })() : '—';
   const isLead = c.origem_tipo === 'lead';
+  const vendaBadge = c.tem_venda ? `<span style="font-size:10px;padding:2px 6px;border-radius:8px;background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.3);color:#4ade80;white-space:nowrap">✅ Venda</span>` : '';
   const acoes = isLead
-    ? `<span style="font-size:11px;color:var(--text2);padding:2px 7px;border-radius:10px;background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.25)">📋 Lead</span>`
-    : `<button class="btn-icon btn-edit" onclick="openCorretorClienteModal(${c.id})">✏️</button>
-       <button class="btn-icon btn-delete" onclick="deleteCorretorCliente(${c.id})">🗑️</button>`;
+    ? `<div style="display:flex;gap:4px;align-items:center">${vendaBadge}<span style="font-size:11px;color:var(--text2);padding:2px 7px;border-radius:10px;background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.25)">📋 Lead</span></div>`
+    : `<div style="display:flex;gap:4px;align-items:center">${vendaBadge}<button class="btn-icon btn-edit" onclick="openCorretorClienteModal(${c.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteCorretorCliente(${c.id})">🗑️</button></div>`;
   return `<tr data-cc-id="${c.id}" data-cc-nome="${(c.nome||'').toLowerCase()}" data-cc-cidade="${(c.cidade||'').toLowerCase()}">
-    <td><strong>${c.nome}</strong></td>
+    <td><strong>${c.nome||'<span style="color:var(--text2);font-style:italic">Sem nome</span>'}</strong></td>
     <td>${c.cpf||'—'}</td>
     <td>${c.telefone ? `<a href="https://wa.me/55${c.telefone.replace(/\D/g,'')}" target="_blank" style="color:var(--accent)">📱 ${fmtPhone(c.telefone)}</a>` : '—'}</td>
     <td>${c.email ? `<a href="mailto:${c.email}" style="color:var(--accent)">${c.email}</a>` : '—'}</td>
     <td>${c.cidade||'—'}${c.estado?'/'+c.estado:''}</td>
+    <td>${c.empreendimento_nome||'—'}</td>
     <td>${aniv}</td>
     <td style="white-space:nowrap">${acoes}</td>
   </tr>`;
 }
 
 function _filtrarCorretorClientes() {
-  const q = (document.getElementById('cc-busca')?.value||'').toLowerCase().trim();
+  const q      = (document.getElementById('cc-busca')?.value||'').toLowerCase().trim();
+  const cidade = document.getElementById('cc-f-cidade')?.value||'';
+  const empId  = document.getElementById('cc-f-emp')?.value||'';
+  const venda  = document.getElementById('cc-f-venda')?.value||'';
   const el = document.getElementById('cp-tab-content');
   const clientes = el?._clientes || [];
   const tbody = document.getElementById('cc-tbody');
+  const count = document.getElementById('cc-count');
   if (!tbody) return;
-  const filtrados = q ? clientes.filter(c => c.nome.toLowerCase().includes(q) || (c.cidade||'').toLowerCase().includes(q) || (c.cpf||'').includes(q) || (c.email||'').toLowerCase().includes(q)) : clientes;
-  tbody.innerHTML = filtrados.length ? filtrados.map(c => _rowCorretorCliente(c)).join('') : '<tr class="empty-row"><td colspan="7">Nenhum resultado</td></tr>';
+  let filtrados = clientes;
+  if (q)      filtrados = filtrados.filter(c => (c.nome||'').toLowerCase().includes(q) || (c.cidade||'').toLowerCase().includes(q) || (c.cpf||'').includes(q) || (c.email||'').toLowerCase().includes(q));
+  if (cidade) filtrados = filtrados.filter(c => c.cidade === cidade);
+  if (empId)  filtrados = filtrados.filter(c => String(c.empreendimento_id) === empId);
+  if (venda === 'sim') filtrados = filtrados.filter(c => c.tem_venda);
+  if (venda === 'nao') filtrados = filtrados.filter(c => !c.tem_venda);
+  if (count) count.textContent = filtrados.length;
+  tbody.innerHTML = filtrados.length ? filtrados.map(c => _rowCorretorCliente(c)).join('') : '<tr class="empty-row"><td colspan="8">Nenhum resultado para esses filtros</td></tr>';
 }
 
 async function openCorretorClienteModal(id) {

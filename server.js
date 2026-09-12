@@ -2958,11 +2958,19 @@ app.get("/api/corretor/clientes", (req, res) => {
   const cid = guardaCorretor(req, res); if (!cid) return;
   // Clientes cadastrados diretamente pelo corretor
   const proprios = db.prepare(`SELECT *, 'proprio' AS origem_tipo FROM corretor_clientes WHERE corretor_id=?`).all(cid);
-  // Leads da tabela principal atribuídos a este corretor
+  // Leads da tabela principal atribuídos a este corretor (com nome do empreendimento e status de venda)
   const leadsAtrib = db.prepare(`
-    SELECT id, nome, cpf, telefone, email, cidade, estado, aniversario, observacoes,
-           empreendimento_id, status AS lead_status, criado_em, 'lead' AS origem_tipo
-    FROM leads WHERE corretor_id=? ORDER BY nome ASC
+    SELECT l.id, l.nome, l.cpf, l.telefone, l.email, l.cidade, l.estado, l.aniversario, l.observacoes,
+           l.empreendimento_id, e.nome AS empreendimento_nome,
+           l.status AS lead_status, l.criado_em, 'lead' AS origem_tipo,
+           CASE WHEN v.id IS NOT NULL THEN 1 ELSE 0 END AS tem_venda,
+           v.status AS venda_status
+    FROM leads l
+    LEFT JOIN empreendimentos e ON e.id = l.empreendimento_id
+    LEFT JOIN vendas v ON v.lead_id = l.id AND v.status IN ('proposta','aprovado','ativo')
+    WHERE l.corretor_id=?
+    GROUP BY l.id
+    ORDER BY l.nome ASC
   `).all(cid);
   // Unifica: leads primeiro (mais completos), depois clientes próprios não duplicados por CPF
   const cpfsSeen = new Set(leadsAtrib.filter(l => l.cpf).map(l => l.cpf));
