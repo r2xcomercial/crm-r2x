@@ -3130,10 +3130,9 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
   if (u?.perfil === 'corretor' && !corretorTemAcesso(u, parseInt(empreendimento_id)))
     return err(res, 'Acesso negado a este empreendimento', 403);
 
-  // Corretor deve obrigatoriamente fornecer lead_id + condição de proposta
+  // Corretor deve obrigatoriamente fornecer lead_id
   if (u?.perfil === 'corretor') {
     if (!lead_id) return err(res, "Selecione um lead cadastrado antes de reservar a unidade");
-    if (!condicao_proposta) return err(res, "Informe a condição de pagamento da proposta");
     const leadCheck = db.prepare("SELECT id, corretor_id FROM leads WHERE id=?").get(parseInt(lead_id));
     if (!leadCheck) return err(res, "Lead não encontrado");
     if (leadCheck.corretor_id && u.corretor_id && leadCheck.corretor_id !== u.corretor_id)
