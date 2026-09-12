@@ -13686,15 +13686,23 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
   const todasVendas = empreendimentos.flatMap(e => (e.vendas||[]).map(v => ({ ...v, empreendimento_nome: e.nome })));
 
   // ── Conteúdo de cada aba ────────────────────────────────────────────────────
+
+  const kpiCard = (icon, label, value, sub, color) =>
+    `<div style="background:var(--navy2);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:4px;border-top:3px solid ${color||'var(--accent)'}">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);font-weight:600">${icon} ${label}</div>
+      <div style="font-size:24px;font-weight:900;letter-spacing:-1px;font-variant-numeric:tabular-nums">${value}</div>
+      ${sub?`<div style="font-size:11px;color:var(--text2)">${sub}</div>`:''}
+    </div>`;
+
   const tabContent = {
 
     empreendimentos: `
-      <div class="kpi-grid" style="margin-bottom:20px">
-        ${kpi('🏗️','Empreendimentos', kpis.totalEmpreendimentos, '')}
-        ${kpi('🏘️','Total Unidades', kpis.totalUnidades, '')}
-        ${kpi('🔴','Vendidas', kpis.totalVendidas, `+ ${kpis.totalReservadas} reservadas`)}
-        ${kpi('📊','VSO Global', vsoGlobal+'%', 'vend. + reserv.')}
-        ${kpi('💰','VGV Vendido', fmt(kpis.vgvVendido), `de ${fmt(kpis.vgvTotal)} total`)}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:24px">
+        ${kpiCard('🏗️','Empreendimentos', kpis.totalEmpreendimentos, '', 'var(--accent)')}
+        ${kpiCard('🏘️','Total Unidades', kpis.totalUnidades, '', 'var(--text2)')}
+        ${kpiCard('🔴','Vendidas', kpis.totalVendidas, `+${kpis.totalReservadas} reservadas`, 'var(--danger)')}
+        ${kpiCard('📊','VSO Global', vsoGlobal+'%', 'vend. + reserv.', 'var(--warning)')}
+        ${kpiCard('💰','VGV Vendido', fmt(kpis.vgvVendido), `de ${fmt(kpis.vgvTotal)} total`, 'var(--success)')}
       </div>
       ${empreendimentos.length === 0 ? `<div style="text-align:center;padding:60px;color:var(--text2)">Nenhum empreendimento cadastrado.</div>` : ''}
       ${empreendimentos.map(emp => {
@@ -13706,46 +13714,70 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
         const vendPct = total > 0 ? (vend/total*100) : 0;
         const resPct  = total > 0 ? (res /total*100) : 0;
         return `
-        <div class="table-card" style="margin-bottom:16px">
-          <div class="table-header" style="flex-wrap:wrap;gap:8px">
-            <div>
-              <div>
-              <div style="font-size:15px;font-weight:800">${emp.nome}</div>
-              <div style="font-size:12px;color:var(--text2);margin-top:2px">
-                ${emp.cidade||''}${emp.estado?'/'+emp.estado:''} ·
+        <div class="table-card" style="margin-bottom:16px;overflow:hidden">
+          <!-- Cabeçalho do card -->
+          <div style="padding:16px 20px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--border)">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:16px;font-weight:800;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${emp.nome}</div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--text2)">
+                ${emp.cidade||emp.estado?`<span>${emp.cidade||''}${emp.estado?'/'+emp.estado:''}</span><span>·</span>`:''}
                 <span class="badge ${SB[emp.status]||'badge-gray'}">${SL[emp.status]||emp.status}</span>
-                ${emp.data_lancamento?` · Lançamento: ${fmtDate(emp.data_lancamento)}`:''}
+                ${emp.data_lancamento?`<span>· Lançamento: ${fmtDate(emp.data_lancamento)}</span>`:''}
               </div>
             </div>
-            <div style="display:flex;align-items:center;gap:10px">
+            <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
               ${emp.espelho_slug ? `<a href="/espelho-publico.html?slug=${emp.espelho_slug}&token=${encodeURIComponent(TOKEN)}" target="_blank"
-                style="display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:7px;border:1px solid var(--accent);color:var(--accent);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap">
+                style="display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border-radius:50px;border:1.5px solid var(--accent);color:var(--accent);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap">
                 🔗 Espelho Público
               </a>` : ''}
-              <div style="font-size:18px;font-weight:700;color:var(--success)">${fmt(emp.vgv_vendido||0)}</div>
             </div>
           </div>
-          <div style="padding:14px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;border-bottom:1px solid var(--border)">
-            <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Total</div><div style="font-weight:700;font-size:20px">${total}</div></div>
-            <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Vendidas</div><div style="font-weight:700;font-size:20px;color:var(--danger)">${vend}</div></div>
-            <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Reservadas</div><div style="font-weight:700;font-size:20px;color:var(--warning)">${res}</div></div>
-            <div><div style="font-size:10px;color:var(--text2);text-transform:uppercase">Disponíveis</div><div style="font-weight:700;font-size:20px;color:var(--success)">${disp}</div></div>
-            <div>
-              <div style="font-size:10px;color:var(--text2);text-transform:uppercase">VSO</div>
-              <div style="font-weight:700;font-size:20px">${vso}%</div>
-              <div style="background:var(--navy3);border-radius:4px;height:6px;overflow:hidden;margin-top:4px;display:flex">
-                <div style="height:100%;background:var(--danger);width:${vendPct}%"></div>
-                <div style="height:100%;background:var(--warning);width:${resPct}%"></div>
-              </div>
+          <!-- Stats -->
+          <div style="padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:12px">
+            <div style="text-align:center">
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Total</div>
+              <div style="font-weight:800;font-size:22px;font-variant-numeric:tabular-nums">${total}</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Vendidas</div>
+              <div style="font-weight:800;font-size:22px;color:var(--danger);font-variant-numeric:tabular-nums">${vend}</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Reservadas</div>
+              <div style="font-weight:800;font-size:22px;color:var(--warning);font-variant-numeric:tabular-nums">${res}</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Disponíveis</div>
+              <div style="font-weight:800;font-size:22px;color:var(--success);font-variant-numeric:tabular-nums">${disp}</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">VSO</div>
+              <div style="font-weight:800;font-size:22px;font-variant-numeric:tabular-nums">${vso}%</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">VGV Vend.</div>
+              <div style="font-weight:700;font-size:13px;color:var(--success);margin-top:4px">${fmt(emp.vgv_vendido||0)}</div>
+            </div>
+          </div>
+          <!-- Barra VSO -->
+          <div style="padding:0 20px 16px">
+            <div style="background:var(--navy3);border-radius:6px;height:8px;overflow:hidden;display:flex">
+              <div style="height:100%;background:var(--danger);width:${vendPct}%;transition:width .5s"></div>
+              <div style="height:100%;background:var(--warning);width:${resPct}%;transition:width .5s"></div>
+            </div>
+            <div style="display:flex;gap:14px;margin-top:6px;font-size:10px;color:var(--text2)">
+              <div style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:2px;background:var(--danger)"></div>Vendidas</div>
+              <div style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:2px;background:var(--warning)"></div>Reservadas</div>
+              <div style="display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:2px;background:var(--navy3)"></div>Disponíveis</div>
             </div>
           </div>
           ${emp.checklist&&emp.checklist.length?`
-          <div style="padding:12px 20px">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);margin-bottom:8px">✅ Checklist de Marketing</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px">
+          <div style="padding:12px 20px;border-top:1px solid var(--border)">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text2);letter-spacing:.6px;margin-bottom:10px">Checklist de Marketing</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px">
               ${emp.checklist.map(c=>`
-                <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--navy3);border-radius:7px;font-size:12px">
-                  <span>${CI[c.status]||'⏳'}</span>
+                <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--navy3);border-radius:8px;font-size:12px">
+                  <span style="flex-shrink:0">${CI[c.status]||'⏳'}</span>
                   <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.material}</div>
                   ${c.data_entrega?`<div style="font-size:10px;color:var(--text2);flex-shrink:0">${fmtDate(c.data_entrega)}</div>`:''}
                 </div>`).join('')}
@@ -13947,33 +13979,44 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
 
   const tabBtn = (id, icon, label) =>
     `<button onclick="renderIncorporadorPainel('${id}')"
-      style="padding:8px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;
-             background:${aba===id?'var(--accent)':'var(--navy3)'};
+      style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:50px;border:none;cursor:pointer;font-size:13px;font-weight:700;white-space:nowrap;
+             background:${aba===id?'var(--accent)':'transparent'};
              color:${aba===id?'var(--navy)':'var(--text2)'};
+             border:1.5px solid ${aba===id?'var(--accent)':'var(--border)'};
              transition:all .15s">
       ${icon} ${label}
     </button>`;
 
+  const initials = (cliente.razao_social||'?').split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+
   el.innerHTML = `
-    <div style="margin-bottom:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div>
-          <h1 style="font-size:20px;font-weight:900">🏗️ ${cliente.razao_social}</h1>
-          <div style="color:var(--text2);font-size:13px;margin-top:3px">${cliente.cidade||''}${cliente.estado?'/'+cliente.estado:''} · Portal do Incorporador</div>
+    <!-- ── HEADER ── -->
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px;flex-wrap:wrap">
+      <div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--accent),#0891b2);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#fff;flex-shrink:0;letter-spacing:-1px">
+        ${initials}
+      </div>
+      <div style="flex:1;min-width:0">
+        <h1 style="font-size:18px;font-weight:900;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${cliente.razao_social}</h1>
+        <div style="color:var(--text2);font-size:12px;margin-top:2px">${cliente.cidade||''}${cliente.estado?'/'+cliente.estado:''} &nbsp;·&nbsp; Portal do Incorporador</div>
+      </div>
+      <div style="font-size:11px;color:var(--text2);text-align:right;flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:5px;color:var(--success);font-weight:600;margin-bottom:2px">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--success);animation:pulse 2s infinite"></div>
+          Tempo real
         </div>
-        <div style="font-size:11px;color:var(--text2)">Dados em tempo real · ${new Date().toLocaleString('pt-BR')}</div>
+        ${new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}
       </div>
     </div>
 
-    <!-- Abas -->
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+    <!-- ── ABAS ── -->
+    <div style="display:flex;gap:8px;margin-bottom:24px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch">
       ${tabBtn('empreendimentos','🏗️','Empreendimentos')}
       ${tabBtn('vendas','📋','Vendas')}
       ${tabBtn('ranking','🥇','Ranking')}
       ${tabBtn('comissoes','💰','Comissões')}
     </div>
 
-    <!-- Conteúdo da aba ativa -->
+    <!-- ── CONTEÚDO ── -->
     ${tabContent[aba] || ''}
   `;
 }
