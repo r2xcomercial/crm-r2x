@@ -4495,7 +4495,30 @@ app.get('/api/espelho-publico/:slug', (req, res) => {
     return acc;
   }, {});
   const espelhoParams = emp.espelho_params ? JSON.parse(emp.espelho_params) : null;
-  ok(res, { empreendimento: emp, imagem: mapa?.svg_data || null, units, resumo, espelhoParams, markerSize: emp.espelho_marker_size || 20, mapsUrl: emp.maps_url || null, driveUrl: emp.drive_url || null, socialUrl: emp.social_url || null, configVerTabela: emp.config_ver_tabela, configReservar: emp.config_reservar, atualizado_em: new Date().toISOString() });
+
+  // Permissões globais do empreendimento (base)
+  let configVerTabela = emp.config_ver_tabela;
+  let configReservar  = emp.config_reservar;
+
+  // Se há token de corretor no header, aplica também as permissões individuais dele
+  const token = req.headers['x-crm-token'];
+  if (token) {
+    try {
+      const usuario = db.prepare("SELECT id, perfil, corretor_id FROM usuarios WHERE token=? AND ativo=1").get(token);
+      if (usuario && usuario.corretor_id && usuario.perfil === 'corretor') {
+        const acesso = db.prepare(
+          "SELECT pode_ver_tabela, pode_reservar FROM corretor_empreendimento_acesso WHERE corretor_id=? AND empreendimento_id=? AND liberado=1"
+        ).get(usuario.corretor_id, emp.id);
+        if (acesso) {
+          // Permissão efetiva = mínimo entre global e individual (mais restritivo vence)
+          configVerTabela = Math.min(configVerTabela, acesso.pode_ver_tabela);
+          configReservar  = Math.min(configReservar,  acesso.pode_reservar);
+        }
+      }
+    } catch(_) {}
+  }
+
+  ok(res, { empreendimento: emp, imagem: mapa?.svg_data || null, units, resumo, espelhoParams, markerSize: emp.espelho_marker_size || 20, mapsUrl: emp.maps_url || null, driveUrl: emp.drive_url || null, socialUrl: emp.social_url || null, configVerTabela, configReservar, atualizado_em: new Date().toISOString() });
 });
 
 // Rota pública da página de espelho — injeta meta tags OG para preview no WhatsApp/redes sociais

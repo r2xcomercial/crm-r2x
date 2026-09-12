@@ -860,7 +860,9 @@ ${condsRows ? `
 // ── Carregamento principal ───────────────────────────────────────────────────
 async function carregar() {
   try {
-    const r    = await fetch(`/api/espelho-publico/${slug}`);
+    const headers = {};
+    if (_corretorToken) headers['x-crm-token'] = _corretorToken;
+    const r    = await fetch(`/api/espelho-publico/${slug}`, { headers });
     const resp = await r.json();
     if (!resp.ok) {
       document.getElementById('conteudo').innerHTML = `<div class="erro">⚠️ ${resp.error}</div>`;
