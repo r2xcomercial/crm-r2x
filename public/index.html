@@ -11292,13 +11292,16 @@ async function abrirUnidade(unidadeId, empId) {
     window._espelhoHidePreco   = !perms.pode_ver_tabela;
     window._espelhoHideReserva = !perms.pode_reservar;
   }
-  const [ur, vagasR, todasVagasR] = await Promise.all([
+  const isAdminGestor = ['admin','gestor'].includes(USUARIO.perfil);
+  const [ur, vagasR, todasVagasR, reservaR] = await Promise.all([
     get(`/api/empreendimentos/${empId}/unidades`),
     get(`/api/unidades/${unidadeId}/vagas`),
     get(`/api/empreendimentos/${empId}/vagas`),
+    isAdminGestor ? get(`/api/unidades/${unidadeId}/reserva`) : Promise.resolve({ ok: false }),
   ]);
   const u = (ur.data||[]).find(x => x.id === unidadeId);
   if (!u) return;
+  const reservaInfo = reservaR.ok ? reservaR.data : null;
 
   const isPredio = emp.tipo === 'predio';
   const lblA = isPredio ? 'Andar' : 'Quadra';
@@ -11390,7 +11393,36 @@ async function abrirUnidade(unidadeId, empId) {
       _carregarLeadsParaReserva(u.id, empId);
     }
   } else {
-    document.getElementById('modal-body').innerHTML = infoCards + `
+    // Card de reserva/venda para admin/gestor
+    const reservaCard = (reservaInfo && ['reservado','vendido'].includes(u.status)) ? (() => {
+      const statusLabel = u.status === 'reservado' ? '🟡 Reservado' : '🔴 Vendido';
+      const bgColor = u.status === 'reservado' ? 'rgba(245,158,11,.08)' : 'rgba(239,68,68,.08)';
+      const borderColor = u.status === 'reservado' ? 'rgba(245,158,11,.3)' : 'rgba(239,68,68,.3)';
+      const dataFormatada = reservaInfo.criado_em ? new Date(reservaInfo.criado_em).toLocaleDateString('pt-BR') : '—';
+      return `<div style="background:${bgColor};border:1px solid ${borderColor};border-radius:10px;padding:14px 16px;margin-bottom:16px">
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">📋 ${statusLabel} em ${dataFormatada}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <div style="font-size:10px;color:var(--text2);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px">👤 Cliente</div>
+            <div style="font-size:14px;font-weight:700">${reservaInfo.lead_nome || '—'}</div>
+            ${reservaInfo.lead_cpf ? `<div style="font-size:11px;color:var(--text2)">CPF: ${reservaInfo.lead_cpf}</div>` : ''}
+            ${reservaInfo.lead_telefone ? `<a href="https://wa.me/55${reservaInfo.lead_telefone.replace(/\D/g,'')}" target="_blank"
+              style="font-size:11px;color:var(--accent);display:block;margin-top:2px">📱 ${fmtPhone(reservaInfo.lead_telefone)}</a>` : ''}
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text2);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px">🏷️ Corretor</div>
+            <div style="font-size:14px;font-weight:700">${reservaInfo.corretor_nome || '—'}</div>
+            ${reservaInfo.corretor_telefone ? `<a href="https://wa.me/55${reservaInfo.corretor_telefone.replace(/\D/g,'')}" target="_blank"
+              style="font-size:11px;color:var(--accent);display:block;margin-top:2px">📱 ${fmtPhone(reservaInfo.corretor_telefone)}</a>` : ''}
+          </div>
+        </div>
+        ${reservaInfo.lead_id ? `<button onclick="closeModal();openLeadModal({id:${reservaInfo.lead_id}})"
+          style="margin-top:10px;width:100%;padding:7px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;font-weight:600">
+          📂 Abrir ficha do cliente</button>` : ''}
+      </div>`;
+    })() : '';
+
+    document.getElementById('modal-body').innerHTML = infoCards + reservaCard + `
       <!-- Editar Unidade -->
       <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">

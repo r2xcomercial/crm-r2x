@@ -2000,6 +2000,22 @@ app.get("/api/unidades/:id/vagas", (req, res) => {
   ok(res, rows);
 });
 
+app.get("/api/unidades/:id/reserva", autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor'].includes(u?.perfil)) return err(res, 'Acesso restrito', 403);
+  const row = db.prepare(`
+    SELECT v.id, v.status, v.criado_em, v.condicao_proposta,
+           l.id AS lead_id, l.nome AS lead_nome, l.telefone AS lead_telefone, l.cpf AS lead_cpf,
+           c.id AS corretor_id, c.nome AS corretor_nome, c.telefone AS corretor_telefone
+    FROM vendas v
+    LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN corretores c ON c.id = v.corretor_id
+    WHERE v.unidade_id = ? AND v.status NOT IN ('distrato','cancelado')
+    ORDER BY v.id DESC LIMIT 1
+  `).get(parseInt(req.params.id));
+  ok(res, row || null);
+});
+
 // Vincular/desvincular vaga de uma unidade
 app.put("/api/vagas/:id/unidade", (req, res) => {
   const { unidade_id } = req.body;
