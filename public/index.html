@@ -1368,10 +1368,14 @@ function openLeadModal(lead = {}, onSave = null) {
         <select id="f-prazo"><option value="">—</option><option ${lead.prazo==='imediato'?'selected':''}>imediato</option><option ${lead.prazo==='curto'?'selected':''}>curto</option><option ${lead.prazo==='longo'?'selected':''}>longo</option></select>
       </div>
       <div class="form-group"><label>Corretor responsável</label>
-        <select id="f-corretor">
+        <select id="f-corretor" ${!lead.id && USUARIO.perfil==='corretor' ? 'disabled' : ''}>
           <option value="">— Sem corretor —</option>
-          ${corretoresData.map(c => `<option value="${c.id}" ${lead.corretor_id==c.id?'selected':''}>${c.nome}</option>`).join('')}
+          ${corretoresData.map(c => {
+            const defaultSel = !lead.id && USUARIO.perfil==='corretor' && c.id==USUARIO.corretor_id;
+            return `<option value="${c.id}" ${lead.corretor_id==c.id||defaultSel?'selected':''}>${c.nome}</option>`;
+          }).join('')}
         </select>
+        ${!lead.id && USUARIO.perfil==='corretor' ? `<input type="hidden" id="f-corretor-hidden" value="${USUARIO.corretor_id}">` : ''}
       </div>
       <div class="form-group"><label>Empreendimento de interesse</label>
         <select id="f-emp">
@@ -1525,7 +1529,7 @@ function openLeadModal(lead = {}, onSave = null) {
     ` : ''}
   `, async () => {
     const tipoLead = v('f-tipo-lead') || null;
-    const corretorId = v('f-corretor')||null;
+    const corretorId = v('f-corretor') || document.getElementById('f-corretor-hidden')?.value || null;
     const statusSelecionado = v('f-status');
     // Auto-move: se corretor foi atribuído e status ainda é 'novo', vai para com_corretor
     const statusFinal = (corretorId && statusSelecionado === 'novo') ? 'com_corretor' : statusSelecionado;
