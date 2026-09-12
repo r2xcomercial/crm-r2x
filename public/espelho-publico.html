@@ -405,7 +405,9 @@
 </button>
 
 <script>
-const slug = location.pathname.split('/espelho/')[1]?.split('/')[0];
+const slug = location.pathname.split('/espelho/')[1]?.split('/')[0]
+          || new URLSearchParams(location.search).get('slug')
+          || null;
 let countdown = 15, timer;
 let _empNome = '';
 let _empTipo = 'loteamento';
