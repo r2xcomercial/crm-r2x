@@ -682,6 +682,27 @@ try {
     USUARIO = JSON.parse(localStorage.getItem('crm_usuario') || '{}');
   }
 } catch(_) {}
+
+// Auto-login via ?autotoken= (incorporador vindo do espelho público)
+(function() {
+  const urlToken = new URLSearchParams(location.search).get('autotoken');
+  if (urlToken && !localStorage.getItem('crm_token')) {
+    fetch('/api/auth/me', { headers: { 'x-crm-token': urlToken } })
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) {
+          localStorage.setItem('crm_token', urlToken);
+          localStorage.setItem('crm_usuario', JSON.stringify({ nome: d.data.nome, perfil: d.data.perfil, corretor_id: d.data.corretor_id||null, cliente_id: d.data.cliente_id||null }));
+        }
+        const url = new URL(location.href);
+        url.searchParams.delete('autotoken');
+        location.replace(url.toString());
+      })
+      .catch(() => location.replace('/login'));
+    throw new Error('redirect');
+  }
+})();
+
 if (!TOKEN) { window.location.href = '/login'; }
 
 // Botão reserva rápida — visível para admin/corretor, não para incorporador
