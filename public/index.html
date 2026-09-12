@@ -11617,25 +11617,14 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
   window._rrPreco = unidadePreco || 0;
   window._rrEmpId = empId;
 
-  const [rLeads, rEmpConds] = await Promise.all([
-    get('/api/corretor/clientes'),
-    get(`/api/empreendimentos/${empId}/condicao-padrao`)
-  ]);
+  const rLeads = await get('/api/corretor/clientes');
   const leads = (rLeads.data || []);
 
-  // Montar lista de condições simples a partir do espelho_params
   const empObj = (currentData.emp||[]).find(e => e.id === empId) || {};
-  let simConds = [];
+  let simConds = [], ep = {};
   try {
-    const ep = empObj.espelho_params ? JSON.parse(empObj.espelho_params) : null;
-    if (ep?.condicoes?.length) simConds = ep.condicoes; // [{label, nParc, juros}]
-  } catch(_) {}
-
-  // Fallback: condicao_pagamento_padrao
-  let cpPadrao = null;
-  try {
-    const raw = rEmpConds.data || [];
-    cpPadrao = raw.length ? raw : null;
+    ep = empObj.espelho_params ? JSON.parse(empObj.espelho_params) : {};
+    if (ep?.condicoes?.length) simConds = ep.condicoes;
   } catch(_) {}
 
   const loading = document.getElementById('reserva-lead-loading');
@@ -11655,51 +11644,72 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
     return;
   }
 
-  // Usa simConds (espelho) se houver, senão usa primeira condição do cpPadrao
-  const preco = unidadePreco || 0;
-  let defEntPct = 20, defNParc = 60, defJuros = 0;
-  if (simConds.length) {
-    const ep = empObj.espelho_params ? JSON.parse(empObj.espelho_params) : {};
-    defEntPct = ep.entrada_tipo === 'valor'
-      ? (preco > 0 ? Math.round((ep.entrada_valor||0) / preco * 100) : 20)
-      : (ep.entrada_pct || 20);
-    defNParc  = simConds[0].nParc || 60;
-    defJuros  = simConds[0].juros || 0;
-  }
-
-  // Monta opções de condição (para o dropdown)
-  const condOpts = simConds.length
-    ? simConds.map((c, i) => `<option value="${i}">${c.label || c.nParc+'x'} ${c.juros > 0 ? '· '+c.juros+'% a.m.' : '· sem juros'}</option>`).join('')
-    : '<option value="">Livre</option>';
   window._rrSimConds = simConds;
+  window._rrEpParams = ep;
+  window._rrLeads = leads;
+  window._rrLeadId = null;
+
+  const preco = unidadePreco || 0;
+  const nRef = parseInt(ep.nRef) || 0;
+  const pRef = parseFloat(ep.pRef) || 0;
+  const hasTiles = simConds.length > 0;
+
+  // Default values for when no tiles (or fields shown immediately)
+  let defEntPct = 20, defNParc = 60, defJuros = 0;
+  if (ep.entrada_tipo === 'valor' && preco > 0) {
+    defEntPct = Math.round((ep.entrada_valor||0) / preco * 100);
+  } else if (ep.entrada_pct) {
+    defEntPct = Math.round((ep.entrada_pct) * 100);
+  }
+  if (simConds.length) { defNParc = simConds[0].nParc || 60; defJuros = simConds[0].juros || 0; }
 
   const fmt0 = n => Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0});
-  const pmtCalc = (s, n, j) => { if (!n) return 0; if (!j) return s/n; const i=j/100; return s*(i*Math.pow(1+i,n))/(Math.pow(1+i,n)-1); };
   const entV0 = preco * (defEntPct / 100);
   const saldo0 = preco - entV0;
-  const parc0 = pmtCalc(saldo0, defNParc, defJuros);
+  const parc0 = _rrPMT(saldo0, defNParc, defJuros);
+
+  // Condition tiles HTML
+  const condTilesHtml = hasTiles ? `
+    <div style="margin-top:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📋 Selecione a condição de pagamento</div>
+      <div id="rr-cond-tiles" style="display:flex;flex-direction:column;gap:6px">
+        ${simConds.map((c, i) => `
+          <div id="rr-tile-${i}" onclick="_rrSelecionarCond(${i})"
+            style="padding:10px 14px;border-radius:9px;border:1.5px solid var(--border);cursor:pointer;transition:all .15s;background:transparent">
+            <div style="font-size:13px;font-weight:700;color:var(--text)">${c.label || c.nParc+'x'}</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:2px">${c.nParc} parcelas · ${c.juros > 0 ? c.juros+'% a.m.' : 'sem juros'}${nRef > 0 ? ' · '+nRef+' reforço'+(nRef>1?'s':'') : ''}</div>
+          </div>`).join('')}
+      </div>
+    </div>` : '';
+
+  // Reforços fields (only if nRef > 0)
+  const reforcosHtml = nRef > 0 ? `
+    <div>
+      <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Nº de Reforços</label>
+      <input type="number" id="rr-nref" min="0" max="24" step="1" value="${nRef}"
+        oninput="_rrRecalcular()"
+        style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">% por Reforço</label>
+      <input type="number" id="rr-pref" min="0" max="100" step="0.5" value="${Math.round(pRef * 100)}"
+        oninput="_rrRecalcular()"
+        style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+    </div>` : '';
+
+  // Fields block: hidden initially when tiles exist (user must pick one first)
+  const fieldsDisplay = hasTiles ? 'display:none' : '';
 
   loading.innerHTML = `
     <input id="rr-lead-search" type="text" placeholder="🔍 Buscar cliente por nome ou telefone..."
       oninput="_filtrarLeadsReserva()"
       style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-size:13px;margin-bottom:8px">
     <div id="rr-lead-lista" style="max-height:130px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
-    <div id="rr-lead-selecionado" style="display:none;margin-top:8px;background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.3);border-radius:8px;padding:8px 12px">
-      <div style="font-size:11px;color:var(--accent);font-weight:700;margin-bottom:1px">LEAD SELECIONADO</div>
-      <div id="rr-lead-nome-sel" style="font-size:13px;font-weight:700"></div>
-      <div id="rr-lead-tel-sel" style="font-size:11px;color:var(--text2)"></div>
-    </div>
+    ${condTilesHtml}
     ${preco > 0 ? `
-    <div style="margin-top:12px;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">💳 Proposta de Pagamento</div>
-      ${simConds.length > 1 ? `
-      <div style="margin-bottom:10px">
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Condição base</label>
-        <select id="rr-cond-sel" onchange="_rrAplicarCond(this.value)"
-          style="width:100%;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
-          ${condOpts}
-        </select>
-      </div>` : ''}
+    <div id="rr-proposta-campos" style="${fieldsDisplay};margin-top:12px;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">💳 Proposta de Pagamento</div>
+      <div id="rr-cond-selecionada-label" style="display:none;font-size:12px;font-weight:700;color:var(--accent);margin-bottom:10px;background:rgba(0,196,180,.08);border-radius:6px;padding:5px 10px"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
         <div>
           <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Entrada (%)</label>
@@ -11713,6 +11723,7 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
             oninput="_rrRecalcularDaEntrada()"
             style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
         </div>
+        ${reforcosHtml}
         <div>
           <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Parcelas (nº)</label>
           <input type="number" id="rr-nparc" min="1" max="360" step="1" value="${defNParc}"
@@ -11726,7 +11737,6 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
             style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
         </div>
       </div>
-      <!-- Resumo calculado -->
       <div id="rr-resumo" style="background:rgba(0,196,180,.06);border:1px solid rgba(0,196,180,.2);border-radius:8px;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
         <div><div style="font-size:10px;color:var(--text2)">PARCELA MENSAL</div><div id="rr-res-parc" style="font-size:17px;font-weight:700;color:var(--accent)">${fmt0(parc0)}</div></div>
         <div><div style="font-size:10px;color:var(--text2)">SALDO FINANCIADO</div><div id="rr-res-saldo" style="font-size:15px;font-weight:700">${fmt0(saldo0)}</div></div>
@@ -11741,10 +11751,8 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
       ⚡ Reservar agora
     </button>`;
 
-  window._rrLeads = leads;
-  window._rrLeadId = null;
   _filtrarLeadsReserva();
-  _rrRecalcular();
+  if (!hasTiles) _rrRecalcular();
 }
 
 function _rrPMT(saldo, nParc, juros) {
@@ -11770,7 +11778,9 @@ function _rrRecalcular() {
   if (el('rr-res-parc'))  el('rr-res-parc').textContent  = fmt0(parc);
   if (el('rr-res-saldo')) el('rr-res-saldo').textContent = fmt0(saldo);
   if (el('rr-res-total')) el('rr-res-total').textContent = fmt0(total);
-  window._rrCondicao = { label: `${nParc}x ${juros>0?juros+'% a.m.':'sem juros'}`, nParc, juros, entrada_pct: entPct, valor_entrada: Math.round(entV), saldo: Math.round(saldo), parcela_mensal: Math.round(parc*100)/100, valor_total: Math.round(total) };
+  const conds = window._rrSimConds || [];
+  const condLabel = window._rrCondLabel || (conds.length ? conds[0].label : `${nParc}x ${juros>0?juros+'% a.m.':'sem juros'}`);
+  window._rrCondicao = { label: condLabel, nParc, juros, entrada_pct: entPct, valor_entrada: Math.round(entV), saldo: Math.round(saldo), parcela_mensal: Math.round(parc*100)/100, valor_total: Math.round(total) };
 }
 
 function _rrRecalcularDaEntrada() {
@@ -11783,19 +11793,46 @@ function _rrRecalcularDaEntrada() {
   _rrRecalcular();
 }
 
-function _rrAplicarCond(idx) {
+function _rrSelecionarCond(idx) {
   const conds = window._rrSimConds || [];
   const c = conds[parseInt(idx)];
   if (!c) return;
-  const empObj = (currentData.emp||[]).find(e => e.id == window._rrEmpId) || {};
+  window._rrCondLabel = c.label || `${c.nParc}x ${c.juros > 0 ? c.juros+'% a.m.' : 'sem juros'}`;
+
+  // Highlight selected tile
+  conds.forEach((_, i) => {
+    const tile = document.getElementById(`rr-tile-${i}`);
+    if (!tile) return;
+    tile.style.borderColor = i === idx ? 'var(--accent)' : 'var(--border)';
+    tile.style.background  = i === idx ? 'rgba(0,196,180,.1)' : 'transparent';
+  });
+
+  // Show fields block
+  const campos = document.getElementById('rr-proposta-campos');
+  if (campos) campos.style.display = '';
+
+  // Show selected label chip
+  const lbl = document.getElementById('rr-cond-selecionada-label');
+  if (lbl) { lbl.textContent = `✅ ${window._rrCondLabel}`; lbl.style.display = ''; }
+
+  // Pre-fill entrada from espelho_params
+  const ep = window._rrEpParams || {};
   let entPct = 20;
-  try { const ep = empObj.espelho_params ? JSON.parse(empObj.espelho_params) : {}; entPct = ep.entrada_pct || 20; } catch(_) {}
-  const nParcInput = document.getElementById('rr-nparc');
-  const jurosInput = document.getElementById('rr-juros');
-  if (nParcInput) nParcInput.value = c.nParc || 60;
-  if (jurosInput) jurosInput.value = c.juros || 0;
+  if (ep.entrada_tipo === 'valor' && window._rrPreco > 0) {
+    entPct = Math.round((ep.entrada_valor||0) / window._rrPreco * 100);
+  } else if (ep.entrada_pct) {
+    entPct = Math.round(ep.entrada_pct * 100);
+  }
+  const entPctInput = document.getElementById('rr-ent-pct');
+  const nParcInput  = document.getElementById('rr-nparc');
+  const jurosInput  = document.getElementById('rr-juros');
+  if (entPctInput) entPctInput.value = entPct;
+  if (nParcInput)  nParcInput.value  = c.nParc || 60;
+  if (jurosInput)  jurosInput.value  = c.juros || 0;
   _rrRecalcular();
 }
+
+function _rrAplicarCond(idx) { _rrSelecionarCond(idx); }
 
 function _filtrarLeadsReserva() {
   const q = (document.getElementById('rr-lead-search')?.value || '').toLowerCase();
@@ -11820,14 +11857,8 @@ function _filtrarLeadsReserva() {
 
 function _selecionarLeadReserva(id, nome, tel) {
   window._rrLeadId = id;
-  const nomeSel = document.getElementById('rr-lead-nome-sel');
-  const telSel  = document.getElementById('rr-lead-tel-sel');
-  const sel     = document.getElementById('rr-lead-selecionado');
-  const btn     = document.getElementById('btn-reservar-lead');
-  if (nomeSel) nomeSel.textContent = nome;
-  if (telSel)  telSel.textContent  = tel;
-  if (sel)     sel.style.display   = 'block';
-  if (btn)     { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
+  const btn = document.getElementById('btn-reservar-lead');
+  if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
   _filtrarLeadsReserva(); // re-render para marcar selecionado
 }
 
