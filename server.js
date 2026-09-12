@@ -1020,7 +1020,9 @@ app.post("/api/empreendimentos/:id/unidades/upload", upload.single("arquivo"), (
 });
 
 // Gera contrato DOCX preenchido com dados do empreendimento e incorporador
-app.get("/api/empreendimentos/:id/contrato", (req, res) => {
+app.get("/api/empreendimentos/:id/contrato", autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor','incorporador'].includes(u.perfil)) return err(res, 'Acesso restrito', 403);
   try {
     const empId = parseInt(req.params.id);
     const emp = db.prepare("SELECT * FROM empreendimentos WHERE id=?").get(empId);
@@ -1980,7 +1982,9 @@ app.delete("/api/empreendimentos/:id", (req, res) => {
 
 // ─── VAGAS DE GARAGEM ─────────────────────────────────────────────────────────
 
-app.get("/api/empreendimentos/:id/vagas", (req, res) => {
+app.get("/api/empreendimentos/:id/vagas", autenticar, (req, res) => {
+  const empId = parseInt(req.params.id);
+  if (!corretorTemAcesso(req.usuario, empId)) return err(res, 'Acesso negado a este empreendimento', 403);
   const rows = db.prepare(`
     SELECT vg.*,
       v.id as venda_ref_id,
@@ -3121,6 +3125,10 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
   const u = req.usuario;
   const { empreendimento_id, unidade_id, lead_id, lead_nome, lead_telefone, corretor_id, condicao_proposta } = req.body;
   if (!empreendimento_id || !unidade_id) return err(res, "Empreendimento e unidade obrigatórios");
+
+  // Bloqueia corretor sem acesso ao empreendimento
+  if (u?.perfil === 'corretor' && !corretorTemAcesso(u, parseInt(empreendimento_id)))
+    return err(res, 'Acesso negado a este empreendimento', 403);
 
   // Corretor deve obrigatoriamente fornecer lead_id + condição de proposta
   if (u?.perfil === 'corretor') {
