@@ -15892,10 +15892,10 @@ async function renderCorretorPainel(tab) {
 
     <!-- KPIs consolidados -->
     <div class="kpi-grid" style="margin-bottom:16px">
-      ${kpi('🏆', 'Total de Vendas', qtdVendas, `R2X: ${vendasR2X.length} · Externas: ${vendasProprias.length}`)}
-      ${kpi('💵', 'Volume Total', fmt(totalVendido), `R2X: ${fmt(r2xTotalVendido)} · Ext.: ${fmt(propTotalVendido)}`)}
-      ${kpi('⏳', 'Comissão a Receber', fmt(comPendente), `R2X: ${fmt(r2xComPend)} · Ext.: ${fmt(propComPend)}`)}
-      ${kpi('✅', 'Comissão Recebida', fmt(comPaga), `R2X: ${fmt(r2xComPaga)} · Ext.: ${fmt(propComPaga)}`)}
+      ${kpi('🏆', 'Total de Vendas', qtdVendas, `Lançamentos: ${vendasR2X.length} · Externas: ${vendasProprias.length}`)}
+      ${kpi('💵', 'Volume Total', fmt(totalVendido), `Lançamentos: ${fmt(r2xTotalVendido)} · Ext.: ${fmt(propTotalVendido)}`)}
+      ${kpi('⏳', 'Comissão a Receber', fmt(comPendente), `Lançamentos: ${fmt(r2xComPend)} · Ext.: ${fmt(propComPend)}`)}
+      ${kpi('✅', 'Comissão Recebida', fmt(comPaga), `Lançamentos: ${fmt(r2xComPaga)} · Ext.: ${fmt(propComPaga)}`)}
     </div>
 
     <!-- Meta do mês -->

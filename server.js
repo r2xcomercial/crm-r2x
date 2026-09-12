@@ -903,7 +903,9 @@ app.put("/api/empreendimentos/:id", (req, res) => {
 });
 
 app.get('/api/empreendimentos/:id', autenticar, (req, res) => {
-  const row = db.prepare('SELECT * FROM empreendimentos WHERE id=?').get(parseInt(req.params.id));
+  const empId = parseInt(req.params.id);
+  if (!corretorTemAcesso(req.usuario, empId)) return err(res, 'Acesso negado a este empreendimento', 404);
+  const row = db.prepare('SELECT * FROM empreendimentos WHERE id=?').get(empId);
   if (!row) return err(res, 'Não encontrado', 404);
   ok(res, row);
 });
@@ -930,13 +932,15 @@ app.put('/api/empreendimentos/:id/data-lancamento', autenticar, (req, res) => {
 // ─── UNIDADES ─────────────────────────────────────────────────────────────────
 
 app.get("/api/empreendimentos/:id/unidades", (req, res) => {
+  const empId = parseInt(req.params.id);
+  if (!corretorTemAcesso(req.usuario, empId)) return err(res, 'Acesso negado a este empreendimento', 403);
   const rows = db.prepare(`
     SELECT u.*,
       (SELECT COUNT(*) FROM vagas_garagem vg WHERE vg.unidade_id = u.id) as num_vagas
     FROM unidades u
     WHERE u.empreendimento_id = ?
     ORDER BY CAST(u.quadra AS REAL), CAST(REPLACE(u.lote,'-',' ') AS REAL), u.lote
-  `).all(req.params.id);
+  `).all(empId);
   ok(res, rows);
 });
 
@@ -2688,6 +2692,22 @@ function guardaCorretor(req, res) {
   return id;
 }
 
+// Verifica se o corretor tem acesso a um empreendimento específico.
+// Retorna true se admin/gestor/incorporador, ou se o corretor tem liberado=1.
+function corretorTemAcesso(usuario, empId) {
+  if (!usuario) return false;
+  if (['admin','gestor','incorporador'].includes(usuario.perfil)) return true;
+  if (usuario.perfil !== 'corretor' || !usuario.corretor_id) return false;
+  const temRegistro = db.prepare('SELECT 1 FROM corretor_empreendimento_acesso WHERE corretor_id=? LIMIT 1').get(usuario.corretor_id);
+  if (!temRegistro) {
+    // Sem registros: usa visibilidade global do empreendimento
+    const emp = db.prepare('SELECT COALESCE(config_visivel,1) AS visivel FROM empreendimentos WHERE id=?').get(empId);
+    return emp?.visivel === 1;
+  }
+  const acesso = db.prepare('SELECT liberado FROM corretor_empreendimento_acesso WHERE corretor_id=? AND empreendimento_id=?').get(usuario.corretor_id, empId);
+  return acesso?.liberado === 1;
+}
+
 app.get("/api/corretor/painel", (req, res) => {
   const corretorId = guardaCorretor(req, res); if (!corretorId) return;
   const corretor   = db.prepare('SELECT * FROM corretores WHERE id=?').get(corretorId);
@@ -3172,6 +3192,7 @@ app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
   const empId = parseInt(req.params.id);
   if (!empId) return err(res, 'ID inválido');
   const u = req.usuario;
+  if (!corretorTemAcesso(u, empId)) return err(res, 'Acesso negado a este empreendimento', 403);
 
   // Colunas de vendas ativas
   const KANBAN_STATUS = ['reserva', 'proposta', 'aprovado', 'ativo'];
@@ -4516,12 +4537,16 @@ app.get('/api/espelho-publico/:slug', (req, res) => {
   let configVerTabela = emp.config_ver_tabela;
   let configReservar  = emp.config_reservar;
 
-  // Se há token de corretor no header, aplica também as permissões individuais dele
+  // Se há token de corretor no header, verifica acesso e aplica permissões individuais
   const token = req.headers['x-crm-token'];
   if (token) {
     try {
       const usuario = db.prepare("SELECT id, perfil, corretor_id FROM usuarios WHERE token=? AND ativo=1").get(token);
       if (usuario && usuario.corretor_id && usuario.perfil === 'corretor') {
+        // Bloqueia acesso se o empreendimento não está liberado para este corretor
+        if (!corretorTemAcesso(usuario, emp.id)) {
+          return res.status(403).json({ ok: false, error: 'Acesso negado a este empreendimento' });
+        }
         const acesso = db.prepare(
           "SELECT pode_ver_tabela, pode_reservar FROM corretor_empreendimento_acesso WHERE corretor_id=? AND empreendimento_id=? AND liberado=1"
         ).get(usuario.corretor_id, emp.id);
