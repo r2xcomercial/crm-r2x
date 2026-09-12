@@ -9127,6 +9127,18 @@ async function registrarFollowup(leadId) {
 // ─── VER UNIDADES POR EMPREENDIMENTO ──────────────────────────────────────────
 
 async function verUnidades(empId) {
+  const isCorretor = USUARIO.perfil === 'corretor';
+  // Garante permissões atualizadas para corretor
+  if (isCorretor) {
+    const pr = await get('/api/corretor/empreendimentos');
+    if (pr.ok) (pr.data||[]).forEach(e => { window._corretorEmpPerms[e.id] = { pode_ver_tabela: e.pode_ver_tabela, pode_reservar: e.pode_reservar }; });
+    const perms = window._corretorEmpPerms[empId] || { pode_ver_tabela: 1, pode_reservar: 1 };
+    window._espelhoHidePreco   = !perms.pode_ver_tabela;
+    window._espelhoHideReserva = !perms.pode_reservar;
+  }
+  const hidePreco   = isCorretor && !!window._espelhoHidePreco;
+  const hideReserva = isCorretor && !!window._espelhoHideReserva;
+
   const r = await get(`/api/empreendimentos/${empId}/unidades`);
   const emp = (currentData.emp||[]).find(e => e.id === empId) || {};
   const units = r.data || [];
@@ -9139,6 +9151,7 @@ async function verUnidades(empId) {
   const vgvDisp = units.filter(u => u.status==='disponivel').reduce((s,u) => s+(u.preco||0), 0);
   const statusBadge = { disponivel:'badge-green', reservado:'badge-orange', vendido:'badge-red', indisponivel:'badge-gray' };
   const statusLabel = { disponivel:'Disponível', reservado:'Reservado', vendido:'Vendido', indisponivel:'Indisponível' };
+  const colSpan = hidePreco ? 5 : 6;
 
   document.getElementById('modal').classList.add('modal-wide');
   document.getElementById('modal-title').textContent = `🏠 Unidades — ${emp.nome||'Empreendimento'}`;
@@ -9148,25 +9161,25 @@ async function verUnidades(empId) {
       <div style="background:rgba(251,146,60,.1);border-radius:8px;padding:8px 14px;font-size:13px">🟡 Reservado: <strong style="color:#fb923c">${cnt.reservado}</strong></div>
       <div style="background:rgba(239,68,68,.1);border-radius:8px;padding:8px 14px;font-size:13px">🔴 Vendido: <strong style="color:var(--danger)">${cnt.vendido}</strong></div>
       ${cnt.indisponivel?`<div style="background:rgba(100,116,139,.1);border-radius:8px;padding:8px 14px;font-size:13px">⛔ Indisponível: <strong style="color:#94a3b8">${cnt.indisponivel}</strong></div>`:''}
-      <div style="background:rgba(0,196,180,.1);border-radius:8px;padding:8px 14px;font-size:13px">💰 VGV Disponível: <strong style="color:var(--accent)">${fmt(vgvDisp)}</strong></div>
+      ${!hidePreco?`<div style="background:rgba(0,196,180,.1);border-radius:8px;padding:8px 14px;font-size:13px">💰 VGV Disponível: <strong style="color:var(--accent)">${fmt(vgvDisp)}</strong></div>`:''}
     </div>
     <div style="max-height:420px;overflow-y:auto">
       <table style="width:100%">
-        <thead><tr><th>${lblA}</th><th>${lblB}</th><th>Área</th><th>Preço</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>${lblA}</th><th>${lblB}</th><th>Área</th>${!hidePreco?'<th>Preço</th>':''}<th>Status</th><th></th></tr></thead>
         <tbody>
           ${units.length ? units.map(u => `
             <tr>
               <td>${u.quadra||'—'}</td>
               <td><strong>${u.lote}</strong></td>
               <td>${u.area_m2?u.area_m2+' m²':'—'}</td>
-              <td id="preco-cell-${u.id}" data-preco="${u.preco||''}" style="color:var(--success);cursor:${USUARIO.perfil!=='corretor'?'pointer':'default'}" ${USUARIO.perfil!=='corretor'?`onclick="editarPrecoUnidade(${u.id},${empId})" title="Clique para editar o preço"`:''}>${u.preco?fmt(u.preco):'—'}${USUARIO.perfil!=='corretor'?` <span style="font-size:10px;color:var(--text2);opacity:.6">✏️</span>`:''}</td>
+              ${!hidePreco?`<td id="preco-cell-${u.id}" data-preco="${u.preco||''}" style="color:var(--success);cursor:${!isCorretor?'pointer':'default'}" ${!isCorretor?`onclick="editarPrecoUnidade(${u.id},${empId})" title="Clique para editar o preço"`:''}>${u.preco?fmt(u.preco):'—'}${!isCorretor?` <span style="font-size:10px;color:var(--text2);opacity:.6">✏️</span>`:''}</td>`:''}
               <td><span class="badge ${statusBadge[u.status]||'badge-gray'}">${statusLabel[u.status]||u.status}</span></td>
               <td style="white-space:nowrap">
-                ${u.status==='disponivel'?`<button class="btn-icon" title="Reservar com cliente" onclick="closeModal();openReservaRapida(${empId},${u.id})">🟡 Reservar</button>`:''}
-                ${u.status==='reservado'?`<button class="btn-icon" title="Liberar reserva" onclick="updateUnidadeStatus(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
+                ${u.status==='disponivel'&&!hideReserva?`<button class="btn-icon" title="Reservar com cliente" onclick="closeModal();openReservaRapida(${empId},${u.id})">🟡 Reservar</button>`:''}
+                ${u.status==='reservado'&&!isCorretor?`<button class="btn-icon" title="Liberar reserva" onclick="updateUnidadeStatus(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
               </td>
             </tr>
-          `).join('') : '<tr class="empty-row"><td colspan="6">Nenhuma unidade importada</td></tr>'}
+          `).join('') : `<tr class="empty-row"><td colspan="${colSpan}">Nenhuma unidade importada</td></tr>`}
         </tbody>
       </table>
     </div>
