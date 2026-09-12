@@ -2265,12 +2265,19 @@ app.get("/api/leads", (req, res) => {
 
 app.post("/api/leads", (req, res) => {
   const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, origem, observacoes, aniversario, tipo, creci, imobiliaria, cpf, rg, estado_civil, profissao, nome_pai, nome_mae, endereco, numero, complemento, bairro, cep, estado, pessoa_juridica, cnpj, razao_social, nome_fantasia, inscricao_estadual, inscricao_municipal, representante_nome, representante_cpf, representante_rg, representante_cargo } = req.body;
-  // Bloquear CPF duplicado entre corretores diferentes
+  const MSG_DUP = 'Cliente já cadastrado, favor entrar em contato com a R2X.';
+  if (telefone) {
+    const telLimpo = telefone.replace(/\D/g, '');
+    if (telLimpo.length >= 10) {
+      const dup = db.prepare("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(REPLACE(telefone,' ',''),'-',''),'(',''),')','')=? LIMIT 1").get(telLimpo);
+      if (dup) return err(res, MSG_DUP, 409);
+    }
+  }
   if (cpf) {
     const cpfLimpo = cpf.replace(/\D/g, '');
     if (cpfLimpo.length >= 11) {
-      const existente = db.prepare("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(cpf,'.',''),'-',''),'/','')=? LIMIT 1").get(cpfLimpo);
-      if (existente) return err(res, 'Cliente já cadastrado, favor entrar em contato com a gestão da R2X', 409);
+      const dup = db.prepare("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(cpf,'.',''),'-',''),'/','')=? LIMIT 1").get(cpfLimpo);
+      if (dup) return err(res, MSG_DUP, 409);
     }
   }
   const r = db.prepare(`INSERT INTO leads (nome,telefone,email,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,empreendimento_id,corretor_id,status,origem,observacoes,aniversario,tipo,creci,imobiliaria,cpf,rg,estado_civil,profissao,nome_pai,nome_mae,endereco,numero,complemento,bairro,cep,estado,pessoa_juridica,cnpj,razao_social,nome_fantasia,inscricao_estadual,inscricao_municipal,representante_nome,representante_cpf,representante_rg,representante_cargo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status || 'novo', origem || 'manual', observacoes, aniversario||null, tipo||null, creci||null, imobiliaria||null, cpf||null, rg||null, estado_civil||null, profissao||null, nome_pai||null, nome_mae||null, endereco||null, numero||null, complemento||null, bairro||null, cep||null, estado||null, pessoa_juridica?1:0, cnpj||null, razao_social||null, nome_fantasia||null, inscricao_estadual||null, inscricao_municipal||null, representante_nome||null, representante_cpf||null, representante_rg||null, representante_cargo||null);
@@ -3023,6 +3030,23 @@ app.post("/api/corretor/clientes", (req, res) => {
   const cid = guardaCorretor(req, res); if (!cid) return;
   const { nome, cpf, telefone, email, cidade, estado, aniversario, observacoes } = req.body;
   if (!nome) return err(res, 'Nome obrigatório');
+  const MSG_DUP = 'Cliente já cadastrado, favor entrar em contato com a R2X.';
+  if (telefone) {
+    const telLimpo = telefone.replace(/\D/g, '');
+    if (telLimpo.length >= 10) {
+      const dup = db.prepare("SELECT id FROM corretor_clientes WHERE REPLACE(REPLACE(REPLACE(REPLACE(telefone,' ',''),'-',''),'(',''),')','')=? LIMIT 1").get(telLimpo)
+              || db.prepare("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(REPLACE(telefone,' ',''),'-',''),'(',''),')','')=? LIMIT 1").get(telLimpo);
+      if (dup) return err(res, MSG_DUP, 409);
+    }
+  }
+  if (cpf) {
+    const cpfLimpo = cpf.replace(/\D/g, '');
+    if (cpfLimpo.length >= 11) {
+      const dup = db.prepare("SELECT id FROM corretor_clientes WHERE REPLACE(REPLACE(REPLACE(cpf,'.',''),'-',''),'/','')=? LIMIT 1").get(cpfLimpo)
+              || db.prepare("SELECT id FROM leads WHERE REPLACE(REPLACE(REPLACE(cpf,'.',''),'-',''),'/','')=? LIMIT 1").get(cpfLimpo);
+      if (dup) return err(res, MSG_DUP, 409);
+    }
+  }
   const r = db.prepare(`
     INSERT INTO corretor_clientes (corretor_id, nome, cpf, telefone, email, cidade, estado, aniversario, observacoes)
     VALUES (?,?,?,?,?,?,?,?,?)
@@ -4676,13 +4700,10 @@ app.post('/api/espelho-lead', autenticar, (req, res) => {
     if (emp) empId = emp.id;
   }
 
-  const existente = db.prepare("SELECT id, status FROM leads WHERE telefone=?").get(telefone.replace(/\D/g,'').replace(/^(\d{10,11})$/,'$1'));
+  const telLimpoEspelho = telefone.replace(/\D/g,'');
+  const existente = db.prepare("SELECT id, status, corretor_id FROM leads WHERE REPLACE(REPLACE(REPLACE(REPLACE(telefone,' ',''),'-',''),'(',''),')','')=? LIMIT 1").get(telLimpoEspelho);
   if (existente) {
-    // Atualiza corretor se ainda sem corretor
-    if (!db.prepare("SELECT corretor_id FROM leads WHERE id=?").get(existente.id).corretor_id && corretor_id) {
-      db.prepare("UPDATE leads SET corretor_id=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?").run(corretor_id, existente.id);
-    }
-    return ok(res, { id: existente.id, existente: true });
+    return err(res, 'Cliente já cadastrado, favor entrar em contato com a R2X.', 409);
   }
 
   const r = db.prepare(`INSERT INTO leads (nome,telefone,email,corretor_id,empreendimento_id,empreendimento_interesse,status,origem,observacoes)
