@@ -11642,10 +11642,20 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
   const leads = (rLeads.data || []);
 
   const empObj = (currentData.emp||[]).find(e => e.id === empId) || {};
-  let simConds = [], ep = {};
+  let simConds = [], ep = {}, padraoConds = [];
   try {
     ep = empObj.espelho_params ? JSON.parse(empObj.espelho_params) : {};
     if (ep?.condicoes?.length) simConds = ep.condicoes;
+  } catch(_) {}
+  try {
+    if (empObj.condicao_pagamento_padrao) {
+      let arr = JSON.parse(empObj.condicao_pagamento_padrao);
+      if (Array.isArray(arr) && arr.length) {
+        // normaliza: suporta [{nome, parcelas:[...]}] e formato legado [{titulo,...}]
+        if (!arr[0].parcelas) arr = [{ nome: 'Condição padrão', parcelas: arr }];
+        padraoConds = arr;
+      }
+    }
   } catch(_) {}
 
   const loading = document.getElementById('reserva-lead-loading');
@@ -11665,15 +11675,21 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
     return;
   }
 
-  window._rrSimConds = simConds;
-  window._rrEpParams = ep;
-  window._rrLeads = leads;
-  window._rrLeadId = null;
+  window._rrSimConds   = simConds;
+  window._rrPadraoConds = padraoConds;
+  window._rrEpParams   = ep;
+  window._rrLeads      = leads;
+  window._rrLeadId     = null;
+  window._rrCondLabel  = null;
 
   const preco = unidadePreco || 0;
   const nRef = parseInt(ep.nRef) || 0;
   const pRef = parseFloat(ep.pRef) || 0;
-  const hasTiles = simConds.length > 0;
+
+  // hasTiles: espelho_params.condicoes têm prioridade; cai para condicao_pagamento_padrao
+  const hasTiles      = simConds.length > 0;
+  const hasPadrao     = !hasTiles && padraoConds.length > 0;
+  const hasAnyTiles   = hasTiles || hasPadrao;
 
   // Default values for when no tiles (or fields shown immediately)
   let defEntPct = 20, defNParc = 60, defJuros = 0;
@@ -11689,17 +11705,38 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
   const saldo0 = preco - entV0;
   const parc0 = _rrPMT(saldo0, defNParc, defJuros);
 
-  // Condition tiles HTML
-  const condTilesHtml = hasTiles ? `
+  // helper: resumo legível de uma condicao_pagamento_padrao
+  const _resumoPadrao = (cond) => {
+    if (!cond.parcelas?.length) return '';
+    return cond.parcelas.map(p => {
+      const qtd = parseInt(p.qtd) || 1;
+      const val = parseFloat(p.valor);
+      const valStr = val > 0 ? ` · ${fmt0(val)}${qtd > 1 ? '/mês' : ''}` : '';
+      return `${qtd > 1 ? qtd+'x ' : ''}${p.titulo||''}${valStr}`;
+    }).join('  +  ');
+  };
+
+  // Tiles para espelho_params.condicoes (com simulador)
+  const simTilesHtml = hasTiles ? simConds.map((c, i) => `
+    <div id="rr-tile-${i}" onclick="_rrSelecionarCond(${i})"
+      style="padding:10px 14px;border-radius:9px;border:1.5px solid var(--border);cursor:pointer;transition:all .15s;background:transparent">
+      <div style="font-size:13px;font-weight:700;color:var(--text)">${c.label || c.nParc+'x'}</div>
+      <div style="font-size:11px;color:var(--text2);margin-top:2px">${c.nParc} parcelas · ${c.juros > 0 ? c.juros+'% a.m.' : 'sem juros'}${nRef > 0 ? ' · '+nRef+' reforço'+(nRef>1?'s':'') : ''}</div>
+    </div>`).join('') : '';
+
+  // Tiles para condicao_pagamento_padrao (sem simulador)
+  const padraoTilesHtml = hasPadrao ? padraoConds.map((c, i) => `
+    <div id="rr-ptile-${i}" onclick="_rrSelecionarPadrao(${i})"
+      style="padding:10px 14px;border-radius:9px;border:1.5px solid var(--border);cursor:pointer;transition:all .15s;background:transparent">
+      <div style="font-size:13px;font-weight:700;color:var(--text)">${c.nome || 'Condição '+(i+1)}</div>
+      ${_resumoPadrao(c) ? `<div style="font-size:11px;color:var(--text2);margin-top:3px;line-height:1.5">${_resumoPadrao(c)}</div>` : ''}
+    </div>`).join('') : '';
+
+  const condTilesHtml = hasAnyTiles ? `
     <div style="margin-top:12px">
       <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📋 Selecione a condição de pagamento</div>
       <div id="rr-cond-tiles" style="display:flex;flex-direction:column;gap:6px">
-        ${simConds.map((c, i) => `
-          <div id="rr-tile-${i}" onclick="_rrSelecionarCond(${i})"
-            style="padding:10px 14px;border-radius:9px;border:1.5px solid var(--border);cursor:pointer;transition:all .15s;background:transparent">
-            <div style="font-size:13px;font-weight:700;color:var(--text)">${c.label || c.nParc+'x'}</div>
-            <div style="font-size:11px;color:var(--text2);margin-top:2px">${c.nParc} parcelas · ${c.juros > 0 ? c.juros+'% a.m.' : 'sem juros'}${nRef > 0 ? ' · '+nRef+' reforço'+(nRef>1?'s':'') : ''}</div>
-          </div>`).join('')}
+        ${simTilesHtml}${padraoTilesHtml}
       </div>
     </div>` : '';
 
@@ -11719,7 +11756,8 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
     </div>` : '';
 
   // Fields block: hidden initially when tiles exist (user must pick one first)
-  const fieldsDisplay = hasTiles ? 'display:none' : '';
+  // Para condicao_pagamento_padrao (hasPadrao), os campos de simulador ficam sempre ocultos
+  const fieldsDisplay = hasAnyTiles ? 'display:none' : '';
 
   loading.innerHTML = `
     <input id="rr-lead-search" type="text" placeholder="🔍 Buscar cliente por nome ou telefone..."
@@ -11773,7 +11811,7 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
     </button>`;
 
   _filtrarLeadsReserva();
-  if (!hasTiles) _rrRecalcular();
+  if (!hasAnyTiles) _rrRecalcular();
 }
 
 function _rrPMT(saldo, nParc, juros) {
@@ -11880,16 +11918,63 @@ function _filtrarLeadsReserva() {
 function _rrAtualizarBotaoReserva() {
   const btn = document.getElementById('btn-reservar-lead');
   if (!btn) return;
-  const hasTiles = (window._rrSimConds || []).length > 0;
-  const ok = !!window._rrLeadId && (!hasTiles || !!window._rrCondLabel);
+  const hasAnyTiles = (window._rrSimConds||[]).length > 0 || (window._rrPadraoConds||[]).length > 0;
+  const ok = !!window._rrLeadId && (!hasAnyTiles || !!window._rrCondLabel);
   btn.disabled = !ok;
   btn.style.opacity = ok ? '1' : '.45';
   btn.style.cursor  = ok ? 'pointer' : 'not-allowed';
-  if (!ok && hasTiles && window._rrLeadId && !window._rrCondLabel) {
+  if (!ok && hasAnyTiles && window._rrLeadId && !window._rrCondLabel) {
     btn.textContent = '⚡ Selecione a condição acima';
   } else {
     btn.textContent = '⚡ Reservar agora';
   }
+}
+
+function _rrSelecionarPadrao(idx) {
+  const conds = window._rrPadraoConds || [];
+  const c = conds[parseInt(idx)];
+  if (!c) return;
+  window._rrCondLabel = c.nome || `Condição ${idx + 1}`;
+
+  // Highlight tile
+  conds.forEach((_, i) => {
+    const tile = document.getElementById(`rr-ptile-${i}`);
+    if (!tile) return;
+    tile.style.borderColor = i === idx ? 'var(--accent)' : 'var(--border)';
+    tile.style.background  = i === idx ? 'rgba(0,196,180,.1)' : 'transparent';
+  });
+
+  // Mostra label da condição selecionada e esconde/oculta campos de simulador
+  const campos = document.getElementById('rr-proposta-campos');
+  if (campos) {
+    // Para condicao_pagamento_padrao mostramos só o resumo, sem simulador
+    campos.style.display = '';
+    campos.innerHTML = `
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">💳 Condição Selecionada</div>
+      <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:10px;background:rgba(0,196,180,.08);border-radius:8px;padding:8px 12px">✅ ${window._rrCondLabel}</div>
+      ${(c.parcelas||[]).map(p => {
+        const qtd = parseInt(p.qtd) || 1;
+        const val = parseFloat(p.valor);
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
+          <span style="color:var(--text2)">${qtd > 1 ? qtd+'x ' : ''}${p.titulo||''}</span>
+          <div style="text-align:right">
+            ${val > 0 ? `<span style="font-weight:600">${Number(val).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>` : ''}
+            ${p.juros && p.juros !== 'Sem Juros' ? `<div style="font-size:10px;color:var(--text2)">${p.juros}${p.correcao && p.correcao !== 'Sem Correção' ? ' + '+p.correcao : ''}</div>` : ''}
+            ${p.forma_pagamento ? `<div style="font-size:10px;color:var(--text2)">${p.forma_pagamento}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+    `;
+  }
+
+  // Monta condicao para salvar na venda
+  window._rrCondicao = {
+    label: window._rrCondLabel,
+    condicao_padrao: c,
+    tipo: 'tabela_padrao'
+  };
+
+  _rrAtualizarBotaoReserva();
 }
 
 function _selecionarLeadReserva(id, nome, tel) {
