@@ -11851,6 +11851,7 @@ function _rrSelecionarCond(idx) {
   if (nParcInput)  nParcInput.value  = c.nParc || 60;
   if (jurosInput)  jurosInput.value  = c.juros || 0;
   _rrRecalcular();
+  _rrAtualizarBotaoReserva();
 }
 
 function _rrAplicarCond(idx) { _rrSelecionarCond(idx); }
@@ -11876,10 +11877,24 @@ function _filtrarLeadsReserva() {
     </div>`).join('') || '<div style="font-size:12px;color:var(--text2);padding:8px">Nenhum cliente encontrado.</div>';
 }
 
+function _rrAtualizarBotaoReserva() {
+  const btn = document.getElementById('btn-reservar-lead');
+  if (!btn) return;
+  const hasTiles = (window._rrSimConds || []).length > 0;
+  const ok = !!window._rrLeadId && (!hasTiles || !!window._rrCondLabel);
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '1' : '.45';
+  btn.style.cursor  = ok ? 'pointer' : 'not-allowed';
+  if (!ok && hasTiles && window._rrLeadId && !window._rrCondLabel) {
+    btn.textContent = '⚡ Selecione a condição acima';
+  } else {
+    btn.textContent = '⚡ Reservar agora';
+  }
+}
+
 function _selecionarLeadReserva(id, nome, tel) {
   window._rrLeadId = id;
-  const btn = document.getElementById('btn-reservar-lead');
-  if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
+  _rrAtualizarBotaoReserva();
   _filtrarLeadsReserva(); // re-render para marcar selecionado
 }
 
