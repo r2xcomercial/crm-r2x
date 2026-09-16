@@ -2815,7 +2815,14 @@ app.get("/api/corretor/painel", (req, res) => {
   if (req.usuario?.perfil === 'corretor') {
     return ok(res, {
       corretor,
-      qtdVendas  : vendasR2X.length,
+      vendasR2X       : [],   // detalhes não expostos ao corretor
+      vendasProprias,         // vendas externas são dados do próprio corretor
+      r2xTotalVendido : 0, r2xComPend: 0, r2xComPaga: 0,
+      propTotalVendido, propComPend, propComPaga,
+      totalVendido    : propTotalVendido,
+      comPendente     : propComPend,
+      comPaga         : propComPaga,
+      qtdVendas       : vendasR2X.length + vendasProprias.length,
       meta, clientes, tarefasHoje, tarefasAtrasadas,
     });
   }
