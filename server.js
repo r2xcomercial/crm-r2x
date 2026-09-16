@@ -84,6 +84,27 @@ app.use((req, res, next) => {
   next();
 });
 
+// Corretor: acesso restrito ao próprio painel e operações permitidas
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+  if (req.usuario?.perfil !== 'corretor') return next();
+  // Rotas liberadas para corretor
+  const liberado =
+    req.path.startsWith('/api/auth/')            ||
+    req.path.startsWith('/api/corretor/')        ||
+    req.path.startsWith('/api/espelho-publico/') ||
+    req.path.startsWith('/api/empreendimentos')  ||  // ver tabela de unidades/espelho
+    req.path === '/api/leads' ||
+    req.path.startsWith('/api/leads/')           ||
+    req.path.startsWith('/api/corretores')       ||
+    req.path === '/api/vendas/reserva-rapida'    ||
+    req.path.startsWith('/api/vendas/extrair-contrato') ||
+    req.path.startsWith('/api/visitas')          ||
+    req.path.startsWith('/api/eventos');
+  if (!liberado) return err(res, 'Acesso não autorizado', 403);
+  next();
+});
+
 // Gestor: sem acesso a financeiro, caixa (pluggy), relatórios nem gestão de vendas
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();

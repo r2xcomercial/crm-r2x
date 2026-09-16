@@ -574,6 +574,8 @@ function closeSidebar() {
 function navigate(page) {
   // Incorporador: acesso restrito ao próprio portal
   if (USUARIO.perfil === 'incorporador' && page !== 'incorporador-painel') return;
+  // Corretor: acesso restrito ao próprio painel
+  if (USUARIO.perfil === 'corretor' && page !== 'corretor-painel') return;
   // Limpa refresh automático do painel ao sair
   if (currentPage === 'painel' && page !== 'painel' && _painelInterval) {
     clearInterval(_painelInterval); _painelInterval = null;
@@ -608,6 +610,12 @@ async function renderPage(page) {
   if (USUARIO.perfil === 'incorporador' && page !== 'incorporador-painel') {
     document.getElementById('content').innerHTML =
       `<div style="text-align:center;padding:80px;color:var(--danger)">⛔ Acesso não autorizado</div>`;
+    return;
+  }
+  // Corretor: bloqueia todas as páginas exceto o próprio painel
+  if (USUARIO.perfil === 'corretor' && page !== 'corretor-painel') {
+    document.getElementById('content').innerHTML =
+      `<div style="text-align:center;padding:80px;color:var(--text2)">🔒 Acesso restrito.<br><span style="font-size:13px;margin-top:8px;display:block">Use o Meu Painel para acompanhar seus clientes e reservas.</span></div>`;
     return;
   }
   // Gestor: bloqueia seções financeiras e de vendas
@@ -14459,6 +14467,11 @@ function initUsuarioUI() {
     if (navCorretor)     navCorretor.style.display = 'block';
     if (navIncorporador) navIncorporador.style.display = 'none';
     if (navGestor)       navGestor.style.display = 'none';
+    // Esconde busca e botão adicionar
+    const searchBox = document.getElementById('search-box');
+    const addBtn    = document.getElementById('add-btn');
+    if (searchBox) searchBox.style.display = 'none';
+    if (addBtn)    addBtn.style.display    = 'none';
   } else if (USUARIO.perfil === 'incorporador') {
     // Incorporador vê apenas o portal dele
     if (navAdmin)        navAdmin.style.display = 'none';
