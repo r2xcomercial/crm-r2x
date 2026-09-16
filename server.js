@@ -84,21 +84,29 @@ app.use((req, res, next) => {
   next();
 });
 
-// Corretor: acesso restrito ao próprio painel e operações permitidas
+// Corretor: acesso restrito — apenas empreendimentos (leitura segura), reserva e auth
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) return next();
   if (req.usuario?.perfil !== 'corretor') return next();
-  // Rotas liberadas para corretor
+
+  // Rotas de corretor bloqueadas (financeiro interno)
+  const bloqueioCorretor = [
+    '/api/corretor/vendas-proprias',
+    '/api/corretor/despesas',
+    '/api/corretor/fluxo',
+    '/api/corretor/config',
+  ].some(p => req.path.startsWith(p));
+  if (bloqueioCorretor) return err(res, 'Acesso não autorizado', 403);
+
   const liberado =
     req.path.startsWith('/api/auth/')            ||
-    req.path.startsWith('/api/corretor/')        ||
+    req.path.startsWith('/api/corretor/')        ||   // painel, clientes, tarefas, meta, empreendimentos
     req.path.startsWith('/api/espelho-publico/') ||
-    req.path === '/api/vendas/reserva-rapida'    ||
-    req.path.startsWith('/api/vendas/extrair-contrato') ||
-    req.path.startsWith('/api/visitas')          ||
-    req.path.startsWith('/api/eventos');
-  // Empreendimentos: apenas leitura (GET)
-  const empLeitura = req.method === 'GET' && req.path.startsWith('/api/empreendimentos');
+    req.path === '/api/vendas/reserva-rapida';
+  // Empreendimentos: apenas leitura, sem dados financeiros da R2X
+  const empLeitura = req.method === 'GET' && (
+    req.path === '/api/empreendimentos' ||
+    req.path.startsWith('/api/empreendimentos/') );
   if (!liberado && !empLeitura) return err(res, 'Acesso não autorizado', 403);
   next();
 });
@@ -861,6 +869,17 @@ app.get("/api/empreendimentos", (req, res) => {
     FROM empreendimentos e LEFT JOIN clientes c ON c.id = e.cliente_id
     ORDER BY e.nome
   `).all();
+  // Corretor não vê dados financeiros/comerciais internos da R2X
+  if (req.usuario?.perfil === 'corretor') {
+    ok(res, rows.map(e => {
+      const { percentual_r2x, vgv_estimado, condicao_pagamento_padrao, espelho_params,
+              cliente_id, cliente_nome, incorporacao_protocolo, matricula_registro,
+              comarca, vendedora_nome, vendedora_qualificacao, patrimonio_afetacao,
+              prazo_entrega_meses, inicio_obra_previsto, valor_cub, ...safe } = e;
+      return safe;
+    }));
+    return;
+  }
   ok(res, rows);
 });
 
@@ -2784,16 +2803,22 @@ app.get("/api/corretor/painel", (req, res) => {
   const tarefasHoje      = db.prepare(`SELECT * FROM corretor_tarefas WHERE corretor_id=? AND data_tarefa=? AND concluida=0 ORDER BY hora ASC`).all(corretorId, hoje);
   const tarefasAtrasadas = db.prepare(`SELECT * FROM corretor_tarefas WHERE corretor_id=? AND data_tarefa<? AND concluida=0 ORDER BY data_tarefa ASC`).all(corretorId, hoje);
 
+  // Corretor não vê valores de vendas/comissões da R2X
+  if (req.usuario?.perfil === 'corretor') {
+    return ok(res, {
+      corretor,
+      qtdVendas  : vendasR2X.length,
+      meta, clientes, tarefasHoje, tarefasAtrasadas,
+    });
+  }
   ok(res, {
     corretor,
     vendasR2X, r2xTotalVendido, r2xComPend, r2xComPaga,
     vendasProprias, propTotalVendido, propComPend, propComPaga,
-    // combinados
     totalVendido : r2xTotalVendido + propTotalVendido,
     comPendente  : r2xComPend + propComPend,
     comPaga      : r2xComPaga + propComPaga,
     qtdVendas    : vendasR2X.length + vendasProprias.length,
-    // extras
     meta, clientes, tarefasHoje, tarefasAtrasadas,
   });
 });
