@@ -93,15 +93,13 @@ app.use((req, res, next) => {
     req.path.startsWith('/api/auth/')            ||
     req.path.startsWith('/api/corretor/')        ||
     req.path.startsWith('/api/espelho-publico/') ||
-    req.path.startsWith('/api/empreendimentos')  ||  // ver tabela de unidades/espelho
-    req.path === '/api/leads' ||
-    req.path.startsWith('/api/leads/')           ||
-    req.path.startsWith('/api/corretores')       ||
     req.path === '/api/vendas/reserva-rapida'    ||
     req.path.startsWith('/api/vendas/extrair-contrato') ||
     req.path.startsWith('/api/visitas')          ||
     req.path.startsWith('/api/eventos');
-  if (!liberado) return err(res, 'Acesso não autorizado', 403);
+  // Empreendimentos: apenas leitura (GET)
+  const empLeitura = req.method === 'GET' && req.path.startsWith('/api/empreendimentos');
+  if (!liberado && !empLeitura) return err(res, 'Acesso não autorizado', 403);
   next();
 });
 
