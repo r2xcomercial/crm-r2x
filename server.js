@@ -106,7 +106,8 @@ app.use((req, res, next) => {
   // Empreendimentos: apenas leitura, sem dados financeiros da R2X
   const empLeitura = req.method === 'GET' && (
     req.path === '/api/empreendimentos' ||
-    req.path.startsWith('/api/empreendimentos/') );
+    /^\/api\/empreendimentos\/\d+$/.test(req.path) ||
+    req.path.startsWith('/api/empreendimentos/') && req.path.includes('/espelho') );
   if (!liberado && !empLeitura) return err(res, 'Acesso não autorizado', 403);
   next();
 });
@@ -872,7 +873,7 @@ app.get("/api/empreendimentos", (req, res) => {
   // Corretor não vê dados financeiros/comerciais internos da R2X
   if (req.usuario?.perfil === 'corretor') {
     ok(res, rows.map(e => {
-      const { percentual_r2x, vgv_estimado, condicao_pagamento_padrao, espelho_params,
+      const { percentual_r2x, vgv_estimado, condicao_pagamento_padrao,
               cliente_id, cliente_nome, incorporacao_protocolo, matricula_registro,
               comarca, vendedora_nome, vendedora_qualificacao, patrimonio_afetacao,
               prazo_entrega_meses, inicio_obra_previsto, valor_cub, ...safe } = e;
@@ -947,6 +948,13 @@ app.get('/api/empreendimentos/:id', autenticar, (req, res) => {
   if (!corretorTemAcesso(req.usuario, empId)) return err(res, 'Acesso negado a este empreendimento', 404);
   const row = db.prepare('SELECT * FROM empreendimentos WHERE id=?').get(empId);
   if (!row) return err(res, 'Não encontrado', 404);
+  if (req.usuario?.perfil === 'corretor') {
+    const { percentual_r2x, vgv_estimado, condicao_pagamento_padrao,
+            cliente_id, incorporacao_protocolo, matricula_registro,
+            comarca, vendedora_nome, vendedora_qualificacao, patrimonio_afetacao,
+            prazo_entrega_meses, inicio_obra_previsto, valor_cub, ...safe } = row;
+    return ok(res, safe);
+  }
   ok(res, row);
 });
 
