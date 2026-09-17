@@ -102,7 +102,8 @@ app.use((req, res, next) => {
     req.path.startsWith('/api/auth/')            ||
     req.path.startsWith('/api/corretor/')        ||   // painel, clientes, tarefas, meta, empreendimentos
     req.path.startsWith('/api/espelho-publico/') ||
-    req.path === '/api/vendas/reserva-rapida';
+    req.path === '/api/vendas/reserva-rapida'   ||
+    (req.path === '/api/leads' && req.method === 'POST');
   // Empreendimentos: apenas leitura de dados necessários para o espelho
   const empSubPermitido = ['/unidades', '/mapa', '/espelho'].some(s => req.path.includes(s));
   const empLeitura = req.method === 'GET' && (
@@ -2312,8 +2313,10 @@ app.get("/api/leads", (req, res) => {
   ok(res, db.prepare(sql).all(...params));
 });
 
-app.post("/api/leads", (req, res) => {
-  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status, origem, observacoes, aniversario, tipo, creci, imobiliaria, cpf, rg, estado_civil, profissao, nome_pai, nome_mae, endereco, numero, complemento, bairro, cep, estado, pessoa_juridica, cnpj, razao_social, nome_fantasia, inscricao_estadual, inscricao_municipal, representante_nome, representante_cpf, representante_rg, representante_cargo } = req.body;
+app.post("/api/leads", autenticar, (req, res) => {
+  const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, status, origem, observacoes, aniversario, tipo, creci, imobiliaria, cpf, rg, estado_civil, profissao, nome_pai, nome_mae, endereco, numero, complemento, bairro, cep, estado, pessoa_juridica, cnpj, razao_social, nome_fantasia, inscricao_estadual, inscricao_municipal, representante_nome, representante_cpf, representante_rg, representante_cargo } = req.body;
+  // Corretor só pode registrar leads em seu próprio nome
+  const corretor_id = req.usuario?.perfil === 'corretor' ? req.usuario.corretor_id : req.body.corretor_id;
   const MSG_DUP = 'Cliente já cadastrado, favor entrar em contato com a R2X.';
   if (telefone) {
     const telLimpo = telefone.replace(/\D/g, '');
