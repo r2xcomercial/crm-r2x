@@ -2013,7 +2013,8 @@ app.put("/api/unidades/:id", (req, res) => {
   ok(res, {});
 });
 
-app.delete("/api/unidades/:id", (req, res) => {
+app.delete("/api/unidades/:id", autenticar, (req, res) => {
+  if (!['admin','gestor'].includes(req.usuario?.perfil)) return err(res, "Sem permissão", 403);
   const unidadeId = parseInt(req.params.id);
   const u = db.prepare("SELECT * FROM unidades WHERE id=?").get(unidadeId);
   if (!u) return err(res, "Unidade não encontrada", 404);

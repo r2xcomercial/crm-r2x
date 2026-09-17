@@ -12213,8 +12213,8 @@ async function abrirUnidade(unidadeId, empId) {
         </div>
       </div>` : ''}`;
     document.getElementById('modal-foot').innerHTML = `
-      <button class="btn btn-secondary" style="margin-right:auto;color:var(--danger);border-color:rgba(239,68,68,.4)"
-        onclick="deletarUnidade(${u.id},${empId})">🗑️ Excluir unidade</button>
+      ${['admin','gestor'].includes(USUARIO.perfil) ? `<button class="btn btn-secondary" style="margin-right:auto;color:var(--danger);border-color:rgba(239,68,68,.4)"
+        onclick="deletarUnidade(${u.id},${empId})">🗑️ Excluir unidade</button>` : ''}
       <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
   }
   document.getElementById('modal-overlay').classList.add('open');
