@@ -10326,8 +10326,15 @@ async function verEspelho(empId) {
   if (lanc?.status === 'agendado') _iniciarCountdownLanc(lanc.data_hora_inicio, lanc.server_time, empId);
   if (lanc?.status === 'ativo' && lanc.data_hora_fim) _iniciarCountdownEncerramento(lanc.data_hora_fim, lanc.server_time, empId);
 
-  // Checa janela prioritária (só para corretor)
-  if (lanc?.status === 'ativo') _checarPrioridade(empId);
+  // Checa janela prioritária e comprovante pendente (só para corretor)
+  if (lanc?.status === 'ativo') {
+    _checarPrioridade(empId);
+    _checarComprovantePendente(empId);
+  }
+  // Checa pré-reservas pendentes (admin/gestor)
+  if (['admin','gestor'].includes(USUARIO.perfil) && lanc?.status === 'ativo') {
+    _checarPreReservasPendentes(empId);
+  }
 }
 
 // ── LANÇAMENTO: helpers de banner e countdown ────────────────────────────────
@@ -12007,22 +12014,23 @@ async function abrirUnidade(unidadeId, empId) {
           </div>
         </div>`;
       } else {
+        // Countdown: usa prazo do comprovante se houver, senão janela de prioridade da fila
+        const countdownPrazo = (prazo && !expirado) ? prazo : (u.fila_prioridade_ate && u.fila_prioridade_ate > new Date().toISOString().slice(0,19) ? u.fila_prioridade_ate : null);
+        const countdownLabel = (prazo && !expirado) ? '⏱ Comprovante Pix vence em' : (u.fila_prioridade_ate ? '⏱ Janela do próximo da fila expira em' : '');
         reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px">
-          <div style="background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.35);border-radius:12px;padding:16px">
+          <div style="background:rgba(249,115,22,.1);border:2px solid rgba(249,115,22,.4);border-radius:12px;padding:16px;animation:preReservaPulse 2s ease-in-out infinite">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
               <span style="font-size:18px">🟠</span>
               <div>
                 <div style="font-size:13px;font-weight:800;color:#fb923c;text-transform:uppercase;letter-spacing:.4px">Pré-reserva Ativa</div>
-                <div style="font-size:11px;color:#fb923c;opacity:.75">Aguardando comprovante Pix</div>
+                <div style="font-size:11px;color:#fb923c;opacity:.75">${prazo && !expirado ? 'Aguardando comprovante Pix' : (u.fila_prioridade_ate ? 'Próximo da fila sendo notificado' : 'Aguardando comprovante Pix')}</div>
               </div>
             </div>
-            ${prazo && !expirado ? `
-              <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;text-align:center;margin-bottom:10px">
-                <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Vence em</div>
-                <div id="modal-prazo-countdown" style="font-size:30px;font-weight:900;font-family:monospace;color:#fb923c;letter-spacing:3px">--:--</div>
-              </div>
-              <div style="font-size:12px;color:var(--text2)">Se o comprovante não for enviado no prazo, a unidade volta a ficar disponível e o próximo da fila é notificado.</div>
-            ` : ''}
+            <div style="background:rgba(0,0,0,.25);border-radius:8px;padding:10px;text-align:center;margin-bottom:10px">
+              ${countdownLabel ? `<div style="font-size:11px;color:var(--text2);margin-bottom:3px">${countdownLabel}</div>` : ''}
+              <div id="modal-prazo-countdown" style="font-size:30px;font-weight:900;font-family:monospace;color:#fb923c;letter-spacing:3px">--:--</div>
+            </div>
+            <div style="font-size:12px;color:var(--text2)">Se o comprovante Pix não for enviado no prazo, a unidade passa para o próximo da fila.</div>
           </div>
           <div id="fila-sec-${u.id}" style="margin-top:10px"></div>
         </div>`;
@@ -12069,9 +12077,10 @@ async function abrirUnidade(unidadeId, empId) {
     document.getElementById('modal-body').innerHTML = infoCards + reservaHtml;
     document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
 
-    // Countdown vivo para pré-reserva
-    if (u.status === 'pre_reserva' && u.comprovante_prazo_expira_em) {
-      _iniciarCountdownModal(u.comprovante_prazo_expira_em);
+    // Countdown vivo para pré-reserva: usa comprovante_prazo ou fila_prioridade_ate como fallback
+    if (u.status === 'pre_reserva') {
+      const prazoCountdown = u.comprovante_prazo_expira_em || u.fila_prioridade_ate;
+      if (prazoCountdown) _iniciarCountdownModal(prazoCountdown);
     }
 
     // Carrega leads do corretor se modal de reserva aberto
@@ -23138,6 +23147,140 @@ async function _checarPrioridade(empId) {
         else { el.style.color = '#f87171'; }
       }, 1000);
     }
+  } catch(_) {}
+}
+
+// Banner persistente para corretor com comprovante pendente
+async function _checarComprovantePendente(empId) {
+  if (!empId || USUARIO.perfil !== 'corretor') return;
+  try {
+    const r = await get(`/api/lancamento/${empId}/minha-pre-reserva`);
+    const items = r.data || [];
+    const existente = document.getElementById('banner-comprovante-pendente');
+    if (!items.length) { if (existente) { existente.remove(); clearInterval(window._cpBannerInterval); } return; }
+    const item = items[0];
+    const prazo = item.comprovante_prazo_expira_em;
+    const expira = prazo ? new Date(prazo.replace(' ','T')+'Z') : null;
+    const unidadeLabel = (item.quadra ? 'Qd' + item.quadra + ' - ' : '') + item.lote;
+
+    if (!existente) {
+      const div = document.createElement('div');
+      div.id = 'banner-comprovante-pendente';
+      div.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:18000;max-width:360px;width:calc(100vw - 48px)';
+      div.innerHTML = `
+        <div style="background:#1a1000;border:2px solid #f97316;border-radius:16px;padding:20px;box-shadow:0 8px 32px rgba(0,0,0,.6);animation:preReservaTilePulse 2s ease-in-out infinite">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
+            <div>
+              <div style="font-size:11px;font-weight:800;color:#fb923c;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">📎 Comprovante Pix pendente</div>
+              <div style="font-size:16px;font-weight:800;color:#fff">Unidade ${unidadeLabel}</div>
+              ${item.lead_nome ? `<div style="font-size:12px;color:#9ca3af;margin-top:2px">Cliente: ${item.lead_nome}</div>` : ''}
+            </div>
+            <button onclick="document.getElementById('banner-comprovante-pendente').remove();clearInterval(window._cpBannerInterval)" style="background:none;border:none;color:#6b7280;font-size:18px;cursor:pointer;line-height:1;padding:0">✕</button>
+          </div>
+          ${expira ? `
+          <div style="background:rgba(0,0,0,.3);border-radius:8px;padding:8px 12px;text-align:center;margin-bottom:12px">
+            <div style="font-size:10px;color:#fb923c;opacity:.8;margin-bottom:2px">Vence em</div>
+            <div id="cp-banner-countdown" style="font-size:28px;font-weight:900;font-family:monospace;color:#fb923c;letter-spacing:2px">--:--</div>
+          </div>` : ''}
+          <button onclick="abrirUploadComprovante(${item.venda_id},'${(item.lead_nome||'').replace(/'/g,'\\'')}',${prazo?`'${prazo}'`:'null'})"
+            style="width:100%;padding:12px;background:linear-gradient(135deg,#f97316,#ea580c);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:.3px">
+            📎 Enviar Comprovante Pix agora
+          </button>
+        </div>`;
+      document.body.appendChild(div);
+
+      // Countdown do banner
+      if (expira) {
+        clearInterval(window._cpBannerInterval);
+        window._cpBannerInterval = setInterval(() => {
+          const el = document.getElementById('cp-banner-countdown');
+          if (!el) { clearInterval(window._cpBannerInterval); return; }
+          const ms = expira - Date.now();
+          if (ms <= 0) {
+            clearInterval(window._cpBannerInterval);
+            el.textContent = '00:00'; el.style.color = '#f87171';
+            setTimeout(() => { const b = document.getElementById('banner-comprovante-pendente'); if (b) b.remove(); }, 5000);
+            return;
+          }
+          const mm = String(Math.floor(ms / 60000)).padStart(2,'0');
+          const ss = String(Math.floor((ms % 60000) / 1000)).padStart(2,'0');
+          el.textContent = `${mm}:${ss}`;
+          if (ms > 7*60000)      el.style.color = '#4ade80';
+          else if (ms > 3*60000) el.style.color = '#fbbf24';
+          else if (ms > 60000)   el.style.color = '#fb923c';
+          else                    el.style.color = '#f87171';
+        }, 1000);
+      }
+    }
+  } catch(_) {}
+}
+
+// Painel admin: lista pré-reservas aguardando comprovante
+async function _checarPreReservasPendentes(empId) {
+  if (!empId || !['admin','gestor'].includes(USUARIO.perfil)) return;
+  try {
+    const r = await get(`/api/lancamento/${empId}/pre-reservas-pendentes`);
+    const items = r.data || [];
+    const existente = document.getElementById('painel-pre-reservas-admin');
+    if (!items.length) { if (existente) existente.remove(); return; }
+
+    const fmtPhone = t => t ? t.replace(/(\d{2})(\d{4,5})(\d{4})/, '($1) $2-$3') : '';
+    const fmtPrazo = s => {
+      if (!s) return '—';
+      const ms = new Date(s.replace(' ','T')+'Z') - Date.now();
+      if (ms <= 0) return '⚠️ Expirado';
+      const mm = Math.floor(ms / 60000);
+      const ss = Math.floor((ms % 60000) / 1000);
+      return `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+    };
+
+    const semComprovante = items.filter(i => !i.tem_comprovante);
+    const comComprovante = items.filter(i => i.tem_comprovante);
+
+    const html = `
+      <div style="margin:12px 0;border:1px solid rgba(249,115,22,.35);border-radius:12px;overflow:hidden">
+        <div style="background:rgba(249,115,22,.12);padding:10px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(249,115,22,.2)">
+          <span>🟠</span>
+          <div style="font-size:12px;font-weight:800;color:#fb923c;text-transform:uppercase;letter-spacing:.4px">Pré-reservas ativas (${items.length})</div>
+          ${semComprovante.length ? `<div style="margin-left:auto;background:rgba(249,115,22,.2);border-radius:5px;padding:2px 8px;font-size:11px;color:#fb923c;font-weight:700">⏳ ${semComprovante.length} sem comprovante</div>` : ''}
+          ${comComprovante.length ? `<div style="${semComprovante.length?'':'margin-left:auto;'}background:rgba(74,222,128,.15);border-radius:5px;padding:2px 8px;font-size:11px;color:#4ade80;font-weight:700">✅ ${comComprovante.length} aguardando aprovação</div>` : ''}
+        </div>
+        <div style="padding:4px 0">
+          ${items.map(item => `
+            <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:700;color:var(--text)">${item.quadra?'Qd'+item.quadra+' - ':''}${item.lote}</div>
+                <div style="font-size:11px;color:var(--text2)">${item.corretor_nome||'—'}${item.lead_nome?' · '+item.lead_nome:''}</div>
+              </div>
+              <div style="text-align:right;white-space:nowrap">
+                ${item.tem_comprovante
+                  ? `<div style="font-size:11px;color:#4ade80;font-weight:700;margin-bottom:4px">✅ Comprovante enviado</div>
+                     <button onclick="verComprovante(${item.venda_id})" style="font-size:11px;background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.3);color:#4ade80;border-radius:6px;padding:3px 9px;cursor:pointer">👁 Ver Pix</button>`
+                  : `<div id="prazo-${item.venda_id}" style="font-size:12px;font-weight:700;color:#fb923c;margin-bottom:2px">${fmtPrazo(item.comprovante_prazo_expira_em)}</div>
+                     <div style="font-size:10px;color:var(--text2)">sem comprovante</div>`
+                }
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+
+    if (existente) { existente.querySelector(':scope > div').innerHTML = html; }
+    else {
+      const div = document.createElement('div');
+      div.id = 'painel-pre-reservas-admin';
+      div.style.cssText = 'position:fixed;bottom:24px;left:24px;z-index:18000;max-width:400px;width:calc(100vw - 48px)';
+      div.innerHTML = `<div>${html}</div>`;
+      document.body.appendChild(div);
+    }
+
+    // Atualiza countdowns dos itens sem comprovante a cada segundo
+    clearInterval(window._adminPrazoInterval);
+    window._adminPrazoInterval = setInterval(() => {
+      items.filter(i => !i.tem_comprovante && i.comprovante_prazo_expira_em).forEach(item => {
+        const el = document.getElementById(`prazo-${item.venda_id}`);
+        if (el) el.textContent = fmtPrazo(item.comprovante_prazo_expira_em);
+      });
+    }, 1000);
   } catch(_) {}
 }
 

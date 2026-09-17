@@ -993,7 +993,9 @@ app.get("/api/empreendimentos/:id/unidades", (req, res) => {
       (SELECT v.corretor_id FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva') LIMIT 1) as venda_corretor_id,
       (SELECT CASE WHEN v.comprovante_pix IS NOT NULL THEN 1 ELSE 0 END FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva') LIMIT 1) as tem_comprovante,
       (SELECT v.comprovante_prazo_expira_em FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva') LIMIT 1) as comprovante_prazo_expira_em,
-      (SELECT COUNT(*) FROM reserva_fila rf WHERE rf.unidade_id=u.id AND rf.status IN ('aguardando','notificado')) as fila_qtd
+      (SELECT COUNT(*) FROM reserva_fila rf WHERE rf.unidade_id=u.id AND rf.status IN ('aguardando','notificado')) as fila_qtd,
+      u.fila_prioridade_ate,
+      u.fila_prioridade_corretor_id
     FROM unidades u
     WHERE u.empreendimento_id = ?
     ORDER BY CAST(u.quadra AS REAL), CAST(REPLACE(u.lote,'-',' ') AS REAL), u.lote
@@ -3542,6 +3544,48 @@ app.get('/api/lancamento/:empId/minha-prioridade', autenticar, (req, res) => {
       AND u.fila_prioridade_ate IS NOT NULL
       AND datetime(u.fila_prioridade_ate) > datetime('now')
   `).all(empId, u.corretor_id);
+  ok(res, rows);
+});
+
+// GET /api/lancamento/:empId/minha-pre-reserva — pré-reservas ativas do corretor (comprovante pendente)
+app.get('/api/lancamento/:empId/minha-pre-reserva', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u?.corretor_id) return ok(res, []);
+  const empId = parseInt(req.params.empId);
+  const rows = db.prepare(`
+    SELECT v.id as venda_id, v.comprovante_prazo_expira_em, v.lead_id,
+           un.id as unidade_id, un.lote, un.quadra,
+           l.nome as lead_nome
+    FROM vendas v
+    JOIN unidades un ON un.id = v.unidade_id
+    LEFT JOIN leads l ON l.id = v.lead_id
+    WHERE v.empreendimento_id=?
+      AND v.corretor_id=?
+      AND v.status='pre_reserva'
+      AND v.comprovante_pix IS NULL
+      AND (v.comprovante_prazo_expira_em IS NULL OR datetime(v.comprovante_prazo_expira_em) > datetime('now'))
+  `).all(empId, u.corretor_id);
+  ok(res, rows);
+});
+
+// GET /api/lancamento/:empId/pre-reservas-pendentes — lista pré-reservas com comprovante pendente (admin/gestor)
+app.get('/api/lancamento/:empId/pre-reservas-pendentes', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!['admin','gestor'].includes(u?.perfil)) return err(res, 'Sem permissão', 403);
+  const empId = parseInt(req.params.empId);
+  const rows = db.prepare(`
+    SELECT v.id as venda_id, v.comprovante_prazo_expira_em, v.comprovante_pix IS NOT NULL as tem_comprovante,
+           un.lote, un.quadra,
+           l.nome as lead_nome, l.telefone as lead_tel,
+           c.nome as corretor_nome, c.telefone as corretor_tel
+    FROM vendas v
+    JOIN unidades un ON un.id = v.unidade_id
+    LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN corretores c ON c.id = v.corretor_id
+    WHERE v.empreendimento_id=?
+      AND v.status='pre_reserva'
+    ORDER BY v.comprovante_prazo_expira_em ASC
+  `).all(empId);
   ok(res, rows);
 });
 
