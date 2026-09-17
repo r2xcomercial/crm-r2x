@@ -9062,9 +9062,13 @@ async function openFollowupModal(lead) {
             <div style="background:${bg};padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;word-break:break-word;text-align:left">${texto}</div>
           </div>`;
         }).join('');
+        const exportData = JSON.stringify({ nome: lead.nome||'Lead', numero: (lead.telefone||'').replace(/\D/g,''), historico: msgs, perfil: {} }).replace(/"/g,'&quot;');
         conversaHtml = `
           <div style="margin-bottom:16px">
-            <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🤖 Conversa com a Débora</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">🤖 Conversa com a Débora</div>
+              <button onclick="exportarConversa('${exportData}')" title="Exportar conversa como PDF" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid rgba(96,165,250,.4);background:rgba(96,165,250,.08);color:#60a5fa;cursor:pointer">📄 Exportar PDF</button>
+            </div>
             <div style="max-height:220px;overflow-y:auto;background:var(--navy);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column">${msgHtml}</div>
           </div>`;
       }
@@ -13289,6 +13293,10 @@ function renderChatDebora(dados) {
             style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);text-decoration:none">
             💬 WhatsApp
           </a>
+          <button onclick="exportarConversa(${JSON.stringify({numero: dados.numero, nome, historico: dados.historico, perfil: dados.perfil}).replace(/"/g,'&quot;')})" title="Exportar conversa como PDF"
+            style="font-size:12px;padding:6px 10px;border-radius:6px;border:1px solid rgba(96,165,250,.4);background:rgba(96,165,250,.08);color:#60a5fa;cursor:pointer">
+            📄 PDF
+          </button>
           <button id="btn-assumir" onclick="toggleAssumirDebora('${dados.numero}', ${pausado})"
             style="font-size:12px;padding:6px 14px;border-radius:6px;border:none;cursor:pointer;font-weight:600;${pausado ? 'background:#22c55e;color:#fff' : 'background:#f59e0b;color:#000'}">
             ${pausado ? '✅ Devolver à Débora' : '🙋 Assumir conversa'}
@@ -13319,6 +13327,110 @@ function renderChatDebora(dados) {
 
   const msgs = document.getElementById('deb-msgs');
   if (msgs) msgs.scrollTop = msgs.scrollHeight;
+}
+
+function exportarConversa(dados) {
+  if (typeof dados === 'string') { try { dados = JSON.parse(dados); } catch(_) { return; } }
+  const historico = dados.historico || [];
+  const nome = dados.nome || dados.perfil?.nome || dados.numero || 'Lead';
+  const numero = dados.numero || '';
+  const perfil = dados.perfil || {};
+
+  // Formata timestamp
+  const fmtTs = ts => {
+    if (!ts) return '';
+    const ms = (typeof ts === 'number' && ts < 1e12) ? ts * 1000 : new Date(ts).getTime();
+    if (!ms || isNaN(ms)) return '';
+    return new Date(ms).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  };
+
+  // Constrói linhas da conversa
+  let lastDate = null;
+  const mensagensHtml = historico.map(m => {
+    const isUser = m.role === 'user';
+    const isRamon = m.content?.startsWith('[RAMON]:');
+    const texto = (isRamon ? m.content.replace('[RAMON]: ', '') : m.content || '').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+    const label = isUser ? nome : isRamon ? 'Ramon (R2X)' : 'Débora (R2X)';
+    const rawTs = m.ts ?? m.timestamp ?? m.time ?? m.created_at ?? null;
+    const hora = fmtTs(rawTs);
+    const bg = isUser ? '#dcf8c6' : '#fff';
+    const align = isUser ? 'right' : 'left';
+    const marginDir = isUser ? 'margin-left:auto' : 'margin-right:auto';
+
+    let sep = '';
+    if (rawTs) {
+      const ms = (typeof rawTs === 'number' && rawTs < 1e12) ? rawTs * 1000 : new Date(rawTs).getTime();
+      const diaStr = new Date(ms).toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+      if (diaStr !== lastDate) { lastDate = diaStr; sep = `<div class="date-sep">${diaStr}</div>`; }
+    }
+
+    return sep + `<div class="msg-wrap" style="text-align:${align}">
+      <div class="msg-bubble" style="background:${bg};${marginDir}">
+        <div class="msg-author">${label}</div>
+        <div class="msg-text">${texto}</div>
+        ${hora ? `<div class="msg-hora">${hora}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  const perfilItems = [
+    perfil.objetivo && `Objetivo: ${perfil.objetivo}`,
+    perfil.faixa_investimento && `Faixa: ${perfil.faixa_investimento}`,
+    perfil.empreendimento_interesse && `Empreendimento: ${perfil.empreendimento_interesse}`,
+    perfil.cidade && `Cidade: ${perfil.cidade}`,
+    perfil.tipo && `Tipo: ${perfil.tipo}`,
+  ].filter(Boolean);
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Conversa com ${nome}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, 'Segoe UI', sans-serif; background: #e5ddd5; min-height: 100vh; }
+  .header { background: #075e54; color: #fff; padding: 16px 20px; display: flex; align-items: center; gap: 14px; }
+  .header-avatar { width: 44px; height: 44px; border-radius: 50%; background: #128c7e; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+  .header-info h1 { font-size: 16px; font-weight: 600; }
+  .header-info p { font-size: 12px; opacity: .8; margin-top: 2px; }
+  .perfil { background: #fff; border-left: 4px solid #25d366; margin: 12px; border-radius: 6px; padding: 10px 14px; font-size: 12px; color: #333; }
+  .perfil strong { color: #075e54; display: block; margin-bottom: 6px; font-size: 13px; }
+  .perfil ul { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+  .perfil ul li { background: #e8f5e9; color: #2e7d32; padding: 2px 10px; border-radius: 10px; font-size: 11px; }
+  .msgs { padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .msg-wrap { width: 100%; margin: 2px 0; }
+  .msg-bubble { max-width: 72%; border-radius: 8px; padding: 8px 10px 4px; box-shadow: 0 1px 1px rgba(0,0,0,.1); display: inline-block; text-align: left; }
+  .msg-author { font-size: 10px; font-weight: 700; color: #128c7e; margin-bottom: 3px; }
+  .msg-text { font-size: 13px; color: #111; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .msg-hora { font-size: 10px; color: #999; text-align: right; margin-top: 3px; }
+  .date-sep { text-align: center; font-size: 11px; color: #777; background: rgba(255,255,255,.7); border-radius: 10px; padding: 3px 12px; margin: 10px auto; display: table; }
+  .footer { text-align: center; font-size: 11px; color: #888; padding: 16px; border-top: 1px solid #ccc; margin-top: 8px; }
+  @media print {
+    body { background: #e5ddd5; }
+    .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .msg-bubble { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-avatar">🤖</div>
+  <div class="header-info">
+    <h1>${nome}</h1>
+    <p>${numero ? numero + ' · ' : ''}Conversa com Débora — R2X</p>
+  </div>
+</div>
+${perfilItems.length ? `<div class="perfil"><strong>📋 Perfil do Lead</strong><ul>${perfilItems.map(i=>`<li>${i}</li>`).join('')}</ul></div>` : ''}
+<div class="msgs">${mensagensHtml || '<p style="text-align:center;color:#888;padding:20px">Sem mensagens</p>'}</div>
+<div class="footer">Exportado em ${new Date().toLocaleString('pt-BR')} · R2X Inteligência Comercial</div>
+</body>
+</html>`;
+
+  const w = window.open('', '_blank', 'width=480,height=700');
+  if (!w) { toast('Permita popups para exportar o PDF', 'error'); return; }
+  w.document.write(html);
+  w.document.close();
+  w.onload = () => { w.focus(); w.print(); };
 }
 
 function fmtTsRelativo(ts) {
