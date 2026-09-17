@@ -12121,6 +12121,9 @@ async function abrirUnidade(unidadeId, empId) {
           ${prazo && !expirado ? `<div style="background:rgba(0,0,0,.25);border-radius:8px;padding:10px;text-align:center;margin-bottom:12px">
             <div style="font-size:11px;color:#fb923c;opacity:.8;margin-bottom:3px">⏱ Tempo para o corretor enviar o Pix</div>
             <div id="modal-prazo-countdown" style="font-size:34px;font-weight:900;font-family:monospace;color:#fb923c;letter-spacing:3px">--:--</div>
+          </div>` : !prazo && u.fila_prioridade_ate && new Date(u.fila_prioridade_ate+'Z') > new Date() ? `<div style="background:rgba(0,0,0,.25);border-radius:8px;padding:10px;text-align:center;margin-bottom:12px">
+            <div style="font-size:11px;color:#fb923c;opacity:.8;margin-bottom:3px">⏱ Janela de prioridade do próximo na fila</div>
+            <div id="modal-prazo-countdown" style="font-size:34px;font-weight:900;font-family:monospace;color:#fb923c;letter-spacing:3px">--:--</div>
           </div>` : expirado ? `<div style="margin-bottom:10px;font-size:12px;color:#f87171;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:7px;padding:7px 10px">⚠️ Prazo expirado — reserva cancelada automaticamente</div>` : ''}`
         : `<div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">📋 ${u.status === 'reservado' ? '🟡 Reservado' : '🔴 Vendido'} em ${dataFormatada}</div>`;
 
@@ -12212,7 +12215,9 @@ async function abrirUnidade(unidadeId, empId) {
           ${u.fila_qtd > 0 ? `<span style="font-size:11px;color:#fb923c;font-weight:600">📋 ${u.fila_qtd} na fila</span>` : ''}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${u.status!=='disponivel'&&u.status!=='pre_reserva'   ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(34,197,94,.4);color:#4ade80" onclick="mudarStatusEspelho(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
+          ${u.status==='pre_reserva'  ?`<button class="btn btn-danger" style="flex:1;background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.4);color:#f87171" onclick="_confirmarDerrubarReserva(${u.id},${empId},'pre_reserva')">🔓 Derrubar Pré-reserva</button>`:''}
+          ${u.status==='reservado'    ?`<button class="btn btn-danger" style="flex:1;background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.4);color:#f87171" onclick="_confirmarDerrubarReserva(${u.id},${empId},'reserva')">🔓 Derrubar Reserva</button>`:''}
+          ${u.status!=='disponivel'&&u.status!=='pre_reserva'&&u.status!=='reservado' ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(34,197,94,.4);color:#4ade80" onclick="mudarStatusEspelho(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
           ${u.status!=='reservado'&&u.status!=='pre_reserva'    ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(245,158,11,.4);color:#fbbf24" onclick="closeModal();openReservaRapida(${empId},${u.id})">🟡 Reservar</button>`:''}
           ${u.status!=='vendido'      ?`<button class="btn btn-danger"    style="flex:1" onclick="mudarStatusEspelho(${u.id},'vendido',${empId})">🔴 Marcar Vendido</button>`:''}
           ${u.status!=='indisponivel' ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(100,116,139,.4);color:#94a3b8" onclick="mudarStatusEspelho(${u.id},'indisponivel',${empId})">⛔ Indisponível</button>`:''}
@@ -12240,8 +12245,9 @@ async function abrirUnidade(unidadeId, empId) {
   document.getElementById('modal-overlay').classList.add('open');
 
   // Countdown vivo para pré-reserva (admin/gestor)
-  if (!isCorretor && u.status === 'pre_reserva' && u.comprovante_prazo_expira_em) {
-    _iniciarCountdownModal(u.comprovante_prazo_expira_em);
+  if (!isCorretor && u.status === 'pre_reserva') {
+    const prazoAdmin = u.comprovante_prazo_expira_em || u.fila_prioridade_ate;
+    if (prazoAdmin) _iniciarCountdownModal(prazoAdmin);
   }
 
   // Carrega fila da unidade após abrir modal (apenas durante lançamento ativo)
@@ -12496,7 +12502,15 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
     </button>`;
 
   _filtrarLeadsReserva();
-  if (!hasAnyTiles) _rrRecalcular();
+  if (!hasAnyTiles) {
+    _rrRecalcular();
+  } else if (hasPadrao && padraoConds.length === 1) {
+    // Auto-seleciona quando há exatamente 1 condição padrão
+    setTimeout(() => _rrSelecionarPadrao(0), 0);
+  } else if (hasTiles && simConds.length === 1) {
+    // Auto-seleciona quando há exatamente 1 condição simulada
+    setTimeout(() => _rrSelecionarCond(0), 0);
+  }
 }
 
 function _rrPMT(saldo, nParc, juros) {
@@ -12799,6 +12813,36 @@ async function mudarStatusEspelho(unidadeId, status, empId) {
   const msgs = { disponivel:'✅ Unidade liberada!', reservado:'🟡 Unidade reservada!', vendido:'🔴 Marcada como vendida!' };
   toast(msgs[status]);
   closeModal();
+  verEspelho(empId);
+}
+
+function _confirmarDerrubarReserva(unidadeId, empId, tipo) {
+  const eTipo = tipo === 'pre_reserva' ? 'Pré-reserva' : 'Reserva';
+  openModal(`🔓 Derrubar ${eTipo}`, `
+    <div style="text-align:center;padding:10px 0">
+      <div style="font-size:44px;margin-bottom:12px">⚠️</div>
+      <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:10px">Derrubar ${eTipo}?</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:16px">
+        Esta ação irá <strong style="color:#f87171">cancelar a ${eTipo.toLowerCase()}</strong> e a unidade voltará a aparecer como
+        <strong style="color:#4ade80">Disponível</strong> no espelho de vendas.<br><br>
+        A venda será marcada como cancelada e o cliente poderá ser reservado por outro corretor.
+      </div>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button onclick="closeModal()" class="btn btn-secondary" style="min-width:110px">Cancelar</button>
+        <button onclick="closeModal();_executarDerrubarReserva(${unidadeId},${empId})" class="btn btn-danger" style="min-width:160px;background:rgba(239,68,68,.2);border-color:rgba(239,68,68,.5);color:#f87171">🔓 Confirmar Derrubada</button>
+      </div>
+    </div>
+  `, null, { hideFooter: true });
+}
+
+async function _executarDerrubarReserva(unidadeId, empId) {
+  const r = await put(`/api/unidades/${unidadeId}/status`, { status: 'disponivel' });
+  if (!r.ok) return toast(r.error || 'Erro ao liberar unidade', 'error');
+  toast('✅ Reserva derrubada — unidade disponível no espelho');
+  // Atualização otimista do tile
+  document.querySelectorAll(`[data-uid="${unidadeId}"]`).forEach(tile => {
+    tile.className = tile.className.replace(/\b(pre_reserva|reservado|vendido|indisponivel)\b/g, 'disponivel');
+  });
   verEspelho(empId);
 }
 

@@ -1988,16 +1988,18 @@ app.put("/api/unidades/:id/status", autenticar, (req, res) => {
   const unidadeId = parseInt(req.params.id);
   const uAntes = db.prepare("SELECT status FROM unidades WHERE id=?").get(unidadeId);
   db.transaction(() => {
-    db.prepare("UPDATE unidades SET status=? WHERE id=?").run(status, unidadeId);
-    // Ao liberar uma unidade reservada, cancela a venda ativa e reverte o lead
+    db.prepare("UPDATE unidades SET status=?, fila_prioridade_ate=NULL, fila_prioridade_corretor_id=NULL WHERE id=?").run(status, unidadeId);
+    // Ao liberar uma unidade, cancela a venda ativa (reserva, proposta ou pré-reserva) e reverte o lead
     if (status === 'disponivel') {
       const venda = db.prepare(
-        "SELECT id, lead_id FROM vendas WHERE unidade_id=? AND status IN ('reserva','proposta') ORDER BY id DESC LIMIT 1"
+        "SELECT id, lead_id, status as vstatus FROM vendas WHERE unidade_id=? AND status IN ('pre_reserva','reserva','proposta') ORDER BY id DESC LIMIT 1"
       ).get(unidadeId);
       if (venda) {
         db.prepare("UPDATE vendas SET status='cancelado' WHERE id=?").run(venda.id);
-        db.prepare("UPDATE leads SET status='novo' WHERE id=? AND status IN ('reserva','proposta')").run(venda.lead_id);
+        db.prepare("UPDATE leads SET status='novo' WHERE id=? AND status IN ('pre_reserva','reserva','proposta')").run(venda.lead_id);
       }
+      // Limpa fila de espera da unidade
+      try { db.prepare("DELETE FROM reserva_fila WHERE unidade_id=?").run(unidadeId); } catch(_) {}
     }
   })();
   _logUnidade(unidadeId, uAntes?.status, status, req.usuario, null, 'Alteração manual de status');
