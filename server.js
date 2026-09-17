@@ -3252,21 +3252,32 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
     // status === 'ativo' → prossegue
   }
 
-  // Se condicao_proposta fornecida, venda entra direto em 'proposta'
-  const statusInicial = condicao_proposta ? 'proposta' : 'reserva';
+  // Se condicao_proposta fornecida, venda entra direto em 'proposta'; senão pré-reserva até PIX
+  const statusInicial = condicao_proposta ? 'proposta' : 'pre_reserva';
 
   try {
     const resultado = db.transaction(() => {
-      // Reserva atômica: UPDATE só executa se ainda disponível (seguro para 100+ acessos simultâneos)
-      const upd = db.prepare("UPDATE unidades SET status='reservado' WHERE id=? AND status='disponivel'").run(unidade_id);
-      if (upd.changes === 0) {
-        const u2 = db.prepare("SELECT status FROM unidades WHERE id=?").get(unidade_id);
-        if (!u2) throw Object.assign(new Error("Unidade não encontrada"), { status: 404 });
+      // Reserva atômica: UPDATE só executa se disponível ou se este corretor tem janela de prioridade
+      const uid = u?.corretor_id;
+      const unidadeAtual = db.prepare("SELECT status, fila_prioridade_ate, fila_prioridade_corretor_id FROM unidades WHERE id=?").get(unidade_id);
+      if (!unidadeAtual) throw Object.assign(new Error("Unidade não encontrada"), { status: 404 });
+
+      const temPrioridade = unidadeAtual.fila_prioridade_ate && new Date(unidadeAtual.fila_prioridade_ate) > new Date();
+      if (unidadeAtual.status !== 'disponivel') {
         throw Object.assign(new Error(
-          u2.status === 'reservado'
-            ? 'Esta unidade acabou de ser reservada por outro atendimento. Escolha outra.'
+          unidadeAtual.status === 'reservado' || unidadeAtual.status === 'pre_reserva'
+            ? 'Esta unidade já está reservada por outro atendimento.'
             : 'Esta unidade não está disponível para reserva.'
         ), { status: 409 });
+      }
+      if (temPrioridade && unidadeAtual.fila_prioridade_corretor_id !== uid && u?.perfil === 'corretor') {
+        throw Object.assign(new Error('Esta unidade está reservada temporariamente para outro corretor (janela de prioridade ativa). Aguarde.'), { status: 409 });
+      }
+
+      // Marca pré-reserva atomicamente
+      const upd = db.prepare("UPDATE unidades SET status='pre_reserva', fila_prioridade_ate=NULL, fila_prioridade_corretor_id=NULL WHERE id=? AND status='disponivel'").run(unidade_id);
+      if (upd.changes === 0) {
+        throw Object.assign(new Error('Esta unidade acabou de ser reservada por outro atendimento. Escolha outra.'), { status: 409 });
       }
       const unidade = db.prepare("SELECT preco FROM unidades WHERE id=?").get(unidade_id);
 
@@ -3287,7 +3298,7 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
       const preco = unidade?.preco || 0;
       const cpJson = condicao_proposta ? JSON.stringify(condicao_proposta) : null;
       const valorTotal = condicao_proposta?.valor_total || preco;
-      const prazoExpira = statusInicial === 'reserva'
+      const prazoExpira = statusInicial === 'pre_reserva'
         ? new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T',' ').slice(0,19)
         : null;
       const rv = db.prepare(`INSERT INTO vendas
@@ -3303,7 +3314,7 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
       return { venda_id: rv.lastInsertRowid, lead_id: lead.id, status: statusInicial };
     })();
 
-    _logUnidade(unidade_id, 'disponivel', 'reservado', req.usuario, resultado.venda_id, 'Reserva rápida');
+    _logUnidade(unidade_id, 'disponivel', 'pre_reserva', req.usuario, resultado.venda_id, 'Pré-reserva — aguardando comprovante Pix');
     ok(res, resultado);
   } catch(e) {
     err(res, e.message, e.status || 400);
@@ -3320,17 +3331,28 @@ app.post('/api/vendas/:id/comprovante', autenticar, upload.single('arquivo'), (r
   if (!tiposPermitidos.includes(mimetype)) return err(res, 'Formato não suportado. Use JPG, PNG, WEBP ou PDF.');
   if (size > 8 * 1024 * 1024) return err(res, 'Arquivo muito grande (máx 8 MB)');
 
-  const venda = db.prepare('SELECT id, corretor_id, status, comprovante_prazo_expira_em FROM vendas WHERE id=?').get(vendaId);
+  const venda = db.prepare('SELECT id, corretor_id, status, unidade_id, comprovante_prazo_expira_em FROM vendas WHERE id=?').get(vendaId);
   if (!venda) return err(res, 'Venda não encontrada', 404);
   if (u?.perfil === 'corretor' && venda.corretor_id !== u.corretor_id)
     return err(res, 'Sem permissão para esta reserva', 403);
-  if (!['reserva','proposta'].includes(venda.status))
+  if (!['pre_reserva','reserva','proposta'].includes(venda.status))
     return err(res, 'Comprovante só pode ser anexado em reservas ativas');
 
   const base64 = buffer.toString('base64');
-  db.prepare(`UPDATE vendas SET comprovante_pix=?, comprovante_pix_nome=?, comprovante_pix_tipo=?, comprovante_prazo_expira_em=NULL WHERE id=?`)
-    .run(base64, originalname, mimetype, vendaId);
-  ok(res, { ok: true });
+  db.transaction(() => {
+    const novoStatus = venda.status === 'pre_reserva' ? 'reserva' : venda.status;
+    db.prepare(`UPDATE vendas SET comprovante_pix=?, comprovante_pix_nome=?, comprovante_pix_tipo=?, comprovante_prazo_expira_em=NULL, status=? WHERE id=?`)
+      .run(base64, originalname, mimetype, novoStatus, vendaId);
+    if (venda.status === 'pre_reserva' && venda.unidade_id) {
+      db.prepare("UPDATE unidades SET status='reservado' WHERE id=? AND status='pre_reserva'").run(venda.unidade_id);
+      // Encerrar fila desta unidade (pré-reserva virou reserva confirmada)
+      db.prepare("UPDATE reserva_fila SET status='encerrado' WHERE unidade_id=? AND status IN ('aguardando','notificado')").run(venda.unidade_id);
+    }
+  })();
+  if (venda.status === 'pre_reserva') {
+    _logUnidade(venda.unidade_id, 'pre_reserva', 'reservado', u, vendaId, 'Comprovante Pix recebido — pré-reserva confirmada');
+  }
+  ok(res, { ok: true, novoStatus: venda.status === 'pre_reserva' ? 'reserva' : venda.status });
 });
 
 // GET /api/vendas/:id/comprovante — baixar/visualizar o comprovante
@@ -3349,13 +3371,32 @@ app.get('/api/vendas/:id/comprovante', autenticar, (req, res) => {
   res.send(buf);
 });
 
-// ─── JOB: cancela reservas sem comprovante após 10 minutos ─────────────────
+// ─── JOB: cancela pré-reservas expiradas + avança fila de prioridade ──────────
+function _avancarFila(unidadeId) {
+  // Busca próximo da fila aguardando
+  const proximo = db.prepare(
+    "SELECT * FROM reserva_fila WHERE unidade_id=? AND status='aguardando' ORDER BY posicao ASC, criado_em ASC LIMIT 1"
+  ).get(unidadeId);
+  if (proximo) {
+    const expiraJanela = new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T',' ').slice(0,19);
+    db.prepare("UPDATE reserva_fila SET status='notificado', notificado_em=datetime('now','localtime'), janela_expira_em=? WHERE id=?")
+      .run(expiraJanela, proximo.id);
+    db.prepare("UPDATE unidades SET fila_prioridade_ate=?, fila_prioridade_corretor_id=? WHERE id=?")
+      .run(expiraJanela, proximo.corretor_id, unidadeId);
+    console.log(`[fila-job] Janela de prioridade aberta para corretor_id=${proximo.corretor_id} na unidade_id=${unidadeId}`);
+  } else {
+    // Sem fila — limpa prioridade
+    db.prepare("UPDATE unidades SET fila_prioridade_ate=NULL, fila_prioridade_corretor_id=NULL WHERE id=?").run(unidadeId);
+  }
+}
+
 setInterval(() => {
   try {
+    // 1) Cancela pré-reservas com prazo expirado
     const expiradas = db.prepare(`
       SELECT v.id, v.unidade_id, v.corretor_id
       FROM vendas v
-      WHERE v.status = 'reserva'
+      WHERE v.status = 'pre_reserva'
         AND v.comprovante_pix IS NULL
         AND v.comprovante_prazo_expira_em IS NOT NULL
         AND datetime(v.comprovante_prazo_expira_em) < datetime('now')
@@ -3365,15 +3406,126 @@ setInterval(() => {
       try {
         db.transaction(() => {
           db.prepare("UPDATE vendas SET status='perdida', observacoes=COALESCE(observacoes||' | ','')|| 'Cancelado automaticamente: comprovante Pix não enviado em 10 minutos', comprovante_prazo_expira_em=NULL WHERE id=?").run(v.id);
-          db.prepare("UPDATE unidades SET status='disponivel' WHERE id=? AND status='reservado'").run(v.unidade_id);
+          db.prepare("UPDATE unidades SET status='disponivel' WHERE id=? AND status='pre_reserva'").run(v.unidade_id);
           db.prepare("UPDATE leads SET status='lead' WHERE id=(SELECT lead_id FROM vendas WHERE id=?)").run(v.id);
         })();
-        _logUnidade(v.unidade_id, 'reservado', 'disponivel', null, v.id, 'Reserva cancelada automaticamente: comprovante Pix não enviado em 10 min');
+        _logUnidade(v.unidade_id, 'pre_reserva', 'disponivel', null, v.id, 'Pré-reserva cancelada: comprovante Pix não enviado em 10 min');
+        _avancarFila(v.unidade_id);
       } catch(_) {}
     }
-    if (expiradas.length > 0) console.log(`[comprovante-job] ${expiradas.length} reserva(s) cancelada(s) por falta de comprovante Pix`);
+    if (expiradas.length > 0) console.log(`[comprovante-job] ${expiradas.length} pré-reserva(s) cancelada(s)`);
+
+    // 2) Verifica janelas de prioridade expiradas (corretor da fila não agiu)
+    const janelasExpiradas = db.prepare(`
+      SELECT rf.id, rf.unidade_id
+      FROM reserva_fila rf
+      WHERE rf.status = 'notificado'
+        AND rf.janela_expira_em IS NOT NULL
+        AND datetime(rf.janela_expira_em) < datetime('now')
+    `).all();
+
+    for (const rf of janelasExpiradas) {
+      try {
+        db.prepare("UPDATE reserva_fila SET status='expirado' WHERE id=?").run(rf.id);
+        db.prepare("UPDATE unidades SET fila_prioridade_ate=NULL, fila_prioridade_corretor_id=NULL WHERE id=?").run(rf.unidade_id);
+        _avancarFila(rf.unidade_id);
+      } catch(_) {}
+    }
+    if (janelasExpiradas.length > 0) console.log(`[fila-job] ${janelasExpiradas.length} janela(s) de prioridade expirada(s)`);
   } catch(_) {}
 }, 60_000);
+
+// ─── FILA DE RESERVA ──────────────────────────────────────────────────────────
+
+// POST /api/lancamento/:empId/fila — entra na fila de uma unidade
+app.post('/api/lancamento/:empId/fila', autenticar, (req, res) => {
+  const u = req.usuario;
+  const empId = parseInt(req.params.empId);
+  const { unidade_id, lead_id } = req.body;
+  if (!unidade_id) return err(res, 'unidade_id obrigatório');
+
+  // Apenas durante lançamento ativo
+  const lanc = _getLancAtivo(empId);
+  if (!lanc || lanc.status !== 'ativo') return err(res, 'Fila disponível apenas durante lançamento ativo', 403);
+
+  // Corretor: só seus leads, admin: qualquer
+  if (u?.perfil === 'corretor') {
+    if (!lead_id) return err(res, 'Selecione um cliente para entrar na fila');
+    const lead = db.prepare("SELECT id, corretor_id FROM leads WHERE id=?").get(parseInt(lead_id));
+    if (!lead) return err(res, 'Lead não encontrado');
+    if (lead.corretor_id && u.corretor_id && lead.corretor_id !== u.corretor_id)
+      return err(res, 'Este lead não pertence ao seu cadastro');
+  }
+
+  const unidade = db.prepare("SELECT id, status FROM unidades WHERE id=? AND empreendimento_id=?").get(unidade_id, empId);
+  if (!unidade) return err(res, 'Unidade não encontrada', 404);
+  if (unidade.status === 'disponivel') return err(res, 'Unidade disponível — reserve diretamente ao invés de entrar na fila');
+  if (unidade.status === 'vendido') return err(res, 'Unidade já vendida. Não é possível entrar na fila.');
+
+  // Não pode entrar 2x na mesma fila
+  const jaEsta = db.prepare("SELECT id FROM reserva_fila WHERE unidade_id=? AND corretor_id=? AND status IN ('aguardando','notificado')").get(unidade_id, u?.corretor_id || 0);
+  if (jaEsta) return err(res, 'Você já está na fila desta unidade');
+
+  const posicao = (db.prepare("SELECT COALESCE(MAX(posicao),0)+1 AS p FROM reserva_fila WHERE unidade_id=? AND status IN ('aguardando','notificado')").get(unidade_id).p);
+
+  db.prepare("INSERT INTO reserva_fila (unidade_id, empreendimento_id, corretor_id, lead_id, posicao) VALUES (?,?,?,?,?)")
+    .run(unidade_id, empId, u?.corretor_id, lead_id || null, posicao);
+  ok(res, { posicao });
+});
+
+// GET /api/lancamento/:empId/fila/:unidadeId — lista fila de uma unidade
+app.get('/api/lancamento/:empId/fila/:unidadeId', autenticar, (req, res) => {
+  const empId = parseInt(req.params.empId);
+  const unidadeId = parseInt(req.params.unidadeId);
+  const u = req.usuario;
+  const rows = db.prepare(`
+    SELECT rf.id, rf.posicao, rf.status, rf.criado_em, rf.notificado_em, rf.janela_expira_em,
+      rf.corretor_id, c.nome AS corretor_nome,
+      rf.lead_id, l.nome AS lead_nome
+    FROM reserva_fila rf
+    LEFT JOIN corretores c ON c.id = rf.corretor_id
+    LEFT JOIN leads l ON l.id = rf.lead_id
+    WHERE rf.unidade_id=? AND rf.empreendimento_id=? AND rf.status IN ('aguardando','notificado')
+    ORDER BY rf.posicao ASC, rf.criado_em ASC
+  `).all(unidadeId, empId);
+
+  // Corretor só vê sua própria entrada (sem ver os concorrentes)
+  const filtrado = u?.perfil === 'corretor'
+    ? rows.filter(r => r.corretor_id === u.corretor_id).map(r => ({ ...r, posicao: rows.findIndex(x => x.id === r.id) + 1, total: rows.length }))
+    : rows;
+  ok(res, filtrado);
+});
+
+// DELETE /api/lancamento/fila/:id — sai da fila
+app.delete('/api/lancamento/fila/:id', autenticar, (req, res) => {
+  const u = req.usuario;
+  const id = parseInt(req.params.id);
+  const row = db.prepare("SELECT corretor_id, unidade_id FROM reserva_fila WHERE id=?").get(id);
+  if (!row) return err(res, 'Entrada não encontrada', 404);
+  if (u?.perfil === 'corretor' && row.corretor_id !== u.corretor_id)
+    return err(res, 'Sem permissão', 403);
+  db.prepare("UPDATE reserva_fila SET status='cancelado' WHERE id=?").run(id);
+  // Reordena posições restantes
+  db.prepare("UPDATE reserva_fila SET posicao = posicao - 1 WHERE unidade_id=? AND status='aguardando' AND posicao > (SELECT posicao FROM reserva_fila WHERE id=?)").run(row.unidade_id, id);
+  ok(res, {});
+});
+
+// GET /api/lancamento/:empId/minha-prioridade — unidades com janela prioritária para este corretor
+app.get('/api/lancamento/:empId/minha-prioridade', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u?.corretor_id) return ok(res, []);
+  const empId = parseInt(req.params.empId);
+  const rows = db.prepare(`
+    SELECT u.id, u.lote, u.quadra, u.fila_prioridade_ate
+    FROM unidades u
+    WHERE u.empreendimento_id=?
+      AND u.fila_prioridade_corretor_id=?
+      AND u.status='disponivel'
+      AND u.fila_prioridade_ate IS NOT NULL
+      AND datetime(u.fila_prioridade_ate) > datetime('now')
+  `).all(empId, u.corretor_id);
+  ok(res, rows);
+});
 
 // ─── KANBAN POR EMPREENDIMENTO ───────────────────────────────────────────────
 
@@ -4773,11 +4925,13 @@ app.get('/api/espelho-publico/:slug', (req, res) => {
   const mapa = db.prepare("SELECT svg_data FROM mapas WHERE empreendimento_id=?").get(emp.id);
   const units = db.prepare(`
     SELECT u.id, u.quadra, u.lote, u.area_m2, u.preco, u.status, u.mapa_x, u.mapa_y,
+      u.fila_prioridade_ate, u.fila_prioridade_corretor_id,
       (SELECT COUNT(*) FROM vendas v WHERE v.unidade_id=u.id AND v.status NOT IN ('distrato','cancelado','perdida')) as tem_venda,
-      (SELECT v2.id FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status='reserva' LIMIT 1) as venda_id,
-      (SELECT v2.corretor_id FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status='reserva' LIMIT 1) as venda_corretor_id,
-      (SELECT CASE WHEN v2.comprovante_pix IS NOT NULL THEN 1 ELSE 0 END FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status='reserva' LIMIT 1) as tem_comprovante,
-      (SELECT v2.comprovante_prazo_expira_em FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status='reserva' LIMIT 1) as comprovante_prazo_expira_em
+      (SELECT v2.id FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva') LIMIT 1) as venda_id,
+      (SELECT v2.corretor_id FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva') LIMIT 1) as venda_corretor_id,
+      (SELECT CASE WHEN v2.comprovante_pix IS NOT NULL THEN 1 ELSE 0 END FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva') LIMIT 1) as tem_comprovante,
+      (SELECT v2.comprovante_prazo_expira_em FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva') LIMIT 1) as comprovante_prazo_expira_em,
+      (SELECT COUNT(*) FROM reserva_fila rf WHERE rf.unidade_id=u.id AND rf.status IN ('aguardando','notificado')) as fila_qtd
     FROM unidades u WHERE u.empreendimento_id=? ORDER BY CAST(u.quadra AS REAL), CAST(REPLACE(u.lote,'-',' ') AS REAL), u.lote
   `).all(emp.id);
   const resumo = units.reduce((acc, u) => {
@@ -5065,6 +5219,23 @@ try { db.exec('ALTER TABLE vendas ADD COLUMN comprovante_pix TEXT'); } catch(_) 
 try { db.exec('ALTER TABLE vendas ADD COLUMN comprovante_pix_nome TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vendas ADD COLUMN comprovante_pix_tipo TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vendas ADD COLUMN comprovante_prazo_expira_em TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE unidades ADD COLUMN fila_prioridade_ate TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE unidades ADD COLUMN fila_prioridade_corretor_id INTEGER'); } catch(_) {}
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS reserva_fila (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    unidade_id INTEGER NOT NULL,
+    empreendimento_id INTEGER NOT NULL,
+    corretor_id INTEGER NOT NULL,
+    lead_id INTEGER,
+    posicao INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'aguardando',
+    criado_em TEXT DEFAULT (datetime('now','localtime')),
+    notificado_em TEXT,
+    janela_expira_em TEXT
+  )`);
+} catch(_) {}
 
 // Tabela de compradores adicionais (cônjuge, sócio, condomínio)
 db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (

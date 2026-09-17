@@ -98,8 +98,10 @@
   }
   .marcador:hover { transform: translate(-50%,-50%) scale(1.4); z-index: 10; }
   .marcador.disponivel  { background: #22c55e; }
+  .marcador.pre_reserva { background: #f97316; animation: preReservaPulse 2s ease-in-out infinite; }
   .marcador.reservado   { background: #f59e0b; }
   .marcador.vendido     { background: #ef4444; }
+  @keyframes preReservaPulse { 0%,100%{ opacity:1 } 50%{ opacity:.6 } }
   .marcador.entregue    { background: #ef4444; }
   .marcador.indisponivel { background: #64748b; }
   .marcador .tip {
@@ -129,6 +131,7 @@
   .tile .lote-num { font-size: 15px; line-height: 1; }
   .tile .quadra   { font-size: 10px; opacity: .7; margin-top: 2px; }
   .tile.disponivel  { background: #14532d; border-color: #22c55e; color: #4ade80; }
+  .tile.pre_reserva { background: #431407; border-color: #f97316; color: #fdba74; }
   .tile.reservado   { background: #78350f; border-color: #f59e0b; color: #fbbf24; }
   .tile.vendido     { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
   .tile.entregue    { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
@@ -146,6 +149,7 @@
   .leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; }
   .leg-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
   .leg-dot.disponivel   { background: #22c55e; }
+  .leg-dot.pre_reserva  { background: #f97316; }
   .leg-dot.reservado    { background: #f59e0b; }
   .leg-dot.vendido      { background: #ef4444; }
   .leg-dot.entregue     { background: #8b5cf6; }
@@ -255,6 +259,7 @@
   }
   .predio-unit:hover { transform: translateY(-3px); z-index: 5; }
   .predio-unit.disponivel  { background: #14532d; border-color: #22c55e; color: #4ade80; }
+  .predio-unit.pre_reserva { background: #431407; border-color: #f97316; color: #fdba74; }
   .predio-unit.reservado   { background: #78350f; border-color: #f59e0b; color: #fbbf24; }
   .predio-unit.vendido     { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
   .predio-unit.entregue    { background: #4c1d95; border-color: #a78bfa; color: #c4b5fd; }
@@ -546,7 +551,7 @@ const fmt  = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL'
 const fmt0 = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 
 function statusLabel(s) {
-  return { disponivel: 'Disponível', reservado: 'Reservado', vendido: 'Vendido', entregue: 'Vendido', indisponivel: 'Indisponível' }[s] || s;
+  return { disponivel: 'Disponível', pre_reserva: 'Pré-reserva', reservado: 'Reservado', vendido: 'Vendido', entregue: 'Vendido', indisponivel: 'Indisponível' }[s] || s;
 }
 
 // ── Cálculo PMT (Price) ──────────────────────────────────────────────────────
@@ -609,9 +614,9 @@ function abrirSimulacao(unitId) {
   const hidePreco   = !!window._hidePreco;
   const hideReserva = !!window._hideReserva;
 
-  const dispVendido = u.status === 'vendido' || u.status === 'reservado';
+  const dispVendido = u.status === 'vendido' || u.status === 'reservado' || u.status === 'pre_reserva';
   const statusBadge = dispVendido
-    ? `<span style="background:${u.status==='vendido'?'#7f1d1d':'#78350f'};color:${u.status==='vendido'?'#fca5a5':'#fbbf24'};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${statusLabel(u.status).toUpperCase()}</span>`
+    ? `<span style="background:${u.status==='vendido'?'#7f1d1d':u.status==='pre_reserva'?'#431407':'#78350f'};color:${u.status==='vendido'?'#fca5a5':u.status==='pre_reserva'?'#fdba74':'#fbbf24'};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${statusLabel(u.status).toUpperCase()}</span>`
     : '';
 
   const semParamsHtml = !p || !preco ? `<div class="sim-no-params">
@@ -964,6 +969,7 @@ async function carregar() {
 
     html.push(`<div class="legenda">
       <div class="leg-item"><div class="leg-dot disponivel"></div>Disponível</div>
+      ${resumo.pre_reserva ? `<div class="leg-item"><div class="leg-dot pre_reserva"></div>Pré-reserva</div>` : ''}
       <div class="leg-item"><div class="leg-dot reservado"></div>Reservado</div>
       <div class="leg-item"><div class="leg-dot vendido"></div>Vendido</div>
       ${resumo.indisponivel ? `<div class="leg-item"><div class="leg-dot indisponivel"></div>Indisponível</div>` : ''}

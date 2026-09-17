@@ -197,18 +197,22 @@
   }
   .espelho-tile:hover { transform: scale(1.1); box-shadow: 0 4px 16px rgba(0,0,0,.45); z-index: 2; position: relative; filter: brightness(1.18); }
   .espelho-tile.disponivel    { background: rgba(34,197,94,.1);   border-color: rgba(34,197,94,.5); }
+  .espelho-tile.pre_reserva   { background: rgba(249,115,22,.15); border-color: rgba(249,115,22,.7); animation: preReservaPulse 2s ease-in-out infinite; }
   .espelho-tile.reservado     { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.55); }
   .espelho-tile.vendido       { background: rgba(239,68,68,.12);  border-color: rgba(239,68,68,.55); }
   .espelho-tile.indisponivel  { background: rgba(100,116,139,.12);border-color: rgba(100,116,139,.45); }
+  @keyframes preReservaPulse { 0%,100%{ border-color:rgba(249,115,22,.7) } 50%{ border-color:rgba(249,115,22,1) } }
   .espelho-tile .tile-num  { font-size: 15px; font-weight: 900; line-height: 1; letter-spacing: -.3px; }
   .espelho-tile .tile-tip  { font-size: 7.5px; opacity: .7; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px; }
   .espelho-tile .tile-area { font-size: 7.5px; opacity: .6; margin-top: 1px; white-space: nowrap; }
   .espelho-tile .tile-preco { font-size: 8px; opacity: .85; margin-top: 1px; white-space: nowrap; font-weight: 600; }
   .espelho-tile.disponivel   .tile-num  { color: #4ade80; }
+  .espelho-tile.pre_reserva  .tile-num  { color: #fb923c; }
   .espelho-tile.reservado    .tile-num  { color: #fbbf24; }
   .espelho-tile.vendido      .tile-num  { color: #f87171; }
   .espelho-tile.indisponivel .tile-num  { color: #94a3b8; }
   .espelho-tile.disponivel   .tile-preco { color: rgba(74,222,128,.85); }
+  .espelho-tile.pre_reserva  .tile-preco { color: rgba(251,146,60,.85); }
   .espelho-tile.reservado    .tile-preco { color: rgba(251,191,36,.85); }
   .espelho-tile.vendido      .tile-preco { color: rgba(248,113,113,.85); }
   .espelho-tile.indisponivel .tile-preco { color: rgba(148,163,184,.7); }
@@ -9303,8 +9307,8 @@ async function verUnidades(empId) {
   const cnt = { disponivel:0, reservado:0, vendido:0 };
   units.forEach(u => { cnt[u.status] = (cnt[u.status]||0) + 1; });
   const vgvDisp = units.filter(u => u.status==='disponivel').reduce((s,u) => s+(u.preco||0), 0);
-  const statusBadge = { disponivel:'badge-green', reservado:'badge-orange', vendido:'badge-red', indisponivel:'badge-gray' };
-  const statusLabel = { disponivel:'Disponível', reservado:'Reservado', vendido:'Vendido', indisponivel:'Indisponível' };
+  const statusBadge = { disponivel:'badge-green', pre_reserva:'badge-orange', reservado:'badge-yellow', vendido:'badge-red', indisponivel:'badge-gray' };
+  const statusLabel = { disponivel:'Disponível', pre_reserva:'Pré-reserva', reservado:'Reservado', vendido:'Vendido', indisponivel:'Indisponível' };
   const colSpan = hidePreco ? 5 : 6;
 
   document.getElementById('modal').classList.add('modal-wide');
@@ -10084,7 +10088,7 @@ function atualizarListaSemPos() {
   lista.innerHTML = todas.map(u => {
     const temPos  = !!_posicoes[u.id];
     const isAtivo = _unitAtiva === u.id;
-    const statusColor = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#f87171', indisponivel:'#64748b' };
+    const statusColor = { disponivel:'#22c55e', pre_reserva:'#f97316', reservado:'#f59e0b', vendido:'#f87171', indisponivel:'#64748b' };
     const lbl = `${u.quadra ? `Qd${u.quadra} - ` : ''}${u.lote}`;
     return `<div
       draggable="true"
@@ -10171,15 +10175,15 @@ async function verEspelho(empId) {
   const lblB = isPredio ? 'Unidade' : 'Lote';
 
   // Contagens
-  const cnt = { disponivel:0, reservado:0, vendido:0, indisponivel:0 };
+  const cnt = { disponivel:0, pre_reserva:0, reservado:0, vendido:0, indisponivel:0 };
   units.forEach(u => { cnt[u.status] = (cnt[u.status]||0)+1; });
   const total    = units.length;
   const vsoBase  = total - (cnt.indisponivel||0);
-  const vsoNum   = vsoBase > 0 ? ((cnt.vendido+cnt.reservado)/vsoBase*100) : 0;
+  const vsoNum   = vsoBase > 0 ? ((cnt.vendido+cnt.reservado+cnt.pre_reserva)/vsoBase*100) : 0;
   const vsoVend  = vsoBase > 0 ? (cnt.vendido/vsoBase*100) : 0;
   const vgvDisp  = units.filter(u=>u.status==='disponivel').reduce((s,u)=>s+(u.preco||0),0);
   const vgvVend  = units.filter(u=>u.status==='vendido').reduce((s,u)=>s+(u.preco||0),0);
-  const vgvRes   = units.filter(u=>u.status==='reservado').reduce((s,u)=>s+(u.preco||0),0);
+  const vgvRes   = units.filter(u=>['reservado','pre_reserva'].includes(u.status)).reduce((s,u)=>s+(u.preco||0),0);
   const vgvIndisp= units.filter(u=>u.status==='indisponivel').reduce((s,u)=>s+(u.preco||0),0);
 
   // Agrupar por quadra/andar e ordenar
@@ -10227,6 +10231,7 @@ async function verEspelho(empId) {
     <!-- Contador compacto para corretor -->
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
       <span style="background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);color:#4ade80;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:700">✅ ${cnt.disponivel} disponíveis</span>
+      ${cnt.pre_reserva?`<span style="background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.4);color:#fb923c;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:700">🟠 ${cnt.pre_reserva} pré-reservas</span>`:''}
       <span style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);color:#fbbf24;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:700">🟡 ${cnt.reservado} reservados</span>
       <span style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:#f87171;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:700">🔴 ${cnt.vendido} vendidos</span>
       ${cnt.indisponivel?`<span style="background:rgba(100,116,139,.15);border:1px solid rgba(100,116,139,.4);color:#94a3b8;border-radius:20px;padding:5px 12px;font-size:13px;font-weight:700">⛔ ${cnt.indisponivel} indisponíveis</span>`:''}
@@ -10291,6 +10296,7 @@ async function verEspelho(empId) {
     <div style="display:flex;gap:20px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
       <span style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Legenda:</span>
       <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(34,197,94,.15);border:2px solid rgba(34,197,94,.5);border-radius:3px;display:inline-block"></span>Disponível</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(249,115,22,.15);border:2px solid rgba(249,115,22,.7);border-radius:3px;display:inline-block"></span>Pré-reserva</span>
       <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(245,158,11,.15);border:2px solid rgba(245,158,11,.5);border-radius:3px;display:inline-block"></span>Reservado</span>
       <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(239,68,68,.15);border:2px solid rgba(239,68,68,.5);border-radius:3px;display:inline-block"></span>Vendido</span>
       <span style="display:flex;align-items:center;gap:6px;font-size:12px"><span style="width:14px;height:14px;background:rgba(100,116,139,.15);border:2px solid rgba(100,116,139,.45);border-radius:3px;display:inline-block"></span>Indisponível</span>
@@ -10306,9 +10312,15 @@ async function verEspelho(empId) {
       ${isPredio ? renderEspelhoPredio(grupoKeys, grupos, empId) : renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId)}
     </div>
   `;
+  // Armazena estado do lançamento para uso na fila
+  window._lancAtivoEmp = (lanc?.status === 'ativo') ? empId : null;
+
   // Inicia contador regressivo se necessário
   if (lanc?.status === 'agendado') _iniciarCountdownLanc(lanc.data_hora_inicio, lanc.server_time, empId);
   if (lanc?.status === 'ativo' && lanc.data_hora_fim) _iniciarCountdownEncerramento(lanc.data_hora_fim, lanc.server_time, empId);
+
+  // Checa janela prioritária (só para corretor)
+  if (lanc?.status === 'ativo') _checarPrioridade(empId);
 }
 
 // ── LANÇAMENTO: helpers de banner e countdown ────────────────────────────────
@@ -11993,10 +12005,10 @@ async function abrirUnidade(unidadeId, empId) {
     }
   } else {
     // Card de reserva/venda para admin/gestor
-    const reservaCard = (reservaInfo && ['reservado','vendido'].includes(u.status)) ? (() => {
-      const statusLabel = u.status === 'reservado' ? '🟡 Reservado' : '🔴 Vendido';
-      const bgColor = u.status === 'reservado' ? 'rgba(245,158,11,.08)' : 'rgba(239,68,68,.08)';
-      const borderColor = u.status === 'reservado' ? 'rgba(245,158,11,.3)' : 'rgba(239,68,68,.3)';
+    const reservaCard = (reservaInfo && ['pre_reserva','reservado','vendido'].includes(u.status)) ? (() => {
+      const statusLabel = u.status === 'pre_reserva' ? '🟠 Pré-reserva (aguardando PIX)' : u.status === 'reservado' ? '🟡 Reservado' : '🔴 Vendido';
+      const bgColor = u.status === 'pre_reserva' ? 'rgba(249,115,22,.08)' : u.status === 'reservado' ? 'rgba(245,158,11,.08)' : 'rgba(239,68,68,.08)';
+      const borderColor = u.status === 'pre_reserva' ? 'rgba(249,115,22,.35)' : u.status === 'reservado' ? 'rgba(245,158,11,.3)' : 'rgba(239,68,68,.3)';
       const dataFormatada = reservaInfo.criado_em ? new Date(reservaInfo.criado_em).toLocaleDateString('pt-BR') : '—';
       return `<div style="background:${bgColor};border:1px solid ${borderColor};border-radius:10px;padding:14px 16px;margin-bottom:16px">
         <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">📋 ${statusLabel} em ${dataFormatada}</div>
@@ -12082,14 +12094,19 @@ async function abrirUnidade(unidadeId, empId) {
       </div>
       <!-- Alterar Status -->
       <div style="border-top:1px solid var(--border);padding-top:16px">
-        <div style="font-size:11px;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">Alterar Status</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Alterar Status</div>
+          ${u.fila_qtd > 0 ? `<span style="font-size:11px;color:#fb923c;font-weight:600">📋 ${u.fila_qtd} na fila</span>` : ''}
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${u.status!=='disponivel'   ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(34,197,94,.4);color:#4ade80" onclick="mudarStatusEspelho(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
-          ${u.status!=='reservado'    ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(245,158,11,.4);color:#fbbf24" onclick="closeModal();openReservaRapida(${empId},${u.id})">🟡 Reservar</button>`:''}
+          ${u.status!=='disponivel'&&u.status!=='pre_reserva'   ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(34,197,94,.4);color:#4ade80" onclick="mudarStatusEspelho(${u.id},'disponivel',${empId})">✅ Liberar</button>`:''}
+          ${u.status!=='reservado'&&u.status!=='pre_reserva'    ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(245,158,11,.4);color:#fbbf24" onclick="closeModal();openReservaRapida(${empId},${u.id})">🟡 Reservar</button>`:''}
           ${u.status!=='vendido'      ?`<button class="btn btn-danger"    style="flex:1" onclick="mudarStatusEspelho(${u.id},'vendido',${empId})">🔴 Marcar Vendido</button>`:''}
           ${u.status!=='indisponivel' ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(100,116,139,.4);color:#94a3b8" onclick="mudarStatusEspelho(${u.id},'indisponivel',${empId})">⛔ Indisponível</button>`:''}
         </div>
         ${u.status==='vendido'?`<div style="font-size:11px;color:var(--text2);margin-top:10px">Para liberar uma unidade vendida, altere o status da venda para "Distrato" na aba Vendas.</div>`:''}
+        <!-- Fila de espera (admin/gestor apenas visualiza, corretor entra) -->
+        <div id="fila-sec-${u.id}" style="margin-top:12px"></div>
       </div>
       ${['admin','gestor'].includes(USUARIO.perfil) ? `
       <!-- Histórico de Alterações -->
@@ -12108,6 +12125,11 @@ async function abrirUnidade(unidadeId, empId) {
       <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
   }
   document.getElementById('modal-overlay').classList.add('open');
+
+  // Carrega fila da unidade após abrir modal (apenas durante lançamento ativo)
+  if (window._lancAtivoEmp === empId) {
+    _carregarFilaUnidade(u.id, empId, u.status);
+  }
 }
 
 function toggleEditUnidade() {
@@ -12589,8 +12611,8 @@ async function carregarHistoricoUnidade(unidadeId) {
   const rows = r.data || [];
   if (!rows.length) { el.innerHTML = '<span style="opacity:.5">Nenhuma alteração registrada.</span>'; return; }
 
-  const statusLabel = { disponivel:'Disponível', reservado:'Reservado', vendido:'Vendido', indisponivel:'Indisponível' };
-  const statusColor = { disponivel:'#4ade80', reservado:'#fbbf24', vendido:'#f87171', indisponivel:'#94a3b8' };
+  const statusLabel = { disponivel:'Disponível', pre_reserva:'Pré-reserva', reservado:'Reservado', vendido:'Vendido', indisponivel:'Indisponível' };
+  const statusColor = { disponivel:'#4ade80', pre_reserva:'#fb923c', reservado:'#fbbf24', vendido:'#f87171', indisponivel:'#94a3b8' };
 
   el.innerHTML = rows.map(h => {
     const de = h.status_anterior ? `<span style="color:${statusColor[h.status_anterior]||'#94a3b8'}">${statusLabel[h.status_anterior]||h.status_anterior}</span>` : '<span style="opacity:.4">—</span>';
@@ -22712,6 +22734,132 @@ function _renderResultadoPesquisaAI(r, tipo, cidade, dadosPlanta) {
       <div style="font-size:11px;color:#F59E0B;margin-top:8px;padding:8px;background:rgba(245,158,11,.08);border-radius:6px">⚠ ${d.aviso}</div>
       ${d.preco_m2_mediana ? `<button onclick="intAplicarPreco(${d.preco_m2_mediana})" style="margin-top:12px;background:rgba(0,196,180,.15);border:1px solid var(--accent);color:var(--accent);padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">↑ Aplicar mediana no cenário (R$ ${d.preco_m2_mediana}/m²)</button>` : ''}
     </div>`;
+}
+
+// ─── FILA DE RESERVA ──────────────────────────────────────────────────────────
+
+async function _carregarFilaUnidade(unidadeId, empId, statusUnidade) {
+  const el = document.getElementById(`fila-sec-${unidadeId}`);
+  if (!el) return;
+  const exibirFila = ['pre_reserva','reservado'].includes(statusUnidade);
+  if (!exibirFila) {
+    el.innerHTML = '';
+    return;
+  }
+  const r = await get(`/api/lancamento/${empId}/fila/${unidadeId}`);
+  const fila = r.data || [];
+  const isCorretor = USUARIO.perfil === 'corretor';
+
+  if (isCorretor) {
+    const minha = fila[0]; // corretor só vê a própria entrada
+    const naFila = !!minha;
+    if (!naFila) {
+      el.innerHTML = `<div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+        <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Esta unidade está ocupada. Entre na fila para ser notificado se ela ficar disponível.</div>
+        <div id="fila-lead-sel-${unidadeId}" style="margin-bottom:8px"></div>
+        <button onclick="abrirSelecaoFilaLead(${unidadeId},${empId})"
+          style="width:100%;padding:9px;border-radius:8px;background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.4);color:#fb923c;font-size:13px;font-weight:700;cursor:pointer">
+          📋 Entrar na Fila
+        </button>
+      </div>`;
+      _carregarLeadsParaFila(unidadeId, empId);
+    } else {
+      const pos = minha.posicao || 1;
+      const total = minha.total || 1;
+      const isNotificado = minha.status === 'notificado';
+      const expira = minha.janela_expira_em ? new Date(minha.janela_expira_em) : null;
+      const msLeft = expira ? Math.max(0, expira - Date.now()) : 0;
+      const minsLeft = Math.ceil(msLeft / 60000);
+      el.innerHTML = `<div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+        ${isNotificado ? `<div style="background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.4);border-radius:10px;padding:12px 14px;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:700;color:#fb923c">🎯 É a sua vez! Janela de prioridade aberta</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:3px">Você tem ${minsLeft} min para reservar esta unidade. Volte ao espelho e reserve!</div>
+        </div>` : `<div style="font-size:12px;color:var(--text2);margin-bottom:8px">Você está na posição <strong style="color:#fb923c">${pos}º</strong> de ${total} na fila.</div>`}
+        <button onclick="sairDaFila(${minha.id},${unidadeId},${empId})"
+          style="width:100%;padding:7px;border-radius:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#f87171;font-size:12px;cursor:pointer">
+          Sair da fila
+        </button>
+      </div>`;
+    }
+  } else {
+    // Admin/gestor: mostra lista completa
+    if (!fila.length) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--text2);opacity:.5;margin-top:4px">Nenhum corretor na fila.</div>';
+      return;
+    }
+    el.innerHTML = `<div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+      <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📋 Fila de Espera (${fila.length})</div>
+      ${fila.map((f,i) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)">
+          <span style="width:20px;height:20px;border-radius:50%;background:${f.status==='notificado'?'rgba(249,115,22,.3)':'rgba(100,116,139,.2)'};color:${f.status==='notificado'?'#fb923c':'#94a3b8'};font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">${i+1}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:600">${f.corretor_nome||'—'}</div>
+            ${f.lead_nome?`<div style="font-size:11px;color:var(--text2)">${f.lead_nome}</div>`:''}
+          </div>
+          ${f.status==='notificado'?`<span style="font-size:10px;color:#fb923c;font-weight:600">🎯 Ativo</span>`:''}
+          <button onclick="adminRemoverFila(${f.id},${unidadeId},${empId})" style="font-size:11px;color:var(--text2);background:none;border:none;cursor:pointer;padding:2px 4px" title="Remover da fila">✕</button>
+        </div>
+      `).join('')}
+    </div>`;
+  }
+}
+
+async function _carregarLeadsParaFila(unidadeId, empId) {
+  const el = document.getElementById(`fila-lead-sel-${unidadeId}`);
+  if (!el) return;
+  const r = await get('/api/corretor/clientes');
+  const leads = r.data || [];
+  if (!leads.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<select id="fila-lead-id-${unidadeId}" style="width:100%;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+    <option value="">Selecione o cliente para a fila...</option>
+    ${leads.map(l => `<option value="${l.id}">${l.nome}${l.telefone?' · '+l.telefone:''}</option>`).join('')}
+  </select>`;
+}
+
+async function abrirSelecaoFilaLead(unidadeId, empId) {
+  const sel = document.getElementById(`fila-lead-id-${unidadeId}`);
+  const leadId = sel?.value;
+  if (!leadId) { toast('Selecione um cliente primeiro', 'error'); return; }
+  const r = await post(`/api/lancamento/${empId}/fila`, { unidade_id: unidadeId, lead_id: parseInt(leadId) });
+  if (!r.ok) return toast(r.error, 'error');
+  toast(`✅ Você está na posição ${r.data.posicao}º da fila!`);
+  _carregarFilaUnidade(unidadeId, empId, 'pre_reserva');
+}
+
+async function sairDaFila(filaId, unidadeId, empId) {
+  const r = await del(`/api/lancamento/fila/${filaId}`);
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Saiu da fila');
+  _carregarFilaUnidade(unidadeId, empId, 'pre_reserva');
+}
+
+async function adminRemoverFila(filaId, unidadeId, empId) {
+  const r = await del(`/api/lancamento/fila/${filaId}`);
+  if (!r.ok) return toast(r.error, 'error');
+  toast('Removido da fila');
+  _carregarFilaUnidade(unidadeId, empId, 'pre_reserva');
+}
+
+// Checa se corretor tem janela prioritária e exibe banner
+async function _checarPrioridade(empId) {
+  if (!empId || USUARIO.perfil !== 'corretor') return;
+  try {
+    const r = await get(`/api/lancamento/${empId}/minha-prioridade`);
+    const unidades = r.data || [];
+    const banner = document.getElementById('banner-prioridade');
+    if (!unidades.length) { if (banner) banner.remove(); return; }
+    const u = unidades[0];
+    const expira = new Date(u.fila_prioridade_ate);
+    const mins = Math.max(1, Math.ceil((expira - Date.now()) / 60000));
+    if (!banner) {
+      const div = document.createElement('div');
+      div.id = 'banner-prioridade';
+      div.style.cssText = 'position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:9000;background:rgba(249,115,22,.95);color:#fff;font-size:14px;font-weight:700;padding:12px 24px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.4);display:flex;gap:12px;align-items:center;max-width:90vw';
+      div.innerHTML = `<span>🎯</span><span>Você tem prioridade na unidade <strong>${u.quadra?'Qd'+u.quadra+' - ':''}${u.lote}</strong> por ${mins} min!</span><button onclick="verEspelho(${empId})" style="background:#fff;color:#f97316;border:none;border-radius:7px;padding:5px 12px;font-weight:700;cursor:pointer;font-size:13px">Reservar agora</button>`;
+      document.body.appendChild(div);
+      setTimeout(() => { const b = document.getElementById('banner-prioridade'); if (b) b.remove(); }, mins * 60 * 1000);
+    }
+  } catch(_) {}
 }
 
 // ─── COMPROVANTE PIX ──────────────────────────────────────────────────────────
