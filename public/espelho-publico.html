@@ -366,6 +366,10 @@
     <input id="login-senha" type="password" placeholder="••••••••" autocomplete="current-password">
     <div id="login-err" class="login-err"></div>
     <button class="login-btn" id="login-submit-btn" onclick="fazerLogin()">Entrar</button>
+    <div style="text-align:center;margin-top:14px;font-size:12px;color:#64748b">
+      Não tem cadastro?
+      <a id="link-solicitar-acesso" href="#" onclick="irParaCadastro(event)" style="color:#00c4b4;text-decoration:none;font-weight:600">Solicitar Acesso</a>
+    </div>
   </div>
 </div>
 
@@ -422,6 +426,12 @@ let _empTipo = 'loteamento';
 let _simParams = null;
 
 // ── Auth corretor ─────────────────────────────────────────────────────────────
+function irParaCadastro(e) {
+  e.preventDefault();
+  const redirect = encodeURIComponent(location.pathname + location.search);
+  location.href = '/cadastro-corretor?redirect=' + redirect;
+}
+
 let _corretorToken  = localStorage.getItem('espelho_token')    || null;
 let _corretorNome   = localStorage.getItem('espelho_nome')     || null;
 let _corretorId     = localStorage.getItem('espelho_corretor') || null;

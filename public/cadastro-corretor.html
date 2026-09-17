@@ -95,13 +95,16 @@
     <div class="success-icon">🎉</div>
     <div class="success-title">Cadastro realizado!</div>
     <div class="success-sub">Bem-vindo à rede R2X.</div>
-    <div id="success-credenciais" style="display:none;margin-top:20px;text-align:left;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:16px 18px">
-      <div style="font-size:13px;font-weight:700;color:#166534;margin-bottom:10px">🔑 Suas credenciais de acesso</div>
-      <div style="font-size:12px;color:#15803d;margin-bottom:6px">Login (e-mail):</div>
-      <div style="font-size:14px;font-weight:600;font-family:monospace;color:#14532d;margin-bottom:12px" id="sc-login"></div>
-      <div style="font-size:12px;color:#15803d;margin-bottom:6px">Senha temporária:</div>
-      <div style="font-size:20px;font-weight:700;letter-spacing:4px;font-family:monospace;color:#14532d" id="sc-senha"></div>
+    <div id="success-credenciais" style="display:none;margin-top:20px;text-align:left;background:#0f2818;border:1px solid #166534;border-radius:10px;padding:16px 18px">
+      <div style="font-size:13px;font-weight:700;color:#4ade80;margin-bottom:10px">🔑 Suas credenciais de acesso</div>
+      <div style="font-size:12px;color:#86efac;margin-bottom:4px">Login (e-mail):</div>
+      <div style="font-size:14px;font-weight:600;font-family:monospace;color:#bbf7d0;margin-bottom:12px" id="sc-login"></div>
+      <div style="font-size:12px;color:#86efac;margin-bottom:4px">Senha temporária:</div>
+      <div style="font-size:22px;font-weight:700;letter-spacing:4px;font-family:monospace;color:#bbf7d0" id="sc-senha"></div>
       <div style="font-size:11px;color:#4ade80;margin-top:10px">Guarde esta senha — ela não será exibida novamente.</div>
+    </div>
+    <div id="btn-voltar-espelho" style="display:none;margin-top:20px">
+      <a id="link-espelho" href="#" class="btn" style="display:inline-block;text-decoration:none;text-align:center">Acessar Espelho de Vendas →</a>
     </div>
   </div>
 </div>
@@ -120,6 +123,8 @@ function maskCPF(el) {
   else if (v.length >= 4) v = `${v.slice(0,3)}.${v.slice(3)}`;
   el.value = v;
 }
+
+const _redirectParam = new URLSearchParams(location.search).get('redirect') || null;
 
 async function enviar(e) {
   e.preventDefault();
@@ -153,6 +158,11 @@ async function enviar(e) {
       document.getElementById('sc-login').textContent = data.data.loginInfo.login;
       document.getElementById('sc-senha').textContent = data.data.loginInfo.senha_temp;
       document.getElementById('success-credenciais').style.display = 'block';
+    }
+    if (_redirectParam) {
+      const linkEl = document.getElementById('link-espelho');
+      linkEl.href = _redirectParam;
+      document.getElementById('btn-voltar-espelho').style.display = 'block';
     }
   } catch(err) {
     alert('Erro: ' + err.message);
