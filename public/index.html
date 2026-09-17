@@ -4930,30 +4930,40 @@ async function excluirItemChecklist(id) {
 }
 
 // ─── RESERVA RÁPIDA ──────────────────────────────────────────────────────────
-function openReservaRapida(preEmpId, preUnidadeId) {
+// ─── RESERVA COM CLIENTE CADASTRADO ──────────────────────────────────────────
+
+let _rrEmpId = null, _rrUnidadeId = null, _rrLeads = [], _rrLeadSel = null, _rrTipo = 'pf';
+
+function _rrInputStyle() {
+  return 'width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box';
+}
+
+async function openReservaRapida(preEmpId, preUnidadeId) {
+  _rrEmpId = preEmpId; _rrUnidadeId = preUnidadeId; _rrLeadSel = null;
+  _rrTipo = 'pf';
   const overlay = document.getElementById('rr-overlay');
   if (!overlay) return;
-  const empSel  = document.getElementById('rr-emp');
-  const corrSel = document.getElementById('rr-corretor');
-  const { emp, corretores } = currentData;
-  empSel.innerHTML = '<option value="">— Selecione —</option>' +
-    (emp||[]).map(e => `<option value="${e.id}">${e.nome}</option>`).join('');
-  corrSel.innerHTML = '<option value="">— Sem corretor —</option>' +
-    (corretores||[]).map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
-  document.getElementById('rr-nome').value = '';
-  document.getElementById('rr-telefone').value = '';
-  document.getElementById('rr-unidade').innerHTML = '<option value="">— Selecione o empreendimento —</option>';
-  const st = document.getElementById('rr-status');
-  st.style.display = 'none'; st.textContent = '';
   overlay.style.display = 'flex';
-  // Pré-selecionar empreendimento e unidade se fornecidos
-  if (preEmpId) {
-    empSel.value = preEmpId;
-    carregarUnidadesRR(preEmpId).then(() => {
-      if (preUnidadeId) document.getElementById('rr-unidade').value = preUnidadeId;
-    });
+  _rrMostrarBusca();
+
+  // Pill com info da unidade
+  const pill = document.getElementById('rr-unit-pill');
+  if (pill && preEmpId && preUnidadeId) {
+    pill.textContent = '⏳ Carregando...';
+    const r = await get(`/api/empreendimentos/${preEmpId}/unidades`);
+    const u = (r.data||[]).find(x => x.id == preUnidadeId);
+    if (u) {
+      const emp = (currentData.emp||[]).find(e => e.id == preEmpId);
+      const lbl = [emp?.nome, u.quadra?`Qd ${u.quadra}`:null, `Lote ${u.lote}`, u.area_m2?`${u.area_m2}m²`:null, u.preco?`R$ ${Number(u.preco).toLocaleString('pt-BR')}`:null].filter(Boolean).join(' · ');
+      pill.textContent = lbl;
+    } else pill.textContent = '';
   }
-  setTimeout(() => document.getElementById('rr-nome').focus(), 100);
+
+  // Carregar clientes do corretor (ou todos para admin/gestor)
+  const r = await get('/api/leads');
+  _rrLeads = (r.data||[]);
+  _rrFiltrar();
+  setTimeout(() => document.getElementById('rr-search')?.focus(), 120);
 }
 
 function closeReservaRapida() {
@@ -4961,81 +4971,180 @@ function closeReservaRapida() {
   if (overlay) overlay.style.display = 'none';
 }
 
-async function carregarUnidadesRR(empId) {
-  const sel = document.getElementById('rr-unidade');
-  sel.innerHTML = '<option value="">⏳ Carregando...</option>';
-  if (!empId) { sel.innerHTML = '<option value="">— Selecione o empreendimento —</option>'; return; }
-  const r = await get(`/api/empreendimentos/${empId}/unidades`);
-  const disponiveis = (r.data||[]).filter(u => u.status === 'disponivel');
-  if (disponiveis.length === 0) {
-    sel.innerHTML = '<option value="">Sem unidades disponíveis</option>';
+function _rrMostrarBusca() {
+  document.getElementById('rr-screen-busca').style.display = 'flex';
+  document.getElementById('rr-screen-cadastro').style.display = 'none';
+  if (document.getElementById('rr-search')) document.getElementById('rr-search').value = '';
+  _rrFiltrar();
+}
+
+function _rrAbrirCadastro() {
+  document.getElementById('rr-screen-busca').style.display = 'none';
+  document.getElementById('rr-screen-cadastro').style.display = 'block';
+  _rrTipoPessoa('pf');
+  // Limpar campos
+  ['pf-nome','pf-cpf','pf-rg','pf-tel','pf-email','pf-cep','pf-end','pf-num','pf-comp','pf-bairro','pf-cidade','pf-estado','pf-prof'].forEach(id => { const el = document.getElementById('rr-'+id); if(el) el.value=''; });
+  ['pj-rs','pj-cnpj','pj-tel','pj-email','pj-rep-nome','pj-rep-cpf','pj-rep-cargo','pj-cep','pj-end','pj-num','pj-bairro','pj-cidade','pj-estado'].forEach(id => { const el = document.getElementById('rr-'+id); if(el) el.value=''; });
+  const el = document.getElementById('rr-pf-ec'); if(el) el.value='';
+  const st = document.getElementById('rr-cad-status'); if(st) { st.style.display='none'; st.textContent=''; }
+}
+
+function _rrVoltarBusca() { _rrMostrarBusca(); }
+
+function _rrTipoPessoa(tipo) {
+  _rrTipo = tipo;
+  const pfBtn = document.getElementById('rr-btn-pf'), pjBtn = document.getElementById('rr-btn-pj');
+  const pfCampos = document.getElementById('rr-campos-pf'), pjCampos = document.getElementById('rr-campos-pj');
+  if (tipo === 'pf') {
+    pfBtn.style.cssText = 'flex:1;padding:8px;border-radius:8px;border:2px solid var(--accent);background:rgba(20,184,166,.12);color:var(--accent);font-size:13px;font-weight:700;cursor:pointer';
+    pjBtn.style.cssText = 'flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text2);font-size:13px;cursor:pointer';
+    pfCampos.style.display = 'flex'; pjCampos.style.display = 'none';
+  } else {
+    pjBtn.style.cssText = 'flex:1;padding:8px;border-radius:8px;border:2px solid var(--accent);background:rgba(20,184,166,.12);color:var(--accent);font-size:13px;font-weight:700;cursor:pointer';
+    pfBtn.style.cssText = 'flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text2);font-size:13px;cursor:pointer';
+    pjCampos.style.display = 'flex'; pfCampos.style.display = 'none';
+  }
+}
+
+async function _rrBuscarCep(tipo) {
+  const cepEl = document.getElementById(`rr-${tipo}-cep`);
+  if (!cepEl) return;
+  const cep = cepEl.value.replace(/\D/g,'');
+  if (cep.length !== 8) return;
+  try {
+    const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`).then(x=>x.json());
+    if (r.erro) return;
+    const set = (id, val) => { const el = document.getElementById(`rr-${tipo}-${id}`); if(el && !el.value) el.value = val||''; };
+    set('end', r.logradouro); set('bairro', r.bairro); set('cidade', r.localidade); set('estado', r.uf);
+  } catch(_) {}
+}
+
+function _rrFiltrar() {
+  const q = (document.getElementById('rr-search')?.value || '').toLowerCase().trim();
+  const lista = document.getElementById('rr-lista');
+  if (!lista) return;
+  const filtered = q.length >= 1
+    ? _rrLeads.filter(l =>
+        l.nome?.toLowerCase().includes(q) ||
+        (l.telefone||'').replace(/\D/g,'').includes(q.replace(/\D/g,'')) ||
+        (l.cpf||'').replace(/\D/g,'').includes(q.replace(/\D/g,''))
+      ).slice(0, 30)
+    : _rrLeads.slice(0, 30);
+
+  if (!filtered.length && q) {
+    lista.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text2);font-size:13px">Nenhum cliente encontrado para "<b>${q}</b>".<br><span style="font-size:12px;opacity:.7">Use o botão "Cadastrar Cliente" abaixo.</span></div>`;
     return;
   }
-  const emp = (currentData.emp||[]).find(e => e.id == empId);
-  const isPredio = emp?.tipo === 'predio';
-  const lblA = isPredio ? 'Andar' : 'Qd';
-  const lblB = isPredio ? 'Unidade' : 'Lote';
-  sel.innerHTML = '<option value="">— Selecione —</option>' + disponiveis.map(u => {
-    const label = `${u.quadra ? lblA+' '+u.quadra+' ' : ''}${lblB} ${u.lote}${u.area_m2?' ('+u.area_m2+'m²)':''}`;
-    const preco = u.preco ? ` — R$ ${Number(u.preco).toLocaleString('pt-BR')}` : '';
-    return `<option value="${u.id}" data-preco="${u.preco||0}">${label}${preco}</option>`;
+  if (!filtered.length) {
+    lista.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text2);font-size:13px">Nenhum cliente cadastrado ainda.<br><span style="font-size:12px;opacity:.7">Cadastre os clientes antes do dia do lançamento.</span></div>`;
+    return;
+  }
+  lista.innerHTML = filtered.map(l => {
+    const sel = _rrLeadSel?.id === l.id;
+    const infos = [l.telefone, l.cpf?`CPF: ${l.cpf}`:'', l.email].filter(Boolean).join(' · ');
+    return `<div onclick="_rrSelecionar(${l.id})" style="padding:9px 12px;border-radius:8px;cursor:pointer;border:1px solid ${sel?'rgba(20,184,166,.5)':'var(--border)'};background:${sel?'rgba(20,184,166,.08)':'var(--navy2)'};transition:all .1s">
+      <div style="font-size:13px;font-weight:${sel?'700':'500'};color:${sel?'var(--accent)':'var(--text1)'}">
+        ${sel?'✅ ':''} ${l.nome}
+      </div>
+      ${infos?`<div style="font-size:11px;color:var(--text2);margin-top:2px">${infos}</div>`:''}
+    </div>`;
   }).join('');
 }
 
-async function confirmarReservaRapida() {
-  const empId = document.getElementById('rr-emp').value;
-  const unidadeId = document.getElementById('rr-unidade').value;
-  const nome = document.getElementById('rr-nome').value.trim();
-  const telefone = document.getElementById('rr-telefone').value.trim();
-  const corretorId = document.getElementById('rr-corretor').value;
-  const st = document.getElementById('rr-status');
-
-  if (!empId || !unidadeId || !nome || !telefone) {
-    st.style.display = 'block';
-    st.style.background = 'rgba(239,68,68,.15)';
-    st.style.color = 'var(--danger)';
-    st.textContent = '⚠️ Preencha todos os campos obrigatórios.';
-    return;
-  }
-
-  const btn = document.querySelector('#rr-overlay button[onclick="confirmarReservaRapida()"]');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Reservando...'; }
-
-  try {
-    const r = await post('/api/vendas/reserva-rapida', {
-      empreendimento_id: parseInt(empId), unidade_id: parseInt(unidadeId),
-      lead_nome: nome, lead_telefone: telefone,
-      corretor_id: corretorId ? parseInt(corretorId) : null
-    });
-    if (!r.ok) {
-      st.style.display = 'block';
-      st.style.background = 'rgba(239,68,68,.15)';
-      st.style.color = 'var(--danger)';
-      st.textContent = '❌ ' + r.error;
-      if (btn) { btn.disabled = false; btn.textContent = '⚡ Reservar agora'; }
-      return;
-    }
-    closeReservaRapida();
-    toast(`✅ Reserva registrada para ${nome}! Complete os dados da venda quando possível.`);
-    await renderVendas(); await renderEmpreendimentos();
-    // Oferecer completar agora
-    if (r.data?.venda_id) {
-      setTimeout(() => {
-        if (confirm(`Reserva criada! Deseja completar os dados da venda agora?`)) {
-          editVenda(r.data.venda_id);
-        }
-      }, 400);
-    }
-  } catch(e) {
-    st.style.display = 'block';
-    st.style.background = 'rgba(239,68,68,.15)';
-    st.style.color = 'var(--danger)';
-    st.textContent = '❌ Erro: ' + e.message;
-    if (btn) { btn.disabled = false; btn.textContent = '⚡ Reservar agora'; }
+function _rrSelecionar(id) {
+  _rrLeadSel = _rrLeads.find(l => l.id === id);
+  _rrFiltrar();
+  const sel = document.getElementById('rr-selecionado');
+  const nome = document.getElementById('rr-sel-nome');
+  const info = document.getElementById('rr-sel-info');
+  const btn  = document.getElementById('rr-btn-confirmar');
+  if (sel && _rrLeadSel) {
+    sel.style.display = 'block';
+    if (nome) nome.textContent = _rrLeadSel.nome;
+    if (info) info.textContent = [_rrLeadSel.telefone, _rrLeadSel.cpf?`CPF: ${_rrLeadSel.cpf}`:'', _rrLeadSel.email].filter(Boolean).join(' · ');
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
   }
 }
 
-// Fechar modal reserva rápida ao clicar fora
+async function _rrSalvarCliente() {
+  const btn = document.getElementById('rr-btn-salvar');
+  const st  = document.getElementById('rr-cad-status');
+  const pj  = _rrTipo === 'pj';
+  const v   = id => (document.getElementById('rr-'+id)?.value||'').trim();
+
+  const body = pj ? {
+    pessoa_juridica: true,
+    razao_social: v('pj-rs'), cnpj: v('pj-cnpj'),
+    nome: v('pj-rep-nome') || v('pj-rs'),
+    telefone: v('pj-tel'), email: v('pj-email'),
+    representante_nome: v('pj-rep-nome'), representante_cpf: v('pj-rep-cpf'), representante_cargo: v('pj-rep-cargo'),
+    endereco: v('pj-end'), numero: v('pj-num'), bairro: v('pj-bairro'), cep: v('pj-cep'), cidade: v('pj-cidade'), estado: v('pj-estado')
+  } : {
+    pessoa_juridica: false,
+    nome: v('pf-nome'), cpf: v('pf-cpf'), rg: v('pf-rg'),
+    estado_civil: v('pf-ec') || undefined, profissao: v('pf-prof'),
+    telefone: v('pf-tel'), email: v('pf-email'),
+    endereco: v('pf-end'), numero: v('pf-num'), complemento: v('pf-comp'), bairro: v('pf-bairro'), cep: v('pf-cep'), cidade: v('pf-cidade'), estado: v('pf-estado')
+  };
+
+  const req = pj ? (!body.razao_social||!body.cnpj||!body.representante_nome||!body.telefone) : (!body.nome||!body.cpf||!body.telefone);
+  if (req) {
+    st.style.display='block'; st.style.background='rgba(239,68,68,.15)'; st.style.color='var(--danger)';
+    st.textContent = pj ? '⚠️ Preencha: Razão Social, CNPJ, Nome do Responsável e Telefone.' : '⚠️ Preencha: Nome, CPF e Telefone.';
+    return;
+  }
+
+  if (btn) { btn.disabled=true; btn.textContent='⏳ Salvando...'; }
+  st.style.display='none';
+
+  const r = await post('/api/leads', body);
+  if (!r.ok) {
+    st.style.display='block'; st.style.background='rgba(239,68,68,.15)'; st.style.color='var(--danger)';
+    st.textContent = '❌ ' + r.error;
+    if (btn) { btn.disabled=false; btn.textContent='💾 Salvar e Selecionar'; }
+    return;
+  }
+
+  // Recarregar lista e auto-selecionar o novo cliente
+  const lr = await get('/api/leads');
+  _rrLeads = (lr.data||[]);
+  const novoLead = _rrLeads.find(l => l.id === r.data?.id) || _rrLeads.find(l => l.nome === body.nome);
+  _rrVoltarBusca();
+  if (novoLead) _rrSelecionar(novoLead.id);
+  toast(`✅ Cliente ${body.nome} cadastrado!`);
+  if (btn) { btn.disabled=false; btn.textContent='💾 Salvar e Selecionar'; }
+}
+
+async function confirmarReservaRapida() {
+  const st = document.getElementById('rr-status');
+  if (!_rrLeadSel) {
+    st.style.display='block'; st.style.background='rgba(239,68,68,.15)'; st.style.color='var(--danger)';
+    st.textContent='⚠️ Selecione um cliente antes de confirmar.'; return;
+  }
+  const btn = document.getElementById('rr-btn-confirmar');
+  if (btn) { btn.disabled=true; btn.textContent='⏳ Reservando...'; }
+  st.style.display='none';
+  try {
+    const r = await post('/api/vendas/reserva-rapida', {
+      empreendimento_id: _rrEmpId, unidade_id: _rrUnidadeId, lead_id: _rrLeadSel.id
+    });
+    if (!r.ok) {
+      st.style.display='block'; st.style.background='rgba(239,68,68,.15)'; st.style.color='var(--danger)';
+      st.textContent='❌ ' + r.error;
+      if (btn) { btn.disabled=false; btn.textContent='🟡 Confirmar Reserva'; }
+      return;
+    }
+    closeReservaRapida();
+    toast(`✅ Reserva confirmada para ${_rrLeadSel.nome}!`);
+    verEspelho(_rrEmpId);
+  } catch(e) {
+    st.style.display='block'; st.style.background='rgba(239,68,68,.15)'; st.style.color='var(--danger)';
+    st.textContent='❌ ' + e.message;
+    if (btn) { btn.disabled=false; btn.textContent='🟡 Confirmar Reserva'; }
+  }
+}
+
+// Fechar ao clicar fora
 document.getElementById('rr-overlay')?.addEventListener('click', e => {
   if (e.target === document.getElementById('rr-overlay')) closeReservaRapida();
 });
@@ -19211,61 +19320,206 @@ async function gpToggleHabito(id) {
 <!-- RESERVA RÁPIDA — BOTÃO FLUTUANTE -->
 
 <!-- MODAL RESERVA RÁPIDA -->
-<div id="rr-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9500;align-items:center;justify-content:center">
-  <div style="background:var(--card);border-radius:16px;padding:28px;width:min(480px,94vw);box-shadow:0 20px 60px rgba(0,0,0,.5);position:relative">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+<div id="rr-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9500;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto">
+  <div style="background:var(--card);border-radius:16px;width:min(520px,100%);box-shadow:0 20px 60px rgba(0,0,0,.5);position:relative;margin:auto">
+
+    <!-- Cabeçalho -->
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:22px 24px 16px">
       <div>
-        <div style="font-size:18px;font-weight:700;color:var(--text1)">⚡ Reserva Rápida</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:2px">Registre agora, complete os dados depois</div>
+        <div style="font-size:17px;font-weight:700;color:var(--text1)">🟡 Reservar Unidade</div>
+        <div id="rr-unit-pill" style="margin-top:6px;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:99px;font-size:12px;color:#fbbf24;font-weight:600"></div>
       </div>
-      <button onclick="closeReservaRapida()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;line-height:1">✕</button>
+      <button onclick="closeReservaRapida()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;line-height:1;padding:2px 4px">✕</button>
     </div>
-    <div style="display:flex;flex-direction:column;gap:12px">
+
+    <!-- TELA 1: buscar / selecionar cliente -->
+    <div id="rr-screen-busca" style="padding:0 24px 24px;display:flex;flex-direction:column;gap:12px">
       <div>
-        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Empreendimento *</label>
-        <select id="rr-emp" onchange="carregarUnidadesRR(this.value)"
-          style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:14px;box-sizing:border-box">
-          <option value="">— Selecione —</option>
-        </select>
+        <label style="font-size:11px;color:var(--text2);font-weight:600;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:6px">Cliente *</label>
+        <input id="rr-search" type="text" placeholder="🔍 Buscar por nome, CPF ou telefone..."
+          oninput="_rrFiltrar()"
+          style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:14px;box-sizing:border-box">
       </div>
-      <div>
-        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Unidade *</label>
-        <select id="rr-unidade"
-          style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:14px;box-sizing:border-box">
-          <option value="">— Selecione o empreendimento primeiro —</option>
-        </select>
+      <!-- Lista de clientes -->
+      <div id="rr-lista" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;border-radius:8px"></div>
+      <!-- Cliente selecionado -->
+      <div id="rr-selecionado" style="display:none;padding:10px 14px;background:rgba(20,184,166,.08);border:1px solid rgba(20,184,166,.3);border-radius:10px">
+        <div style="font-size:11px;color:var(--accent);font-weight:700;margin-bottom:2px">✅ CLIENTE SELECIONADO</div>
+        <div id="rr-sel-nome" style="font-size:14px;font-weight:700;color:var(--text1)"></div>
+        <div id="rr-sel-info" style="font-size:12px;color:var(--text2);margin-top:1px"></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div>
-          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Nome do Cliente *</label>
-          <input id="rr-nome" type="text" placeholder="Nome completo"
-            style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:14px;box-sizing:border-box">
-        </div>
-        <div>
-          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Telefone *</label>
-          <input id="rr-telefone" type="tel" placeholder="(48) 9xxxx-xxxx"
-            style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:14px;box-sizing:border-box">
-        </div>
-      </div>
-      <div>
-        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Corretor (opcional)</label>
-        <select id="rr-corretor"
-          style="width:100%;padding:9px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:14px;box-sizing:border-box">
-          <option value="">— Sem corretor —</option>
-        </select>
-      </div>
-      <div id="rr-status" style="display:none;font-size:12px;padding:8px 12px;border-radius:8px;margin-top:4px"></div>
-      <div style="display:flex;gap:10px;margin-top:6px">
+      <div id="rr-status" style="display:none;font-size:12px;padding:8px 12px;border-radius:8px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
         <button onclick="closeReservaRapida()"
-          style="flex:1;padding:11px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text2);font-size:14px;cursor:pointer">
+          style="flex:1;min-width:90px;padding:10px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text2);font-size:13px;cursor:pointer">
           Cancelar
         </button>
-        <button onclick="confirmarReservaRapida()"
-          style="flex:2;padding:11px;border-radius:8px;border:none;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-size:14px;font-weight:700;cursor:pointer">
-          ⚡ Reservar agora
+        <button onclick="_rrAbrirCadastro()"
+          style="flex:1;min-width:130px;padding:10px;border-radius:8px;border:1px solid rgba(20,184,166,.4);background:rgba(20,184,166,.08);color:var(--accent);font-size:13px;font-weight:600;cursor:pointer">
+          + Cadastrar Cliente
+        </button>
+        <button id="rr-btn-confirmar" onclick="confirmarReservaRapida()" disabled
+          style="flex:2;min-width:130px;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;font-size:13px;font-weight:700;cursor:pointer;opacity:.5">
+          🟡 Confirmar Reserva
         </button>
       </div>
     </div>
+
+    <!-- TELA 2: cadastrar novo cliente -->
+    <div id="rr-screen-cadastro" style="display:none;padding:0 24px 24px">
+      <div style="font-size:13px;font-weight:700;color:var(--text1);margin-bottom:14px">Cadastrar novo cliente</div>
+
+      <!-- Toggle PF / PJ -->
+      <div style="display:flex;gap:6px;margin-bottom:16px">
+        <button id="rr-btn-pf" onclick="_rrTipoPessoa('pf')"
+          style="flex:1;padding:8px;border-radius:8px;border:2px solid var(--accent);background:rgba(20,184,166,.12);color:var(--accent);font-size:13px;font-weight:700;cursor:pointer">
+          👤 Pessoa Física
+        </button>
+        <button id="rr-btn-pj" onclick="_rrTipoPessoa('pj')"
+          style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text2);font-size:13px;cursor:pointer">
+          🏢 Pessoa Jurídica
+        </button>
+      </div>
+
+      <!-- Campos PF -->
+      <div id="rr-campos-pf" style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="grid-column:1/-1">
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Nome completo *</label>
+            <input id="rr-pf-nome" type="text" placeholder="Nome completo" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">CPF *</label>
+            <input id="rr-pf-cpf" type="text" placeholder="000.000.000-00" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">RG</label>
+            <input id="rr-pf-rg" type="text" placeholder="00.000.000-0" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Estado Civil</label>
+            <select id="rr-pf-ec" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+              <option value="">— Selecione —</option>
+              <option>solteiro</option><option>casado</option><option>divorciado</option>
+              <option>viuvo</option><option>uniao_estavel</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Profissão</label>
+            <input id="rr-pf-prof" type="text" placeholder="Profissão" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Telefone *</label>
+            <input id="rr-pf-tel" type="tel" placeholder="(48) 9xxxx-xxxx" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">E-mail</label>
+            <input id="rr-pf-email" type="email" placeholder="email@exemplo.com" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">CEP</label>
+            <input id="rr-pf-cep" type="text" placeholder="00000-000" oninput="_rrBuscarCep('pf')" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div style="grid-column:1/-1">
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Endereço</label>
+            <input id="rr-pf-end" type="text" placeholder="Rua, Avenida..." style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Número</label>
+            <input id="rr-pf-num" type="text" placeholder="Nº" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Complemento</label>
+            <input id="rr-pf-comp" type="text" placeholder="Apto, Bloco..." style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Bairro</label>
+            <input id="rr-pf-bairro" type="text" placeholder="Bairro" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Cidade</label>
+            <input id="rr-pf-cidade" type="text" placeholder="Cidade" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Estado (UF)</label>
+            <input id="rr-pf-estado" type="text" placeholder="SC" maxlength="2" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+        </div>
+      </div>
+
+      <!-- Campos PJ -->
+      <div id="rr-campos-pj" style="display:none;flex-direction:column;gap:10px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="grid-column:1/-1">
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Razão Social *</label>
+            <input id="rr-pj-rs" type="text" placeholder="Nome da empresa" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">CNPJ *</label>
+            <input id="rr-pj-cnpj" type="text" placeholder="00.000.000/0000-00" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Telefone *</label>
+            <input id="rr-pj-tel" type="tel" placeholder="(48) 9xxxx-xxxx" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">E-mail</label>
+            <input id="rr-pj-email" type="email" placeholder="email@empresa.com" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:10px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Representante Legal</div>
+          <div style="grid-column:1/-1">
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Nome do Responsável *</label>
+            <input id="rr-pj-rep-nome" type="text" placeholder="Nome completo" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">CPF do Responsável</label>
+            <input id="rr-pj-rep-cpf" type="text" placeholder="000.000.000-00" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Cargo</label>
+            <input id="rr-pj-rep-cargo" type="text" placeholder="Sócio, Diretor..." style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div style="grid-column:1/-1;border-top:1px solid var(--border);padding-top:10px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">Endereço da Empresa</div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">CEP</label>
+            <input id="rr-pj-cep" type="text" placeholder="00000-000" oninput="_rrBuscarCep('pj')" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div style="grid-column:1/-1">
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Endereço</label>
+            <input id="rr-pj-end" type="text" placeholder="Rua, Avenida..." style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Número</label>
+            <input id="rr-pj-num" type="text" placeholder="Nº" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Bairro</label>
+            <input id="rr-pj-bairro" type="text" placeholder="Bairro" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Cidade</label>
+            <input id="rr-pj-cidade" type="text" placeholder="Cidade" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Estado (UF)</label>
+            <input id="rr-pj-estado" type="text" placeholder="SC" maxlength="2" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px;box-sizing:border-box">
+          </div>
+        </div>
+      </div>
+
+      <div id="rr-cad-status" style="display:none;font-size:12px;padding:8px 12px;border-radius:8px;margin-top:8px"></div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button onclick="_rrVoltarBusca()"
+          style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--text2);font-size:13px;cursor:pointer">
+          ← Voltar
+        </button>
+        <button id="rr-btn-salvar" onclick="_rrSalvarCliente()"
+          style="flex:2;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,var(--accent),#0090a8);color:#fff;font-size:13px;font-weight:700;cursor:pointer">
+          💾 Salvar e Selecionar
+        </button>
+      </div>
+    </div>
+
   </div>
 </div>
 
