@@ -103,11 +103,12 @@ app.use((req, res, next) => {
     req.path.startsWith('/api/corretor/')        ||   // painel, clientes, tarefas, meta, empreendimentos
     req.path.startsWith('/api/espelho-publico/') ||
     req.path === '/api/vendas/reserva-rapida';
-  // Empreendimentos: apenas leitura, sem dados financeiros da R2X
+  // Empreendimentos: apenas leitura de dados necessários para o espelho
+  const empSubPermitido = ['/unidades', '/mapa', '/espelho'].some(s => req.path.includes(s));
   const empLeitura = req.method === 'GET' && (
     req.path === '/api/empreendimentos' ||
     /^\/api\/empreendimentos\/\d+$/.test(req.path) ||
-    req.path.startsWith('/api/empreendimentos/') && req.path.includes('/espelho') );
+    (req.path.startsWith('/api/empreendimentos/') && empSubPermitido) );
   if (!liberado && !empLeitura) return err(res, 'Acesso não autorizado', 403);
   next();
 });
