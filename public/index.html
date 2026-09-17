@@ -9501,7 +9501,9 @@ async function verEspelhoImagem(empId, emp, mapaData) {
   if (_mapaInnerInit) { _mapaInnerInit.style.width = '100%'; _mapaInnerInit.style.minWidth = '100%'; }
   renderMarkers();
 
-  // Auto-fit: ajusta zoom para mostrar o mapa completo no container
+  // Auto-fit: ajusta zoom para mostrar o mapa completo no container.
+  // NOTA: neste sistema, zoom=1 → inner.width=100% do outer (imagem preenche a largura).
+  // Só precisamos reduzir o zoom se a imagem for mais ALTA que o container nessa escala.
   (function autoFitMapa() {
     const outer = document.getElementById('mapa-outer');
     const inner = document.getElementById('mapa-inner');
@@ -9513,11 +9515,11 @@ async function verEspelhoImagem(empId, emp, mapaData) {
         const ow = outer.clientWidth  || outer.offsetWidth;
         const oh = outer.clientHeight || outer.offsetHeight;
         if (!ow || !oh) return;
-        const wRatio = ow / img.naturalWidth;
-        const hRatio = oh / img.naturalHeight;
-        const fit = Math.min(wRatio, hRatio, 1);
-        if (fit < 0.97) {
-          _mapaZoomLevel = Math.max(0.1, fit);
+        // Em zoom=1: image.width=ow, image.height=ow*(nH/nW)
+        // Fit zoom para a ALTURA caber no container (largura sempre é 100%)
+        const fitZoom = Math.min(1, oh / (ow * img.naturalHeight / img.naturalWidth));
+        if (fitZoom < 0.97) {
+          _mapaZoomLevel = Math.max(0.1, fitZoom);
           inner.style.width    = (_mapaZoomLevel * 100) + '%';
           inner.style.minWidth = '0';
           const pct = document.getElementById('mapa-zoom-pct');
