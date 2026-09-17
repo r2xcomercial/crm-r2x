@@ -11888,10 +11888,11 @@ async function abrirUnidade(unidadeId, empId) {
   const lblB = isPredio ? 'Unidade'  : 'Lote';
 
   const statusInfo = {
-    disponivel:   { label:'✅ Disponível',    color:'var(--success)' },
-    reservado:    { label:'🟡 Reservado',     color:'var(--warning)' },
-    vendido:      { label:'🔴 Vendido',       color:'var(--danger)'  },
-    indisponivel: { label:'⛔ Indisponível',  color:'#94a3b8'        }
+    disponivel:   { label:'✅ Disponível',     color:'var(--success)' },
+    pre_reserva:  { label:'🟠 Pré-reserva',    color:'#f97316'        },
+    reservado:    { label:'🟡 Reservado',      color:'var(--warning)' },
+    vendido:      { label:'🔴 Vendido',        color:'var(--danger)'  },
+    indisponivel: { label:'⛔ Indisponível',   color:'#94a3b8'        }
   };
   const si = statusInfo[u.status] || statusInfo.disponivel;
 
@@ -11960,12 +11961,70 @@ async function abrirUnidade(unidadeId, empId) {
       } else {
         reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px;text-align:center;color:var(--text2);font-size:13px">✅ Unidade disponível. Reservas serão liberadas em breve.</div>`;
       }
-    } else {
-      const isMinhaReserva = u.status === 'reservado' && u.venda_corretor_id && USUARIO.corretor_id && u.venda_corretor_id === USUARIO.corretor_id;
+    } else if (u.status === 'pre_reserva') {
+      const isMinhaPreReserva = u.venda_corretor_id && USUARIO.corretor_id && String(u.venda_corretor_id) === String(USUARIO.corretor_id);
+      const prazo = u.comprovante_prazo_expira_em;
+      const expirado = prazo && new Date(prazo) < new Date();
+      if (isMinhaPreReserva) {
+        reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px">
+          <div style="background:rgba(249,115,22,.1);border:2px solid rgba(249,115,22,.55);border-radius:12px;padding:16px;animation:preReservaPulse 2s ease-in-out infinite">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+              <span style="font-size:18px">🟠</span>
+              <div>
+                <div style="font-size:13px;font-weight:800;color:#fb923c;text-transform:uppercase;letter-spacing:.4px">Sua Pré-reserva</div>
+                <div style="font-size:11px;color:#fb923c;opacity:.75">Ainda não é uma reserva confirmada</div>
+              </div>
+            </div>
+            ${prazo && !expirado ? `
+              <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;text-align:center;margin-bottom:12px">
+                <div style="font-size:11px;color:#fb923c;opacity:.8;margin-bottom:3px">⏱ Tempo restante para enviar o comprovante Pix</div>
+                <div id="modal-prazo-countdown" style="font-size:38px;font-weight:900;font-family:monospace;color:#fb923c;letter-spacing:3px">--:--</div>
+              </div>
+              <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Envie o comprovante Pix agora para confirmar sua reserva. Após o prazo, a pré-reserva é cancelada automaticamente e a próxima pessoa da fila é notificada.</div>
+              <button onclick="closeModal();abrirUploadComprovante(${u.venda_id},'',${prazo ? `'${prazo}'` : 'null'})"
+                style="width:100%;padding:13px;border-radius:9px;background:linear-gradient(135deg,#ea580c,#c2410c);border:none;color:#fff;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:.3px">
+                📎 Enviar Comprovante Pix agora
+              </button>
+            ` : u.tem_comprovante ? `
+              <div style="display:flex;gap:8px;align-items:center;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);border-radius:8px;padding:10px 12px">
+                <span style="color:#4ade80;font-size:18px">✅</span>
+                <div>
+                  <div style="font-size:13px;font-weight:700;color:#4ade80">Comprovante enviado!</div>
+                  <div style="font-size:11px;color:var(--text2)">Aguardando confirmação da equipe R2X.</div>
+                </div>
+                <button onclick="verComprovante(${u.venda_id})" style="margin-left:auto;font-size:11px;background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.3);color:#4ade80;border-radius:6px;padding:4px 9px;cursor:pointer">👁 Ver</button>
+              </div>
+            ` : expirado ? `
+              <div style="font-size:13px;color:#f87171">⚠️ Prazo expirado. Pré-reserva cancelada automaticamente.</div>
+            ` : ''}
+          </div>
+        </div>`;
+      } else {
+        reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px">
+          <div style="background:rgba(249,115,22,.08);border:1px solid rgba(249,115,22,.35);border-radius:12px;padding:16px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+              <span style="font-size:18px">🟠</span>
+              <div>
+                <div style="font-size:13px;font-weight:800;color:#fb923c;text-transform:uppercase;letter-spacing:.4px">Pré-reserva Ativa</div>
+                <div style="font-size:11px;color:#fb923c;opacity:.75">Aguardando comprovante Pix</div>
+              </div>
+            </div>
+            ${prazo && !expirado ? `
+              <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px;text-align:center;margin-bottom:10px">
+                <div style="font-size:11px;color:var(--text2);margin-bottom:3px">Vence em</div>
+                <div id="modal-prazo-countdown" style="font-size:30px;font-weight:900;font-family:monospace;color:#fb923c;letter-spacing:3px">--:--</div>
+              </div>
+              <div style="font-size:12px;color:var(--text2)">Se o comprovante não for enviado no prazo, a unidade volta a ficar disponível e o próximo da fila é notificado.</div>
+            ` : ''}
+          </div>
+          <div id="fila-sec-${u.id}" style="margin-top:10px"></div>
+        </div>`;
+      }
+    } else if (u.status === 'reservado') {
+      const isMinhaReserva = u.venda_corretor_id && USUARIO.corretor_id && String(u.venda_corretor_id) === String(USUARIO.corretor_id);
       if (isMinhaReserva) {
         const prazo = u.comprovante_prazo_expira_em;
         const expirado = prazo && new Date(prazo) < new Date();
-        const minsRestantes = prazo ? Math.max(0, Math.ceil((new Date(prazo) - Date.now()) / 60000)) : null;
         reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px">
           ${u.tem_comprovante
             ? `<div style="display:flex;gap:8px;align-items:center;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);border-radius:10px;padding:12px 14px">
@@ -11981,8 +12040,8 @@ async function abrirUnidade(unidadeId, empId) {
                   ⚠️ Prazo para envio do comprovante expirado. Reserva cancelada automaticamente.
                 </div>`
               : `<div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:12px 14px">
-                  <div style="font-size:13px;font-weight:700;color:#fbbf24;margin-bottom:4px">⏱ Comprovante Pix pendente${minsRestantes !== null ? ` — ${minsRestantes} min` : ''}</div>
-                  <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Anexe o comprovante para confirmar sua reserva. Sem comprovante, a reserva será cancelada automaticamente.</div>
+                  <div style="font-size:13px;font-weight:700;color:#fbbf24;margin-bottom:4px">⏱ Comprovante Pix pendente</div>
+                  <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Anexe o comprovante para confirmar sua reserva.</div>
                   <button onclick="closeModal();abrirUploadComprovante(${u.venda_id},'',${prazo ? `'${prazo}'` : 'null'})"
                     style="width:100%;padding:10px;border-radius:8px;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);color:#fbbf24;font-size:13px;font-weight:700;cursor:pointer">
                     📎 Enviar Comprovante Pix
@@ -11992,26 +12051,61 @@ async function abrirUnidade(unidadeId, empId) {
         </div>`;
       } else {
         reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px;text-align:center;color:var(--text2);font-size:13px">
-          ${u.status === 'reservado' ? '🟡 Esta unidade já está reservada.' : '🔴 Esta unidade já foi vendida.'}
+          🟡 Esta unidade já está reservada.
         </div>`;
       }
+    } else {
+      reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px;text-align:center;color:var(--text2);font-size:13px">
+        🔴 Esta unidade já foi vendida.
+      </div>`;
     }
     document.getElementById('modal-body').innerHTML = infoCards + reservaHtml;
     document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
+
+    // Countdown vivo para pré-reserva
+    if (u.status === 'pre_reserva' && u.comprovante_prazo_expira_em) {
+      _iniciarCountdownModal(u.comprovante_prazo_expira_em);
+    }
 
     // Carrega leads do corretor se modal de reserva aberto
     if (podeReservar && u.status === 'disponivel') {
       _carregarLeadsParaReserva(u.id, empId, u.preco || 0);
     }
+
+    // Fila para não-dono durante lançamento ativo
+    if (window._lancAtivoEmp === empId && u.status === 'pre_reserva') {
+      const isMinhaPreReserva2 = u.venda_corretor_id && USUARIO.corretor_id && String(u.venda_corretor_id) === String(USUARIO.corretor_id);
+      if (!isMinhaPreReserva2) _carregarFilaUnidade(u.id, empId, u.status);
+    }
   } else {
     // Card de reserva/venda para admin/gestor
     const reservaCard = (reservaInfo && ['pre_reserva','reservado','vendido'].includes(u.status)) ? (() => {
-      const statusLabel = u.status === 'pre_reserva' ? '🟠 Pré-reserva (aguardando PIX)' : u.status === 'reservado' ? '🟡 Reservado' : '🔴 Vendido';
-      const bgColor = u.status === 'pre_reserva' ? 'rgba(249,115,22,.08)' : u.status === 'reservado' ? 'rgba(245,158,11,.08)' : 'rgba(239,68,68,.08)';
-      const borderColor = u.status === 'pre_reserva' ? 'rgba(249,115,22,.35)' : u.status === 'reservado' ? 'rgba(245,158,11,.3)' : 'rgba(239,68,68,.3)';
+      const isPre = u.status === 'pre_reserva';
+      const bgColor = isPre ? 'rgba(249,115,22,.1)' : u.status === 'reservado' ? 'rgba(245,158,11,.08)' : 'rgba(239,68,68,.08)';
+      const borderColor = isPre ? 'rgba(249,115,22,.55)' : u.status === 'reservado' ? 'rgba(245,158,11,.3)' : 'rgba(239,68,68,.3)';
       const dataFormatada = reservaInfo.criado_em ? new Date(reservaInfo.criado_em).toLocaleDateString('pt-BR') : '—';
-      return `<div style="background:${bgColor};border:1px solid ${borderColor};border-radius:10px;padding:14px 16px;margin-bottom:16px">
-        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">📋 ${statusLabel} em ${dataFormatada}</div>
+      const prazo = u.comprovante_prazo_expira_em;
+      const expirado = prazo && new Date(prazo) < new Date();
+
+      const statusBadgeHtml = isPre
+        ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:16px">🟠</span>
+              <div>
+                <div style="font-size:12px;font-weight:800;color:#fb923c;text-transform:uppercase;letter-spacing:.5px">Pré-reserva</div>
+                <div style="font-size:10px;color:#fb923c;opacity:.75">Aguardando comprovante Pix · ${dataFormatada}</div>
+              </div>
+            </div>
+            <div style="background:rgba(249,115,22,.2);border:1px solid rgba(249,115,22,.4);border-radius:6px;padding:3px 8px;font-size:10px;color:#fb923c;font-weight:700">≠ RESERVA</div>
+          </div>
+          ${prazo && !expirado ? `<div style="background:rgba(0,0,0,.25);border-radius:8px;padding:10px;text-align:center;margin-bottom:12px">
+            <div style="font-size:11px;color:#fb923c;opacity:.8;margin-bottom:3px">⏱ Tempo para o corretor enviar o Pix</div>
+            <div id="modal-prazo-countdown" style="font-size:34px;font-weight:900;font-family:monospace;color:#fb923c;letter-spacing:3px">--:--</div>
+          </div>` : expirado ? `<div style="margin-bottom:10px;font-size:12px;color:#f87171;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:7px;padding:7px 10px">⚠️ Prazo expirado — reserva cancelada automaticamente</div>` : ''}`
+        : `<div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">📋 ${u.status === 'reservado' ? '🟡 Reservado' : '🔴 Vendido'} em ${dataFormatada}</div>`;
+
+      return `<div style="background:${bgColor};border:${isPre?'2px':'1px'} solid ${borderColor};border-radius:10px;padding:14px 16px;margin-bottom:16px${isPre?';animation:preReservaPulse 2s ease-in-out infinite':''}">
+        ${statusBadgeHtml}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div>
             <div style="font-size:10px;color:var(--text2);margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px">👤 Cliente</div>
@@ -12030,9 +12124,7 @@ async function abrirUnidade(unidadeId, empId) {
         ${reservaInfo.lead_id ? `<button onclick="closeModal();openLeadModal({id:${reservaInfo.lead_id}})"
           style="margin-top:10px;width:100%;padding:7px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;font-weight:600">
           📂 Abrir ficha do cliente</button>` : ''}
-        ${u.status === 'reservado' ? (() => {
-          const prazo = u.comprovante_prazo_expira_em;
-          const expirado = prazo && new Date(prazo) < new Date();
+        ${!isPre && u.status === 'reservado' ? (() => {
           if (u.tem_comprovante) {
             return `<div style="margin-top:10px;display:flex;gap:8px;align-items:center;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);border-radius:8px;padding:8px 12px">
               <span style="color:#4ade80;font-size:14px">✅</span>
@@ -12043,13 +12135,14 @@ async function abrirUnidade(unidadeId, empId) {
             return `<div style="margin-top:10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:8px;padding:8px 12px;font-size:12px;color:#f87171">
               ⚠️ Comprovante Pix não enviado — prazo expirado
             </div>`;
-          } else if (prazo) {
-            return `<div style="margin-top:10px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:8px;padding:8px 12px;font-size:12px;color:#fbbf24">
-              ⏱ Aguardando comprovante Pix (prazo: ${new Date(prazo).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})})
-            </div>`;
           }
           return '';
         })() : ''}
+        ${isPre && u.tem_comprovante ? `<div style="margin-top:10px;display:flex;gap:8px;align-items:center;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);border-radius:8px;padding:8px 12px">
+          <span style="color:#4ade80">✅</span>
+          <span style="font-size:12px;color:#4ade80;font-weight:600">Comprovante Pix recebido</span>
+          ${u.venda_id ? `<button onclick="verComprovante(${u.venda_id})" style="margin-left:auto;font-size:11px;background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.3);color:#4ade80;border-radius:6px;padding:3px 8px;cursor:pointer">👁 Ver</button>` : ''}
+        </div>` : ''}
       </div>`;
     })() : '';
 
@@ -12125,6 +12218,11 @@ async function abrirUnidade(unidadeId, empId) {
       <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
   }
   document.getElementById('modal-overlay').classList.add('open');
+
+  // Countdown vivo para pré-reserva (admin/gestor)
+  if (!isCorretor && u.status === 'pre_reserva' && u.comprovante_prazo_expira_em) {
+    _iniciarCountdownModal(u.comprovante_prazo_expira_em);
+  }
 
   // Carrega fila da unidade após abrir modal (apenas durante lançamento ativo)
   if (window._lancAtivoEmp === empId) {
@@ -13339,8 +13437,37 @@ function openModal(title, bodyHtml, onSave, options = {}) {
   document.getElementById('modal-overlay').classList.add('open');
 }
 function modalSave() { window._modalSave && window._modalSave(); }
-function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); document.getElementById('modal').classList.remove('modal-wide'); }
+function closeModal() {
+  clearInterval(window._modalCountdownInterval);
+  document.getElementById('modal-overlay').classList.remove('open');
+  document.getElementById('modal').classList.remove('modal-wide');
+}
 function closeModalOutside(e) { if (e.target === document.getElementById('modal-overlay')) closeModal(); }
+
+function _iniciarCountdownModal(prazo) {
+  clearInterval(window._modalCountdownInterval);
+  const prazoMs = new Date(prazo).getTime();
+  const tick = () => {
+    const el = document.getElementById('modal-prazo-countdown');
+    if (!el) { clearInterval(window._modalCountdownInterval); return; }
+    const ms = prazoMs - Date.now();
+    if (ms <= 0) {
+      clearInterval(window._modalCountdownInterval);
+      el.textContent = '00:00';
+      el.style.color = '#f87171';
+      return;
+    }
+    const mm = String(Math.floor(ms / 60000)).padStart(2,'0');
+    const ss = String(Math.floor((ms % 60000) / 1000)).padStart(2,'0');
+    el.textContent = `${mm}:${ss}`;
+    if (ms > 7*60000)      el.style.color = '#4ade80';
+    else if (ms > 3*60000) el.style.color = '#fbbf24';
+    else if (ms > 60000)   el.style.color = '#fb923c';
+    else                   el.style.color = '#f87171';
+  };
+  tick();
+  window._modalCountdownInterval = setInterval(tick, 1000);
+}
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 

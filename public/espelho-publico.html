@@ -684,6 +684,17 @@ function abrirSimulacao(unitId) {
       </div>
       <div id="sim-screen-1">
       <div class="sim-body">
+        ${u.status === 'pre_reserva' ? `<div style="background:rgba(249,115,22,.1);border:2px solid rgba(249,115,22,.5);border-radius:10px;padding:14px;margin-bottom:14px;animation:preReservaPulse 2s ease-in-out infinite">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:12px;font-weight:800;color:#fb923c;text-transform:uppercase;letter-spacing:.5px">🟠 Pré-reserva ativa</div>
+            <div style="background:rgba(249,115,22,.2);border:1px solid rgba(249,115,22,.4);border-radius:6px;padding:2px 7px;font-size:10px;color:#fb923c;font-weight:700">≠ RESERVADA</div>
+          </div>
+          ${u.comprovante_prazo_expira_em ? `<div style="text-align:center">
+            <div style="font-size:11px;color:#fb923c;opacity:.8;margin-bottom:2px">Vence em</div>
+            <div id="sim-prazo-countdown" style="font-size:32px;font-weight:900;font-family:monospace;color:#fb923c;letter-spacing:3px">--:--</div>
+            <div style="font-size:11px;color:var(--text2,#94a3b8);margin-top:4px">Se o comprovante Pix não for enviado no prazo, a unidade fica disponível novamente.</div>
+          </div>` : ''}
+        </div>` : ''}
         <div class="sim-info-grid">
           ${u.area_m2 ? `<div class="sim-info-cell"><div class="lbl">Área</div><div class="val">${Number(u.area_m2).toLocaleString('pt-BR', {minimumFractionDigits:2})} m²</div></div>` : ''}
           ${!hidePreco && preco ? `<div class="sim-info-cell"><div class="lbl">Valor</div><div class="val price">${fmt0.format(preco)}</div></div>` : ''}
@@ -708,10 +719,39 @@ function abrirSimulacao(unitId) {
   </div>`;
 
   document.body.insertAdjacentHTML('beforeend', modalHtml);
+  if (u.status === 'pre_reserva' && u.comprovante_prazo_expira_em) {
+    _iniciarCountdownSim(u.comprovante_prazo_expira_em);
+  }
 }
 
 function fecharSimulacao() {
+  clearInterval(window._simCountdownInterval);
   document.getElementById('sim-overlay')?.remove();
+}
+
+function _iniciarCountdownSim(prazo) {
+  clearInterval(window._simCountdownInterval);
+  const prazoMs = new Date(prazo).getTime();
+  const tick = () => {
+    const el = document.getElementById('sim-prazo-countdown');
+    if (!el) { clearInterval(window._simCountdownInterval); return; }
+    const ms = prazoMs - Date.now();
+    if (ms <= 0) {
+      clearInterval(window._simCountdownInterval);
+      el.textContent = '00:00';
+      el.style.color = '#f87171';
+      return;
+    }
+    const mm = String(Math.floor(ms / 60000)).padStart(2,'0');
+    const ss = String(Math.floor((ms % 60000) / 1000)).padStart(2,'0');
+    el.textContent = `${mm}:${ss}`;
+    if (ms > 7*60000)      el.style.color = '#4ade80';
+    else if (ms > 3*60000) el.style.color = '#fbbf24';
+    else if (ms > 60000)   el.style.color = '#fb923c';
+    else                   el.style.color = '#f87171';
+  };
+  tick();
+  window._simCountdownInterval = setInterval(tick, 1000);
 }
 
 function mostrarFormProposta(unitId) {
