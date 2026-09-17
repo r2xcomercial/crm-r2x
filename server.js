@@ -102,6 +102,8 @@ app.use((req, res, next) => {
     req.path.startsWith('/api/auth/')            ||
     req.path.startsWith('/api/corretor/')        ||   // painel, clientes, tarefas, meta, empreendimentos
     req.path.startsWith('/api/espelho-publico/') ||
+    req.path.startsWith('/api/lancamento/')      ||   // status do lançamento para espelho
+    req.path === '/api/server-time'              ||
     req.path === '/api/vendas/reserva-rapida'   ||
     (req.path === '/api/leads' && req.method === 'POST');
   // Empreendimentos: apenas leitura de dados necessários para o espelho
@@ -3232,19 +3234,39 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
     if (!lead_id && (!lead_nome || !lead_telefone)) return err(res, "Informe o lead ou nome e telefone do cliente");
   }
 
+  // Verificar janela do lançamento (se houver lançamento configurado para este empreendimento)
+  const lancAtivo = _getLancAtivo(empreendimento_id);
+  if (lancAtivo) {
+    if (lancAtivo.status === 'agendado') {
+      const msLeft = Math.max(0, new Date(lancAtivo.data_hora_inicio) - Date.now());
+      const h = Math.floor(msLeft / 3600000);
+      const m = Math.ceil((msLeft % 3600000) / 60000);
+      const tempo = h > 0 ? `${h}h ${m}min` : `${m} minuto(s)`;
+      return err(res, `Lançamento ainda não aberto. Inicia em ${tempo}.`, 403);
+    }
+    if (lancAtivo.status === 'encerrado') {
+      return err(res, 'O período de lançamento foi encerrado. Reservas não aceitas.', 403);
+    }
+    // status === 'ativo' → prossegue
+  }
+
   // Se condicao_proposta fornecida, venda entra direto em 'proposta'
   const statusInicial = condicao_proposta ? 'proposta' : 'reserva';
 
   try {
     const resultado = db.transaction(() => {
-      const unidade = db.prepare("SELECT * FROM unidades WHERE id=?").get(unidade_id);
-      if (!unidade) throw Object.assign(new Error("Unidade não encontrada"), { status: 404 });
-      if (unidade.status !== 'disponivel') {
-        const msg = unidade.status === 'reservado'
-          ? 'Esta unidade acabou de ser reservada por outro corretor. Escolha outra.'
-          : 'Esta unidade não está disponível para reserva.';
-        throw Object.assign(new Error(msg), { status: 409 });
+      // Reserva atômica: UPDATE só executa se ainda disponível (seguro para 100+ acessos simultâneos)
+      const upd = db.prepare("UPDATE unidades SET status='reservado' WHERE id=? AND status='disponivel'").run(unidade_id);
+      if (upd.changes === 0) {
+        const u2 = db.prepare("SELECT status FROM unidades WHERE id=?").get(unidade_id);
+        if (!u2) throw Object.assign(new Error("Unidade não encontrada"), { status: 404 });
+        throw Object.assign(new Error(
+          u2.status === 'reservado'
+            ? 'Esta unidade acabou de ser reservada por outro atendimento. Escolha outra.'
+            : 'Esta unidade não está disponível para reserva.'
+        ), { status: 409 });
       }
+      const unidade = db.prepare("SELECT preco FROM unidades WHERE id=?").get(unidade_id);
 
       const hoje = new Date().toISOString().slice(0, 10);
       let lead;
@@ -3260,7 +3282,7 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
       }
 
       const cid = u?.corretor_id || corretor_id || null;
-      const preco = unidade.preco || 0;
+      const preco = unidade?.preco || 0;
       const cpJson = condicao_proposta ? JSON.stringify(condicao_proposta) : null;
       const valorTotal = condicao_proposta?.valor_total || preco;
       const rv = db.prepare(`INSERT INTO vendas
@@ -3269,7 +3291,6 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
         .run(lead.id, empreendimento_id, cid, unidade_id, preco, valorTotal, hoje, statusInicial, cpJson,
           condicao_proposta ? null : 'Reserva rápida — dados pendentes');
 
-      db.prepare("UPDATE unidades SET status='reservado' WHERE id=?").run(unidade_id);
       db.prepare("INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id) VALUES (?,?)").run(rv.lastInsertRowid, unidade_id);
       db.prepare("UPDATE leads SET status=?, empreendimento_id=COALESCE(empreendimento_id,?) WHERE id=?")
         .run(statusInicial, empreendimento_id, lead.id);
@@ -8869,6 +8890,112 @@ app.post('/api/admin/empreendimento/:id/config-corretores', autenticar, (req, re
   db.prepare(`UPDATE empreendimentos SET config_ver_tabela=?, config_reservar=? WHERE id=?`)
     .run(config_ver_tabela ? 1 : 0, config_reservar ? 1 : 0, eid);
   ok(res, { id: eid, config_ver_tabela: config_ver_tabela ? 1 : 0, config_reservar: config_reservar ? 1 : 0 });
+});
+
+// ─── SISTEMA DE LANÇAMENTO IMOBILIÁRIO ────────────────────────────────────────
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS lancamentos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    empreendimento_id INTEGER NOT NULL,
+    nome TEXT,
+    data_hora_inicio TEXT NOT NULL,
+    data_hora_fim TEXT,
+    status TEXT DEFAULT 'agendado',
+    criado_em TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+} catch(_) {}
+
+// Atualiza status do lançamento com base no tempo atual
+function _syncLanc(lanc) {
+  if (!lanc) return null;
+  const now = new Date().toISOString();
+  if (lanc.status === 'agendado' && now >= lanc.data_hora_inicio) {
+    db.prepare("UPDATE lancamentos SET status='ativo' WHERE id=?").run(lanc.id);
+    lanc = { ...lanc, status: 'ativo' };
+  }
+  if (lanc.status === 'ativo' && lanc.data_hora_fim && now >= lanc.data_hora_fim) {
+    db.prepare("UPDATE lancamentos SET status='encerrado' WHERE id=?").run(lanc.id);
+    lanc = { ...lanc, status: 'encerrado' };
+  }
+  return lanc;
+}
+
+function _getLancAtivo(empId) {
+  const lanc = db.prepare("SELECT * FROM lancamentos WHERE empreendimento_id=? AND status IN ('agendado','ativo') ORDER BY data_hora_inicio DESC LIMIT 1").get(empId);
+  return _syncLanc(lanc);
+}
+
+// GET /api/server-time — tempo do servidor (sem auth)
+app.get('/api/server-time', (req, res) => ok(res, { iso: new Date().toISOString() }));
+
+// GET /api/lancamento/:empId — status atual para o espelho (corretor e admin)
+app.get('/api/lancamento/:empId', autenticar, (req, res) => {
+  const empId = parseInt(req.params.empId);
+  // Busca o mais recente (qualquer status) para mostrar o histórico
+  let lanc = db.prepare("SELECT * FROM lancamentos WHERE empreendimento_id=? ORDER BY data_hora_inicio DESC LIMIT 1").get(empId);
+  if (!lanc) return ok(res, null);
+  lanc = _syncLanc(lanc);
+  ok(res, { ...lanc, server_time: new Date().toISOString() });
+});
+
+// GET /api/lancamentos — lista todos (admin)
+app.get('/api/lancamentos', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor'].includes(u.perfil)) return err(res, 'Acesso restrito', 403);
+  const rows = db.prepare(`SELECT l.*, e.nome as emp_nome FROM lancamentos l LEFT JOIN empreendimentos e ON e.id=l.empreendimento_id ORDER BY l.data_hora_inicio DESC LIMIT 200`).all();
+  ok(res, rows);
+});
+
+// POST /api/lancamentos — criar (admin)
+app.post('/api/lancamentos', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor'].includes(u.perfil)) return err(res, 'Acesso restrito', 403);
+  const { empreendimento_id, nome, data_hora_inicio, data_hora_fim } = req.body;
+  if (!empreendimento_id || !data_hora_inicio) return err(res, 'empreendimento_id e data_hora_inicio obrigatórios');
+  // Cancela agendamentos ativos do mesmo empreendimento
+  db.prepare("UPDATE lancamentos SET status='cancelado' WHERE empreendimento_id=? AND status IN ('agendado','ativo')").run(empreendimento_id);
+  const r = db.prepare("INSERT INTO lancamentos (empreendimento_id,nome,data_hora_inicio,data_hora_fim,status) VALUES (?,?,?,?,?)")
+    .run(empreendimento_id, nome||null, data_hora_inicio, data_hora_fim||null, 'agendado');
+  ok(res, { id: r.lastInsertRowid });
+});
+
+// PUT /api/lancamentos/:id — editar agendamento (admin)
+app.put('/api/lancamentos/:id', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor'].includes(u.perfil)) return err(res, 'Acesso restrito', 403);
+  const id = parseInt(req.params.id);
+  const lanc = db.prepare("SELECT * FROM lancamentos WHERE id=?").get(id);
+  if (!lanc) return err(res, 'Não encontrado', 404);
+  if (['encerrado','cancelado'].includes(lanc.status)) return err(res, 'Lançamento não pode ser editado no status atual');
+  const { nome, data_hora_inicio, data_hora_fim } = req.body;
+  db.prepare("UPDATE lancamentos SET nome=COALESCE(?,nome), data_hora_inicio=COALESCE(?,data_hora_inicio), data_hora_fim=? WHERE id=?")
+    .run(nome||null, data_hora_inicio||null, data_hora_fim||null, id);
+  ok(res, {});
+});
+
+// DELETE /api/lancamentos/:id — cancelar (admin)
+app.delete('/api/lancamentos/:id', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor'].includes(u.perfil)) return err(res, 'Acesso restrito', 403);
+  db.prepare("UPDATE lancamentos SET status='cancelado' WHERE id=? AND status NOT IN ('encerrado')").run(req.params.id);
+  ok(res, {});
+});
+
+// POST /api/lancamentos/:id/abrir — ativar agora (admin)
+app.post('/api/lancamentos/:id/abrir', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor'].includes(u.perfil)) return err(res, 'Acesso restrito', 403);
+  db.prepare("UPDATE lancamentos SET status='ativo', data_hora_inicio=? WHERE id=?").run(new Date().toISOString(), req.params.id);
+  ok(res, {});
+});
+
+// POST /api/lancamentos/:id/encerrar — encerrar agora (admin)
+app.post('/api/lancamentos/:id/encerrar', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor'].includes(u.perfil)) return err(res, 'Acesso restrito', 403);
+  db.prepare("UPDATE lancamentos SET status='encerrado', data_hora_fim=? WHERE id=?").run(new Date().toISOString(), req.params.id);
+  ok(res, {});
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -9415,8 +9415,12 @@ async function verEspelhoImagem(empId, emp, mapaData) {
         <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" style="display:none" onchange="analisarPlanta(this,${empId},'${(emp.nome||'').replace(/'/g,"\\'")}')">
       </label>
       <button class="btn btn-secondary" onclick="gerenciarEspelhoPublico(${empId})" style="font-size:12px;padding:6px 12px;color:#a78bfa;border-color:rgba(167,139,250,.4)" title="Gerar link público do espelho de vendas">🔗 Link Público</button>
+      <button class="btn btn-secondary" onclick="abrirGerenciarLancamento(${empId})" style="font-size:12px;padding:6px 12px;color:#fbbf24;border-color:rgba(251,191,36,.4)" title="Agendar e controlar o lançamento imobiliário">🚀 Lançamento</button>
       ` : ''}
     </div>
+
+    <!-- Banner de lançamento (mapa imagem) -->
+    ${_renderLancBanner(window._espelhoLanc, empId, USUARIO.perfil !== 'corretor')}
 
     <!-- VSO -->
     <div class="mini-card" style="margin-bottom:14px;padding:12px 18px">
@@ -10021,6 +10025,17 @@ async function verEspelho(empId) {
     window._espelhoHideReserva = false;
   }
 
+  // Buscar status do lançamento
+  const lancR = await get(`/api/lancamento/${empId}`);
+  const lanc = lancR.ok ? lancR.data : null;
+  window._espelhoLanc = lanc;
+  window._espelhoEmpId = empId;
+
+  // Corretor: ajusta flag de reserva com base no lançamento
+  if (USUARIO.perfil === 'corretor' && lanc && lanc.status !== 'ativo') {
+    window._espelhoHideReserva = true;
+  }
+
   // Tenta carregar mapa (imagem JPEG/PNG) real primeiro
   const mapaR = await get(`/api/empreendimentos/${empId}/mapa`);
   if (mapaR.ok) { return verEspelhoImagem(empId, emp, mapaR.data); }
@@ -10118,6 +10133,7 @@ async function verEspelho(empId) {
         <input type="file" accept=".jpg,.jpeg,.png,.webp,.heic" style="display:none" onchange="uploadMapaEspelho(this,${empId})">
       </label>
       <button id="btn-selecionar-unds" class="btn btn-secondary" onclick="toggleModoSelecao(${empId})" style="font-size:12px;padding:6px 12px;color:#fb923c;border-color:rgba(251,146,60,.4)" title="Selecionar múltiplas unidades para excluir">☑ Selecionar</button>
+      <button class="btn btn-secondary" onclick="abrirGerenciarLancamento(${empId})" style="font-size:12px;padding:6px 12px;color:#fbbf24;border-color:rgba(251,191,36,.4)" title="Agendar e controlar o lançamento imobiliário">🚀 Lançamento</button>
     </div>
     <div id="sel-bar" style="display:none;position:sticky;top:0;z-index:50;background:#7f1d1d;border:1px solid #ef4444;border-radius:10px;padding:10px 16px;margin-bottom:12px;display:none;align-items:center;gap:12px;flex-wrap:wrap">
       <span id="sel-count" style="font-weight:700;color:#fca5a5;font-size:13px">0 selecionadas</span>
@@ -10159,11 +10175,209 @@ async function verEspelho(empId) {
     </div>
     `}
 
+    <!-- Banner de lançamento -->
+    ${_renderLancBanner(lanc, empId, USUARIO.perfil !== 'corretor')}
+
     <!-- Grid do espelho -->
     <div id="espelho-corpo" data-empid="${empId}" data-lblb="${lblB}" data-lbla="${lblA}" data-tipo="${emp.tipo||'loteamento'}">
       ${isPredio ? renderEspelhoPredio(grupoKeys, grupos, empId) : renderEspelhoGrupos(grupoKeys, grupos, lblA, lblB, empId)}
     </div>
   `;
+  // Inicia contador regressivo se necessário
+  if (lanc?.status === 'agendado') _iniciarCountdownLanc(lanc.data_hora_inicio, lanc.server_time, empId);
+  if (lanc?.status === 'ativo' && lanc.data_hora_fim) _iniciarCountdownEncerramento(lanc.data_hora_fim, lanc.server_time, empId);
+}
+
+// ── LANÇAMENTO: helpers de banner e countdown ────────────────────────────────
+
+function _renderLancBanner(lanc, empId, isAdmin) {
+  const adminBtn = isAdmin
+    ? `<button onclick="abrirGerenciarLancamento(${empId})" style="margin-left:auto;padding:6px 14px;border-radius:8px;border:1px solid rgba(250,204,21,.5);background:rgba(250,204,21,.1);color:#fbbf24;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">⚙️ Gerenciar</button>`
+    : '';
+  if (!lanc || lanc.status === 'cancelado') {
+    if (!isAdmin) return '';
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;background:rgba(250,204,21,.06);border:1px solid rgba(250,204,21,.2);border-radius:10px">
+      <span style="font-size:18px">🚀</span>
+      <div style="font-size:13px;color:var(--text2);flex:1">Nenhum lançamento agendado para este empreendimento.</div>
+      ${adminBtn}
+    </div>`;
+  }
+  if (lanc.status === 'agendado') {
+    const dt = new Date(lanc.data_hora_inicio).toLocaleString('pt-BR');
+    return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:12px 16px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.4);border-radius:12px;flex-wrap:wrap">
+      <span style="font-size:22px">⏳</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700;color:#fbbf24">Lançamento agendado${lanc.nome ? ` — ${lanc.nome}` : ''}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">Início: ${dt}</div>
+        <div style="font-size:24px;font-weight:900;font-variant-numeric:tabular-nums;color:#fde68a;letter-spacing:2px;margin-top:4px" id="lanc-countdown">--:--:--</div>
+      </div>
+      ${adminBtn}
+    </div>`;
+  }
+  if (lanc.status === 'ativo') {
+    const desde = new Date(lanc.data_hora_inicio).toLocaleString('pt-BR');
+    const encerra = lanc.data_hora_fim ? ` · Encerra: ${new Date(lanc.data_hora_fim).toLocaleString('pt-BR')}` : '';
+    return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:12px 16px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.4);border-radius:12px;flex-wrap:wrap">
+      <span style="font-size:22px">🚀</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700;color:#4ade80">LANÇAMENTO ABERTO — Reservas liberadas!</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">Aberto às ${desde}${encerra}</div>
+        ${lanc.data_hora_fim ? `<div style="font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;color:#86efac;letter-spacing:2px;margin-top:4px" id="lanc-countdown-enc">--:--:--</div>` : ''}
+      </div>
+      ${adminBtn}
+    </div>`;
+  }
+  if (lanc.status === 'encerrado') {
+    if (!isAdmin) return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.3);border-radius:10px">
+      <span style="font-size:18px">🔒</span>
+      <div style="font-size:13px;color:#f87171">Período de lançamento encerrado. Reservas não estão disponíveis.</div>
+    </div>`;
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 14px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.3);border-radius:10px">
+      <span style="font-size:18px">🔒</span>
+      <div style="font-size:13px;color:#f87171;flex:1">Lançamento encerrado.</div>
+      ${adminBtn}
+    </div>`;
+  }
+  return '';
+}
+
+function _iniciarCountdownLanc(inicio, serverTime, empId) {
+  clearInterval(window._lancInterval);
+  const offset = Date.now() - new Date(serverTime).getTime();
+  window._lancInterval = setInterval(() => {
+    const el = document.getElementById('lanc-countdown');
+    if (!el) { clearInterval(window._lancInterval); return; }
+    const ms = new Date(inicio).getTime() - (Date.now() - offset);
+    if (ms <= 0) {
+      el.textContent = '🚀 Lançamento iniciando...';
+      clearInterval(window._lancInterval);
+      setTimeout(() => verEspelho(empId), 2500);
+      return;
+    }
+    const h = String(Math.floor(ms/3600000)).padStart(2,'0');
+    const m = String(Math.floor((ms%3600000)/60000)).padStart(2,'0');
+    const s = String(Math.floor((ms%60000)/1000)).padStart(2,'0');
+    el.textContent = `${h}:${m}:${s}`;
+  }, 1000);
+}
+
+function _iniciarCountdownEncerramento(fim, serverTime, empId) {
+  clearInterval(window._lancIntervalEnc);
+  const offset = Date.now() - new Date(serverTime).getTime();
+  window._lancIntervalEnc = setInterval(() => {
+    const el = document.getElementById('lanc-countdown-enc');
+    if (!el) { clearInterval(window._lancIntervalEnc); return; }
+    const ms = new Date(fim).getTime() - (Date.now() - offset);
+    if (ms <= 0) {
+      el.textContent = '🔒 Encerrando...';
+      clearInterval(window._lancIntervalEnc);
+      setTimeout(() => verEspelho(empId), 2000);
+      return;
+    }
+    const h = String(Math.floor(ms/3600000)).padStart(2,'0');
+    const m = String(Math.floor((ms%3600000)/60000)).padStart(2,'0');
+    const s = String(Math.floor((ms%60000)/1000)).padStart(2,'0');
+    el.textContent = `Encerra em ${h}:${m}:${s}`;
+  }, 1000);
+}
+
+// ── LANÇAMENTO: modal de gerenciamento (admin) ───────────────────────────────
+
+async function abrirGerenciarLancamento(empId) {
+  const r = await get(`/api/lancamento/${empId}`);
+  const lanc = r.ok ? r.data : null;
+  const emp = (currentData.emp||[]).find(e => e.id === empId) || { nome: '' };
+
+  const statusLabel = { agendado: '⏳ Agendado', ativo: '🚀 Ativo', encerrado: '🔒 Encerrado', cancelado: '❌ Cancelado' };
+  const statusColor = { agendado: '#fbbf24', ativo: '#4ade80', encerrado: '#f87171', cancelado: '#94a3b8' };
+
+  // Converte ISO para datetime-local (fuso local)
+  const toLocal = iso => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const pad = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const pode_editar = !lanc || ['agendado','ativo'].includes(lanc.status);
+
+  openModal(`🚀 Lançamento — ${emp.nome}`, `
+    ${lanc && lanc.status !== 'cancelado' ? `
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:10px;margin-bottom:16px;background:rgba(${lanc.status==='ativo'?'34,197,94':lanc.status==='agendado'?'251,191,36':'239,68,68'},.08);border:1px solid rgba(${lanc.status==='ativo'?'34,197,94':lanc.status==='agendado'?'251,191,36':'239,68,68'},.3)">
+      <div style="flex:1">
+        <div style="font-weight:700;color:${statusColor[lanc.status]||'var(--text)'}">Status: ${statusLabel[lanc.status]||lanc.status}</div>
+        ${lanc.nome ? `<div style="font-size:12px;color:var(--text2)">${lanc.nome}</div>` : ''}
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">Início: ${new Date(lanc.data_hora_inicio).toLocaleString('pt-BR')}${lanc.data_hora_fim?' · Fim: '+new Date(lanc.data_hora_fim).toLocaleString('pt-BR'):''}</div>
+      </div>
+      ${lanc.status === 'agendado' ? `<button onclick="_lancAbrirAgora(${empId},${lanc.id})" style="padding:8px 16px;background:#22c55e;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">🚀 Abrir Agora</button>` : ''}
+      ${lanc.status === 'ativo' ? `<button onclick="_lancEncerrar(${empId},${lanc.id})" style="padding:8px 16px;background:#ef4444;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">🔒 Encerrar</button>` : ''}
+      ${['agendado','ativo'].includes(lanc.status) ? `<button onclick="_lancCancelar(${empId},${lanc.id})" style="padding:6px 12px;background:transparent;color:#94a3b8;border:1px solid rgba(100,116,139,.4);border-radius:8px;font-size:12px;cursor:pointer;margin-left:4px">Cancelar</button>` : ''}
+    </div>` : ''}
+
+    <div style="background:var(--navy2);border-radius:10px;padding:16px;margin-bottom:4px">
+      <div style="font-size:13px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">${lanc && ['agendado','ativo'].includes(lanc.status) ? '✏️ Editar Agendamento' : '➕ Novo Agendamento'}</div>
+      <div class="form-grid">
+        <div class="form-group span2"><label>Nome do lançamento (opcional)</label>
+          <input id="lanc-nome" value="${lanc?.nome||''}" placeholder="ex: Lançamento Germânia — Etapa 1">
+        </div>
+        <div class="form-group"><label>Data e hora de início *</label>
+          <input id="lanc-inicio" type="datetime-local" value="${toLocal(lanc?.data_hora_inicio)}">
+        </div>
+        <div class="form-group"><label>Data e hora de encerramento (opcional)</label>
+          <input id="lanc-fim" type="datetime-local" value="${toLocal(lanc?.data_hora_fim)}">
+        </div>
+      </div>
+      <button onclick="_lancSalvar(${empId}${lanc && ['agendado','ativo'].includes(lanc.status) ? ','+lanc.id : ''})"
+        style="margin-top:8px;width:100%;padding:10px;background:var(--accent);color:var(--navy);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px">
+        ${lanc && ['agendado','ativo'].includes(lanc.status) ? '💾 Salvar Alterações' : '📅 Agendar Lançamento'}
+      </button>
+      <p style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.5">
+        Enquanto houver um lançamento agendado ou ativo, as reservas pelo espelho ficam bloqueadas até o horário de início e liberadas automaticamente. Se não houver lançamento cadastrado, as reservas funcionam normalmente.
+      </p>
+    </div>
+  `);
+}
+
+async function _lancSalvar(empId, lancId) {
+  const nome  = document.getElementById('lanc-nome')?.value?.trim() || null;
+  const inicio = document.getElementById('lanc-inicio')?.value;
+  const fim    = document.getElementById('lanc-fim')?.value || null;
+  if (!inicio) return toast('Informe a data e hora de início', 'error');
+  // Converte datetime-local para ISO (fuso local → UTC)
+  const toISO = v => v ? new Date(v).toISOString() : null;
+  const body = { empreendimento_id: empId, nome, data_hora_inicio: toISO(inicio), data_hora_fim: toISO(fim) };
+  const r = lancId ? await put(`/api/lancamentos/${lancId}`, body) : await post('/api/lancamentos', body);
+  if (!r.ok) return toast(r.error || 'Erro ao salvar', 'error');
+  toast('✅ Lançamento salvo!');
+  closeModal();
+  verEspelho(empId);
+}
+
+async function _lancAbrirAgora(empId, lancId) {
+  if (!confirm('Abrir o lançamento agora? As reservas serão liberadas imediatamente.')) return;
+  const r = await post(`/api/lancamentos/${lancId}/abrir`, {});
+  if (!r.ok) return toast(r.error || 'Erro', 'error');
+  toast('🚀 Lançamento aberto!');
+  closeModal();
+  verEspelho(empId);
+}
+
+async function _lancEncerrar(empId, lancId) {
+  if (!confirm('Encerrar o lançamento agora? As reservas serão bloqueadas.')) return;
+  const r = await post(`/api/lancamentos/${lancId}/encerrar`, {});
+  if (!r.ok) return toast(r.error || 'Erro', 'error');
+  toast('🔒 Lançamento encerrado.');
+  closeModal();
+  verEspelho(empId);
+}
+
+async function _lancCancelar(empId, lancId) {
+  if (!confirm('Cancelar o agendamento? O lançamento será removido.')) return;
+  const r = await del(`/api/lancamentos/${lancId}`);
+  if (!r.ok) return toast(r.error || 'Erro', 'error');
+  toast('Agendamento cancelado.');
+  closeModal();
+  verEspelho(empId);
 }
 
 // ── KANBAN POR EMPREENDIMENTO ────────────────────────────────────────────────
