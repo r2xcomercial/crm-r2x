@@ -3386,7 +3386,6 @@ function abrirDistrato(vendaId, leadNome) {
     const r = await post(`/api/vendas/${vendaId}/distrato`, body);
     if (!r.ok) return toast(r.error, 'error');
     toast('Distrato lançado — unidade liberada');
-    await carregarDados();
     closeModal();
     renderVendas();
   }, { saveLabel: '🚫 Confirmar Distrato' });
@@ -4624,7 +4623,7 @@ function openEmpModal(e = {}) {
     const r = e.id ? await put(`/api/empreendimentos/${e.id}`, body) : await post('/api/empreendimentos', body);
     if (!r.ok) return toast(r.error, 'error');
     toast(e.id ? 'Atualizado!' : 'Empreendimento criado!');
-    await carregarDados(); closeModal(); renderEmpreendimentos();
+    closeModal(); renderEmpreendimentos();
   });
   if (e.id) setTimeout(() => renderNuLista(e.id), 0);
 }
@@ -12850,12 +12849,12 @@ async function reservarDoEspelho(unidadeId, empId) {
       if (btn) { btn.disabled = false; btn.textContent = '⚡ Reservar agora'; }
       toast(r.error || 'Erro ao reservar', 'error');
       if ((r.error || '').includes('reservada') || (r.error || '').includes('disponível')) {
-        closeModal(); await carregarDados(); verEspelho(empId);
+        closeModal(); verEspelho(empId);
       }
       return;
     }
     toast('✅ Unidade reservada com sucesso!');
-    closeModal(); await carregarDados(); verEspelho(empId);
+    closeModal(); verEspelho(empId);
     return;
   }
 
@@ -12877,13 +12876,12 @@ async function reservarDoEspelho(unidadeId, empId) {
     if (btn) { btn.disabled = false; btn.textContent = '⚡ Reservar agora'; }
     toast(r.error || 'Erro ao reservar', 'error');
     if ((r.error || '').includes('reservada') || (r.error || '').includes('disponível')) {
-      closeModal(); await carregarDados(); verEspelho(empId);
+      closeModal(); verEspelho(empId);
     }
     return;
   }
   toast('✅ Unidade reservada com sucesso!');
   closeModal();
-  await carregarDados();
   verEspelho(empId);
 }
 
