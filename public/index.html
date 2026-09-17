@@ -5146,6 +5146,10 @@ async function confirmarReservaRapida() {
       return;
     }
     closeReservaRapida();
+    // Atualização otimista: muda tile imediatamente sem esperar verEspelho
+    document.querySelectorAll(`[data-uid="${_rrUnidadeId}"]`).forEach(tile => {
+      tile.className = tile.className.replace(/\b(disponivel|pre_reserva|reservado|vendido|indisponivel)\b/g, 'pre_reserva');
+    });
     verEspelho(_rrEmpId);
     if (r.data?.venda_id) {
       setTimeout(() => abrirUploadComprovante(r.data.venda_id, _rrLeadSel.nome), 400);
@@ -23118,7 +23122,7 @@ async function _checarPrioridade(empId) {
           <div style="font-size:12px;color:#fdba74;margin-bottom:8px">Seu tempo para reservar:</div>
           <div id="prio-countdown" style="font-size:56px;font-weight:900;font-family:monospace;color:#4ade80;letter-spacing:4px;margin-bottom:20px">10:00</div>
           <div style="font-size:12px;color:#9ca3af;margin-bottom:24px">Se não reservar dentro do prazo, a unidade passa para o próximo na fila.</div>
-          <button onclick="verEspelho(${empId})" style="width:100%;padding:16px;background:linear-gradient(135deg,#f97316,#ea580c);color:#fff;border:none;border-radius:12px;font-size:18px;font-weight:900;cursor:pointer;letter-spacing:.5px">
+          <button onclick="document.getElementById('banner-prioridade').remove();clearInterval(window._prioCountdownInterval);abrirUnidade(${u.id},${empId})" style="width:100%;padding:16px;background:linear-gradient(135deg,#f97316,#ea580c);color:#fff;border:none;border-radius:12px;font-size:18px;font-weight:900;cursor:pointer;letter-spacing:.5px">
             ⚡ Reservar agora
           </button>
           <button onclick="document.getElementById('banner-prioridade').remove();clearInterval(window._prioCountdownInterval)" style="margin-top:12px;background:none;border:none;color:#6b7280;font-size:12px;cursor:pointer;text-decoration:underline">Fechar notificação</button>
