@@ -12192,6 +12192,7 @@ async function abrirUnidade(unidadeId, empId) {
       && String(u.fila_prioridade_corretor_id) === String(USUARIO.corretor_id)
       && u.fila_prioridade_ate && _parsePrazoUTC(u.fila_prioridade_ate) > new Date();
     if (podeReservar && (u.status === 'disponivel' || (u.status === 'pre_reserva' && _temPriorAtiva))) {
+      document.getElementById('modal').classList.add('modal-wide');
       _carregarLeadsParaReserva(u.id, empId, u.preco || 0);
     }
 
@@ -12517,7 +12518,7 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
   const fieldsDisplay = hasAnyTiles ? 'display:none' : '';
 
   loading.innerHTML = `
-    <input id="rr-lead-search" type="text" placeholder="🔍 Buscar cliente por nome ou telefone..."
+    <input id="rr-lead-search" type="text" placeholder="Digite aqui o nome do seu cliente já cadastrado"
       oninput="_filtrarLeadsReserva()"
       style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text);font-size:13px;margin-bottom:8px">
     <div id="rr-lead-lista" style="max-height:130px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
@@ -12747,10 +12748,12 @@ function _filtrarLeadsReserva() {
   if (!lista || !window._rrLeads) return;
   const filtrados = q
     ? window._rrLeads.filter(l => (l.nome||'').toLowerCase().includes(q) || (l.telefone||'').includes(q))
-    : window._rrLeads;
+    : [];
   const statusLabel = {novo:'Captado',qualificado:'Qualificado',com_corretor:'Distribuído',visitou:'Visita',proposta:'Proposta',reserva:'Reserva',vendido:'Venda',sem_venda:'Sem venda',perdido:'Sem venda'};
   const statusColor = {novo:'#94a3b8',qualificado:'#60a5fa',com_corretor:'#818cf8',visitou:'#34d399',proposta:'#f59e0b',reserva:'#f97316',vendido:'#4ade80',sem_venda:'#f87171',perdido:'#f87171'};
-  lista.innerHTML = filtrados.slice(0, 50).map(l => `
+  lista.innerHTML = !q
+    ? ''
+    : filtrados.slice(0, 50).map(l => `
     <div onclick="_selecionarLeadReserva(${l.id},'${(l.nome||'').replace(/'/g,"\\'")}',' ${(l.telefone||'').replace(/'/g,"\\'")}')"
       style="padding:8px 10px;border-radius:7px;cursor:pointer;border:1px solid ${window._rrLeadId===l.id?'var(--accent)':'var(--border)'};
              background:${window._rrLeadId===l.id?'rgba(0,196,180,.1)':'transparent'};transition:all .1s;display:flex;align-items:center;justify-content:space-between;gap:8px">
