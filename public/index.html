@@ -197,11 +197,14 @@
   }
   .espelho-tile:hover { transform: scale(1.1); box-shadow: 0 4px 16px rgba(0,0,0,.45); z-index: 2; position: relative; filter: brightness(1.18); }
   .espelho-tile.disponivel    { background: rgba(34,197,94,.1);   border-color: rgba(34,197,94,.5); }
-  .espelho-tile.pre_reserva   { background: rgba(249,115,22,.15); border-color: rgba(249,115,22,.7); animation: preReservaPulse 2s ease-in-out infinite; }
+  .espelho-tile.pre_reserva   { background: rgba(249,115,22,.15); border-color: rgba(249,115,22,.7); animation: preReservaPulse 1.8s ease-in-out infinite; }
   .espelho-tile.reservado     { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.55); }
   .espelho-tile.vendido       { background: rgba(239,68,68,.12);  border-color: rgba(239,68,68,.55); }
   .espelho-tile.indisponivel  { background: rgba(100,116,139,.12);border-color: rgba(100,116,139,.45); }
-  @keyframes preReservaPulse { 0%,100%{ border-color:rgba(249,115,22,.7) } 50%{ border-color:rgba(249,115,22,1) } }
+  @keyframes preReservaPulse {
+    0%,100% { border-color:rgba(249,115,22,.6); background:rgba(249,115,22,.1); box-shadow:none; }
+    50%     { border-color:rgba(249,115,22,1);  background:rgba(249,115,22,.25); box-shadow:0 0 10px rgba(249,115,22,.35); }
+  }
   .espelho-tile .tile-num  { font-size: 15px; font-weight: 900; line-height: 1; letter-spacing: -.3px; }
   .espelho-tile .tile-tip  { font-size: 7.5px; opacity: .7; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60px; }
   .espelho-tile .tile-area { font-size: 7.5px; opacity: .6; margin-top: 1px; white-space: nowrap; }

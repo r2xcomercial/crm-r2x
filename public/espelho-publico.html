@@ -98,10 +98,13 @@
   }
   .marcador:hover { transform: translate(-50%,-50%) scale(1.4); z-index: 10; }
   .marcador.disponivel  { background: #22c55e; }
-  .marcador.pre_reserva { background: #f97316; animation: preReservaPulse 2s ease-in-out infinite; }
+  .marcador.pre_reserva { background: #f97316; animation: preReservaPulse 1.8s ease-in-out infinite; }
   .marcador.reservado   { background: #f59e0b; }
   .marcador.vendido     { background: #ef4444; }
-  @keyframes preReservaPulse { 0%,100%{ opacity:1 } 50%{ opacity:.6 } }
+  @keyframes preReservaPulse {
+    0%,100% { opacity:1; box-shadow:none; }
+    50%     { opacity:.75; box-shadow:0 0 12px rgba(249,115,22,.5); }
+  }
   .marcador.entregue    { background: #ef4444; }
   .marcador.indisponivel { background: #64748b; }
   .marcador .tip {
@@ -131,7 +134,11 @@
   .tile .lote-num { font-size: 15px; line-height: 1; }
   .tile .quadra   { font-size: 10px; opacity: .7; margin-top: 2px; }
   .tile.disponivel  { background: #14532d; border-color: #22c55e; color: #4ade80; }
-  .tile.pre_reserva { background: #431407; border-color: #f97316; color: #fdba74; }
+  .tile.pre_reserva { background: #431407; border-color: #f97316; color: #fdba74; animation: preReservaTilePulse 1.8s ease-in-out infinite; }
+  @keyframes preReservaTilePulse {
+    0%,100% { border-color:#f97316; background:#431407; box-shadow:none; }
+    50%     { border-color:#fb923c; background:#5c1e08; box-shadow:0 0 10px rgba(249,115,22,.45); }
+  }
   .tile.reservado   { background: #78350f; border-color: #f59e0b; color: #fbbf24; }
   .tile.vendido     { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
   .tile.entregue    { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
@@ -259,7 +266,7 @@
   }
   .predio-unit:hover { transform: translateY(-3px); z-index: 5; }
   .predio-unit.disponivel  { background: #14532d; border-color: #22c55e; color: #4ade80; }
-  .predio-unit.pre_reserva { background: #431407; border-color: #f97316; color: #fdba74; }
+  .predio-unit.pre_reserva { background: #431407; border-color: #f97316; color: #fdba74; animation: preReservaTilePulse 1.8s ease-in-out infinite; }
   .predio-unit.reservado   { background: #78350f; border-color: #f59e0b; color: #fbbf24; }
   .predio-unit.vendido     { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
   .predio-unit.entregue    { background: #4c1d95; border-color: #a78bfa; color: #c4b5fd; }
