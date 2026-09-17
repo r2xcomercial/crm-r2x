@@ -16573,12 +16573,22 @@ async function _renderFinanceiroCorretor(el) {
     get('/api/corretor/despesas'),
     get('/api/corretor/config'),
   ]);
-  const despesas = rd.data || [];
-  const config   = rc.data || {};
-  el._despesas   = despesas;
-  el._cfConfig   = config;
+  const despesas   = rd.data || [];
+  const config     = rc.data || {};
+  el._despesas     = despesas;
+  el._cfConfig     = config;
 
-  const catIcon = { aluguel:'🏠', gasolina:'⛽', trafego:'📢', celular:'📱', software:'💻', educacao:'🎓', alimentacao:'🍽️', outros:'📌' };
+  // Comissões R2X do próprio corretor
+  const vendasR2X   = (_cpData?.vendasR2X) || [];
+  const splitPct    = config.imobiliaria_split_pct || 0;
+  const retenePct   = 100 - splitPct;
+
+  const comBruta    = vendasR2X.reduce((s,v) => s + (v.comissao_corretor_valor||0), 0);
+  const comPendente = vendasR2X.filter(v => v.comissao_corretor_status !== 'pago').reduce((s,v) => s + (v.comissao_corretor_valor||0), 0);
+  const comRecebida = vendasR2X.filter(v => v.comissao_corretor_status === 'pago').reduce((s,v) => s + (v.comissao_corretor_valor||0), 0);
+  const comLiquida  = comBruta * retenePct / 100;
+
+  const catIcon  = { aluguel:'🏠', gasolina:'⛽', trafego:'📢', celular:'📱', software:'💻', educacao:'🎓', alimentacao:'🍽️', outros:'📌' };
   const catLabel = { aluguel:'Aluguel', gasolina:'Gasolina', trafego:'Tráfego Pago', celular:'Celular', software:'Software/Assinatura', educacao:'Educação', alimentacao:'Alimentação', outros:'Outros' };
 
   const recorrentesTotal = despesas.filter(d => d.recorrente).reduce((s,d) => s + d.valor, 0);
@@ -16591,6 +16601,45 @@ async function _renderFinanceiroCorretor(el) {
            font-size:12px;font-weight:${_cfView===id?'700':'400'};cursor:pointer">${icon} ${label}</button>`;
 
   el.innerHTML = `
+    <!-- ═══ CORRETAGEM R2X ═══ -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px">
+        💰 Corretagem R2X
+        ${splitPct > 0 ? `<span style="font-size:11px;font-weight:400;color:var(--text2);background:var(--navy3);border:1px solid var(--border);border-radius:8px;padding:2px 8px">
+          Imob.: ${splitPct}% repasse · Você fica com ${retenePct}%
+        </span>` : ''}
+      </div>
+      <div class="kpi-grid" style="margin-bottom:14px">
+        ${kpi('💵', 'Comissão Bruta', fmt(comBruta), `${vendasR2X.length} venda${vendasR2X.length!==1?'s':''}`)}
+        ${splitPct > 0 ? kpi('🏦', 'Comissão Líquida', fmt(comLiquida), `após ${splitPct}% de repasse`) : ''}
+        ${kpi('⏳', 'A Receber', fmt(comPendente), 'comissões pendentes')}
+        ${kpi('✅', 'Recebido', fmt(comRecebida), 'comissões pagas')}
+      </div>
+      ${vendasR2X.length ? `
+      <div class="table-card" style="margin:0">
+        <table>
+          <thead><tr><th>Data</th><th>Empreendimento</th><th>Imóvel</th><th>Valor Venda</th><th>Comissão</th>${splitPct>0?'<th>Líquido</th>':''}<th>Status</th></tr></thead>
+          <tbody>
+            ${vendasR2X.map(v => {
+              const st     = v.comissao_corretor_status;
+              const badge  = st === 'pago' ? 'badge-green' : 'badge-yellow';
+              const label  = st === 'pago' ? '✅ Pago' : '⏳ Pendente';
+              const liq    = splitPct > 0 ? (v.comissao_corretor_valor||0) * retenePct / 100 : null;
+              return `<tr>
+                <td style="font-size:12px">${fmtDate(v.data_venda)}</td>
+                <td>${v.empreendimento_nome||'—'}</td>
+                <td>${v.imovel||'—'}</td>
+                <td style="color:var(--text2);font-size:13px">${fmt(v.valor)}</td>
+                <td style="color:var(--accent);font-weight:600">${v.comissao_corretor_valor ? fmt(v.comissao_corretor_valor)+(v.comissao_corretor_pct?` <span style="font-size:11px;color:var(--text2)">(${v.comissao_corretor_pct}%)</span>`:'') : '—'}</td>
+                ${splitPct > 0 ? `<td style="color:var(--success);font-weight:600">${liq ? fmt(liq) : '—'}</td>` : ''}
+                <td><span class="badge ${badge}">${label}</span></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>` : `<div style="font-size:13px;color:var(--text2);text-align:center;padding:16px 0">Nenhuma venda R2X registrada ainda</div>`}
+    </div>
+
     <!-- Config imobiliária -->
     <div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px">
       <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">🏛️ Configuração de Imobiliária</div>
