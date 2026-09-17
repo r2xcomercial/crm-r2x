@@ -2811,18 +2811,19 @@ app.get("/api/corretor/painel", (req, res) => {
   const tarefasHoje      = db.prepare(`SELECT * FROM corretor_tarefas WHERE corretor_id=? AND data_tarefa=? AND concluida=0 ORDER BY hora ASC`).all(corretorId, hoje);
   const tarefasAtrasadas = db.prepare(`SELECT * FROM corretor_tarefas WHERE corretor_id=? AND data_tarefa<? AND concluida=0 ORDER BY data_tarefa ASC`).all(corretorId, hoje);
 
-  // Corretor não vê valores de vendas/comissões da R2X
+  // Corretor vê suas próprias vendas (sem campos internos R2X: percentual_r2x, comissao_r2x)
   if (req.usuario?.perfil === 'corretor') {
+    const vendasSanitizadas = vendasR2X.map(({ percentual_r2x, comissao_r2x, ...v }) => v);
     return ok(res, {
       corretor,
-      vendasR2X       : [],   // detalhes não expostos ao corretor
-      vendasProprias,         // vendas externas são dados do próprio corretor
-      r2xTotalVendido : 0, r2xComPend: 0, r2xComPaga: 0,
-      propTotalVendido, propComPend, propComPaga,
-      totalVendido    : propTotalVendido,
-      comPendente     : propComPend,
-      comPaga         : propComPaga,
-      qtdVendas       : vendasR2X.length + vendasProprias.length,
+      vendasR2X    : vendasSanitizadas,
+      vendasProprias: [],
+      r2xTotalVendido, r2xComPend, r2xComPaga,
+      propTotalVendido: 0, propComPend: 0, propComPaga: 0,
+      totalVendido : r2xTotalVendido,
+      comPendente  : r2xComPend,
+      comPaga      : r2xComPaga,
+      qtdVendas    : vendasR2X.length,
       meta, clientes, tarefasHoje, tarefasAtrasadas,
     });
   }

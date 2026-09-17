@@ -16339,10 +16339,10 @@ async function renderCorretorPainel(tab) {
 
     <!-- KPIs consolidados -->
     <div class="kpi-grid" style="margin-bottom:16px">
-      ${kpi('🏆', 'Total de Vendas', qtdVendas, `Lançamentos: ${vendasR2X.length} · Externas: ${vendasProprias.length}`)}
-      ${kpi('💵', 'Volume Total', fmt(totalVendido), `Lançamentos: ${fmt(r2xTotalVendido)} · Ext.: ${fmt(propTotalVendido)}`)}
-      ${kpi('⏳', 'Comissão a Receber', fmt(comPendente), `Lançamentos: ${fmt(r2xComPend)} · Ext.: ${fmt(propComPend)}`)}
-      ${kpi('✅', 'Comissão Recebida', fmt(comPaga), `Lançamentos: ${fmt(r2xComPaga)} · Ext.: ${fmt(propComPaga)}`)}
+      ${kpi('🏆', 'Minhas Vendas', qtdVendas, 'vendas registradas na R2X')}
+      ${kpi('💵', 'Volume Total', fmt(totalVendido), 'valor total das vendas')}
+      ${kpi('⏳', 'Comissão a Receber', fmt(comPendente), 'comissões pendentes')}
+      ${kpi('✅', 'Comissão Recebida', fmt(comPaga), 'comissões já pagas')}
     </div>
 
     <!-- Meta do mês -->
@@ -16354,8 +16354,7 @@ async function renderCorretorPainel(tab) {
     <!-- Abas -->
     <div class="cp-tabs-row" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
       ${tabBtn('empreendimentos','🏗️', 'Empreendimentos')}
-      ${tabBtn('r2x',        '🏢', 'Vendas R2X')}
-      ${tabBtn('proprias',   '🏠', 'Minhas Vendas')}
+      ${tabBtn('r2x',        '🏢', 'Minhas Vendas na R2X')}
       ${tabBtn('clientes',   '👥', 'Meus Clientes')}
       ${tabBtn('agenda',     '📋', 'Agenda', totalAlertas||null)}
       ${tabBtn('financeiro', '💰', 'Financeiro')}
@@ -16377,7 +16376,7 @@ async function _renderCpTab() {
   if (_cpTab === 'r2x') {
     el.innerHTML = `
       <div class="table-card">
-        <div class="table-header"><div class="table-title">🏢 Vendas via R2X (${vendasR2X.length})</div></div>
+        <div class="table-header"><div class="table-title">🏢 Minhas Vendas na R2X (${vendasR2X.length})</div></div>
         <table>
           <thead><tr><th>Data</th><th>Empreendimento</th><th>Imóvel</th><th>Valor Venda</th><th>Comissão</th><th>Status</th></tr></thead>
           <tbody>
@@ -16394,38 +16393,6 @@ async function _renderCpTab() {
                 <td>${v.comissao_corretor_pct ? `<span class="badge ${badge}">${stLabel}</span>` : '—'}</td>
               </tr>`;
             }).join('') : '<tr class="empty-row"><td colspan="6">Nenhuma venda R2X ainda</td></tr>'}
-          </tbody>
-        </table>
-      </div>`;
-
-  } else if (_cpTab === 'proprias') {
-    el.innerHTML = `
-      <div class="table-card">
-        <div class="table-header">
-          <div class="table-title">🏠 Minhas Vendas Externas (${vendasProprias.length})</div>
-          <button class="btn btn-primary" onclick="openVendaPropriaModal()" style="font-size:13px;padding:7px 14px">+ Nova Venda</button>
-        </div>
-        <table>
-          <thead><tr><th>Data</th><th>Empreendimento</th><th>Imóvel</th><th>Cliente</th><th>Valor Venda</th><th>Comissão</th><th>Recebido</th><th>Status</th><th></th></tr></thead>
-          <tbody>
-            ${vendasProprias.length ? vendasProprias.map(v => {
-              const stMap = { pendente:['badge-yellow','Pendente'], recebido:['badge-green','Recebido'], parcial:['badge-blue','Parcial'] };
-              const [badgeCls, badgeLbl] = stMap[v.status_comissao] || ['badge-gray', v.status_comissao];
-              return `<tr>
-                <td>${fmtDate(v.data_venda)}</td>
-                <td>${v.empreendimento||'—'}</td>
-                <td>${v.imovel||'—'}</td>
-                <td>${v.cliente_nome||'—'}</td>
-                <td style="color:var(--success);font-weight:600">${fmt(v.valor_venda)}</td>
-                <td style="color:var(--accent)">${v.comissao_valor ? fmt(v.comissao_valor)+(v.comissao_pct?` (${v.comissao_pct}%)`:'') : '—'}</td>
-                <td style="color:var(--success)">${v.valor_recebido ? fmt(v.valor_recebido) : '—'}</td>
-                <td><span class="badge ${badgeCls}">${badgeLbl}</span></td>
-                <td style="white-space:nowrap">
-                  <button class="btn-icon btn-edit" onclick="openVendaPropriaModal(${v.id})">✏️</button>
-                  <button class="btn-icon btn-delete" onclick="deleteVendaPropria(${v.id})">🗑️</button>
-                </td>
-              </tr>`;
-            }).join('') : '<tr class="empty-row"><td colspan="9">Nenhuma venda externa registrada ainda<br><small>Clique em "+ Nova Venda" para começar</small></td></tr>'}
           </tbody>
         </table>
       </div>`;
@@ -17103,7 +17070,7 @@ async function openVendaPropriaModal(id) {
     if (!res.ok) return toast(res.error, 'error');
     toast(id ? 'Venda atualizada!' : 'Venda registrada! 🏠');
     closeModal();
-    renderCorretorPainel('proprias');
+    renderCorretorPainel('r2x');
   });
   // Garante que o campo recebido esteja correto após render
   setTimeout(toggleRecebidoVP, 50);
@@ -17132,7 +17099,7 @@ async function deleteVendaPropria(id) {
   const r = await del(`/api/corretor/vendas-proprias/${id}`);
   if (!r.ok) return toast(r.error, 'error');
   toast('Venda excluída');
-  renderCorretorPainel('proprias');
+  renderCorretorPainel('r2x');
 }
 
 // ─── NOTIFICAÇÕES PUSH (WEB NOTIFICATIONS API) ────────────────────────────────
