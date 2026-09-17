@@ -231,6 +231,7 @@
   .toast-item.success { border-left: 3px solid var(--success); }
   .toast-item.error { border-left: 3px solid var(--danger); }
   @keyframes slideIn { from { transform: translateX(30px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  @keyframes lancPulse { from { transform: scale(1); opacity: 1; } to { transform: scale(1.06); opacity: .75; } }
 
   /* ── KANBAN ── */
   .kanban-board { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 16px; align-items: flex-start; min-height: 60vh; }
@@ -10249,26 +10250,104 @@ function _renderLancBanner(lanc, empId, isAdmin) {
 
 function _iniciarCountdownLanc(inicio, serverTime, empId) {
   clearInterval(window._lancInterval);
+  _removerContadorFinal();
   const offset = Date.now() - new Date(serverTime).getTime();
+  const FINAL_MS = 5 * 60 * 1000;
+
   window._lancInterval = setInterval(() => {
-    const el = document.getElementById('lanc-countdown');
-    if (!el) { clearInterval(window._lancInterval); return; }
     const ms = new Date(inicio).getTime() - (Date.now() - offset);
     if (ms <= 0) {
-      el.textContent = '🚀 Lançamento iniciando...';
+      const el = document.getElementById('lanc-countdown');
+      if (el) el.textContent = '🚀 Abrindo...';
       clearInterval(window._lancInterval);
-      setTimeout(() => verEspelho(empId), 2500);
+      _acenderContadorFinal(empId);
       return;
     }
-    const h = String(Math.floor(ms/3600000)).padStart(2,'0');
-    const m = String(Math.floor((ms%3600000)/60000)).padStart(2,'0');
-    const s = String(Math.floor((ms%60000)/1000)).padStart(2,'0');
-    el.textContent = `${h}:${m}:${s}`;
+    if (ms <= FINAL_MS) {
+      _mostrarContadorFinal(ms);
+    } else {
+      const el = document.getElementById('lanc-countdown');
+      if (el) {
+        const h = String(Math.floor(ms/3600000)).padStart(2,'0');
+        const m = String(Math.floor((ms%3600000)/60000)).padStart(2,'0');
+        const s = String(Math.floor((ms%60000)/1000)).padStart(2,'0');
+        el.textContent = `${h}:${m}:${s}`;
+      }
+    }
   }, 1000);
+}
+
+function _mostrarContadorFinal(ms) {
+  let ov = document.getElementById('lanc-final-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'lanc-final-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9998;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(2,6,18,.93);backdrop-filter:blur(10px);';
+    ov.innerHTML = `
+      <div style="text-align:center;padding:0 24px;user-select:none">
+        <div style="font-size:clamp(13px,3vw,18px);color:#fbbf24;font-weight:800;letter-spacing:4px;text-transform:uppercase;margin-bottom:20px;opacity:.9">🚀 LANÇAMENTO EM</div>
+        <div id="lanc-final-digits" style="font-size:clamp(72px,22vw,180px);font-weight:900;font-variant-numeric:tabular-nums;color:#fde68a;letter-spacing:0.06em;line-height:1;font-family:ui-monospace,monospace;text-shadow:0 0 40px rgba(253,230,138,.4)">05:00</div>
+        <div style="margin-top:24px;font-size:clamp(11px,2.5vw,15px);color:rgba(253,230,138,.45);letter-spacing:3px;text-transform:uppercase">Aguarde — reservas abrem automaticamente</div>
+        <div id="lanc-final-barra" style="margin-top:32px;width:clamp(200px,50vw,480px);height:4px;background:rgba(253,230,138,.12);border-radius:99px;overflow:hidden">
+          <div id="lanc-final-prog" style="height:100%;background:linear-gradient(90deg,#fbbf24,#fde68a);border-radius:99px;transition:width .9s linear;width:0%"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+  }
+  const FINAL_MS = 5 * 60 * 1000;
+  const mm = String(Math.floor(ms / 60000)).padStart(2,'0');
+  const ss = String(Math.floor((ms % 60000) / 1000)).padStart(2,'0');
+  const digEl = document.getElementById('lanc-final-digits');
+  const prog  = document.getElementById('lanc-final-prog');
+  if (digEl) {
+    digEl.textContent = `${mm}:${ss}`;
+    if (ms <= 10000) {
+      digEl.style.color = '#f87171';
+      digEl.style.textShadow = '0 0 60px rgba(248,113,113,.5)';
+      digEl.style.animation = 'lancPulse .4s ease-in-out infinite alternate';
+    } else if (ms <= 30000) {
+      digEl.style.color = '#fb923c';
+      digEl.style.textShadow = '0 0 50px rgba(251,146,60,.4)';
+      digEl.style.animation = 'lancPulse .7s ease-in-out infinite alternate';
+    } else {
+      digEl.style.color = '#fde68a';
+      digEl.style.textShadow = '0 0 40px rgba(253,230,138,.4)';
+      digEl.style.animation = '';
+    }
+  }
+  if (prog) prog.style.width = ((1 - ms / FINAL_MS) * 100) + '%';
+}
+
+function _acenderContadorFinal(empId) {
+  const ov = document.getElementById('lanc-final-overlay');
+  if (ov) {
+    const digEl = document.getElementById('lanc-final-digits');
+    if (digEl) {
+      digEl.textContent = '00:00';
+      digEl.style.color = '#4ade80';
+      digEl.style.textShadow = '0 0 80px rgba(74,222,128,.7)';
+      digEl.style.animation = '';
+    }
+    const prog = document.getElementById('lanc-final-prog');
+    if (prog) { prog.style.background = '#4ade80'; prog.style.width = '100%'; }
+    const sub = ov.querySelector('div > div:last-child');
+    if (sub) sub.textContent = '🚀 RESERVAS ABERTAS!';
+  } else {
+    _mostrarContadorFinal(0);
+    const digEl = document.getElementById('lanc-final-digits');
+    if (digEl) { digEl.textContent = '00:00'; digEl.style.color = '#4ade80'; }
+  }
+  setTimeout(() => { _removerContadorFinal(); verEspelho(empId); }, 2000);
+}
+
+function _removerContadorFinal() {
+  const ov = document.getElementById('lanc-final-overlay');
+  if (ov) ov.remove();
 }
 
 function _iniciarCountdownEncerramento(fim, serverTime, empId) {
   clearInterval(window._lancIntervalEnc);
+  _removerContadorFinal();
   const offset = Date.now() - new Date(serverTime).getTime();
   window._lancIntervalEnc = setInterval(() => {
     const el = document.getElementById('lanc-countdown-enc');
