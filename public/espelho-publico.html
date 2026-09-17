@@ -303,6 +303,9 @@
     .predio-unit-area { font-size: 9px; }
     .legenda { gap: 10px; }
   }
+  @keyframes lancPulse    { from { transform:scale(1); opacity:1 } to { transform:scale(1.06); opacity:.75 } }
+  @keyframes colonBlink   { 0%,49%{ opacity:1 } 50%,100%{ opacity:.15 } }
+  @keyframes boasVendasIn { from { transform:scale(.7); opacity:0 } to { transform:scale(1); opacity:1 } }
 </style>
 </head>
 <body>
@@ -903,7 +906,7 @@ async function carregar() {
       return;
     }
 
-    const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, mapsUrl, driveUrl, socialUrl, configVerTabela, configReservar, atualizado_em } = resp.data;
+    const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, mapsUrl, driveUrl, socialUrl, configVerTabela, configReservar, atualizado_em, lancamento: lancData, server_time: srvTime } = resp.data;
     window._hidePreco   = configVerTabela === 0;
     window._hideReserva = configReservar  === 0;
     _empNome    = emp.nome + (emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : '');
@@ -1029,6 +1032,12 @@ async function carregar() {
         }
       }
       document.getElementById('conteudo').innerHTML = html.join('');
+    }
+
+    // Lançamento: contador regressivo se agendado
+    _removerContadorFinalPub();
+    if (lancData && lancData.status === 'agendado') {
+      _iniciarCountdownLancPub(lancData.data_hora_inicio, srvTime);
     }
 
   } catch(e) {
@@ -1954,6 +1963,98 @@ function iniciarContador() {
     document.getElementById('countdown').textContent = countdown;
     if (countdown <= 0) { clearInterval(timer); carregar().then(iniciarContador); }
   }, 1000);
+}
+
+// ── Contador regressivo de lançamento (espelho público) ───────────────────────
+
+function _iniciarCountdownLancPub(inicio, serverTime) {
+  clearInterval(window._lancIntervalPub);
+  const FINAL_MS = 5 * 60 * 1000;
+  const offset = Date.now() - new Date(serverTime).getTime();
+
+  window._lancIntervalPub = setInterval(() => {
+    const ms = new Date(inicio).getTime() - (Date.now() - offset);
+    if (ms <= 0) {
+      clearInterval(window._lancIntervalPub);
+      _acenderContadorFinalPub();
+      return;
+    }
+    if (ms <= FINAL_MS) _mostrarContadorFinalPub(ms);
+  }, 1000);
+}
+
+function _mostrarContadorFinalPub(ms) {
+  const FINAL_MS = 5 * 60 * 1000;
+  let ov = document.getElementById('lanc-pub-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'lanc-pub-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9998;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#02060e;';
+    ov.innerHTML = `
+      <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none">
+        <div style="position:absolute;top:15%;left:10%;width:300px;height:300px;background:radial-gradient(circle,rgba(251,191,36,.06) 0%,transparent 70%);border-radius:50%"></div>
+        <div style="position:absolute;bottom:20%;right:8%;width:400px;height:400px;background:radial-gradient(circle,rgba(251,191,36,.04) 0%,transparent 70%);border-radius:50%"></div>
+      </div>
+      <div id="lanc-pub-clock" style="text-align:center;position:relative;z-index:1;padding:0 20px">
+        <div style="font-size:clamp(11px,2.2vw,15px);color:#fbbf24;font-weight:700;letter-spacing:6px;text-transform:uppercase;margin-bottom:32px;opacity:.85">🚀 &nbsp; L A N Ç A M E N T O &nbsp; E M &nbsp; 🚀</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:clamp(8px,2vw,24px)">
+          <div id="lanc-pub-mm" style="font-size:clamp(90px,26vw,220px);font-weight:900;font-family:ui-monospace,SFMono-Regular,monospace;color:#fde68a;line-height:1;text-shadow:0 0 60px rgba(253,230,138,.35);letter-spacing:-2px">05</div>
+          <div style="font-size:clamp(70px,20vw,170px);font-weight:900;font-family:ui-monospace,monospace;color:#fbbf24;line-height:1;animation:colonBlink 1s step-end infinite;margin-bottom:clamp(4px,1vw,10px)">:</div>
+          <div id="lanc-pub-ss" style="font-size:clamp(90px,26vw,220px);font-weight:900;font-family:ui-monospace,SFMono-Regular,monospace;color:#fde68a;line-height:1;text-shadow:0 0 60px rgba(253,230,138,.35);letter-spacing:-2px">00</div>
+        </div>
+        <div style="margin-top:clamp(28px,5vw,48px);width:clamp(220px,55vw,520px);margin-left:auto;margin-right:auto">
+          <div style="height:5px;background:rgba(253,230,138,.1);border-radius:99px;overflow:hidden">
+            <div id="lanc-pub-prog" style="height:100%;background:linear-gradient(90deg,#b45309,#fbbf24,#fde68a);border-radius:99px;transition:width .95s linear;width:0%"></div>
+          </div>
+        </div>
+        <div style="margin-top:20px;font-size:clamp(10px,2vw,13px);color:rgba(253,230,138,.35);letter-spacing:4px;text-transform:uppercase">Aguarde · Reservas abrem automaticamente</div>
+      </div>
+      <div id="lanc-pub-boas" style="display:none;text-align:center;position:relative;z-index:1;padding:0 20px;animation:boasVendasIn .5s cubic-bezier(.17,.67,.3,1.3) both">
+        <div style="font-size:clamp(52px,15vw,130px);font-weight:900;color:#4ade80;line-height:1.05;text-shadow:0 0 80px rgba(74,222,128,.55)">Boas<br>vendas!</div>
+        <div style="font-size:clamp(28px,7vw,56px);margin-top:clamp(12px,3vw,24px)">🎉 🏠 🚀</div>
+      </div>`;
+    document.body.appendChild(ov);
+  }
+  const mm = String(Math.floor(ms / 60000)).padStart(2,'0');
+  const ss = String(Math.floor((ms % 60000) / 1000)).padStart(2,'0');
+  const mmEl = document.getElementById('lanc-pub-mm');
+  const ssEl = document.getElementById('lanc-pub-ss');
+  const prog = document.getElementById('lanc-pub-prog');
+  if (mmEl) mmEl.textContent = mm;
+  if (ssEl) ssEl.textContent = ss;
+  const isLast10 = ms <= 10000, isLast30 = ms <= 30000;
+  const cor  = isLast10 ? '#f87171' : isLast30 ? '#fb923c' : '#fde68a';
+  const glow = isLast10 ? '0 0 80px rgba(248,113,113,.55)' : isLast30 ? '0 0 70px rgba(251,146,60,.45)' : '0 0 60px rgba(253,230,138,.35)';
+  const anim = isLast10 ? 'lancPulse .35s ease-in-out infinite alternate' : isLast30 ? 'lancPulse .65s ease-in-out infinite alternate' : '';
+  if (mmEl) { mmEl.style.color = cor; mmEl.style.textShadow = glow; mmEl.style.animation = anim; }
+  if (ssEl) { ssEl.style.color = cor; ssEl.style.textShadow = glow; ssEl.style.animation = anim; }
+  if (prog)  prog.style.width = ((1 - ms / FINAL_MS) * 100) + '%';
+}
+
+function _acenderContadorFinalPub() {
+  if (!document.getElementById('lanc-pub-overlay')) _mostrarContadorFinalPub(0);
+  const clock = document.getElementById('lanc-pub-clock');
+  const boas  = document.getElementById('lanc-pub-boas');
+  const prog  = document.getElementById('lanc-pub-prog');
+  if (clock) clock.style.display = 'none';
+  if (prog)  { prog.style.background = '#4ade80'; prog.style.width = '100%'; }
+  if (boas)  boas.style.display = 'block';
+  setTimeout(() => {
+    const ov = document.getElementById('lanc-pub-overlay');
+    if (ov) {
+      ov.style.transition = 'opacity .7s ease';
+      ov.style.opacity = '0';
+      setTimeout(() => { _removerContadorFinalPub(); clearInterval(timer); carregar().then(iniciarContador); }, 750);
+    } else {
+      clearInterval(timer); carregar().then(iniciarContador);
+    }
+  }, 2400);
+}
+
+function _removerContadorFinalPub() {
+  clearInterval(window._lancIntervalPub);
+  const ov = document.getElementById('lanc-pub-overlay');
+  if (ov) ov.remove();
 }
 
 if (!slug) {

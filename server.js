@@ -4739,7 +4739,8 @@ app.get('/api/espelho-publico/:slug', (req, res) => {
     } catch(_) {}
   }
 
-  ok(res, { empreendimento: emp, imagem: mapa?.svg_data || null, units, resumo, espelhoParams, markerSize: emp.espelho_marker_size || 20, mapsUrl: emp.maps_url || null, driveUrl: emp.drive_url || null, socialUrl: emp.social_url || null, configVerTabela, configReservar, atualizado_em: new Date().toISOString() });
+  const lancAtivo = _getLancAtivo(emp.id);
+  ok(res, { empreendimento: emp, imagem: mapa?.svg_data || null, units, resumo, espelhoParams, markerSize: emp.espelho_marker_size || 20, mapsUrl: emp.maps_url || null, driveUrl: emp.drive_url || null, socialUrl: emp.social_url || null, configVerTabela, configReservar, atualizado_em: new Date().toISOString(), lancamento: lancAtivo || null, server_time: new Date().toISOString() });
 });
 
 // Rota pública da página de espelho — injeta meta tags OG para preview no WhatsApp/redes sociais
