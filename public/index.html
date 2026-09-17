@@ -11825,7 +11825,18 @@ async function abrirUnidade(unidadeId, empId) {
           ${u.status!=='indisponivel' ?`<button class="btn btn-secondary" style="flex:1;border-color:rgba(100,116,139,.4);color:#94a3b8" onclick="mudarStatusEspelho(${u.id},'indisponivel',${empId})">⛔ Indisponível</button>`:''}
         </div>
         ${u.status==='vendido'?`<div style="font-size:11px;color:var(--text2);margin-top:10px">Para liberar uma unidade vendida, altere o status da venda para "Distrato" na aba Vendas.</div>`:''}
-      </div>`;
+      </div>
+      ${['admin','gestor'].includes(USUARIO.perfil) ? `
+      <!-- Histórico de Alterações -->
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">📋 Histórico de Alterações</div>
+          <button onclick="carregarHistoricoUnidade(${u.id})" style="font-size:11px;color:var(--accent);background:none;border:none;cursor:pointer;padding:2px 6px">Carregar</button>
+        </div>
+        <div id="historico-unidade-${u.id}" style="font-size:12px;color:var(--text2)">
+          <span style="opacity:.5">Clique em "Carregar" para ver o histórico</span>
+        </div>
+      </div>` : ''}`;
     document.getElementById('modal-foot').innerHTML = `
       <button class="btn btn-secondary" style="margin-right:auto;color:var(--danger);border-color:rgba(239,68,68,.4)"
         onclick="deletarUnidade(${u.id},${empId})">🗑️ Excluir unidade</button>
@@ -12302,6 +12313,33 @@ async function mudarStatusEspelho(unidadeId, status, empId) {
   toast(msgs[status]);
   closeModal();
   verEspelho(empId);
+}
+
+async function carregarHistoricoUnidade(unidadeId) {
+  const el = document.getElementById(`historico-unidade-${unidadeId}`);
+  if (!el) return;
+  el.innerHTML = '<span style="opacity:.5">Carregando...</span>';
+  const r = await get(`/api/unidades/${unidadeId}/historico`);
+  if (!r.ok) { el.innerHTML = `<span style="color:var(--danger)">${r.error}</span>`; return; }
+  const rows = r.data || [];
+  if (!rows.length) { el.innerHTML = '<span style="opacity:.5">Nenhuma alteração registrada.</span>'; return; }
+
+  const statusLabel = { disponivel:'Disponível', reservado:'Reservado', vendido:'Vendido', indisponivel:'Indisponível' };
+  const statusColor = { disponivel:'#4ade80', reservado:'#fbbf24', vendido:'#f87171', indisponivel:'#94a3b8' };
+
+  el.innerHTML = rows.map(h => {
+    const de = h.status_anterior ? `<span style="color:${statusColor[h.status_anterior]||'#94a3b8'}">${statusLabel[h.status_anterior]||h.status_anterior}</span>` : '<span style="opacity:.4">—</span>';
+    const para = `<span style="color:${statusColor[h.status_novo]||'#94a3b8'};font-weight:700">${statusLabel[h.status_novo]||h.status_novo}</span>`;
+    const data = h.criado_em ? h.criado_em.replace('T',' ').slice(0,16) : '—';
+    const quem = h.usuario_nome && h.usuario_nome !== 'sistema' ? `<b>${h.usuario_nome}</b> (${h.usuario_perfil})` : (h.usuario_nome || 'sistema');
+    const cliente = h.lead_nome ? ` · Cliente: ${h.lead_nome}` : '';
+    const corretor = h.corretor_nome ? ` · Corretor: ${h.corretor_nome}` : '';
+    const obs = h.observacao ? `<span style="opacity:.6"> · ${h.observacao}</span>` : '';
+    return `<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;gap:2px">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${de} → ${para}${obs}</div>
+      <div style="opacity:.55;font-size:11px">${data} · ${quem}${cliente}${corretor}</div>
+    </div>`;
+  }).join('');
 }
 
 // ─── IMPORTAÇÃO DE PLANTA URBANÍSTICA ────────────────────────────────────────

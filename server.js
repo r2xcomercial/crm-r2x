@@ -1975,10 +1975,11 @@ app.post("/api/empreendimentos/:id/unidades", (req, res) => {
   ok(res, { inseridas, total: stats.total, vgv: stats.vgv });
 });
 
-app.put("/api/unidades/:id/status", (req, res) => {
+app.put("/api/unidades/:id/status", autenticar, (req, res) => {
   const { status } = req.body;
   if (!['disponivel','reservado','vendido','indisponivel'].includes(status)) return err(res, "Status inválido");
   const unidadeId = parseInt(req.params.id);
+  const uAntes = db.prepare("SELECT status FROM unidades WHERE id=?").get(unidadeId);
   db.transaction(() => {
     db.prepare("UPDATE unidades SET status=? WHERE id=?").run(status, unidadeId);
     // Ao liberar uma unidade reservada, cancela a venda ativa e reverte o lead
@@ -1992,6 +1993,7 @@ app.put("/api/unidades/:id/status", (req, res) => {
       }
     }
   })();
+  _logUnidade(unidadeId, uAntes?.status, status, req.usuario, null, 'Alteração manual de status');
   ok(res, {});
 });
 
@@ -3297,6 +3299,7 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
       return { venda_id: rv.lastInsertRowid, lead_id: lead.id, status: statusInicial };
     })();
 
+    _logUnidade(unidade_id, 'disponivel', 'reservado', req.usuario, resultado.venda_id, 'Reserva rápida');
     ok(res, resultado);
   } catch(e) {
     err(res, e.message, e.status || 400);
@@ -3399,22 +3402,26 @@ app.put('/api/vendas/:id/kanban-status', autenticar, (req, res) => {
   // Mover para cadastros = cancelar reserva e liberar unidade
   if (novoStatus === 'cadastros') {
     if (!['admin','gestor'].includes(u?.perfil)) return err(res, 'Sem permissão', 403);
+    const uAntesCad = db.prepare("SELECT status FROM unidades WHERE id=?").get(venda.unidade_id);
     db.transaction(() => {
       db.prepare("UPDATE vendas SET status='cancelado' WHERE id=?").run(vendaId);
       db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(venda.unidade_id);
       db.prepare("UPDATE leads SET status='novo' WHERE id=?").run(venda.lead_id);
     })();
+    _logUnidade(venda.unidade_id, uAntesCad?.status, 'disponivel', u, vendaId, 'Cancelado (venda movida para cadastros)');
     return ok(res, { id: vendaId, status: 'cancelado' });
   }
 
   // Mover para perdida = rejeitar proposta, liberar unidade, lead → sem_venda
   if (novoStatus === 'perdida') {
     if (!['admin','gestor'].includes(u?.perfil)) return err(res, 'Sem permissão', 403);
+    const uAntesPerd = db.prepare("SELECT status FROM unidades WHERE id=?").get(venda.unidade_id);
     db.transaction(() => {
       db.prepare("UPDATE vendas SET status='perdida' WHERE id=?").run(vendaId);
       db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(venda.unidade_id);
       db.prepare("UPDATE leads SET status='sem_venda' WHERE id=?").run(venda.lead_id);
     })();
+    _logUnidade(venda.unidade_id, uAntesPerd?.status, 'disponivel', u, vendaId, 'Cancelado (venda perdida)');
     return ok(res, { id: vendaId, status: 'perdida' });
   }
 
@@ -3451,6 +3458,12 @@ app.put('/api/vendas/:id/kanban-status', autenticar, (req, res) => {
       db.prepare("UPDATE unidades SET status='reservado' WHERE id=?").run(venda.unidade_id);
     }
   })();
+
+  if (novoStatus === 'ativo') {
+    _logUnidade(venda.unidade_id, 'reservado', 'vendido', u, vendaId, 'Contrato ativo');
+  } else if (venda.status === 'ativo') {
+    _logUnidade(venda.unidade_id, 'vendido', 'reservado', u, vendaId, 'Saiu do contrato (movimento regressivo)');
+  }
 
   ok(res, { id: vendaId, status: novoStatus });
 });
@@ -3695,7 +3708,9 @@ app.post("/api/vendas", (req, res) => {
   const insVU = db.prepare("INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id) VALUES (?,?)");
   for (const uid of idsArray) {
     insVU.run(vendaId, uid);
+    const uAntesPV = db.prepare("SELECT status FROM unidades WHERE id=?").get(uid);
     db.prepare("UPDATE unidades SET status='vendido' WHERE id=?").run(uid);
+    _logUnidade(uid, uAntesPV?.status, 'vendido', null, vendaId, 'Nova venda cadastrada');
   }
   if (vaga_id) db.prepare("UPDATE vagas_garagem SET status='vendida', venda_id=? WHERE id=?").run(vendaId, vaga_id);
 
@@ -3765,14 +3780,20 @@ app.put("/api/vendas/:id", (req, res) => {
   // Libera todas as unidades antigas e atualiza para as novas
   const antigasUnidades = db.prepare("SELECT unidade_id FROM venda_unidades WHERE venda_id=?").all(req.params.id).map(r => r.unidade_id);
   for (const uid of antigasUnidades) {
-    if (!idsArray.includes(uid)) db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(uid);
+    if (!idsArray.includes(uid)) {
+      const uAntesLib = db.prepare("SELECT status FROM unidades WHERE id=?").get(uid);
+      db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(uid);
+      _logUnidade(uid, uAntesLib?.status, 'disponivel', null, parseInt(req.params.id), 'Venda atualizada (unidade removida)');
+    }
   }
   db.prepare("DELETE FROM venda_unidades WHERE venda_id=?").run(req.params.id);
   const insVU = db.prepare("INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id) VALUES (?,?)");
   const unitStatus = status === 'distrato' ? 'disponivel' : 'vendido';
   for (const uid of idsArray) {
     insVU.run(req.params.id, uid);
+    const uAntesUpd = db.prepare("SELECT status FROM unidades WHERE id=?").get(uid);
     db.prepare("UPDATE unidades SET status=? WHERE id=?").run(unitStatus, uid);
+    _logUnidade(uid, uAntesUpd?.status, unitStatus, null, parseInt(req.params.id), 'Venda atualizada');
   }
 
   // Gerencia vaga: libera a anterior se trocou, marca a nova
@@ -3819,7 +3840,9 @@ app.post("/api/vendas/:id/distrato", (req, res) => {
     // Devolve todas as unidades para disponível
     const unids = db.prepare("SELECT unidade_id FROM venda_unidades WHERE venda_id=?").all(vendaId);
     for (const { unidade_id: uid } of unids) {
+      const uAntesDist = db.prepare("SELECT status FROM unidades WHERE id=?").get(uid);
       db.prepare("UPDATE unidades SET status='disponivel' WHERE id=?").run(uid);
+      _logUnidade(uid, uAntesDist?.status, 'disponivel', null, vendaId, 'Distrato');
     }
 
     // Libera vaga de garagem
@@ -8892,6 +8915,37 @@ app.post('/api/admin/empreendimento/:id/config-corretores', autenticar, (req, re
   ok(res, { id: eid, config_ver_tabela: config_ver_tabela ? 1 : 0, config_reservar: config_reservar ? 1 : 0 });
 });
 
+// ─── HISTÓRICO DE ALTERAÇÕES DE UNIDADE ──────────────────────────────────────
+
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS unidade_historico (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    unidade_id INTEGER NOT NULL,
+    status_anterior TEXT,
+    status_novo TEXT NOT NULL,
+    usuario_nome TEXT,
+    usuario_perfil TEXT,
+    venda_id INTEGER,
+    observacao TEXT,
+    criado_em TEXT DEFAULT (datetime('now','localtime'))
+  )`);
+} catch(_) {}
+
+function _logUnidade(unidadeId, de, para, usuario, vendaId, obs) {
+  try {
+    db.prepare(`INSERT INTO unidade_historico
+      (unidade_id, status_anterior, status_novo, usuario_nome, usuario_perfil, venda_id, observacao)
+      VALUES (?,?,?,?,?,?,?)`)
+    .run(
+      unidadeId, de || null, para,
+      usuario?.nome || usuario?.email || 'sistema',
+      usuario?.perfil || 'sistema',
+      vendaId || null,
+      obs || null
+    );
+  } catch(_) {}
+}
+
 // ─── SISTEMA DE LANÇAMENTO IMOBILIÁRIO ────────────────────────────────────────
 
 try {
@@ -8999,5 +9053,24 @@ app.post('/api/lancamentos/:id/encerrar', autenticar, (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/unidades/:id/historico — histórico de alterações (admin/gestor)
+app.get('/api/unidades/:id/historico', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!['admin','gestor'].includes(u?.perfil)) return err(res, 'Sem permissão', 403);
+  const unidadeId = parseInt(req.params.id);
+  const rows = db.prepare(`
+    SELECT h.*, v.id as venda_id,
+      l.nome as lead_nome, c.nome as corretor_nome
+    FROM unidade_historico h
+    LEFT JOIN vendas v ON v.id = h.venda_id
+    LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN corretores c ON c.id = v.corretor_id
+    WHERE h.unidade_id = ?
+    ORDER BY h.id DESC
+    LIMIT 100
+  `).all(unidadeId);
+  ok(res, rows);
+});
 
 app.listen(PORT, () => console.log(`CRM R2X rodando em http://localhost:${PORT}`));
