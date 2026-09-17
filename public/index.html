@@ -5135,8 +5135,12 @@ async function confirmarReservaRapida() {
       return;
     }
     closeReservaRapida();
-    toast(`✅ Reserva confirmada para ${_rrLeadSel.nome}!`);
     verEspelho(_rrEmpId);
+    if (r.data?.venda_id) {
+      setTimeout(() => abrirUploadComprovante(r.data.venda_id, _rrLeadSel.nome), 400);
+    } else {
+      toast(`✅ Reserva confirmada para ${_rrLeadSel.nome}!`);
+    }
   } catch(e) {
     st.style.display='block'; st.style.background='rgba(239,68,68,.15)'; st.style.color='var(--danger)';
     st.textContent='❌ ' + e.message;
@@ -11945,9 +11949,40 @@ async function abrirUnidade(unidadeId, empId) {
         reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px;text-align:center;color:var(--text2);font-size:13px">✅ Unidade disponível. Reservas serão liberadas em breve.</div>`;
       }
     } else {
-      reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px;text-align:center;color:var(--text2);font-size:13px">
-        ${u.status === 'reservado' ? '🟡 Esta unidade já está reservada.' : '🔴 Esta unidade já foi vendida.'}
-      </div>`;
+      const isMinhaReserva = u.status === 'reservado' && u.venda_corretor_id && USUARIO.corretor_id && u.venda_corretor_id === USUARIO.corretor_id;
+      if (isMinhaReserva) {
+        const prazo = u.comprovante_prazo_expira_em;
+        const expirado = prazo && new Date(prazo) < new Date();
+        const minsRestantes = prazo ? Math.max(0, Math.ceil((new Date(prazo) - Date.now()) / 60000)) : null;
+        reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px">
+          ${u.tem_comprovante
+            ? `<div style="display:flex;gap:8px;align-items:center;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);border-radius:10px;padding:12px 14px">
+                <span style="font-size:20px">✅</span>
+                <div>
+                  <div style="font-size:13px;font-weight:700;color:#4ade80">Comprovante Pix enviado</div>
+                  <div style="font-size:12px;color:var(--text2)">Sua reserva está confirmada.</div>
+                </div>
+                <button onclick="verComprovante(${u.venda_id})" style="margin-left:auto;font-size:12px;background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.3);color:#4ade80;border-radius:7px;padding:6px 10px;cursor:pointer">👁 Ver</button>
+              </div>`
+            : expirado
+              ? `<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:12px 14px;font-size:13px;color:#f87171">
+                  ⚠️ Prazo para envio do comprovante expirado. Reserva cancelada automaticamente.
+                </div>`
+              : `<div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:12px 14px">
+                  <div style="font-size:13px;font-weight:700;color:#fbbf24;margin-bottom:4px">⏱ Comprovante Pix pendente${minsRestantes !== null ? ` — ${minsRestantes} min` : ''}</div>
+                  <div style="font-size:12px;color:var(--text2);margin-bottom:12px">Anexe o comprovante para confirmar sua reserva. Sem comprovante, a reserva será cancelada automaticamente.</div>
+                  <button onclick="closeModal();abrirUploadComprovante(${u.venda_id},'',${prazo ? `'${prazo}'` : 'null'})"
+                    style="width:100%;padding:10px;border-radius:8px;background:rgba(251,191,36,.15);border:1px solid rgba(251,191,36,.4);color:#fbbf24;font-size:13px;font-weight:700;cursor:pointer">
+                    📎 Enviar Comprovante Pix
+                  </button>
+                </div>`
+          }
+        </div>`;
+      } else {
+        reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px;text-align:center;color:var(--text2);font-size:13px">
+          ${u.status === 'reservado' ? '🟡 Esta unidade já está reservada.' : '🔴 Esta unidade já foi vendida.'}
+        </div>`;
+      }
     }
     document.getElementById('modal-body').innerHTML = infoCards + reservaHtml;
     document.getElementById('modal-foot').innerHTML = `<button class="btn btn-secondary" onclick="closeModal()">Fechar</button>`;
@@ -11983,6 +12018,26 @@ async function abrirUnidade(unidadeId, empId) {
         ${reservaInfo.lead_id ? `<button onclick="closeModal();openLeadModal({id:${reservaInfo.lead_id}})"
           style="margin-top:10px;width:100%;padding:7px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;font-weight:600">
           📂 Abrir ficha do cliente</button>` : ''}
+        ${u.status === 'reservado' ? (() => {
+          const prazo = u.comprovante_prazo_expira_em;
+          const expirado = prazo && new Date(prazo) < new Date();
+          if (u.tem_comprovante) {
+            return `<div style="margin-top:10px;display:flex;gap:8px;align-items:center;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);border-radius:8px;padding:8px 12px">
+              <span style="color:#4ade80;font-size:14px">✅</span>
+              <span style="font-size:12px;color:#4ade80;font-weight:600">Comprovante Pix recebido</span>
+              ${u.venda_id ? `<button onclick="verComprovante(${u.venda_id})" style="margin-left:auto;font-size:11px;background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.3);color:#4ade80;border-radius:6px;padding:3px 8px;cursor:pointer">👁 Ver</button>` : ''}
+            </div>`;
+          } else if (expirado) {
+            return `<div style="margin-top:10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:8px;padding:8px 12px;font-size:12px;color:#f87171">
+              ⚠️ Comprovante Pix não enviado — prazo expirado
+            </div>`;
+          } else if (prazo) {
+            return `<div style="margin-top:10px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:8px;padding:8px 12px;font-size:12px;color:#fbbf24">
+              ⏱ Aguardando comprovante Pix (prazo: ${new Date(prazo).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})})
+            </div>`;
+          }
+          return '';
+        })() : ''}
       </div>`;
     })() : '';
 
@@ -22659,6 +22714,143 @@ function _renderResultadoPesquisaAI(r, tipo, cidade, dadosPlanta) {
     </div>`;
 }
 
+// ─── COMPROVANTE PIX ──────────────────────────────────────────────────────────
+
+let _cpVendaId = null, _cpClienteNome = null, _cpTimer = null;
+
+function abrirUploadComprovante(vendaId, clienteNome, prazoExpiraEm) {
+  _cpVendaId = vendaId;
+  _cpClienteNome = clienteNome;
+  clearInterval(_cpTimer);
+
+  const ov = document.getElementById('cp-overlay');
+  if (!ov) return;
+
+  document.getElementById('cp-cliente-nome').textContent = clienteNome || 'Cliente';
+  document.getElementById('cp-status').style.display = 'none';
+  document.getElementById('cp-file-input').value = '';
+  document.getElementById('cp-preview').style.display = 'none';
+  document.getElementById('cp-btn-enviar').disabled = true;
+
+  // Countdown do prazo
+  const expiraEl = document.getElementById('cp-prazo');
+  if (prazoExpiraEm) {
+    const fim = new Date(prazoExpiraEm).getTime();
+    const atualizarPrazo = () => {
+      const ms = fim - Date.now();
+      if (ms <= 0) { expiraEl.textContent = '⚠️ Prazo expirado'; expiraEl.style.color = '#f87171'; clearInterval(_cpTimer); return; }
+      const m = String(Math.floor(ms/60000)).padStart(2,'0');
+      const s = String(Math.floor((ms%60000)/1000)).padStart(2,'0');
+      expiraEl.textContent = `⏱ ${m}:${s} para enviar o comprovante`;
+      expiraEl.style.color = ms < 60000 ? '#f87171' : ms < 180000 ? '#fb923c' : '#fbbf24';
+    };
+    atualizarPrazo();
+    _cpTimer = setInterval(atualizarPrazo, 1000);
+  } else {
+    expiraEl.textContent = '';
+  }
+
+  ov.style.display = 'flex';
+}
+
+function fecharUploadComprovante() {
+  clearInterval(_cpTimer);
+  const ov = document.getElementById('cp-overlay');
+  if (ov) ov.style.display = 'none';
+}
+
+function _cpPreviewArquivo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const tiposOk = ['image/jpeg','image/png','image/webp','application/pdf'];
+  const st = document.getElementById('cp-status');
+  if (!tiposOk.includes(file.type)) {
+    st.style.display='block'; st.style.color='var(--danger)'; st.textContent='❌ Formato inválido. Use JPG, PNG ou PDF.'; return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    st.style.display='block'; st.style.color='var(--danger)'; st.textContent='❌ Arquivo muito grande (máx 8 MB).'; return;
+  }
+  st.style.display='none';
+  const prev = document.getElementById('cp-preview');
+  if (file.type === 'application/pdf') {
+    prev.innerHTML = `<div style="padding:10px 14px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;font-size:13px;color:#fca5a5">📄 ${file.name}</div>`;
+  } else {
+    const url = URL.createObjectURL(file);
+    prev.innerHTML = `<img src="${url}" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid var(--border)">`;
+  }
+  prev.style.display = 'block';
+  document.getElementById('cp-btn-enviar').disabled = false;
+}
+
+async function enviarComprovanteUpload() {
+  const input = document.getElementById('cp-file-input');
+  const file = input.files[0];
+  if (!file || !_cpVendaId) return;
+
+  const btn = document.getElementById('cp-btn-enviar');
+  btn.disabled = true; btn.textContent = '⏳ Enviando...';
+  const st = document.getElementById('cp-status');
+  st.style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('arquivo', file);
+
+  try {
+    const resp = await fetch(`/api/vendas/${_cpVendaId}/comprovante`, {
+      method: 'POST', headers: { 'x-crm-token': TOKEN }, body: fd
+    });
+    const j = await resp.json();
+    if (!j.ok) throw new Error(j.error || 'Erro ao enviar');
+    clearInterval(_cpTimer);
+    st.style.display='block'; st.style.color='#4ade80'; st.textContent='✅ Comprovante enviado com sucesso!';
+    btn.textContent='✅ Enviado';
+    setTimeout(fecharUploadComprovante, 1800);
+    toast('✅ Comprovante Pix anexado!');
+  } catch(e) {
+    st.style.display='block'; st.style.color='var(--danger)'; st.textContent='❌ ' + e.message;
+    btn.disabled = false; btn.textContent = '📤 Enviar Comprovante';
+  }
+}
+
+async function verComprovante(vendaId) {
+  window.open(`/api/vendas/${vendaId}/comprovante`, '_blank');
+}
+
 </script>
+
+<!-- Overlay: Comprovante Pix -->
+<div id="cp-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9600;align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--navy2);border:1px solid var(--border);border-radius:16px;width:100%;max-width:420px;overflow:hidden">
+    <div style="background:linear-gradient(135deg,rgba(251,191,36,.12),rgba(0,196,180,.08));padding:20px 24px 16px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:16px;font-weight:700;color:var(--text1)">📎 Comprovante Pix</div>
+          <div id="cp-cliente-nome" style="font-size:13px;color:var(--text2);margin-top:2px"></div>
+        </div>
+        <button onclick="fecharUploadComprovante()" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;line-height:1">✕</button>
+      </div>
+      <div id="cp-prazo" style="font-size:12px;font-weight:600;margin-top:10px"></div>
+    </div>
+    <div style="padding:20px 24px">
+      <p style="font-size:13px;color:var(--text2);margin:0 0 16px">
+        Anexe o comprovante de pagamento do Pix da sinal/reserva. O arquivo deve ser JPG, PNG ou PDF (máx 8 MB).
+      </p>
+      <label style="display:block;border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:border-color .2s"
+        onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+        <input id="cp-file-input" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style="display:none" onchange="_cpPreviewArquivo(this)">
+        <div style="font-size:28px;margin-bottom:8px">📂</div>
+        <div style="font-size:13px;color:var(--text2)">Clique para selecionar o arquivo</div>
+        <div style="font-size:11px;color:var(--text2);opacity:.6;margin-top:4px">JPG · PNG · PDF · até 8 MB</div>
+      </label>
+      <div id="cp-preview" style="display:none;margin-top:12px;text-align:center"></div>
+      <div id="cp-status" style="display:none;font-size:13px;margin-top:12px;padding:8px 12px;border-radius:8px;background:rgba(239,68,68,.1)"></div>
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <button onclick="fecharUploadComprovante()" class="btn btn-secondary" style="flex:1">Enviar depois</button>
+        <button id="cp-btn-enviar" onclick="enviarComprovanteUpload()" class="btn btn-primary" style="flex:2" disabled>📤 Enviar Comprovante</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

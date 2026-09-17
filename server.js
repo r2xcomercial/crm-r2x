@@ -3287,11 +3287,15 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
       const preco = unidade?.preco || 0;
       const cpJson = condicao_proposta ? JSON.stringify(condicao_proposta) : null;
       const valorTotal = condicao_proposta?.valor_total || preco;
+      const prazoExpira = statusInicial === 'reserva'
+        ? new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T',' ').slice(0,19)
+        : null;
       const rv = db.prepare(`INSERT INTO vendas
-        (lead_id, empreendimento_id, corretor_id, unidade_id, valor, valor_total, data_venda, status, condicao_proposta, observacoes)
-        VALUES (?,?,?,?,?,?,?,?,?,?)`)
+        (lead_id, empreendimento_id, corretor_id, unidade_id, valor, valor_total, data_venda, status, condicao_proposta, observacoes, comprovante_prazo_expira_em)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
         .run(lead.id, empreendimento_id, cid, unidade_id, preco, valorTotal, hoje, statusInicial, cpJson,
-          condicao_proposta ? null : 'Reserva rápida — dados pendentes');
+          condicao_proposta ? null : 'Reserva rápida — dados pendentes',
+          prazoExpira);
 
       db.prepare("INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id) VALUES (?,?)").run(rv.lastInsertRowid, unidade_id);
       db.prepare("UPDATE leads SET status=?, empreendimento_id=COALESCE(empreendimento_id,?) WHERE id=?")
@@ -3305,6 +3309,71 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
     err(res, e.message, e.status || 400);
   }
 });
+
+// POST /api/vendas/:id/comprovante — upload do comprovante de Pix (corretor dono ou admin/gestor)
+app.post('/api/vendas/:id/comprovante', autenticar, upload.single('arquivo'), (req, res) => {
+  const u = req.usuario;
+  const vendaId = parseInt(req.params.id);
+  if (!req.file) return err(res, 'Nenhum arquivo enviado');
+  const { mimetype, buffer, originalname, size } = req.file;
+  const tiposPermitidos = ['image/jpeg','image/png','image/webp','image/heic','application/pdf'];
+  if (!tiposPermitidos.includes(mimetype)) return err(res, 'Formato não suportado. Use JPG, PNG, WEBP ou PDF.');
+  if (size > 8 * 1024 * 1024) return err(res, 'Arquivo muito grande (máx 8 MB)');
+
+  const venda = db.prepare('SELECT id, corretor_id, status, comprovante_prazo_expira_em FROM vendas WHERE id=?').get(vendaId);
+  if (!venda) return err(res, 'Venda não encontrada', 404);
+  if (u?.perfil === 'corretor' && venda.corretor_id !== u.corretor_id)
+    return err(res, 'Sem permissão para esta reserva', 403);
+  if (!['reserva','proposta'].includes(venda.status))
+    return err(res, 'Comprovante só pode ser anexado em reservas ativas');
+
+  const base64 = buffer.toString('base64');
+  db.prepare(`UPDATE vendas SET comprovante_pix=?, comprovante_pix_nome=?, comprovante_pix_tipo=?, comprovante_prazo_expira_em=NULL WHERE id=?`)
+    .run(base64, originalname, mimetype, vendaId);
+  ok(res, { ok: true });
+});
+
+// GET /api/vendas/:id/comprovante — baixar/visualizar o comprovante
+app.get('/api/vendas/:id/comprovante', autenticar, (req, res) => {
+  const u = req.usuario;
+  const vendaId = parseInt(req.params.id);
+  const venda = db.prepare('SELECT corretor_id, comprovante_pix, comprovante_pix_nome, comprovante_pix_tipo FROM vendas WHERE id=?').get(vendaId);
+  if (!venda) return err(res, 'Venda não encontrada', 404);
+  if (u?.perfil === 'corretor' && venda.corretor_id !== u.corretor_id)
+    return err(res, 'Sem permissão', 403);
+  if (!venda.comprovante_pix) return err(res, 'Comprovante não anexado', 404);
+
+  const buf = Buffer.from(venda.comprovante_pix, 'base64');
+  res.setHeader('Content-Type', venda.comprovante_pix_tipo || 'application/octet-stream');
+  res.setHeader('Content-Disposition', `inline; filename="${venda.comprovante_pix_nome || 'comprovante'}"`);
+  res.send(buf);
+});
+
+// ─── JOB: cancela reservas sem comprovante após 10 minutos ─────────────────
+setInterval(() => {
+  try {
+    const expiradas = db.prepare(`
+      SELECT v.id, v.unidade_id, v.corretor_id
+      FROM vendas v
+      WHERE v.status = 'reserva'
+        AND v.comprovante_pix IS NULL
+        AND v.comprovante_prazo_expira_em IS NOT NULL
+        AND datetime(v.comprovante_prazo_expira_em) < datetime('now')
+    `).all();
+
+    for (const v of expiradas) {
+      try {
+        db.transaction(() => {
+          db.prepare("UPDATE vendas SET status='perdida', observacoes=COALESCE(observacoes||' | ','')|| 'Cancelado automaticamente: comprovante Pix não enviado em 10 minutos', comprovante_prazo_expira_em=NULL WHERE id=?").run(v.id);
+          db.prepare("UPDATE unidades SET status='disponivel' WHERE id=? AND status='reservado'").run(v.unidade_id);
+          db.prepare("UPDATE leads SET status='lead' WHERE id=(SELECT lead_id FROM vendas WHERE id=?)").run(v.id);
+        })();
+        _logUnidade(v.unidade_id, 'reservado', 'disponivel', null, v.id, 'Reserva cancelada automaticamente: comprovante Pix não enviado em 10 min');
+      } catch(_) {}
+    }
+    if (expiradas.length > 0) console.log(`[comprovante-job] ${expiradas.length} reserva(s) cancelada(s) por falta de comprovante Pix`);
+  } catch(_) {}
+}, 60_000);
 
 // ─── KANBAN POR EMPREENDIMENTO ───────────────────────────────────────────────
 
@@ -4704,7 +4773,11 @@ app.get('/api/espelho-publico/:slug', (req, res) => {
   const mapa = db.prepare("SELECT svg_data FROM mapas WHERE empreendimento_id=?").get(emp.id);
   const units = db.prepare(`
     SELECT u.id, u.quadra, u.lote, u.area_m2, u.preco, u.status, u.mapa_x, u.mapa_y,
-      (SELECT COUNT(*) FROM vendas v WHERE v.unidade_id=u.id AND v.status NOT IN ('distrato','cancelado')) as tem_venda
+      (SELECT COUNT(*) FROM vendas v WHERE v.unidade_id=u.id AND v.status NOT IN ('distrato','cancelado','perdida')) as tem_venda,
+      (SELECT v2.id FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status='reserva' LIMIT 1) as venda_id,
+      (SELECT v2.corretor_id FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status='reserva' LIMIT 1) as venda_corretor_id,
+      (SELECT CASE WHEN v2.comprovante_pix IS NOT NULL THEN 1 ELSE 0 END FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status='reserva' LIMIT 1) as tem_comprovante,
+      (SELECT v2.comprovante_prazo_expira_em FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status='reserva' LIMIT 1) as comprovante_prazo_expira_em
     FROM unidades u WHERE u.empreendimento_id=? ORDER BY CAST(u.quadra AS REAL), CAST(REPLACE(u.lote,'-',' ') AS REAL), u.lote
   `).all(emp.id);
   const resumo = units.reduce((acc, u) => {
@@ -4988,6 +5061,10 @@ try { db.exec('ALTER TABLE vendas ADD COLUMN distrato_motivo TEXT'); } catch(_) 
 try { db.exec('ALTER TABLE vendas ADD COLUMN distrato_comissao_r2x TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE vendas ADD COLUMN valor_total REAL'); } catch(_) {}
 try { db.exec('ALTER TABLE vendas ADD COLUMN condicao_proposta TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE vendas ADD COLUMN comprovante_pix TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE vendas ADD COLUMN comprovante_pix_nome TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE vendas ADD COLUMN comprovante_pix_tipo TEXT'); } catch(_) {}
+try { db.exec('ALTER TABLE vendas ADD COLUMN comprovante_prazo_expira_em TEXT'); } catch(_) {}
 
 // Tabela de compradores adicionais (cônjuge, sócio, condomínio)
 db.exec(`CREATE TABLE IF NOT EXISTS lead_compradores (
