@@ -894,7 +894,7 @@ app.post("/api/empreendimentos", (req, res) => {
     comarca, matricula_registro, incorporacao_protocolo,
     vendedora_nome, vendedora_qualificacao,
     prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao,
-    condicao_pagamento_padrao, logo_base64, maps_url, drive_url, social_url } = req.body;
+    condicao_pagamento_padrao, logo_base64, maps_url, drive_url, social_url, modo_reserva } = req.body;
   if (!nome) return err(res, "Nome obrigatório");
   const cpPadrao = condicao_pagamento_padrao && Array.isArray(condicao_pagamento_padrao) && condicao_pagamento_padrao.length > 0
     ? JSON.stringify(condicao_pagamento_padrao) : null;
@@ -903,14 +903,15 @@ app.post("/api/empreendimentos", (req, res) => {
      data_lancamento,data_inicio_vendas,observacoes,percentual_r2x,
      comarca,matricula_registro,incorporacao_protocolo,
      vendedora_nome,vendedora_qualificacao,prazo_entrega_meses,inicio_obra_previsto,valor_cub,
-     patrimonio_afetacao,condicao_pagamento_padrao,logo_base64,maps_url,drive_url,social_url)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+     patrimonio_afetacao,condicao_pagamento_padrao,logo_base64,maps_url,drive_url,social_url,modo_reserva)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
       status||'prospecto', data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
       comarca||null, matricula_registro||null, incorporacao_protocolo||null,
       vendedora_nome||null, vendedora_qualificacao||null,
       prazo_entrega_meses||null, inicio_obra_previsto||null, valor_cub||null,
-      patrimonio_afetacao ? 1 : 0, cpPadrao, logo_base64||null, maps_url||null, drive_url||null, social_url||null);
+      patrimonio_afetacao ? 1 : 0, cpPadrao, logo_base64||null, maps_url||null, drive_url||null, social_url||null,
+      modo_reserva||'pre_reserva_pix');
   ok(res, { id: r.lastInsertRowid });
 });
 
@@ -921,7 +922,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     vendedora_nome, vendedora_qualificacao,
     prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao,
     condicao_pagamento_padrao, logo_base64, maps_url, drive_url, social_url, fase_lancamento,
-    config_ver_tabela, config_reservar, config_visivel } = req.body;
+    config_ver_tabela, config_reservar, config_visivel, modo_reserva } = req.body;
   const cpPadrao = condicao_pagamento_padrao && Array.isArray(condicao_pagamento_padrao) && condicao_pagamento_padrao.length > 0
     ? JSON.stringify(condicao_pagamento_padrao) : null;
   db.prepare(`UPDATE empreendimentos SET
@@ -931,7 +932,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     vendedora_nome=?,vendedora_qualificacao=?,
     prazo_entrega_meses=?,inicio_obra_previsto=?,valor_cub=?,
     patrimonio_afetacao=?,condicao_pagamento_padrao=?,logo_base64=?,maps_url=?,drive_url=?,social_url=?,fase_lancamento=?,
-    config_ver_tabela=?,config_reservar=?,config_visivel=?
+    config_ver_tabela=?,config_reservar=?,config_visivel=?,modo_reserva=?
     WHERE id=?`).run(
     cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
     status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
@@ -943,6 +944,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     config_ver_tabela !== undefined ? (config_ver_tabela ? 1 : 0) : 1,
     config_reservar !== undefined ? (config_reservar ? 1 : 0) : 1,
     config_visivel !== undefined ? (config_visivel ? 1 : 0) : 1,
+    modo_reserva||'pre_reserva_pix',
     req.params.id);
   ok(res, {});
 });
@@ -3241,10 +3243,8 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
     if (!leadCheck) return err(res, "Lead não encontrado");
     if (leadCheck.corretor_id && u.corretor_id && leadCheck.corretor_id !== u.corretor_id)
       return err(res, "Este lead não pertence ao seu cadastro");
-  } else {
-    // Admin/gestor: aceita lead_id ou nome+telefone
-    if (!lead_id && (!lead_nome || !lead_telefone)) return err(res, "Informe o lead ou nome e telefone do cliente");
   }
+  // Admin/gestor: lead é opcional — pode reservar sem cliente
 
   // Verificar janela do lançamento (se houver lançamento configurado para este empreendimento)
   const lancAtivo = _getLancAtivo(empreendimento_id);
@@ -3262,8 +3262,15 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
     // status === 'ativo' → prossegue
   }
 
-  // Se condicao_proposta fornecida, venda entra direto em 'proposta'; senão pré-reserva até PIX
-  const statusInicial = condicao_proposta ? 'proposta' : 'pre_reserva';
+  // Lê modo de reserva do empreendimento
+  const empRow = db.prepare("SELECT modo_reserva FROM empreendimentos WHERE id=?").get(parseInt(empreendimento_id));
+  const modoReserva = empRow?.modo_reserva || 'pre_reserva_pix';
+
+  // status da venda: proposta (com condição), reserva (modo direto), ou pre_reserva (pix)
+  const statusInicial = condicao_proposta ? 'proposta'
+    : (modoReserva === 'reserva_direta' ? 'reserva' : 'pre_reserva');
+  const statusUnidade = statusInicial === 'proposta' ? 'pre_reserva'
+    : (statusInicial === 'reserva' ? 'reserva' : 'pre_reserva');
 
   try {
     const resultado = db.transaction(() => {
@@ -3288,18 +3295,18 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
         throw Object.assign(new Error('Esta unidade está reservada temporariamente para outro corretor (janela de prioridade ativa). Aguarde.'), { status: 409 });
       }
 
-      // Marca pré-reserva atomicamente — aceita tanto disponivel quanto pre_reserva com prioridade
-      const upd = db.prepare("UPDATE unidades SET status='pre_reserva', fila_prioridade_ate=NULL, fila_prioridade_corretor_id=NULL WHERE id=? AND (status='disponivel' OR (status='pre_reserva' AND fila_prioridade_corretor_id=?))").run(unidade_id, uid);
+      // Marca a unidade com o status correto (pre_reserva ou reserva)
+      const upd = db.prepare(`UPDATE unidades SET status=?, fila_prioridade_ate=NULL, fila_prioridade_corretor_id=NULL WHERE id=? AND (status='disponivel' OR (status='pre_reserva' AND fila_prioridade_corretor_id=?))`).run(statusUnidade, unidade_id, uid);
       if (upd.changes === 0) {
         throw Object.assign(new Error('Esta unidade acabou de ser reservada por outro atendimento. Escolha outra.'), { status: 409 });
       }
       const unidade = db.prepare("SELECT preco FROM unidades WHERE id=?").get(unidade_id);
 
       const hoje = new Date().toISOString().slice(0, 10);
-      let lead;
+      let lead = null;
       if (lead_id) {
         lead = db.prepare("SELECT id FROM leads WHERE id=?").get(parseInt(lead_id));
-      } else {
+      } else if (lead_nome && lead_telefone) {
         lead = db.prepare("SELECT id FROM leads WHERE telefone=? LIMIT 1").get(lead_telefone);
         if (!lead) {
           const r = db.prepare("INSERT INTO leads (nome, telefone, status, empreendimento_id) VALUES (?,?,?,?)")
@@ -3307,28 +3314,33 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
           lead = { id: r.lastInsertRowid };
         }
       }
+      // lead pode ser null para admin — venda fica sem cliente vinculado
 
       const cid = u?.corretor_id || corretor_id || null;
       const preco = unidade?.preco || 0;
       const cpJson = condicao_proposta ? JSON.stringify(condicao_proposta) : null;
       const valorTotal = condicao_proposta?.valor_total || preco;
+      // prazo de 10 min só para pré-reserva com pix
       const prazoExpira = statusInicial === 'pre_reserva'
         ? new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T',' ').slice(0,19)
         : null;
       const rv = db.prepare(`INSERT INTO vendas
         (lead_id, empreendimento_id, corretor_id, unidade_id, valor, valor_total, data_venda, status, condicao_proposta, observacoes, comprovante_prazo_expira_em)
         VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
-        .run(lead.id, empreendimento_id, cid, unidade_id, preco, valorTotal, hoje, statusInicial, cpJson,
-          condicao_proposta ? null : 'Reserva rápida — dados pendentes',
+        .run(lead?.id||null, empreendimento_id, cid, unidade_id, preco, valorTotal, hoje, statusInicial, cpJson,
+          statusInicial === 'reserva' ? null : (condicao_proposta ? null : 'Reserva rápida — dados pendentes'),
           prazoExpira);
 
       db.prepare("INSERT OR IGNORE INTO venda_unidades (venda_id, unidade_id) VALUES (?,?)").run(rv.lastInsertRowid, unidade_id);
-      db.prepare("UPDATE leads SET status=?, empreendimento_id=COALESCE(empreendimento_id,?) WHERE id=?")
-        .run(statusInicial, empreendimento_id, lead.id);
-      return { venda_id: rv.lastInsertRowid, lead_id: lead.id, status: statusInicial };
+      if (lead?.id) {
+        db.prepare("UPDATE leads SET status=?, empreendimento_id=COALESCE(empreendimento_id,?) WHERE id=?")
+          .run(statusInicial, empreendimento_id, lead.id);
+      }
+      return { venda_id: rv.lastInsertRowid, lead_id: lead?.id||null, status: statusInicial, modo_reserva: modoReserva };
     })();
 
-    _logUnidade(unidade_id, 'disponivel', 'pre_reserva', req.usuario, resultado.venda_id, 'Pré-reserva — aguardando comprovante Pix');
+    const logMsg = statusInicial === 'reserva' ? 'Reserva direta (sem PIX)' : 'Pré-reserva — aguardando comprovante Pix';
+    _logUnidade(unidade_id, 'disponivel', statusUnidade, req.usuario, resultado.venda_id, logMsg);
     ok(res, resultado);
   } catch(e) {
     err(res, e.message, e.status || 400);
@@ -5214,6 +5226,7 @@ try { db.exec("ALTER TABLE empreendimentos ADD COLUMN fase_lancamento TEXT DEFAU
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN config_ver_tabela INTEGER NOT NULL DEFAULT 1"); } catch(_) {}
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN config_reservar INTEGER NOT NULL DEFAULT 1"); } catch(_) {}
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN config_visivel INTEGER NOT NULL DEFAULT 1"); } catch(_) {}
+try { db.exec("ALTER TABLE empreendimentos ADD COLUMN modo_reserva TEXT NOT NULL DEFAULT 'pre_reserva_pix'"); } catch(_) {}
 try { db.exec(`CREATE TABLE IF NOT EXISTS org_nodes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   parent_id INTEGER,

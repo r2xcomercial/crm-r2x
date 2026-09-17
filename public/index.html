@@ -4374,6 +4374,14 @@ function openEmpModal(e = {}) {
             <span>🔒 Corretores podem reservar unidades</span>
           </label>
         </div>
+        <div style="margin-top:14px">
+          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">💳 Modelo de Reserva</label>
+          <select id="f-modo-reserva" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+            <option value="pre_reserva_pix" ${(e.modo_reserva||'pre_reserva_pix')==='pre_reserva_pix'?'selected':''}>🟠 Pré-reserva + comprovante PIX (10 min)</option>
+            <option value="reserva_direta" ${(e.modo_reserva)==='reserva_direta'?'selected':''}>🟡 Reserva direta (sem envio de comprovante)</option>
+          </select>
+          <div style="font-size:11px;color:var(--text2);margin-top:4px">Pré-reserva com PIX: corretor tem 10 min para enviar comprovante. Reserva direta: unidade é reservada imediatamente sem necessidade de PIX.</div>
+        </div>
       </div>
 
       <!-- Seção Dados para Contrato de Venda -->
@@ -4598,6 +4606,7 @@ function openEmpModal(e = {}) {
       config_visivel:    document.getElementById('f-config-visivel')?.checked ? 1 : 0,
       config_ver_tabela: document.getElementById('f-config-ver-tabela')?.checked ? 1 : 0,
       config_reservar:   document.getElementById('f-config-reservar')?.checked ? 1 : 0,
+      modo_reserva:      document.getElementById('f-modo-reserva')?.value || 'pre_reserva_pix',
       condicao_pagamento_padrao: [...document.querySelectorAll('#emp-cp-list .ecp-condicao')].map(cond => ({
         nome: cond.querySelector('.ecp-nome')?.value?.trim() || '',
         parcelas: [...cond.querySelectorAll('.emp-cp-row')].map(row => ({
@@ -4952,6 +4961,7 @@ function _rrInputStyle() {
 async function openReservaRapida(preEmpId, preUnidadeId) {
   _rrEmpId = preEmpId; _rrUnidadeId = preUnidadeId; _rrLeadSel = null;
   _rrTipo = 'pf';
+  window._rrCorretorId = null;
   const overlay = document.getElementById('rr-overlay');
   if (!overlay) return;
   overlay.style.display = 'flex';
@@ -4974,7 +4984,60 @@ async function openReservaRapida(preEmpId, preUnidadeId) {
   const r = await get('/api/leads');
   _rrLeads = (r.data||[]);
   _rrFiltrar();
+
+  // Para admin/gestor: exibe seletor de corretor e botão "Sem cliente"
+  const isAdminRR = ['admin','gestor','incorporador'].includes(USUARIO.perfil);
+  const rrAdminArea = document.getElementById('rr-admin-area');
+  if (rrAdminArea) {
+    if (isAdminRR) {
+      const crR = await get('/api/corretores');
+      const corretores = crR.data || [];
+      rrAdminArea.style.display = 'block';
+      rrAdminArea.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div>
+            <label style="font-size:11px;color:var(--text2);font-weight:600;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:5px">Corretor (opcional)</label>
+            <select id="rr-corretor-sel" onchange="window._rrCorretorId=this.value||null"
+              style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+              <option value="">— Sem corretor —</option>
+              ${corretores.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('')}
+            </select>
+          </div>
+          <div style="text-align:right">
+            <button onclick="_rrSemCliente()"
+              style="padding:6px 14px;border-radius:7px;border:1px solid rgba(100,116,139,.4);background:transparent;color:var(--text2);font-size:12px;cursor:pointer">
+              Reservar sem cliente
+            </button>
+          </div>
+        </div>`;
+    } else {
+      rrAdminArea.style.display = 'none';
+    }
+  }
+
   setTimeout(() => document.getElementById('rr-search')?.focus(), 120);
+}
+
+function _rrSemCliente() {
+  _rrLeadSel = null;
+  const sel = document.getElementById('rr-selecionado');
+  if (sel) sel.style.display = 'none';
+  const btn = document.getElementById('rr-btn-confirmar');
+  if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  const list = document.getElementById('rr-lista');
+  if (list) list.innerHTML = '';
+  const search = document.getElementById('rr-search');
+  if (search) search.value = '';
+  // Mostra badge "sem cliente"
+  const selecionadoEl = document.getElementById('rr-selecionado');
+  if (selecionadoEl) {
+    selecionadoEl.style.display = 'block';
+    const nomeEl = document.getElementById('rr-sel-nome');
+    const infoEl = document.getElementById('rr-sel-info');
+    if (nomeEl) nomeEl.textContent = '(Sem cliente)';
+    if (infoEl) infoEl.textContent = 'Reserva sem cliente vinculado';
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  }
 }
 
 function closeReservaRapida() {
@@ -5128,17 +5191,31 @@ async function _rrSalvarCliente() {
 
 async function confirmarReservaRapida() {
   const st = document.getElementById('rr-status');
-  if (!_rrLeadSel) {
+  const isAdminRR = ['admin','gestor','incorporador'].includes(USUARIO.perfil);
+  // Corretor: cliente obrigatório. Admin: opcional (pode ser null via "Reservar sem cliente")
+  if (!isAdminRR && !_rrLeadSel) {
     st.style.display='block'; st.style.background='rgba(239,68,68,.15)'; st.style.color='var(--danger)';
     st.textContent='⚠️ Selecione um cliente antes de confirmar.'; return;
+  }
+  // Admin sem cliente nem badge "sem cliente" visível: bloqueia
+  if (isAdminRR && !_rrLeadSel) {
+    const selEl = document.getElementById('rr-selecionado');
+    if (!selEl || selEl.style.display === 'none') {
+      st.style.display='block'; st.style.background='rgba(239,68,68,.15)'; st.style.color='var(--danger)';
+      st.textContent='⚠️ Selecione um cliente ou clique em "Reservar sem cliente".'; return;
+    }
   }
   const btn = document.getElementById('rr-btn-confirmar');
   if (btn) { btn.disabled=true; btn.textContent='⏳ Reservando...'; }
   st.style.display='none';
   try {
-    const r = await post('/api/vendas/reserva-rapida', {
-      empreendimento_id: _rrEmpId, unidade_id: _rrUnidadeId, lead_id: _rrLeadSel.id
-    });
+    const payload = {
+      empreendimento_id: _rrEmpId,
+      unidade_id: _rrUnidadeId,
+      lead_id: _rrLeadSel?.id || null,
+      corretor_id: window._rrCorretorId || null,
+    };
+    const r = await post('/api/vendas/reserva-rapida', payload);
     if (!r.ok) {
       st.style.display='block'; st.style.background='rgba(239,68,68,.15)'; st.style.color='var(--danger)';
       st.textContent='❌ ' + r.error;
@@ -5146,15 +5223,18 @@ async function confirmarReservaRapida() {
       return;
     }
     closeReservaRapida();
-    // Atualização otimista: muda tile imediatamente sem esperar verEspelho
+    const novoStatus = r.data?.status === 'reserva' ? 'reservado' : 'pre_reserva';
+    // Atualização otimista: muda tile imediatamente
     document.querySelectorAll(`[data-uid="${_rrUnidadeId}"]`).forEach(tile => {
-      tile.className = tile.className.replace(/\b(disponivel|pre_reserva|reservado|vendido|indisponivel)\b/g, 'pre_reserva');
+      tile.className = tile.className.replace(/\b(disponivel|pre_reserva|reservado|vendido|indisponivel)\b/g, novoStatus);
     });
     verEspelho(_rrEmpId);
-    if (r.data?.venda_id) {
+    // Para pré-reserva com PIX: abre tela de upload do comprovante
+    if (r.data?.status === 'pre_reserva' && r.data?.venda_id && _rrLeadSel) {
       setTimeout(() => abrirUploadComprovante(r.data.venda_id, _rrLeadSel.nome), 400);
     } else {
-      toast(`✅ Reserva confirmada para ${_rrLeadSel.nome}!`);
+      const nomeCliente = _rrLeadSel?.nome || 'sem cliente';
+      toast(`✅ Reserva confirmada — ${nomeCliente}!`);
     }
   } catch(e) {
     st.style.display='block'; st.style.background='rgba(239,68,68,.15)'; st.style.color='var(--danger)';
@@ -10330,11 +10410,12 @@ async function verEspelho(empId) {
   if (lanc?.status === 'agendado') _iniciarCountdownLanc(lanc.data_hora_inicio, lanc.server_time, empId);
   if (lanc?.status === 'ativo' && lanc.data_hora_fim) _iniciarCountdownEncerramento(lanc.data_hora_fim, lanc.server_time, empId);
 
-  // Checa janela prioritária e comprovante pendente (só para corretor)
+  // Checa janela prioritária (só durante lançamento ativo)
   if (lanc?.status === 'ativo') {
     _checarPrioridade(empId);
-    _checarComprovantePendente(empId);
   }
+  // Comprovante pendente: verifica sempre para corretor (mesmo fora do lançamento)
+  if (USUARIO.perfil === 'corretor') _checarComprovantePendente(empId);
   // Checa pré-reservas pendentes (admin/gestor)
   if (['admin','gestor'].includes(USUARIO.perfil) && lanc?.status === 'ativo') {
     _checarPreReservasPendentes(empId);
@@ -11981,9 +12062,28 @@ async function abrirUnidade(unidadeId, empId) {
       }
     } else if (u.status === 'pre_reserva') {
       const isMinhaPreReserva = u.venda_corretor_id && USUARIO.corretor_id && String(u.venda_corretor_id) === String(USUARIO.corretor_id);
+      // Corretor com janela de prioridade ativa nesta unidade pode reservar
+      const temMinhaPrioridade = !isMinhaPreReserva && u.fila_prioridade_corretor_id && USUARIO.corretor_id
+        && String(u.fila_prioridade_corretor_id) === String(USUARIO.corretor_id)
+        && u.fila_prioridade_ate && _parsePrazoUTC(u.fila_prioridade_ate) > new Date();
       const prazo = u.comprovante_prazo_expira_em;
       const expirado = prazo && _parsePrazoUTC(prazo) < new Date();
-      if (isMinhaPreReserva) {
+      if (temMinhaPrioridade && podeReservar) {
+        // Mostra formulário de reserva igual ao disponivel — tem prioridade de fila ativa
+        reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px">
+          <div style="background:rgba(20,184,166,.1);border:2px solid rgba(20,184,166,.4);border-radius:10px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:8px">
+            <span style="font-size:20px">⚡</span>
+            <div>
+              <div style="font-size:13px;font-weight:800;color:var(--accent)">Sua janela de prioridade está ativa!</div>
+              <div style="font-size:11px;color:var(--text2)">Você está em primeiro na fila — reserve agora antes do prazo expirar.</div>
+            </div>
+          </div>
+          <div id="reserva-lead-area">
+            <div style="font-size:12px;font-weight:600;color:var(--text1);margin-bottom:10px">👤 Selecionar Cliente para Reserva</div>
+            <div id="reserva-lead-loading" style="font-size:13px;color:var(--text2)">Carregando seus leads...</div>
+          </div>
+        </div>`;
+      } else if (isMinhaPreReserva) {
         reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px">
           <div style="background:rgba(249,115,22,.1);border:2px solid rgba(249,115,22,.55);border-radius:12px;padding:16px;animation:preReservaPulse 2s ease-in-out infinite">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
@@ -12084,11 +12184,14 @@ async function abrirUnidade(unidadeId, empId) {
     // Countdown vivo para pré-reserva: usa comprovante_prazo ou fila_prioridade_ate como fallback
     if (u.status === 'pre_reserva') {
       const prazoCountdown = u.comprovante_prazo_expira_em || u.fila_prioridade_ate;
-      if (prazoCountdown) _iniciarCountdownModal(prazoCountdown);
+      if (prazoCountdown) _iniciarCountdownModal(prazoCountdown, empId);
     }
 
-    // Carrega leads do corretor se modal de reserva aberto
-    if (podeReservar && u.status === 'disponivel') {
+    // Carrega leads do corretor se modal de reserva aberto (disponivel OU prioridade de fila ativa)
+    const _temPriorAtiva = u.fila_prioridade_corretor_id && USUARIO.corretor_id
+      && String(u.fila_prioridade_corretor_id) === String(USUARIO.corretor_id)
+      && u.fila_prioridade_ate && _parsePrazoUTC(u.fila_prioridade_ate) > new Date();
+    if (podeReservar && (u.status === 'disponivel' || (u.status === 'pre_reserva' && _temPriorAtiva))) {
       _carregarLeadsParaReserva(u.id, empId, u.preco || 0);
     }
 
@@ -12247,7 +12350,7 @@ async function abrirUnidade(unidadeId, empId) {
   // Countdown vivo para pré-reserva (admin/gestor)
   if (!isCorretor && u.status === 'pre_reserva') {
     const prazoAdmin = u.comprovante_prazo_expira_em || u.fila_prioridade_ate;
-    if (prazoAdmin) _iniciarCountdownModal(prazoAdmin);
+    if (prazoAdmin) _iniciarCountdownModal(prazoAdmin, empId);
   }
 
   // Carrega fila da unidade após abrir modal (apenas durante lançamento ativo)
@@ -13592,7 +13695,7 @@ function closeModalOutside(e) { if (e.target === document.getElementById('modal-
 
 function _parsePrazoUTC(s) { return s ? new Date(s.replace(' ','T')+'Z') : null; }
 
-function _iniciarCountdownModal(prazo) {
+function _iniciarCountdownModal(prazo, empId) {
   clearInterval(window._modalCountdownInterval);
   const prazoMs = _parsePrazoUTC(prazo).getTime();
   const tick = () => {
@@ -13603,6 +13706,8 @@ function _iniciarCountdownModal(prazo) {
       clearInterval(window._modalCountdownInterval);
       el.textContent = '00:00';
       el.style.color = '#f87171';
+      // Atualiza espelho após expirar para refletir cancelamento automático do backend
+      if (empId) setTimeout(() => verEspelho(empId), 2000);
       return;
     }
     const mm = String(Math.floor(ms / 60000)).padStart(2,'0');
@@ -19684,10 +19789,13 @@ async function gpToggleHabito(id) {
       <button onclick="closeReservaRapida()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;line-height:1;padding:2px 4px">✕</button>
     </div>
 
+    <!-- Área admin: corretor + sem cliente (preenchida dinamicamente) -->
+    <div id="rr-admin-area" style="display:none;padding:0 24px 12px"></div>
+
     <!-- TELA 1: buscar / selecionar cliente -->
     <div id="rr-screen-busca" style="padding:0 24px 24px;display:flex;flex-direction:column;gap:12px">
       <div>
-        <label style="font-size:11px;color:var(--text2);font-weight:600;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:6px">Cliente *</label>
+        <label style="font-size:11px;color:var(--text2);font-weight:600;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:6px">Cliente</label>
         <input id="rr-search" type="text" placeholder="🔍 Buscar por nome, CPF ou telefone..."
           oninput="_rrFiltrar()"
           style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:14px;box-sizing:border-box">
@@ -23247,7 +23355,12 @@ async function _checarComprovantePendente(empId) {
           if (ms <= 0) {
             clearInterval(window._cpBannerInterval);
             el.textContent = '00:00'; el.style.color = '#f87171';
-            setTimeout(() => { const b = document.getElementById('banner-comprovante-pendente'); if (b) b.remove(); }, 5000);
+            setTimeout(() => {
+              const b = document.getElementById('banner-comprovante-pendente');
+              if (b) b.remove();
+              // Atualiza espelho para refletir cancelamento automático
+              if (empId) verEspelho(empId);
+            }, 5000);
             return;
           }
           const mm = String(Math.floor(ms / 60000)).padStart(2,'0');
