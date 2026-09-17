@@ -3266,9 +3266,10 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
   const empRow = db.prepare("SELECT modo_reserva FROM empreendimentos WHERE id=?").get(parseInt(empreendimento_id));
   const modoReserva = empRow?.modo_reserva || 'pre_reserva_pix';
 
-  // status da venda: proposta (com condição), reserva (modo direto), ou pre_reserva (pix)
+  // Admin/gestor/incorporador: sempre reserva direta (sem PIX). Corretor: segue modo_reserva do empreendimento.
+  const isAdminReserva = ['admin','gestor','incorporador'].includes(u?.perfil);
   const statusInicial = condicao_proposta ? 'proposta'
-    : (modoReserva === 'reserva_direta' ? 'reserva' : 'pre_reserva');
+    : (isAdminReserva || modoReserva === 'reserva_direta' ? 'reserva' : 'pre_reserva');
   const statusUnidade = statusInicial === 'proposta' ? 'pre_reserva'
     : (statusInicial === 'reserva' ? 'reserva' : 'pre_reserva');
 
