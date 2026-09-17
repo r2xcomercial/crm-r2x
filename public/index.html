@@ -241,6 +241,10 @@
   @keyframes lancPulse { from { transform: scale(1); opacity: 1; } to { transform: scale(1.06); opacity: .75; } }
   @keyframes colonBlink { 0%,49%{ opacity:1 } 50%,100%{ opacity:.15 } }
   @keyframes boasVendasIn { from { transform:scale(.7); opacity:0 } to { transform:scale(1); opacity:1 } }
+  @keyframes prioOverlayPulse {
+    0%,100% { border-color:#f97316; box-shadow:0 0 60px rgba(249,115,22,.5); }
+    50%     { border-color:#fb923c; box-shadow:0 0 100px rgba(249,115,22,.85); }
+  }
   @keyframes overlayFadeOut { from { opacity:1 } to { opacity:0 } }
 
   /* ── KANBAN ── */
@@ -12397,42 +12401,79 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
     <div id="rr-lead-lista" style="max-height:130px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
     ${condTilesHtml}
     ${preco > 0 ? `
-    <div id="rr-proposta-campos" style="${fieldsDisplay};margin-top:12px;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">💳 Proposta de Pagamento</div>
-      <div id="rr-cond-selecionada-label" style="display:none;font-size:12px;font-weight:700;color:var(--accent);margin-bottom:10px;background:rgba(0,196,180,.08);border-radius:6px;padding:5px 10px"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div>
-          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Entrada (%)</label>
-          <input type="number" id="rr-ent-pct" min="0" max="100" step="1" value="${defEntPct}"
-            oninput="_rrRecalcular()"
-            style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+    <div id="rr-proposta-campos" style="${fieldsDisplay};margin-top:12px">
+      <div id="rr-cond-selecionada-label" style="display:none;font-size:12px;font-weight:700;color:var(--accent);margin-bottom:10px;background:rgba(0,196,180,.08);border:1px solid rgba(0,196,180,.2);border-radius:7px;padding:6px 12px"></div>
+
+      <!-- Card resumo visual -->
+      <div style="border:1px solid rgba(0,196,180,.25);border-radius:12px;overflow:hidden;margin-bottom:12px;background:var(--card2)">
+        <!-- Cabeçalho: Valor Total -->
+        <div style="background:linear-gradient(135deg,rgba(0,196,180,.12),rgba(0,196,180,.04));padding:14px 18px;border-bottom:1px solid var(--border)">
+          <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px">Valor Total da Proposta</div>
+          <div id="rr-res-total" style="font-size:28px;font-weight:900;color:#4ade80;letter-spacing:-.5px">${fmt0(entV0 + defNParc*parc0)}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">Tabela: <span style="color:var(--text)">${fmt0(preco)}</span></div>
         </div>
-        <div>
-          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Entrada (R$)</label>
-          <input type="number" id="rr-ent-val" min="0" step="1000" value="${Math.round(entV0)}"
-            oninput="_rrRecalcularDaEntrada()"
-            style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
-        </div>
-        ${reforcosHtml}
-        <div>
-          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Parcelas (nº)</label>
-          <input type="number" id="rr-nparc" min="1" max="360" step="1" value="${defNParc}"
-            oninput="_rrRecalcular()"
-            style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
-        </div>
-        <div>
-          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Juros (% a.m.)</label>
-          <input type="number" id="rr-juros" min="0" max="5" step="0.01" value="${defJuros}"
-            oninput="_rrRecalcular()"
-            style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+        <!-- Grid de detalhes -->
+        <div style="display:grid;grid-template-columns:1fr 1fr">
+          <!-- Entrada -->
+          <div style="padding:12px 16px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)">
+            <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">💵 Entrada</div>
+            <div id="rr-res-entrada-val" style="font-size:16px;font-weight:800;color:var(--text)">${fmt0(entV0)}</div>
+            <div id="rr-res-entrada-det" style="font-size:11px;color:var(--text2);margin-top:3px;line-height:1.4">${Math.round(defEntPct)}% do valor<br>à vista</div>
+          </div>
+          <!-- Parcelas Mensais -->
+          <div style="padding:12px 16px;border-bottom:1px solid var(--border)">
+            <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">📅 Parcelas Mensais</div>
+            <div id="rr-res-parc" style="font-size:16px;font-weight:800;color:var(--accent)">${fmt0(parc0)}</div>
+            <div id="rr-res-parc-det" style="font-size:11px;color:var(--text2);margin-top:3px">${defNParc}× de ${fmt0(parc0)}/mês</div>
+          </div>
+          <!-- Reforços -->
+          <div style="padding:12px 16px;border-right:1px solid var(--border)">
+            <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">🔄 Reforços</div>
+            <div id="rr-res-reforcos" style="font-size:13px;font-weight:700;color:var(--text2)">${nRef > 0 ? nRef+'× /ano' : 'Nenhum'}</div>
+            <div id="rr-res-reforcos-det" style="font-size:11px;color:var(--text2);margin-top:3px">${nRef > 0 ? ''+Math.round(pRef)+'% do valor' : '—'}</div>
+          </div>
+          <!-- Juros e Correção -->
+          <div style="padding:12px 16px">
+            <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">📊 Juros · Correção</div>
+            <div id="rr-res-juros" style="font-size:13px;font-weight:700;color:${defJuros > 0 ? 'var(--warning)' : '#4ade80'}">${defJuros > 0 ? defJuros+'% a.m.' : 'Sem juros'}</div>
+            <div id="rr-res-correcao" style="font-size:11px;color:var(--text2);margin-top:3px">—</div>
+          </div>
         </div>
       </div>
-      <div id="rr-resumo" style="background:rgba(0,196,180,.06);border:1px solid rgba(0,196,180,.2);border-radius:8px;padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
-        <div><div style="font-size:10px;color:var(--text2)">PARCELA MENSAL</div><div id="rr-res-parc" style="font-size:17px;font-weight:700;color:var(--accent)">${fmt0(parc0)}</div></div>
-        <div><div style="font-size:10px;color:var(--text2)">SALDO FINANCIADO</div><div id="rr-res-saldo" style="font-size:15px;font-weight:700">${fmt0(saldo0)}</div></div>
-        <div><div style="font-size:10px;color:var(--text2)">TOTAL</div><div id="rr-res-total" style="font-size:15px;font-weight:700">${fmt0(entV0 + defNParc*parc0)}</div></div>
-        <div><div style="font-size:10px;color:var(--text2)">VALOR TABELA</div><div style="font-size:15px;font-weight:700;color:var(--success)">${fmt0(preco)}</div></div>
-      </div>
+
+      <!-- Campos de ajuste (colapsável) -->
+      <details id="rr-ajuste-details" style="margin-bottom:8px">
+        <summary style="font-size:11px;color:var(--text2);cursor:pointer;padding:5px 2px;user-select:none;list-style:none;display:flex;align-items:center;gap:5px">
+          <span style="font-size:14px">⚙️</span> Ajustar condições da proposta
+        </summary>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px">
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Entrada (%)</label>
+            <input type="number" id="rr-ent-pct" min="0" max="100" step="1" value="${defEntPct}"
+              oninput="_rrRecalcular()"
+              style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Entrada (R$)</label>
+            <input type="number" id="rr-ent-val" min="0" step="1000" value="${Math.round(entV0)}"
+              oninput="_rrRecalcularDaEntrada()"
+              style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          </div>
+          ${reforcosHtml}
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Parcelas (nº)</label>
+            <input type="number" id="rr-nparc" min="1" max="360" step="1" value="${defNParc}"
+              oninput="_rrRecalcular()"
+              style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Juros (% a.m.)</label>
+            <input type="number" id="rr-juros" min="0" max="5" step="0.01" value="${defJuros}"
+              oninput="_rrRecalcular()"
+              style="width:100%;box-sizing:border-box;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          </div>
+        </div>
+      </details>
     </div>` : ''}
     <button id="btn-reservar-lead" onclick="reservarDoEspelho(${unidadeId},${empId})" disabled
       style="margin-top:10px;width:100%;padding:11px;border-radius:8px;border:none;
@@ -12460,14 +12501,59 @@ function _rrRecalcular() {
   if (entInput && document.activeElement !== entInput) entInput.value = Math.round(entV);
   const nParc  = parseInt(document.getElementById('rr-nparc')?.value) || 60;
   const juros  = parseFloat(document.getElementById('rr-juros')?.value) || 0;
-  const saldo  = preco - entV;
-  const parc   = _rrPMT(saldo, nParc, juros);
-  const total  = entV + nParc * parc;
+  const ep     = window._rrEpParams || {};
+  const nRef   = parseInt(ep.nRef) || 0;
+  const pRef   = parseFloat(ep.pRef) || 0;
+  const entParc = parseInt(ep.entrada_parc) || 1;
+  const totalReforcos = preco * (pRef / 100) * nRef;
+  const saldo  = preco - entV - totalReforcos;
+  const parc   = _rrPMT(Math.max(0, saldo), nParc, juros);
+  const total  = entV + totalReforcos + nParc * parc;
   const fmt0 = n => Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0});
   const el = id => document.getElementById(id);
-  if (el('rr-res-parc'))  el('rr-res-parc').textContent  = fmt0(parc);
+
+  // Campos legados (compatibilidade)
   if (el('rr-res-saldo')) el('rr-res-saldo').textContent = fmt0(saldo);
+
+  // Card resumo bonito
   if (el('rr-res-total')) el('rr-res-total').textContent = fmt0(total);
+  if (el('rr-res-parc'))  el('rr-res-parc').textContent  = fmt0(parc);
+  if (el('rr-res-parc-det')) el('rr-res-parc-det').textContent = nParc > 0 ? `${nParc}× de ${fmt0(parc)}/mês` : '—';
+
+  if (el('rr-res-entrada-val')) el('rr-res-entrada-val').textContent = fmt0(entV);
+  if (el('rr-res-entrada-det')) {
+    const pct = Math.round(entPct * 10) / 10;
+    el('rr-res-entrada-det').innerHTML = entParc > 1
+      ? `${entParc}× de ${fmt0(entV / entParc)}<br>${pct}% do valor`
+      : `${pct}% do valor<br>à vista`;
+  }
+
+  if (el('rr-res-reforcos')) {
+    if (nRef > 0 && pRef > 0) {
+      const valorRef = preco * pRef / 100;
+      el('rr-res-reforcos').textContent = `${nRef}× ${fmt0(valorRef)}`;
+      el('rr-res-reforcos').style.color = 'var(--text)';
+    } else {
+      el('rr-res-reforcos').textContent = 'Nenhum';
+      el('rr-res-reforcos').style.color = 'var(--text2)';
+    }
+    if (el('rr-res-reforcos-det')) el('rr-res-reforcos-det').textContent = nRef > 0 ? `${pRef}% do valor` : '—';
+  }
+
+  if (el('rr-res-juros')) {
+    if (juros > 0) {
+      el('rr-res-juros').textContent = `${juros}% a.m.`;
+      el('rr-res-juros').style.color = 'var(--warning)';
+    } else {
+      el('rr-res-juros').textContent = 'Sem juros';
+      el('rr-res-juros').style.color = '#4ade80';
+    }
+  }
+  if (el('rr-res-correcao')) {
+    const indice = ep.indice_correcao || ep.correcao || '';
+    el('rr-res-correcao').textContent = indice || '—';
+  }
+
   const conds = window._rrSimConds || [];
   const condLabel = window._rrCondLabel || (conds.length ? conds[0].label : `${nParc}x ${juros>0?juros+'% a.m.':'sem juros'}`);
   window._rrCondicao = { label: condLabel, nParc, juros, entrada_pct: entPct, valor_entrada: Math.round(entV), saldo: Math.round(saldo), parcela_mensal: Math.round(parc*100)/100, valor_total: Math.round(total) };
@@ -22972,24 +23058,85 @@ async function adminRemoverFila(filaId, unidadeId, empId) {
   _carregarFilaUnidade(unidadeId, empId, 'pre_reserva');
 }
 
-// Checa se corretor tem janela prioritária e exibe banner
+// Toca som de alerta via Web Audio API
+function _tocarAlertaPrioridade() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const seq = [[880,0,0.15],[1100,0.18,0.15],[880,0.36,0.15],[1320,0.54,0.25]];
+    seq.forEach(([freq, delay, dur]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0, ctx.currentTime + delay);
+      gain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + delay + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + dur);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + dur);
+    });
+  } catch(_) {}
+}
+
+// Checa se corretor tem janela prioritária e exibe overlay de alerta
 async function _checarPrioridade(empId) {
   if (!empId || USUARIO.perfil !== 'corretor') return;
   try {
     const r = await get(`/api/lancamento/${empId}/minha-prioridade`);
     const unidades = r.data || [];
-    const banner = document.getElementById('banner-prioridade');
-    if (!unidades.length) { if (banner) banner.remove(); return; }
+    const existente = document.getElementById('banner-prioridade');
+    if (!unidades.length) { if (existente) existente.remove(); clearInterval(window._prioCountdownInterval); return; }
     const u = unidades[0];
-    const expira = new Date(u.fila_prioridade_ate);
-    const mins = Math.max(1, Math.ceil((expira - Date.now()) / 60000));
-    if (!banner) {
+    // Corrige UTC: fila_prioridade_ate vem como UTC sem Z
+    const expira = new Date(u.fila_prioridade_ate.replace(' ','T')+'Z');
+    const msRestantes = expira - Date.now();
+    if (msRestantes <= 0) { if (existente) existente.remove(); return; }
+
+    if (!existente) {
+      // Toca som de alerta
+      _tocarAlertaPrioridade();
+
+      const unidadeLabel = (u.quadra ? 'Qd' + u.quadra + ' - ' : '') + u.lote;
       const div = document.createElement('div');
       div.id = 'banner-prioridade';
-      div.style.cssText = 'position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:9000;background:rgba(249,115,22,.95);color:#fff;font-size:14px;font-weight:700;padding:12px 24px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.4);display:flex;gap:12px;align-items:center;max-width:90vw';
-      div.innerHTML = `<span>🎯</span><span>Você tem prioridade na unidade <strong>${u.quadra?'Qd'+u.quadra+' - ':''}${u.lote}</strong> por ${mins} min!</span><button onclick="verEspelho(${empId})" style="background:#fff;color:#f97316;border:none;border-radius:7px;padding:5px 12px;font-weight:700;cursor:pointer;font-size:13px">Reservar agora</button>`;
+      div.style.cssText = 'position:fixed;inset:0;z-index:19000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.75);backdrop-filter:blur(4px)';
+      div.innerHTML = `
+        <div style="background:#1a0a00;border:3px solid #f97316;border-radius:20px;padding:36px 40px;max-width:480px;width:90vw;text-align:center;animation:prioOverlayPulse 1.5s ease-in-out infinite;box-shadow:0 0 60px rgba(249,115,22,.5)">
+          <div style="font-size:48px;margin-bottom:12px">🎯</div>
+          <div style="font-size:13px;font-weight:800;color:#fb923c;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">É a sua vez!</div>
+          <div style="font-size:20px;font-weight:900;color:#fff;margin-bottom:6px">Prioridade na unidade</div>
+          <div style="font-size:28px;font-weight:900;color:#f97316;margin-bottom:20px">${unidadeLabel}</div>
+          <div style="font-size:12px;color:#fdba74;margin-bottom:8px">Seu tempo para reservar:</div>
+          <div id="prio-countdown" style="font-size:56px;font-weight:900;font-family:monospace;color:#4ade80;letter-spacing:4px;margin-bottom:20px">10:00</div>
+          <div style="font-size:12px;color:#9ca3af;margin-bottom:24px">Se não reservar dentro do prazo, a unidade passa para o próximo na fila.</div>
+          <button onclick="verEspelho(${empId})" style="width:100%;padding:16px;background:linear-gradient(135deg,#f97316,#ea580c);color:#fff;border:none;border-radius:12px;font-size:18px;font-weight:900;cursor:pointer;letter-spacing:.5px">
+            ⚡ Reservar agora
+          </button>
+          <button onclick="document.getElementById('banner-prioridade').remove();clearInterval(window._prioCountdownInterval)" style="margin-top:12px;background:none;border:none;color:#6b7280;font-size:12px;cursor:pointer;text-decoration:underline">Fechar notificação</button>
+        </div>`;
       document.body.appendChild(div);
-      setTimeout(() => { const b = document.getElementById('banner-prioridade'); if (b) b.remove(); }, mins * 60 * 1000);
+
+      // Countdown ao vivo
+      clearInterval(window._prioCountdownInterval);
+      window._prioCountdownInterval = setInterval(() => {
+        const el = document.getElementById('prio-countdown');
+        if (!el) { clearInterval(window._prioCountdownInterval); return; }
+        const ms = expira - Date.now();
+        if (ms <= 0) {
+          clearInterval(window._prioCountdownInterval);
+          el.textContent = '00:00';
+          el.style.color = '#f87171';
+          setTimeout(() => { const b = document.getElementById('banner-prioridade'); if (b) b.remove(); }, 3000);
+          return;
+        }
+        const mm = String(Math.floor(ms / 60000)).padStart(2,'0');
+        const ss = String(Math.floor((ms % 60000) / 1000)).padStart(2,'0');
+        el.textContent = `${mm}:${ss}`;
+        if (ms > 7*60000)      el.style.color = '#4ade80';
+        else if (ms > 3*60000) el.style.color = '#fbbf24';
+        else if (ms > 60000)   el.style.color = '#fb923c';
+        else { el.style.color = '#f87171'; }
+      }, 1000);
     }
   } catch(_) {}
 }
