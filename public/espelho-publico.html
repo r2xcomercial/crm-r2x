@@ -1969,22 +1969,26 @@ function iniciarContador() {
 
 function _iniciarCountdownLancPub(inicio, serverTime) {
   clearInterval(window._lancIntervalPub);
-  const FINAL_MS = 5 * 60 * 1000;
   const offset = Date.now() - new Date(serverTime).getTime();
+  const totalMs = new Date(inicio).getTime() - (Date.now() - offset);
+  window._lancTotalMsPub = totalMs > 0 ? totalMs : 1;
 
-  window._lancIntervalPub = setInterval(() => {
+  const tick = () => {
     const ms = new Date(inicio).getTime() - (Date.now() - offset);
     if (ms <= 0) {
       clearInterval(window._lancIntervalPub);
       _acenderContadorFinalPub();
       return;
     }
-    if (ms <= FINAL_MS) _mostrarContadorFinalPub(ms);
-  }, 1000);
+    _mostrarContadorFinalPub(ms);
+  };
+  tick();
+  window._lancIntervalPub = setInterval(tick, 1000);
 }
 
 function _mostrarContadorFinalPub(ms) {
   const FINAL_MS = 5 * 60 * 1000;
+  const totalMs = window._lancTotalMsPub || ms;
   let ov = document.getElementById('lanc-pub-overlay');
   if (!ov) {
     ov = document.createElement('div');
@@ -2015,20 +2019,22 @@ function _mostrarContadorFinalPub(ms) {
       </div>`;
     document.body.appendChild(ov);
   }
-  const mm = String(Math.floor(ms / 60000)).padStart(2,'0');
+  const totalMin = Math.floor(ms / 60000);
+  const mm = String(totalMin).padStart(2,'0');
   const ss = String(Math.floor((ms % 60000) / 1000)).padStart(2,'0');
   const mmEl = document.getElementById('lanc-pub-mm');
   const ssEl = document.getElementById('lanc-pub-ss');
   const prog = document.getElementById('lanc-pub-prog');
   if (mmEl) mmEl.textContent = mm;
   if (ssEl) ssEl.textContent = ss;
-  const isLast10 = ms <= 10000, isLast30 = ms <= 30000;
-  const cor  = isLast10 ? '#f87171' : isLast30 ? '#fb923c' : '#fde68a';
+  const isLast10 = ms <= 10000, isLast30 = ms <= 30000, isFinal5 = ms <= FINAL_MS;
+  const cor  = isLast10 ? '#f87171' : isLast30 ? '#fb923c' : isFinal5 ? '#fbbf24' : '#fde68a';
   const glow = isLast10 ? '0 0 80px rgba(248,113,113,.55)' : isLast30 ? '0 0 70px rgba(251,146,60,.45)' : '0 0 60px rgba(253,230,138,.35)';
   const anim = isLast10 ? 'lancPulse .35s ease-in-out infinite alternate' : isLast30 ? 'lancPulse .65s ease-in-out infinite alternate' : '';
   if (mmEl) { mmEl.style.color = cor; mmEl.style.textShadow = glow; mmEl.style.animation = anim; }
   if (ssEl) { ssEl.style.color = cor; ssEl.style.textShadow = glow; ssEl.style.animation = anim; }
-  if (prog)  prog.style.width = ((1 - ms / FINAL_MS) * 100) + '%';
+  const progPct = isFinal5 ? ((1 - ms / FINAL_MS) * 100) : 0;
+  if (prog) prog.style.width = progPct + '%';
 }
 
 function _acenderContadorFinalPub() {
