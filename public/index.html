@@ -11967,7 +11967,7 @@ async function abrirUnidade(unidadeId, empId) {
     } else if (u.status === 'pre_reserva') {
       const isMinhaPreReserva = u.venda_corretor_id && USUARIO.corretor_id && String(u.venda_corretor_id) === String(USUARIO.corretor_id);
       const prazo = u.comprovante_prazo_expira_em;
-      const expirado = prazo && new Date(prazo) < new Date();
+      const expirado = prazo && _parsePrazoUTC(prazo) < new Date();
       if (isMinhaPreReserva) {
         reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px">
           <div style="background:rgba(249,115,22,.1);border:2px solid rgba(249,115,22,.55);border-radius:12px;padding:16px;animation:preReservaPulse 2s ease-in-out infinite">
@@ -12027,7 +12027,7 @@ async function abrirUnidade(unidadeId, empId) {
       const isMinhaReserva = u.venda_corretor_id && USUARIO.corretor_id && String(u.venda_corretor_id) === String(USUARIO.corretor_id);
       if (isMinhaReserva) {
         const prazo = u.comprovante_prazo_expira_em;
-        const expirado = prazo && new Date(prazo) < new Date();
+        const expirado = prazo && _parsePrazoUTC(prazo) < new Date();
         reservaHtml = `<div style="border-top:1px solid var(--border);padding-top:16px">
           ${u.tem_comprovante
             ? `<div style="display:flex;gap:8px;align-items:center;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);border-radius:10px;padding:12px 14px">
@@ -12088,7 +12088,7 @@ async function abrirUnidade(unidadeId, empId) {
       const borderColor = isPre ? 'rgba(249,115,22,.55)' : u.status === 'reservado' ? 'rgba(245,158,11,.3)' : 'rgba(239,68,68,.3)';
       const dataFormatada = reservaInfo.criado_em ? new Date(reservaInfo.criado_em).toLocaleDateString('pt-BR') : '—';
       const prazo = u.comprovante_prazo_expira_em;
-      const expirado = prazo && new Date(prazo) < new Date();
+      const expirado = prazo && _parsePrazoUTC(prazo) < new Date();
 
       const statusBadgeHtml = isPre
         ? `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -13447,9 +13447,11 @@ function closeModal() {
 }
 function closeModalOutside(e) { if (e.target === document.getElementById('modal-overlay')) closeModal(); }
 
+function _parsePrazoUTC(s) { return s ? new Date(s.replace(' ','T')+'Z') : null; }
+
 function _iniciarCountdownModal(prazo) {
   clearInterval(window._modalCountdownInterval);
-  const prazoMs = new Date(prazo).getTime();
+  const prazoMs = _parsePrazoUTC(prazo).getTime();
   const tick = () => {
     const el = document.getElementById('modal-prazo-countdown');
     if (!el) { clearInterval(window._modalCountdownInterval); return; }

@@ -736,9 +736,11 @@ function fecharSimulacao() {
   document.getElementById('sim-overlay')?.remove();
 }
 
+function _parsePrazoUTC(s) { return s ? new Date(s.replace(' ','T')+'Z') : null; }
+
 function _iniciarCountdownSim(prazo) {
   clearInterval(window._simCountdownInterval);
-  const prazoMs = new Date(prazo).getTime();
+  const prazoMs = _parsePrazoUTC(prazo).getTime();
   const tick = () => {
     const el = document.getElementById('sim-prazo-countdown');
     if (!el) { clearInterval(window._simCountdownInterval); return; }
