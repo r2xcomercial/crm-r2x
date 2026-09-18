@@ -253,6 +253,9 @@
   /* Botão WhatsApp */
   .btn-sim.wa { background: #25d366; color: #fff; }
   .btn-sim.wa:hover { background: #1ebe5e; }
+  /* Botão principal de reserva */
+  .btn-reservar-principal { display: block; width: 100%; padding: 14px 20px; font-size: 15px; font-weight: 800; background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%); color: #fff; border: none; border-radius: 10px; cursor: pointer; letter-spacing: .02em; box-shadow: 0 4px 14px rgba(13,148,136,.35); transition: transform .15s, box-shadow .15s; }
+  .btn-reservar-principal:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(13,148,136,.5); background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); }
   /* Campos do formulário de proposta */
   .sim-field { display: flex; flex-direction: column; gap: 5px; }
   .sim-field label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
@@ -442,14 +445,13 @@
       <button id="lead-submit-btn" class="btn-confirm" onclick="enviarLead()">Cadastrar</button>
     </div>
     <!-- Seção pós-cadastro: reservar + proposta -->
-    <div id="lead-proposta-section" style="display:none;margin-top:12px;border-top:1px solid #334155;padding-top:12px">
-      <div style="font-size:13px;font-weight:700;color:#34d399;margin-bottom:8px">✅ Cliente cadastrado! Deseja reservar e enviar proposta?</div>
-      <div id="lead-conds-html" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+    <div id="lead-proposta-section" style="display:none;margin-top:12px;border-top:1px solid #334155;padding-top:14px">
+      <div style="font-size:13px;font-weight:700;color:#34d399;margin-bottom:4px">✅ Cliente cadastrado!</div>
+      <div style="font-size:12px;color:#94a3b8;margin-bottom:12px">Selecione as condições de pagamento e confirme a reserva:</div>
+      <div id="lead-conds-html" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
       <div id="lead-proposta-err" class="modal-err"></div>
-      <div class="modal-btns">
-        <button class="btn-cancel" onclick="fecharModal('modal-lead')">Só cadastrar</button>
-        <button id="lead-proposta-btn" class="btn-confirm" style="background:#0f766e;border-color:#0d9488" onclick="reservarEEnviarProposta()">🏠 Reservar + Proposta</button>
-      </div>
+      <button id="lead-proposta-btn" onclick="reservarEEnviarProposta()" style="display:block;width:100%;padding:14px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;border:none;border-radius:10px;cursor:pointer;margin-bottom:8px;box-shadow:0 4px 14px rgba(13,148,136,.35)">🏠 Reservar + Proposta</button>
+      <button class="btn-cancel" style="display:block;width:100%" onclick="fecharModal('modal-lead')">Só cadastrar, reservar depois</button>
     </div>
   </div>
 </div>
@@ -682,6 +684,19 @@ function abrirSimulacao(unitId) {
     ${!preco ? 'Este lote não possui valor cadastrado.' : 'Condições de pagamento ainda não configuradas pelo empreendedor.'}
   </div>` : '';
 
+  // Botão de reserva — sempre visível para corretor logado em unidades disponíveis
+  const modoRes = window._modoReserva || 'pre_reserva_pix';
+  const reservaBloqueadaMsg = (hideReserva && u.status === 'disponivel')
+    ? `<div style="font-size:12px;color:#f59e0b;text-align:center;padding:8px 0">🔒 Reservas serão liberadas em breve</div>`
+    : '';
+  const reservarBtn = (!hideReserva && _corretorToken && u.status === 'disponivel')
+    ? `<button class="btn-sim btn-reservar-principal" onclick="fecharSimulacao();abrirCadastrarLead(${unitId})">
+        ${modoRes === 'reserva_direta'
+          ? '🏠 Reservar esta unidade'
+          : '🏠 Reservar · aguarda PIX 10min'}
+      </button>`
+    : '';
+
   // Build footer + optional form screen (screen-2)
   const propostaBtn = (!hidePreco && p && preco && u.status === 'disponivel')
     ? '<button class="btn-sim wa" onclick="mostrarFormProposta(' + unitId + ')">📲 Proposta</button>'
@@ -693,21 +708,17 @@ function abrirSimulacao(unitId) {
     '<div class="sim-field"><label>Proposta</label><textarea id="sf-proposta" rows="5"></textarea></div>',
     '<div class="sim-field"><label>Observações</label><textarea id="sf-obs" rows="2" placeholder="Observações adicionais..."></textarea></div>'
   ].join('');
-  const leadBtn = (!hideReserva && _corretorToken)
-    ? `<button class="btn-sim" style="background:#0f766e;border:1px solid #0d9488" onclick="abrirCadastrarLead(${unitId})">📋 Cliente</button>`
-    : '';
-  const reservaBloqueadaMsg = (hideReserva && u.status === 'disponivel')
-    ? `<div style="font-size:12px;color:#f59e0b;text-align:center;padding:6px 0">🔒 Reservas serão liberadas em breve</div>`
-    : '';
   const showSimulacao = !hidePreco && p && preco;
+
+  // Rodapé unificado
   const footerContent = showSimulacao
-    ? `<div class="sim-foot">
+    ? `${reservarBtn ? `<div style="padding:10px 16px 4px">${reservarBtn}</div>` : ''}
+      ${reservaBloqueadaMsg}
+      <div class="sim-foot" style="border-top:1px solid #1e2d42">
         <button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button>
         <button class="btn-sim primary" onclick="gerarPDFSimulacao(${unitId})">🖨️ PDF</button>
         ${propostaBtn}
-        ${leadBtn}
       </div>
-      ${reservaBloqueadaMsg}
       <div class="sim-aviso">* Simulação sujeita a alterações. Consulte a equipe da R2X.</div>
       </div>
       <div id="sim-screen-2" style="display:none">
@@ -720,7 +731,9 @@ function abrirSimulacao(unitId) {
           <button class="btn-sim wa" onclick="enviarPropostaWA(${unitId})">📲 Enviar WhatsApp</button>
         </div>
       </div>`
-    : `<div class="sim-foot"><button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button>${leadBtn}</div>${reservaBloqueadaMsg}</div>`;
+    : `${reservarBtn ? `<div style="padding:10px 16px 4px">${reservarBtn}</div>` : ''}
+      ${reservaBloqueadaMsg}
+      <div class="sim-foot"><button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button></div></div>`;
 
   const modalHtml = `<div class="sim-overlay" id="sim-overlay" onclick="if(event.target===this)fecharSimulacao()">
     <div class="sim-modal">
@@ -1012,9 +1025,10 @@ async function carregar() {
       return;
     }
 
-    const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, mapsUrl, driveUrl, socialUrl, configVerTabela, configReservar, atualizado_em, lancamento: lancData, server_time: srvTime } = resp.data;
+    const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, mapsUrl, driveUrl, socialUrl, configVerTabela, configReservar, modoReserva, atualizado_em, lancamento: lancData, server_time: srvTime } = resp.data;
     window._hidePreco   = configVerTabela === 0;
     window._hideReserva = configReservar  === 0;
+    window._modoReserva = modoReserva || 'pre_reserva_pix';
     _empNome    = emp.nome;
     _empTipo    = emp.tipo || 'loteamento';
     window._empId = emp.id || null;
@@ -1984,29 +1998,44 @@ async function enviarLead() {
     if (!data.ok) throw new Error(data.error || 'Erro ao cadastrar');
     window._leadNovoId = data.data?.id || null;
 
-    // Se há unidade disponível selecionada e params de simulação, oferecer reserva+proposta
+    // Se há unidade disponível selecionada, sempre oferecer reserva
     const u = _leadUnitId ? (window._units || []).find(x => x.id === _leadUnitId) : null;
     const p = _simParams;
-    if (u && u.status === 'disponivel' && p && p.condicoes?.length && u.preco && !window._hideReserva) {
-      const preco = u.preco;
-      const entV = p.entrada_tipo === 'valor' ? (p.entrada_valor || 0) : preco * ((p.entrada_pct || 0) / 100);
-      const totalRef = preco * ((p.pRef || 0) / 100);
+    if (u && u.status === 'disponivel' && !window._hideReserva) {
+      const preco = u.preco || 0;
+      const entV = preco && p ? (p.entrada_tipo === 'valor' ? (p.entrada_valor || 0) : preco * ((p.entrada_pct || 0) / 100)) : 0;
+      const totalRef = preco && p ? preco * ((p.pRef || 0) / 100) : 0;
       const saldo = preco - entV - totalRef;
       window._propostaEntV = entV;
       window._propostaSaldo = saldo;
       window._propostaPreco = preco;
       window._propostaCondIdx = 0;
-      const condsHtml = p.condicoes.map((c, i) => {
-        const pmv = calcPMT(saldo, c.nParc, c.juros || 0);
-        const total = entV + totalRef + c.nParc * pmv;
-        return `<label style="display:flex;align-items:flex-start;gap:8px;background:${i===0?'rgba(52,211,153,.1)':'rgba(51,65,85,.5)'};border:1px solid ${i===0?'#34d399':'#334155'};border-radius:8px;padding:8px 10px;cursor:pointer" id="lead-cond-card-${i}" onclick="selLeadCond(${i})">
-          <input type="radio" name="lead-cond" value="${i}" ${i===0?'checked':''} style="margin-top:2px">
-          <div>
-            <div style="font-size:12px;font-weight:700;color:#e2e8f0">${c.label || c.nParc+'x'} ${c.juros > 0 ? '· '+c.juros.toFixed(2)+'% a.m.' : '· sem juros'}</div>
-            <div style="font-size:11px;color:#94a3b8">${c.nParc}× ${fmt.format(pmv)}/mês · Total ${fmt0.format(total)}</div>
-          </div>
-        </label>`;
-      }).join('');
+
+      let condsHtml = '';
+      if (p && p.condicoes?.length && preco) {
+        condsHtml = p.condicoes.map((c, i) => {
+          const pmv = calcPMT(saldo, c.nParc, c.juros || 0);
+          const total = entV + totalRef + c.nParc * pmv;
+          return `<label style="display:flex;align-items:flex-start;gap:8px;background:${i===0?'rgba(52,211,153,.1)':'rgba(51,65,85,.5)'};border:1px solid ${i===0?'#34d399':'#334155'};border-radius:8px;padding:8px 10px;cursor:pointer" id="lead-cond-card-${i}" onclick="selLeadCond(${i})">
+            <input type="radio" name="lead-cond" value="${i}" ${i===0?'checked':''} style="margin-top:2px">
+            <div>
+              <div style="font-size:12px;font-weight:700;color:#e2e8f0">${c.label || c.nParc+'x'} ${c.juros > 0 ? '· '+c.juros.toFixed(2)+'% a.m.' : '· sem juros'}</div>
+              <div style="font-size:11px;color:#94a3b8">${c.nParc}× ${fmt.format(pmv)}/mês · Total ${fmt0.format(total)}</div>
+            </div>
+          </label>`;
+        }).join('');
+      } else {
+        condsHtml = `<div style="font-size:12px;color:#94a3b8;padding:8px 0">Nenhuma condição pré-configurada. A reserva será registrada sem proposta específica.</div>`;
+      }
+
+      // Ajusta label do botão de reserva conforme modo
+      const modoRes = window._modoReserva || 'pre_reserva_pix';
+      const reservaBtnLabel = modoRes === 'reserva_direta'
+        ? '🏠 Reservar agora'
+        : '🏠 Reservar · aguarda PIX 10min';
+      const reservaBtnEl = document.getElementById('lead-proposta-btn');
+      if (reservaBtnEl) reservaBtnEl.textContent = reservaBtnLabel;
+
       document.getElementById('lead-conds-html').innerHTML = condsHtml;
       document.getElementById('lead-btns-cadastrar').style.display = 'none';
       document.getElementById('lead-proposta-section').style.display = 'block';
@@ -2049,24 +2078,27 @@ async function reservarEEnviarProposta() {
     const empId  = window._empId;
     if (!leadId || !unitId || !empId) throw new Error('Dados incompletos. Recarregue e tente novamente.');
 
-    // Montar condição de proposta
+    // Montar condição de proposta (opcional — pode ser null se sem condições configuradas)
     const p = _simParams;
     const condIdx = window._propostaCondIdx || 0;
-    const c = p.condicoes[condIdx];
-    const entV  = window._propostaEntV;
-    const saldo = window._propostaSaldo;
-    const preco = window._propostaPreco;
+    const entV  = window._propostaEntV || 0;
+    const saldo = window._propostaSaldo || 0;
+    const preco = window._propostaPreco || 0;
     const totalRef = preco - entV - saldo;
-    const pmv   = calcPMT(saldo, c.nParc, c.juros || 0);
-    const condicao_proposta = {
-      label: c.label || (c.nParc + 'x'),
-      nParc: c.nParc,
-      juros: c.juros || 0,
-      valor_entrada: Math.round(entV * 100) / 100,
-      parcela_mensal: Math.round(pmv * 100) / 100,
-      valor_total: Math.round((entV + totalRef + c.nParc * pmv) * 100) / 100,
-      data_proposta: new Date().toISOString().slice(0, 10)
-    };
+    let condicao_proposta = null;
+    if (p && p.condicoes?.length && p.condicoes[condIdx]) {
+      const c = p.condicoes[condIdx];
+      const pmv = calcPMT(saldo, c.nParc, c.juros || 0);
+      condicao_proposta = {
+        label: c.label || (c.nParc + 'x'),
+        nParc: c.nParc,
+        juros: c.juros || 0,
+        valor_entrada: Math.round(entV * 100) / 100,
+        parcela_mensal: Math.round(pmv * 100) / 100,
+        valor_total: Math.round((entV + totalRef + c.nParc * pmv) * 100) / 100,
+        data_proposta: new Date().toISOString().slice(0, 10)
+      };
+    }
 
     // Reservar + proposta em uma única chamada
     const rv = await fetch('/api/vendas/reserva-rapida', {
@@ -2077,8 +2109,11 @@ async function reservarEEnviarProposta() {
     const rdData = await rv.json();
     if (!rdData.ok) throw new Error(rdData.error || 'Erro ao reservar');
 
+    const modoRes = window._modoReserva || 'pre_reserva_pix';
     errEl.style.color = '#34d399';
-    errEl.textContent = '✅ Reserva e proposta enviadas com sucesso! Aguarde aprovação do gestor.';
+    errEl.textContent = modoRes === 'reserva_direta'
+      ? '✅ Unidade reservada com sucesso!'
+      : '✅ Pré-reserva criada! Envie o comprovante PIX em até 10 minutos.';
     btn.textContent = 'Enviado ✓';
     setTimeout(() => { fecharModal('modal-lead'); carregar(); }, 2200);
   } catch(e) {

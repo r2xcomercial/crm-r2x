@@ -12559,9 +12559,11 @@ async function _carregarLeadsParaReserva(unidadeId, empId, unidadePreco) {
       </div>
 
       <!-- Campos de ajuste (colapsável) -->
-      <details id="rr-ajuste-details" style="margin-bottom:8px">
-        <summary style="font-size:11px;color:var(--text2);cursor:pointer;padding:5px 2px;user-select:none;list-style:none;display:flex;align-items:center;gap:5px">
-          <span style="font-size:14px">⚙️</span> Ajustar condições da proposta
+      <details id="rr-ajuste-details" style="margin-bottom:12px">
+        <summary style="font-size:13px;font-weight:700;color:var(--text1);cursor:pointer;padding:11px 14px;user-select:none;list-style:none;display:flex;align-items:center;gap:8px;background:var(--card2);border:1px solid var(--border);border-radius:10px;transition:background .15s" onmouseover="this.style.background='var(--card3)'" onmouseout="this.parentElement.open?null:(this.style.background='var(--card2)')">
+          <span style="font-size:18px">⚙️</span>
+          <span>Ajustar condições de pagamento / proposta</span>
+          <span style="margin-left:auto;font-size:11px;color:var(--text2);font-weight:400">clique para expandir</span>
         </summary>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px">
           <div>
