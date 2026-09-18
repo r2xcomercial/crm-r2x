@@ -1385,7 +1385,7 @@ async function openLeadModal(lead = {}, onSave = null) {
 
     ${sec('🎯','Qualificação')}
     <div class="form-grid">
-      <div class="form-group"><label>Tipo de Cliente</label>
+      <div class="form-group" ${USUARIO.perfil==='corretor' ? 'style="display:none"' : ''}><label>Tipo de Cliente</label>
         <select id="f-tipo-lead" onchange="toggleCamposCorretor(this.value)">
           <option value="" ${!lead.tipo?'selected':''}>— Comprador —</option>
           <option value="corretor" ${lead.tipo==='corretor'?'selected':''}>🏷️ Corretor Parceiro</option>
@@ -1404,16 +1404,16 @@ async function openLeadModal(lead = {}, onSave = null) {
           <option value="manual" ${(!lead.origem||lead.origem==='manual'||lead.origem==='importado')?'selected':''}>✍️ Outro / Manual</option>
         </select>
       </div>
-      <div class="form-group"><label>Status</label>
+      <div class="form-group" ${USUARIO.perfil==='corretor' ? 'style="display:none"' : ''}><label>Status</label>
         <select id="f-status" onchange="onStatusChange(this.value)">
           ${[['novo','📥 Captado'],['qualificado','✅ Qualificado'],['com_corretor','👤 Distribuído'],['visitou','🏠 Atend./Visita'],['proposta','📋 Proposta'],['reserva','🔒 Reserva'],['vendido','🏆 Venda'],['sem_venda','❌ Sem venda']].map(([v,l]) => `<option value="${v}" ${(lead.status===v||(v==='sem_venda'&&lead.status==='perdido'))?'selected':''}>${l}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group"><label>Objetivo</label>
+      <div class="form-group" ${USUARIO.perfil==='corretor' ? 'style="display:none"' : ''}><label>Objetivo</label>
         <select id="f-obj"><option value="">—</option><option ${lead.objetivo==='morar'?'selected':''}>morar</option><option ${lead.objetivo==='investir'?'selected':''}>investir</option><option ${lead.objetivo==='ambos'?'selected':''}>ambos</option></select>
       </div>
-      <div class="form-group"><label>Faixa de Investimento</label><input id="f-faixa" value="${lead.faixa_investimento||''}" placeholder="ex: R$ 300k - R$ 500k"></div>
-      <div class="form-group"><label>Prazo</label>
+      <div class="form-group" ${USUARIO.perfil==='corretor' ? 'style="display:none"' : ''}><label>Faixa de Investimento</label><input id="f-faixa" value="${lead.faixa_investimento||''}" placeholder="ex: R$ 300k - R$ 500k"></div>
+      <div class="form-group" ${USUARIO.perfil==='corretor' ? 'style="display:none"' : ''}><label>Prazo</label>
         <select id="f-prazo"><option value="">—</option><option ${lead.prazo==='imediato'?'selected':''}>imediato</option><option ${lead.prazo==='curto'?'selected':''}>curto</option><option ${lead.prazo==='longo'?'selected':''}>longo</option></select>
       </div>
       <div class="form-group" ${USUARIO.perfil==='corretor' ? 'style="display:none"' : ''}><label>Corretor responsável</label>
