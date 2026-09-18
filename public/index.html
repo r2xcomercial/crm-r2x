@@ -17591,12 +17591,11 @@ async function _renderEmpCorretorTab(el) {
             ${e.cidade ? `<div style="font-size:12px;color:var(--text2)">📍 ${e.cidade}${e.estado?'/'+e.estado:''}</div>` : ''}
             ${chips}
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
-              <button onclick="verEspelho(${e.id})" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--navy);border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">
-                🏠 Ver Espelho
-              </button>
-              ${link ? `<button onclick="navigator.clipboard.writeText('${link}');toast('Link copiado!')" style="padding:8px 12px;background:var(--navy3);color:var(--text2);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer" title="Copiar link público">
-                🔗 Link
-              </button>` : ''}
+              ${link
+                ? `<a href="${link}" target="_blank" rel="noopener" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--navy);border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px">🏠 Ver Espelho</a>
+                   <button onclick="navigator.clipboard.writeText('${link}');toast('✅ Link copiado!')" style="padding:8px 10px;background:var(--navy3);color:var(--text2);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer" title="Copiar link público">📋</button>`
+                : `<button onclick="verEspelho(${e.id})" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--navy);border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">🏠 Ver Espelho</button>`
+              }
             </div>
           </div>`;
       }).join('')}

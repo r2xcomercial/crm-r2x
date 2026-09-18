@@ -8,32 +8,54 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
 
-  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
   .logo { font-size: 20px; font-weight: 800; color: #fff; }
   .logo span { color: #14b8a6; }
-  .subtitle { font-size: 13px; color: #94a3b8; margin-top: 2px; }
   .atualizado { font-size: 12px; color: #64748b; text-align: right; }
   .atualizado strong { color: #94a3b8; }
 
-  .resumo { display: flex; gap: 12px; padding: 16px 24px; flex-wrap: wrap; }
-  .resumo-card { flex: 1; min-width: 120px; background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px 18px; text-align: center; }
-  .resumo-card .num { font-size: 28px; font-weight: 800; line-height: 1; }
-  .resumo-card .label { font-size: 12px; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: .05em; }
-  .resumo-card.disp .num  { color: #22c55e; }
-  .resumo-card.res  .num  { color: #f59e0b; }
-  .resumo-card.vend .num  { color: #ef4444; }
-  .resumo-card.total .num { color: #e2e8f0; }
+  /* Info bar: nome do empreendimento + localização + ações */
+  .info-bar { background: #162032; border-bottom: 1px solid #1e2d42; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  .info-bar-left { display: flex; flex-direction: column; gap: 3px; }
+  .info-bar-nome { font-size: 20px; font-weight: 800; color: #f1f5f9; line-height: 1.1; }
+  .info-bar-local { font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 5px; }
+  .info-bar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .corretor-area-wrap { display: flex; align-items: center; }
+
+  /* Status summary */
+  .resumo { display: flex; gap: 10px; padding: 14px 24px; flex-wrap: wrap; background: #0f172a; border-bottom: 1px solid #1e2d42; }
+  .resumo-card { flex: 1; min-width: 100px; background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 12px 14px; text-align: center; position: relative; overflow: hidden; }
+  .resumo-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
+  .resumo-card.disp::before  { background: #22c55e; }
+  .resumo-card.preres::before { background: #f97316; }
+  .resumo-card.res::before   { background: #f59e0b; }
+  .resumo-card.vend::before  { background: #ef4444; }
+  .resumo-card.total::before { background: #475569; }
+  .resumo-card.indisp::before { background: #475569; }
+  .resumo-card .num { font-size: 32px; font-weight: 900; line-height: 1; letter-spacing: -1px; }
+  .resumo-card .label { font-size: 11px; color: #64748b; margin-top: 5px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  .resumo-card.disp .num   { color: #22c55e; }
+  .resumo-card.preres .num { color: #f97316; }
+  .resumo-card.res .num    { color: #f59e0b; }
+  .resumo-card.vend .num   { color: #ef4444; }
+  .resumo-card.total .num  { color: #e2e8f0; }
   .resumo-card.indisp .num { color: #94a3b8; }
-  .maps-btn { display:flex; align-items:center; gap:7px; background:#1a73e8; color:#fff; border-radius:10px; padding:14px 20px; font-size:13px; font-weight:700; text-decoration:none; white-space:nowrap; transition:background .15s; border:1px solid #1557b0; }
+
+  /* Export toolbar */
+  .export-bar { display: none; gap: 8px; padding: 10px 24px; background: #0f172a; border-bottom: 1px solid #1e2d42; flex-wrap: wrap; align-items: center; }
+  .export-bar.visible { display: flex; }
+
+  /* Action buttons (maps/drive/social/export) */
+  .maps-btn { display:flex; align-items:center; gap:6px; background:#1a73e8; color:#fff; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:700; text-decoration:none; white-space:nowrap; transition:background .15s; border:1px solid #1557b0; }
   .maps-btn:hover { background:#1557b0; }
   .maps-btn svg { flex-shrink:0; }
-  .drive-btn { display:flex; align-items:center; gap:7px; background:#1fa463; color:#fff; border-radius:10px; padding:14px 20px; font-size:13px; font-weight:700; text-decoration:none; white-space:nowrap; transition:background .15s; border:1px solid #178a52; }
+  .drive-btn { display:flex; align-items:center; gap:6px; background:#1fa463; color:#fff; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:700; text-decoration:none; white-space:nowrap; transition:background .15s; border:1px solid #178a52; }
   .drive-btn:hover { background:#178a52; }
   .drive-btn svg { flex-shrink:0; }
-  .social-btn { display:flex; align-items:center; gap:7px; background:#c13584; color:#fff; border-radius:10px; padding:14px 20px; font-size:13px; font-weight:700; text-decoration:none; white-space:nowrap; transition:background .15s; border:1px solid #9c2a6a; }
+  .social-btn { display:flex; align-items:center; gap:6px; background:#c13584; color:#fff; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:700; text-decoration:none; white-space:nowrap; transition:background .15s; border:1px solid #9c2a6a; }
   .social-btn:hover { background:#9c2a6a; }
   .social-btn svg { flex-shrink:0; }
-  .export-btn { display:none; align-items:center; gap:7px; background:#475569; color:#fff; border-radius:10px; padding:14px 20px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; transition:background .15s; border:1px solid #334155; }
+  .export-btn { display:none; align-items:center; gap:6px; background:#475569; color:#fff; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; transition:background .15s; border:1px solid #334155; }
   .export-btn:hover { background:#334155; }
   .export-btn svg { flex-shrink:0; }
 
@@ -292,12 +314,16 @@
 
   /* Mobile */
   @media (max-width: 600px) {
-    header { padding: 12px 16px; }
+    header { padding: 10px 14px; }
     .logo { font-size: 17px; }
-    .resumo { padding: 10px 14px; gap: 7px; }
-    .resumo-card { min-width: 72px; padding: 10px 12px; }
-    .resumo-card .num { font-size: 22px; }
-    .maps-btn, .drive-btn, .social-btn, .export-btn { padding: 10px 14px; font-size: 12px; }
+    .info-bar { padding: 10px 14px; }
+    .info-bar-nome { font-size: 16px; }
+    .resumo { padding: 10px 14px; gap: 6px; }
+    .resumo-card { min-width: 64px; padding: 9px 10px; }
+    .resumo-card .num { font-size: 24px; }
+    .resumo-card .label { font-size: 9px; }
+    .export-bar { padding: 8px 14px; }
+    .maps-btn, .drive-btn, .social-btn, .export-btn { padding: 7px 12px; font-size: 12px; }
     main { padding: 0 12px 24px; }
     .grade {
       grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
@@ -323,43 +349,59 @@
 <body>
 
 <header>
-  <div>
-    <div class="logo">R2X <span>CRM</span></div>
-    <div class="subtitle" id="emp-nome">Carregando...</div>
-  </div>
+  <div class="logo">R2X <span>CRM</span></div>
   <div class="atualizado">
-    Espelho de Vendas — Tempo Real<br>
+    Espelho de Vendas · Tempo Real<br>
     <strong id="hora-atual">—</strong>
   </div>
 </header>
 
+<!-- Barra de info do empreendimento -->
+<div class="info-bar" id="info-bar">
+  <div class="info-bar-left">
+    <div class="info-bar-nome" id="emp-nome">Carregando...</div>
+    <div class="info-bar-local" id="emp-local" style="display:none">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+      <span id="emp-local-txt"></span>
+    </div>
+  </div>
+  <div class="info-bar-actions">
+    <a id="maps-btn" href="#" target="_blank" rel="noopener" class="maps-btn" style="display:none">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+      Maps
+    </a>
+    <a id="drive-btn" href="#" target="_blank" rel="noopener" class="drive-btn" style="display:none">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+      Material
+    </a>
+    <a id="social-btn" href="#" target="_blank" rel="noopener" class="social-btn" style="display:none">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+      Instagram
+    </a>
+    <div class="corretor-area-wrap"><div id="corretor-area"></div></div>
+  </div>
+</div>
+
+<!-- Resumo de status -->
 <div class="resumo" id="resumo">
   <div class="resumo-card total"><div class="num" id="r-total">—</div><div class="label">Total</div></div>
   <div class="resumo-card disp"><div class="num" id="r-disp">—</div><div class="label">Disponível</div></div>
+  <div class="resumo-card preres" id="r-preres-card" style="display:none"><div class="num" id="r-preres">0</div><div class="label">Pré-reserva</div></div>
   <div class="resumo-card res"><div class="num" id="r-res">—</div><div class="label">Reservado</div></div>
   <div class="resumo-card vend"><div class="num" id="r-vend">—</div><div class="label">Vendido</div></div>
   <div class="resumo-card indisp" id="r-indisp-card" style="display:none"><div class="num" id="r-indisp">0</div><div class="label">Indisponível</div></div>
-  <a id="maps-btn" href="#" target="_blank" rel="noopener" class="maps-btn" style="display:none">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
-    Ver no Maps
-  </a>
-  <a id="drive-btn" href="#" target="_blank" rel="noopener" class="drive-btn" style="display:none">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19H2l5-9h10l5 9z"/><path d="M7.5 14L12 6l4.5 8"/><path d="M2 19l5-9"/></svg>
-    Material de divulgação
-  </a>
-  <a id="social-btn" href="#" target="_blank" rel="noopener" class="social-btn" style="display:none">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
-    Redes Sociais
-  </a>
+</div>
+
+<!-- Barra de exportação (permissão) -->
+<div class="export-bar" id="export-bar">
   <button id="export-btn" class="export-btn" onclick="exportarTabelaEspelho()">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
     Exportar Tabela
   </button>
   <button id="pdf-btn" class="export-btn" style="display:none;background:#7c3aed;border-color:#6d28d9" onclick="baixarTabelaPDF()">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
     Baixar PDF
   </button>
-  <div id="corretor-area"></div>
 </div>
 
 <!-- Tela de login obrigatório (fullscreen) -->
@@ -973,7 +1015,7 @@ async function carregar() {
     const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, mapsUrl, driveUrl, socialUrl, configVerTabela, configReservar, atualizado_em, lancamento: lancData, server_time: srvTime } = resp.data;
     window._hidePreco   = configVerTabela === 0;
     window._hideReserva = configReservar  === 0;
-    _empNome    = emp.nome + (emp.cidade ? ` — ${emp.cidade}/${emp.estado}` : '');
+    _empNome    = emp.nome;
     _empTipo    = emp.tipo || 'loteamento';
     window._empId = emp.id || null;
     _simParams  = espelhoParams || null;
@@ -981,25 +1023,50 @@ async function carregar() {
     _mapsUrl    = mapsUrl || null;
     _driveUrl   = driveUrl || null;
     _socialUrl  = socialUrl || null;
-    const mapsBtn = document.getElementById('maps-btn');
-    if (mapsBtn) { mapsBtn.href = _mapsUrl || '#'; mapsBtn.style.display = _mapsUrl ? '' : 'none'; }
-    const driveBtn = document.getElementById('drive-btn');
-    if (driveBtn) { driveBtn.href = _driveUrl || '#'; driveBtn.style.display = _driveUrl ? '' : 'none'; }
-    const socialBtn = document.getElementById('social-btn');
-    if (socialBtn) { socialBtn.href = _socialUrl || '#'; socialBtn.style.display = _socialUrl ? '' : 'none'; }
-    const exportBtn = document.getElementById('export-btn');
-    if (exportBtn) exportBtn.style.display = window._hidePreco ? 'none' : 'flex';
-    const pdfBtn = document.getElementById('pdf-btn');
-    if (pdfBtn) pdfBtn.style.display = window._hidePreco ? 'none' : 'flex';
 
+    // Info bar
     document.title = `Espelho — ${emp.nome}`;
-    document.getElementById('emp-nome').textContent  = _empNome;
+    document.getElementById('emp-nome').textContent = emp.nome;
+    if (emp.cidade) {
+      document.getElementById('emp-local-txt').textContent = `${emp.cidade}${emp.estado ? '/' + emp.estado : ''}`;
+      document.getElementById('emp-local').style.display = 'flex';
+    }
     document.getElementById('hora-atual').textContent = new Date(atualizado_em).toLocaleTimeString('pt-BR');
 
+    // Botões de ação na info bar
+    const mapsBtn = document.getElementById('maps-btn');
+    if (mapsBtn) { mapsBtn.href = _mapsUrl || '#'; mapsBtn.style.display = _mapsUrl ? 'flex' : 'none'; }
+    const driveBtn = document.getElementById('drive-btn');
+    if (driveBtn) { driveBtn.href = _driveUrl || '#'; driveBtn.style.display = _driveUrl ? 'flex' : 'none'; }
+    const socialBtn = document.getElementById('social-btn');
+    if (socialBtn) { socialBtn.href = _socialUrl || '#'; socialBtn.style.display = _socialUrl ? 'flex' : 'none'; }
+
+    // Barra de exportação (só se tiver permissão)
+    const exportBar = document.getElementById('export-bar');
+    const exportBtn = document.getElementById('export-btn');
+    const pdfBtn    = document.getElementById('pdf-btn');
+    if (!window._hidePreco) {
+      if (exportBar) exportBar.classList.add('visible');
+      if (exportBtn) exportBtn.style.display = 'flex';
+      if (pdfBtn)    pdfBtn.style.display    = 'flex';
+    } else {
+      if (exportBar) exportBar.classList.remove('visible');
+      if (exportBtn) exportBtn.style.display = 'none';
+      if (pdfBtn)    pdfBtn.style.display    = 'none';
+    }
+
+    // Resumo de status
     document.getElementById('r-total').textContent = units.length;
-    document.getElementById('r-disp').textContent  = resumo.disponivel || 0;
-    document.getElementById('r-res').textContent   = resumo.reservado  || 0;
-    document.getElementById('r-vend').textContent  = resumo.vendido    || 0;
+    document.getElementById('r-disp').textContent  = resumo.disponivel  || 0;
+    document.getElementById('r-res').textContent   = resumo.reservado   || 0;
+    document.getElementById('r-vend').textContent  = resumo.vendido     || 0;
+    const preresCard = document.getElementById('r-preres-card');
+    if (resumo.pre_reserva) {
+      document.getElementById('r-preres').textContent = resumo.pre_reserva;
+      if (preresCard) preresCard.style.display = '';
+    } else {
+      if (preresCard) preresCard.style.display = 'none';
+    }
     const indispCard = document.getElementById('r-indisp-card');
     if (resumo.indisponivel) {
       document.getElementById('r-indisp').textContent = resumo.indisponivel;
