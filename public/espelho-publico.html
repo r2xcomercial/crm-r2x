@@ -601,6 +601,83 @@
   </div>
 </div>
 
+<!-- Modal: Reservar unidade (seleção de cliente + condições) -->
+<div id="modal-reservar" class="modal-overlay" onclick="if(event.target===this)fecharModal('modal-reservar')">
+  <div class="modal-box wide">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <h3 style="margin:0">🏠 Reservar Unidade</h3>
+      <button onclick="fecharModal('modal-reservar')" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;padding:4px">✕</button>
+    </div>
+    <p id="reservar-unidade-desc" style="font-size:12px;color:#14b8a6;margin:0 0 14px;font-weight:600"></p>
+
+    <!-- Seleção de cliente -->
+    <div id="reservar-step-cliente">
+      <div style="font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Selecione o cliente</div>
+      <input id="reservar-busca-cliente" type="text" placeholder="Buscar por nome, CPF ou telefone..." oninput="_filtrarClientesReservar()" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:13px;padding:9px 12px;outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:8px">
+      <div id="reservar-lista-clientes" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
+      <div id="reservar-cliente-err" class="modal-err"></div>
+      <div id="reservar-cliente-ok" style="font-size:12px;color:#34d399;min-height:16px;margin-top:4px"></div>
+      <div style="margin-top:10px;font-size:11px;color:#475569">Não encontrou o cliente? <span style="color:#14b8a6;cursor:pointer;text-decoration:underline" onclick="fecharModal('modal-reservar');abrirCadastrarLead(null)">Cadastre aqui primeiro</span>.</div>
+    </div>
+
+    <!-- Seleção de condição (aparece após selecionar cliente) -->
+    <div id="reservar-step-condicao" style="display:none;margin-top:14px;border-top:1px solid #334155;padding-top:14px">
+      <div style="font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Condições de pagamento</div>
+      <div id="reservar-conds-html" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+      <div id="reservar-proposta-err" class="modal-err"></div>
+      <button id="reservar-confirmar-btn" onclick="confirmarReserva()" style="display:block;width:100%;padding:14px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;border:none;border-radius:10px;cursor:pointer;box-shadow:0 4px 14px rgba(13,148,136,.35)">🏠 Confirmar reserva</button>
+      <button class="btn-cancel" style="display:block;width:100%;margin-top:8px" onclick="fecharModal('modal-reservar')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Anexar comprovante PIX -->
+<div id="modal-pix-upload" class="modal-overlay" onclick="if(event.target===this)fecharModal('modal-pix-upload')">
+  <div class="modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <h3 style="margin:0">📎 Comprovante PIX</h3>
+      <button onclick="fecharModal('modal-pix-upload')" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;padding:4px">✕</button>
+    </div>
+    <p id="pix-unidade-desc" style="font-size:12px;color:#fb923c;margin:0 0 4px;font-weight:600"></p>
+    <div id="pix-countdown-display" style="text-align:center;padding:10px 0 14px;border-bottom:1px solid #334155;margin-bottom:14px">
+      <div style="font-size:11px;color:#fb923c;opacity:.8;margin-bottom:2px">Tempo restante para enviar</div>
+      <div id="pix-modal-countdown" style="font-size:36px;font-weight:900;font-family:monospace;color:#fb923c;letter-spacing:3px">--:--</div>
+    </div>
+    <label style="display:block;font-size:11px;color:#94a3b8;margin-bottom:3px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Selecione o arquivo (imagem ou PDF)</label>
+    <input id="pix-arquivo-input" type="file" accept="image/*,.pdf" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:13px;padding:9px 12px;box-sizing:border-box">
+    <div id="pix-err" class="modal-err"></div>
+    <div id="pix-ok" class="modal-ok"></div>
+    <div class="modal-btns" style="margin-top:14px">
+      <button class="btn-cancel" onclick="fecharModal('modal-pix-upload')">Cancelar</button>
+      <button id="pix-enviar-btn" onclick="enviarComprovantePix()" class="btn-confirm">📤 Enviar comprovante</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Entrar na fila de espera -->
+<div id="modal-fila" class="modal-overlay" onclick="if(event.target===this)fecharModal('modal-fila')">
+  <div class="modal-box wide">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <h3 style="margin:0">🔔 Fila de Espera</h3>
+      <button onclick="fecharModal('modal-fila')" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;padding:4px">✕</button>
+    </div>
+    <p id="fila-unidade-desc" style="font-size:12px;color:#a5b4fc;margin:0 0 14px;font-weight:600"></p>
+    <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25);border-radius:10px;padding:12px;margin-bottom:14px;font-size:12px;color:#94a3b8;line-height:1.6">
+      Se o comprovante PIX não for enviado em 15 minutos, a unidade passa automaticamente para o próximo da fila. Você receberá a janela de prioridade para efetuar a reserva.
+    </div>
+    <div style="font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Selecione o cliente para a fila</div>
+    <input id="fila-busca-cliente" type="text" placeholder="Buscar por nome, CPF ou telefone..." oninput="_filtrarClientesFila()" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:13px;padding:9px 12px;outline:none;font-family:inherit;box-sizing:border-box;margin-bottom:8px">
+    <div id="fila-lista-clientes" style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:6px"></div>
+    <div style="margin-top:10px;font-size:11px;color:#475569">Não encontrou o cliente? <span style="color:#14b8a6;cursor:pointer;text-decoration:underline" onclick="fecharModal('modal-fila');abrirCadastrarLead(null)">Cadastre aqui primeiro</span>.</div>
+    <div id="fila-err" class="modal-err"></div>
+    <div id="fila-ok" class="modal-ok"></div>
+    <div class="modal-btns" style="margin-top:14px">
+      <button class="btn-cancel" onclick="fecharModal('modal-fila')">Cancelar</button>
+      <button id="fila-confirmar-btn" onclick="confirmarFila()" class="btn-confirm" disabled style="opacity:.5">✅ Entrar na fila</button>
+    </div>
+  </div>
+</div>
+
 <main>
   <div id="conteudo"><div class="loading">Carregando espelho de vendas...</div></div>
   <div class="refresh-bar">Atualiza automaticamente em <span id="countdown">15</span>s</div>
@@ -835,11 +912,20 @@ function abrirSimulacao(unitId) {
     ? `<div style="font-size:12px;color:#f59e0b;text-align:center;padding:8px 0">🔒 Reservas serão liberadas em breve</div>`
     : '';
   const reservarBtn = (!hideReserva && _corretorToken && u.status === 'disponivel')
-    ? `<button class="btn-sim btn-reservar-principal" onclick="fecharSimulacao();abrirCadastrarLead(${unitId})">
+    ? `<button class="btn-sim btn-reservar-principal" onclick="fecharSimulacao();abrirReservar(${unitId})">
         ${modoRes === 'reserva_direta'
           ? '🏠 Reservar esta unidade'
-          : '🏠 Reservar · aguarda PIX 10min'}
+          : '🏠 Reservar · aguarda PIX 15min'}
       </button>`
+    : '';
+  // Botão para corretor dono da pré-reserva anexar PIX
+  const _cidNum = parseInt(_corretorId) || 0;
+  const anexarPixBtn = (u.status === 'pre_reserva' && _corretorToken && u.venda_id && u.venda_corretor_id === _cidNum && !u.tem_comprovante)
+    ? `<button class="btn-sim btn-reservar-principal" style="background:linear-gradient(135deg,#f97316,#ea580c)" onclick="fecharSimulacao();abrirAnexarPix(${u.venda_id},${unitId})">📎 Anexar comprovante PIX</button>`
+    : '';
+  // Botão para outro corretor entrar na fila
+  const filaBtn = (u.status === 'pre_reserva' && _corretorToken && (_corretorPerfil==='corretor') && u.venda_corretor_id !== _cidNum)
+    ? `<button class="btn-sim" style="background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.4);color:#a5b4fc;width:100%;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer" onclick="fecharSimulacao();abrirFila(${unitId})">🔔 Entrar na fila de espera${u.fila_qtd > 0 ? ' ('+u.fila_qtd+' na fila)' : ''}</button>`
     : '';
 
   // Build footer + optional form screen (screen-2)
@@ -856,8 +942,10 @@ function abrirSimulacao(unitId) {
   const showSimulacao = !hidePreco && p && preco;
 
   // Rodapé unificado
+  const extraBtns = `${anexarPixBtn ? `<div style="padding:6px 16px 0">${anexarPixBtn}</div>` : ''}${filaBtn ? `<div style="padding:6px 16px 0">${filaBtn}</div>` : ''}`;
   const footerContent = showSimulacao
     ? `${reservarBtn ? `<div style="padding:10px 16px 4px">${reservarBtn}</div>` : ''}
+      ${extraBtns}
       ${reservaBloqueadaMsg}
       <div class="sim-foot" style="border-top:1px solid #1e2d42">
         <button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button>
@@ -877,6 +965,7 @@ function abrirSimulacao(unitId) {
         </div>
       </div>`
     : `${reservarBtn ? `<div style="padding:10px 16px 4px">${reservarBtn}</div>` : ''}
+      ${extraBtns}
       ${reservaBloqueadaMsg}
       <div class="sim-foot"><button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button></div></div>`;
 
@@ -1171,9 +1260,10 @@ async function carregar() {
     }
 
     const { empreendimento: emp, imagem, units, resumo, espelhoParams, markerSize, mapsUrl, driveUrl, socialUrl, configVerTabela, configReservar, modoReserva, atualizado_em, lancamento: lancData, server_time: srvTime } = resp.data;
-    window._hidePreco   = configVerTabela === 0;
-    window._hideReserva = configReservar  === 0;
-    window._modoReserva = modoReserva || 'pre_reserva_pix';
+    window._hidePreco    = configVerTabela === 0;
+    window._hideReserva  = configReservar  === 0;
+    window._modoReserva  = modoReserva || 'pre_reserva_pix';
+    window._espelhoSlug  = slug;
     _empNome    = emp.nome;
     _empTipo    = emp.tipo || 'loteamento';
     window._empId = emp.id || null;
@@ -2250,7 +2340,7 @@ async function enviarLead() {
       const modoRes = window._modoReserva || 'pre_reserva_pix';
       const reservaBtnLabel = modoRes === 'reserva_direta'
         ? '🏠 Reservar agora'
-        : '🏠 Reservar · aguarda PIX 10min';
+        : '🏠 Reservar · aguarda PIX 15min';
       const reservaBtnEl = document.getElementById('lead-proposta-btn');
       if (reservaBtnEl) reservaBtnEl.textContent = reservaBtnLabel;
 
@@ -2331,7 +2421,7 @@ async function reservarEEnviarProposta() {
     errEl.style.color = '#34d399';
     errEl.textContent = modoRes === 'reserva_direta'
       ? '✅ Unidade reservada com sucesso!'
-      : '✅ Pré-reserva criada! Envie o comprovante PIX em até 10 minutos.';
+      : '✅ Pré-reserva criada! Envie o comprovante PIX em até 15 minutos.';
     btn.textContent = 'Enviado ✓';
     setTimeout(() => { fecharModal('modal-lead'); carregar(); }, 2200);
   } catch(e) {
@@ -2350,6 +2440,298 @@ function iniciarContador() {
     document.getElementById('countdown').textContent = countdown;
     if (countdown <= 0) { clearInterval(timer); carregar().then(iniciarContador); }
   }, 1000);
+}
+
+// ─── MODAL RESERVAR: seleção de cliente + condições ─────────────────────────
+let _reservarUnitId = null;
+let _reservarLeadId = null;
+let _reservarCondIdx = 0;
+let _reservarClientesCache = [];
+
+async function abrirReservar(unitId) {
+  _reservarUnitId = unitId;
+  _reservarLeadId = null;
+  _reservarCondIdx = 0;
+  const u = (window._units || []).find(x => x.id === unitId);
+  document.getElementById('reservar-unidade-desc').textContent = u ? `Lote ${u.lote}${u.quadra ? ' · Quadra ' + u.quadra : ''} — ${_empNome}` : _empNome;
+  document.getElementById('reservar-cliente-err').textContent = '';
+  document.getElementById('reservar-cliente-ok').textContent = '';
+  document.getElementById('reservar-busca-cliente').value = '';
+  document.getElementById('reservar-step-condicao').style.display = 'none';
+  const errEl = document.getElementById('reservar-cliente-err');
+
+  // Busca clientes do corretor
+  try {
+    const r = await fetch(`/api/espelho-publico/${window._espelhoSlug}/leads`, { headers: { 'x-crm-token': _corretorToken } });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Erro ao buscar clientes');
+    _reservarClientesCache = d.data || [];
+    _renderClientesReservar(_reservarClientesCache);
+    if (_reservarClientesCache.length === 0) {
+      errEl.textContent = 'Você ainda não tem clientes cadastrados. Cadastre um cliente primeiro.';
+    }
+  } catch(e) {
+    errEl.textContent = e.message;
+    _reservarClientesCache = [];
+    _renderClientesReservar([]);
+  }
+  document.getElementById('modal-reservar').classList.add('open');
+}
+
+function _renderClientesReservar(lista) {
+  const container = document.getElementById('reservar-lista-clientes');
+  if (!lista.length) { container.innerHTML = '<div style="font-size:12px;color:#475569;padding:8px 0">Nenhum cliente encontrado.</div>'; return; }
+  container.innerHTML = lista.map(c => `
+    <div class="reservar-cliente-item" data-id="${c.id}" onclick="_selecionarClienteReservar(${c.id})"
+      style="display:flex;align-items:center;gap:10px;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px 12px;cursor:pointer;transition:border-color .15s">
+      <div style="width:34px;height:34px;border-radius:50%;background:rgba(20,184,166,.15);border:1px solid rgba(20,184,166,.3);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">${c.tipo_pessoa==='pj'?'🏢':'👤'}</div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#e2e8f0">${c.nome}</div>
+        <div style="font-size:11px;color:#64748b">${c.telefone||''} ${c.cpf ? '· '+c.cpf : ''}</div>
+      </div>
+    </div>`).join('');
+}
+
+function _filtrarClientesReservar() {
+  const q = document.getElementById('reservar-busca-cliente').value.toLowerCase();
+  const filtrado = !q ? _reservarClientesCache : _reservarClientesCache.filter(c => (c.nome||'').toLowerCase().includes(q) || (c.cpf||'').includes(q) || (c.telefone||'').includes(q));
+  _renderClientesReservar(filtrado);
+}
+
+function _selecionarClienteReservar(leadId) {
+  _reservarLeadId = leadId;
+  document.querySelectorAll('.reservar-cliente-item').forEach(el => {
+    const sel = parseInt(el.dataset.id) === leadId;
+    el.style.borderColor = sel ? '#14b8a6' : '#334155';
+    el.style.background  = sel ? 'rgba(20,184,166,.08)' : '#0f172a';
+  });
+  document.getElementById('reservar-cliente-ok').textContent = '✓ Cliente selecionado';
+  // Mostrar condições
+  const p = _simParams;
+  const u = (window._units || []).find(x => x.id === _reservarUnitId);
+  const preco = u?.preco || 0;
+  const entFixo = p?.entrada_tipo === 'valor';
+  const entV    = entFixo ? (p?.entrada_valor || 0) : preco * ((p?.entrada_pct || 0) / 100);
+  const totalRef = preco * ((p?.pRef || 0) / 100);
+  const saldo    = preco - entV - totalRef;
+  let condsHtml = '';
+  if (p && p.condicoes?.length && preco) {
+    condsHtml = p.condicoes.map((c, i) => {
+      const pmv = calcPMT(saldo, c.nParc, c.juros || 0);
+      const total = entV + totalRef + c.nParc * pmv;
+      return `<label style="display:flex;align-items:flex-start;gap:8px;background:${i===0?'rgba(52,211,153,.1)':'rgba(51,65,85,.5)'};border:1px solid ${i===0?'#34d399':'#334155'};border-radius:8px;padding:8px 10px;cursor:pointer" id="res-cond-card-${i}" onclick="_selResCondIdx(${i})">
+        <input type="radio" name="res-cond" value="${i}" ${i===0?'checked':''} style="margin-top:2px">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#e2e8f0">${c.label||c.nParc+'x'} ${c.juros>0?'· '+c.juros.toFixed(2)+'% a.m.':'· sem juros'}</div>
+          <div style="font-size:11px;color:#94a3b8">${c.nParc}× ${fmt.format(pmv)}/mês · Total ${fmt0.format(total)}</div>
+        </div></label>`;
+    }).join('');
+  } else {
+    condsHtml = `<div style="font-size:12px;color:#94a3b8;padding:8px 0">Reserva sem proposta de financiamento específica.</div>`;
+  }
+  document.getElementById('reservar-conds-html').innerHTML = condsHtml;
+  document.getElementById('reservar-step-condicao').style.display = 'block';
+  _reservarCondIdx = 0;
+}
+
+function _selResCondIdx(idx) {
+  _reservarCondIdx = idx;
+  const p = _simParams;
+  if (!p) return;
+  p.condicoes.forEach((_, i) => {
+    const card = document.getElementById('res-cond-card-' + i);
+    if (!card) return;
+    card.style.background   = i === idx ? 'rgba(52,211,153,.1)' : 'rgba(51,65,85,.5)';
+    card.style.borderColor  = i === idx ? '#34d399' : '#334155';
+    card.querySelector('input[type=radio]').checked = (i === idx);
+  });
+}
+
+async function confirmarReserva() {
+  const errEl = document.getElementById('reservar-proposta-err');
+  const btn   = document.getElementById('reservar-confirmar-btn');
+  errEl.textContent = '';
+  if (!_reservarLeadId) { errEl.textContent = 'Selecione um cliente.'; return; }
+  if (!_reservarUnitId) { errEl.textContent = 'Dados incompletos.'; return; }
+  btn.disabled = true; btn.textContent = 'Processando…';
+  try {
+    const p = _simParams;
+    const u = (window._units || []).find(x => x.id === _reservarUnitId);
+    const preco = u?.preco || 0;
+    const entFixo = p?.entrada_tipo === 'valor';
+    const entV    = entFixo ? (p?.entrada_valor||0) : preco * ((p?.entrada_pct||0)/100);
+    const totalRef = preco * ((p?.pRef||0)/100);
+    const saldo    = preco - entV - totalRef;
+    let condicao_proposta = null;
+    if (p && p.condicoes?.length && p.condicoes[_reservarCondIdx]) {
+      const c = p.condicoes[_reservarCondIdx];
+      const pmv = calcPMT(saldo, c.nParc, c.juros||0);
+      condicao_proposta = { label: c.label||(c.nParc+'x'), nParc: c.nParc, juros: c.juros||0,
+        valor_entrada: Math.round(entV*100)/100, parcela_mensal: Math.round(pmv*100)/100,
+        valor_total: Math.round((entV+totalRef+c.nParc*pmv)*100)/100, data_proposta: new Date().toISOString().slice(0,10) };
+    }
+    const rv = await fetch('/api/vendas/reserva-rapida', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-crm-token': _corretorToken },
+      body: JSON.stringify({ empreendimento_id: window._empId, unidade_id: _reservarUnitId, lead_id: _reservarLeadId, condicao_proposta })
+    });
+    const rdData = await rv.json();
+    if (!rdData.ok) throw new Error(rdData.error || 'Erro ao reservar');
+    const modoRes = window._modoReserva || 'pre_reserva_pix';
+    errEl.style.color = '#34d399';
+    errEl.textContent = modoRes === 'reserva_direta' ? '✅ Unidade reservada com sucesso!' : '✅ Pré-reserva criada! Envie o comprovante PIX em até 15 minutos.';
+    btn.textContent = 'Reservado ✓';
+    setTimeout(() => { fecharModal('modal-reservar'); carregar(); }, 2200);
+  } catch(e) {
+    errEl.textContent = e.message;
+    btn.disabled = false; btn.textContent = '🏠 Confirmar reserva';
+    errEl.style.color = '';
+  }
+}
+
+// ─── MODAL ANEXAR PIX ────────────────────────────────────────────────────────
+let _pixVendaId  = null;
+let _pixUnitId   = null;
+let _pixCountdownInterval = null;
+
+function abrirAnexarPix(vendaId, unitId) {
+  _pixVendaId = vendaId;
+  _pixUnitId  = unitId;
+  const u = (window._units || []).find(x => x.id === unitId);
+  document.getElementById('pix-unidade-desc').textContent = u ? `Lote ${u.lote}${u.quadra ? ' · Quadra ' + u.quadra : ''} — ${_empNome}` : _empNome;
+  document.getElementById('pix-err').textContent = '';
+  document.getElementById('pix-ok').textContent  = '';
+  document.getElementById('pix-arquivo-input').value = '';
+  const envBtn = document.getElementById('pix-enviar-btn');
+  envBtn.disabled = false; envBtn.textContent = '📤 Enviar comprovante';
+  // Inicia countdown
+  clearInterval(_pixCountdownInterval);
+  if (u?.comprovante_prazo_expira_em) {
+    const prazoMs = _parsePrazoUTC(u.comprovante_prazo_expira_em).getTime();
+    const tick = () => {
+      const el = document.getElementById('pix-modal-countdown');
+      if (!el) { clearInterval(_pixCountdownInterval); return; }
+      const ms = prazoMs - Date.now();
+      if (ms <= 0) { el.textContent = '00:00'; el.style.color = '#f87171'; clearInterval(_pixCountdownInterval); return; }
+      const mm = String(Math.floor(ms/60000)).padStart(2,'0');
+      const ss = String(Math.floor((ms%60000)/1000)).padStart(2,'0');
+      el.textContent = `${mm}:${ss}`;
+      el.style.color = ms > 7*60000 ? '#4ade80' : ms > 3*60000 ? '#fbbf24' : ms > 60000 ? '#fb923c' : '#f87171';
+    };
+    tick();
+    _pixCountdownInterval = setInterval(tick, 1000);
+  } else {
+    const el = document.getElementById('pix-modal-countdown');
+    if (el) el.textContent = '--:--';
+  }
+  document.getElementById('modal-pix-upload').classList.add('open');
+}
+
+async function enviarComprovantePix() {
+  const errEl = document.getElementById('pix-err');
+  const okEl  = document.getElementById('pix-ok');
+  const btn   = document.getElementById('pix-enviar-btn');
+  const input = document.getElementById('pix-arquivo-input');
+  errEl.textContent = ''; okEl.textContent = '';
+  if (!input.files?.length) { errEl.textContent = 'Selecione um arquivo.'; return; }
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  try {
+    const fd = new FormData();
+    fd.append('arquivo', input.files[0]);
+    const r = await fetch(`/api/vendas/${_pixVendaId}/comprovante`, { method: 'POST', headers: { 'x-crm-token': _corretorToken }, body: fd });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Erro ao enviar');
+    clearInterval(_pixCountdownInterval);
+    okEl.textContent = '✅ Comprovante enviado! Reserva confirmada.';
+    btn.textContent  = 'Enviado ✓';
+    setTimeout(() => { fecharModal('modal-pix-upload'); carregar(); }, 2000);
+  } catch(e) {
+    errEl.textContent = e.message;
+    btn.disabled = false; btn.textContent = '📤 Enviar comprovante';
+  }
+}
+
+// ─── MODAL FILA DE ESPERA ────────────────────────────────────────────────────
+let _filaUnitId = null;
+let _filaLeadId = null;
+let _filaClientesCache = [];
+
+async function abrirFila(unitId) {
+  _filaUnitId = unitId;
+  _filaLeadId = null;
+  const u = (window._units || []).find(x => x.id === unitId);
+  document.getElementById('fila-unidade-desc').textContent = u ? `Lote ${u.lote}${u.quadra ? ' · Quadra ' + u.quadra : ''} — ${_empNome}` : _empNome;
+  document.getElementById('fila-err').textContent = '';
+  document.getElementById('fila-ok').textContent  = '';
+  document.getElementById('fila-busca-cliente').value = '';
+  document.getElementById('fila-confirmar-btn').disabled = true;
+  document.getElementById('fila-confirmar-btn').style.opacity = '.5';
+  try {
+    const r = await fetch(`/api/espelho-publico/${window._espelhoSlug}/leads`, { headers: { 'x-crm-token': _corretorToken } });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Erro ao buscar clientes');
+    _filaClientesCache = d.data || [];
+    _renderClientesFila(_filaClientesCache);
+    if (!_filaClientesCache.length) document.getElementById('fila-err').textContent = 'Você ainda não tem clientes cadastrados.';
+  } catch(e) {
+    document.getElementById('fila-err').textContent = e.message;
+    _filaClientesCache = [];
+    _renderClientesFila([]);
+  }
+  document.getElementById('modal-fila').classList.add('open');
+}
+
+function _renderClientesFila(lista) {
+  const container = document.getElementById('fila-lista-clientes');
+  if (!lista.length) { container.innerHTML = '<div style="font-size:12px;color:#475569;padding:8px 0">Nenhum cliente encontrado.</div>'; return; }
+  container.innerHTML = lista.map(c => `
+    <div class="fila-cliente-item" data-id="${c.id}" onclick="_selecionarClienteFila(${c.id})"
+      style="display:flex;align-items:center;gap:10px;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px 12px;cursor:pointer;transition:border-color .15s">
+      <div style="width:34px;height:34px;border-radius:50%;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.25);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">${c.tipo_pessoa==='pj'?'🏢':'👤'}</div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#e2e8f0">${c.nome}</div>
+        <div style="font-size:11px;color:#64748b">${c.telefone||''} ${c.cpf ? '· '+c.cpf : ''}</div>
+      </div>
+    </div>`).join('');
+}
+
+function _filtrarClientesFila() {
+  const q = document.getElementById('fila-busca-cliente').value.toLowerCase();
+  const filtrado = !q ? _filaClientesCache : _filaClientesCache.filter(c => (c.nome||'').toLowerCase().includes(q)||(c.cpf||'').includes(q)||(c.telefone||'').includes(q));
+  _renderClientesFila(filtrado);
+}
+
+function _selecionarClienteFila(leadId) {
+  _filaLeadId = leadId;
+  document.querySelectorAll('.fila-cliente-item').forEach(el => {
+    const sel = parseInt(el.dataset.id) === leadId;
+    el.style.borderColor = sel ? '#818cf8' : '#334155';
+    el.style.background  = sel ? 'rgba(99,102,241,.1)' : '#0f172a';
+  });
+  const btn = document.getElementById('fila-confirmar-btn');
+  btn.disabled = false; btn.style.opacity = '1';
+}
+
+async function confirmarFila() {
+  const errEl = document.getElementById('fila-err');
+  const okEl  = document.getElementById('fila-ok');
+  const btn   = document.getElementById('fila-confirmar-btn');
+  errEl.textContent = ''; okEl.textContent = '';
+  if (!_filaLeadId) { errEl.textContent = 'Selecione um cliente.'; return; }
+  btn.disabled = true; btn.textContent = 'Entrando…';
+  try {
+    const r = await fetch(`/api/lancamento/${window._empId}/fila`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-crm-token': _corretorToken },
+      body: JSON.stringify({ unidade_id: _filaUnitId, lead_id: _filaLeadId })
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Erro ao entrar na fila');
+    okEl.textContent = `✅ Você entrou na fila! Posição: ${d.data?.posicao || '—'}`;
+    btn.textContent = 'Confirmado ✓';
+    setTimeout(() => { fecharModal('modal-fila'); carregar(); }, 2200);
+  } catch(e) {
+    errEl.textContent = e.message;
+    btn.disabled = false; btn.textContent = '✅ Entrar na fila';
+  }
 }
 
 // ── Contador regressivo de lançamento (espelho público) ───────────────────────

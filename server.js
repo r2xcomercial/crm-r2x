@@ -3323,9 +3323,9 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
       const preco = unidade?.preco || 0;
       const cpJson = condicao_proposta ? JSON.stringify(condicao_proposta) : null;
       const valorTotal = condicao_proposta?.valor_total || preco;
-      // prazo de 10 min só para pré-reserva com pix
+      // prazo de 15 min só para pré-reserva com pix
       const prazoExpira = statusInicial === 'pre_reserva'
-        ? new Date(Date.now() + 10 * 60 * 1000).toISOString().replace('T',' ').slice(0,19)
+        ? new Date(Date.now() + 15 * 60 * 1000).toISOString().replace('T',' ').slice(0,19)
         : null;
       const rv = db.prepare(`INSERT INTO vendas
         (lead_id, empreendimento_id, corretor_id, unidade_id, valor, valor_total, data_venda, status, condicao_proposta, observacoes, comprovante_prazo_expira_em)
@@ -3435,7 +3435,7 @@ setInterval(() => {
     for (const v of expiradas) {
       try {
         db.transaction(() => {
-          db.prepare("UPDATE vendas SET status='perdida', observacoes=COALESCE(observacoes||' | ','')|| 'Cancelado automaticamente: comprovante Pix não enviado em 10 minutos', comprovante_prazo_expira_em=NULL WHERE id=?").run(v.id);
+          db.prepare("UPDATE vendas SET status='perdida', observacoes=COALESCE(observacoes||' | ','')|| 'Cancelado automaticamente: comprovante Pix não enviado em 15 minutos', comprovante_prazo_expira_em=NULL WHERE id=?").run(v.id);
           db.prepare("UPDATE leads SET status='lead' WHERE id=(SELECT lead_id FROM vendas WHERE id=?)").run(v.id);
           // NÃO seta disponivel ainda — _avancarFila decide baseado na fila
         })();
@@ -3446,7 +3446,7 @@ setInterval(() => {
         } else {
           // Sem fila — libera a unidade
           db.prepare("UPDATE unidades SET status='disponivel' WHERE id=? AND status='pre_reserva'").run(v.unidade_id);
-          _logUnidade(v.unidade_id, 'pre_reserva', 'disponivel', null, v.id, 'Pré-reserva cancelada: comprovante Pix não enviado em 10 min');
+          _logUnidade(v.unidade_id, 'pre_reserva', 'disponivel', null, v.id, 'Pré-reserva cancelada: comprovante Pix não enviado em 15 min');
         }
       } catch(_) {}
     }
@@ -3480,10 +3480,6 @@ app.post('/api/lancamento/:empId/fila', autenticar, (req, res) => {
   const empId = parseInt(req.params.empId);
   const { unidade_id, lead_id } = req.body;
   if (!unidade_id) return err(res, 'unidade_id obrigatório');
-
-  // Apenas durante lançamento ativo
-  const lanc = _getLancAtivo(empId);
-  if (!lanc || lanc.status !== 'ativo') return err(res, 'Fila disponível apenas durante lançamento ativo', 403);
 
   // Corretor: só seus leads, admin: qualquer
   if (u?.perfil === 'corretor') {
@@ -5101,6 +5097,22 @@ app.get('/api/espelho-publico/:slug/ping', (req, res) => {
   }
 });
 
+
+// GET /api/espelho-publico/:slug/leads — retorna leads do corretor autenticado para este empreendimento
+app.get('/api/espelho-publico/:slug/leads', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u) return err(res, 'Não autorizado', 401);
+  const emp = db.prepare("SELECT id FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
+  if (!emp) return err(res, 'Empreendimento não encontrado', 404);
+  let rows;
+  if (['admin','gestor','incorporador'].includes(u.perfil)) {
+    rows = db.prepare(`SELECT id, nome, cpf, telefone, email, tipo_pessoa FROM leads WHERE empreendimento_id=? ORDER BY nome ASC`).all(emp.id);
+  } else {
+    const cid = u.corretor_id;
+    rows = db.prepare(`SELECT id, nome, cpf, telefone, email, tipo_pessoa FROM leads WHERE empreendimento_id=? AND corretor_id=? ORDER BY nome ASC`).all(emp.id, cid);
+  }
+  ok(res, rows);
+});
 
 // Endpoint: corretor cadastra lead a partir do espelho público
 app.post('/api/espelho-lead', autenticar, (req, res) => {
