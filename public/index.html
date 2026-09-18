@@ -17571,7 +17571,7 @@ async function _renderEmpCorretorTab(el) {
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
       ${emps.map(e => {
         const slug = e.espelho_slug;
-        const link = slug ? `${baseUrl}/espelho/${slug}` : null;
+        const link = slug ? `${baseUrl}/espelho/${slug}?token=${encodeURIComponent(TOKEN)}` : null;
         const statusBadge = e.status === 'ativo' ? '<span class="badge badge-green">Ativo</span>'
           : e.status === 'lancamento' ? '<span class="badge badge-blue">Lançamento</span>'
           : `<span class="badge badge-gray">${e.status||'—'}</span>`;
@@ -17593,7 +17593,7 @@ async function _renderEmpCorretorTab(el) {
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
               ${link
                 ? `<a href="${link}" target="_blank" rel="noopener" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--navy);border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px">🏠 Ver Espelho</a>
-                   <button onclick="navigator.clipboard.writeText('${link}');toast('✅ Link copiado!')" style="padding:8px 10px;background:var(--navy3);color:var(--text2);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer" title="Copiar link público">📋</button>`
+                   <button onclick="navigator.clipboard.writeText('${baseUrl}/espelho/${slug}');toast('✅ Link copiado!')" style="padding:8px 10px;background:var(--navy3);color:var(--text2);border:1px solid var(--border);border-radius:8px;font-size:13px;cursor:pointer" title="Copiar link público (sem token)">📋</button>`
                 : `<button onclick="verEspelho(${e.id})" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--navy);border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">🏠 Ver Espelho</button>`
               }
             </div>

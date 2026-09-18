@@ -1202,7 +1202,7 @@ function ajustarMarcadores() {
       u.quadra ? `Quadra ${u.quadra}` : '',
       `Lote ${u.lote}`,
       u.area_m2 ? `${u.area_m2}m²` : '',
-      u.preco ? fmt0.format(u.preco) : '',
+      (!window._hidePreco && u.preco) ? fmt0.format(u.preco) : '',
       statusLabel(u.status)
     ].filter(Boolean).join('<br>');
     html.push(`<div class="marcador ${u.status}" style="left:${x}px;top:${y}px;width:${sz}px;height:${sz}px;font-size:${fs}px" onclick="abrirSimulacao(${u.id})">
