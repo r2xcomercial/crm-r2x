@@ -5117,11 +5117,12 @@ app.get('/api/espelho-publico/:slug/leads', (req, res) => {
   if (!sessao) return err(res, 'Sessão inválida ou expirada', 401);
   const emp = db.prepare("SELECT id FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
   if (!emp) return err(res, 'Empreendimento não encontrado', 404);
+  const sel = `SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa FROM leads`;
   let rows;
   if (['admin','gestor','incorporador'].includes(sessao.perfil)) {
-    rows = db.prepare(`SELECT id, nome, cpf, telefone, email, tipo_pessoa FROM leads WHERE empreendimento_id=? ORDER BY nome ASC`).all(emp.id);
+    rows = db.prepare(`${sel} WHERE empreendimento_id=? ORDER BY nome ASC`).all(emp.id);
   } else {
-    rows = db.prepare(`SELECT id, nome, cpf, telefone, email, tipo_pessoa FROM leads WHERE empreendimento_id=? AND corretor_id=? ORDER BY nome ASC`).all(emp.id, sessao.corretor_id);
+    rows = db.prepare(`${sel} WHERE empreendimento_id=? AND corretor_id=? ORDER BY nome ASC`).all(emp.id, sessao.corretor_id);
   }
   ok(res, rows);
 });
