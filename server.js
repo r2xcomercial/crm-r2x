@@ -3268,8 +3268,10 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
 
   // Admin/gestor/incorporador: sempre reserva direta (sem PIX). Corretor: segue modo_reserva do empreendimento.
   const isAdminReserva = ['admin','gestor','incorporador'].includes(u?.perfil);
-  const statusInicial = condicao_proposta ? 'proposta'
-    : (isAdminReserva || modoReserva === 'reserva_direta' ? 'reserva' : 'pre_reserva');
+  const reservaDireta  = isAdminReserva || modoReserva === 'reserva_direta';
+  // reserva_direta ignora condicao_proposta e vai direto para 'reserva' (sem PIX, sem aprovação)
+  const statusInicial = reservaDireta ? 'reserva'
+    : (condicao_proposta ? 'proposta' : 'pre_reserva');
   const statusUnidade = statusInicial === 'proposta' ? 'pre_reserva'
     : (statusInicial === 'reserva' ? 'reservado' : 'pre_reserva');
 
