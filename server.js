@@ -3271,7 +3271,7 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
   const statusInicial = condicao_proposta ? 'proposta'
     : (isAdminReserva || modoReserva === 'reserva_direta' ? 'reserva' : 'pre_reserva');
   const statusUnidade = statusInicial === 'proposta' ? 'pre_reserva'
-    : (statusInicial === 'reserva' ? 'reserva' : 'pre_reserva');
+    : (statusInicial === 'reserva' ? 'reservado' : 'pre_reserva');
 
   try {
     const resultado = db.transaction(() => {
