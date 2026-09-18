@@ -4376,10 +4376,10 @@ function openEmpModal(e = {}) {
         <div style="margin-top:14px">
           <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">💳 Modelo de Reserva</label>
           <select id="f-modo-reserva" style="width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
-            <option value="pre_reserva_pix" ${(e.modo_reserva||'pre_reserva_pix')==='pre_reserva_pix'?'selected':''}>🟠 Pré-reserva + comprovante PIX (10 min)</option>
+            <option value="pre_reserva_pix" ${(e.modo_reserva||'pre_reserva_pix')==='pre_reserva_pix'?'selected':''}>🟠 Pré-reserva + comprovante PIX (15 min)</option>
             <option value="reserva_direta" ${(e.modo_reserva)==='reserva_direta'?'selected':''}>🟡 Reserva direta (sem envio de comprovante)</option>
           </select>
-          <div style="font-size:11px;color:var(--text2);margin-top:4px">Pré-reserva com PIX: corretor tem 10 min para enviar comprovante. Reserva direta: unidade é reservada imediatamente sem necessidade de PIX.</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:4px">Pré-reserva com PIX: corretor tem 15 min para enviar comprovante. Reserva direta: unidade é reservada imediatamente sem necessidade de PIX.</div>
         </div>
       </div>
 
