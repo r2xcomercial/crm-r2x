@@ -988,9 +988,9 @@ async function carregar() {
     const socialBtn = document.getElementById('social-btn');
     if (socialBtn) { socialBtn.href = _socialUrl || '#'; socialBtn.style.display = _socialUrl ? '' : 'none'; }
     const exportBtn = document.getElementById('export-btn');
-    if (exportBtn) exportBtn.style.display = 'flex';
+    if (exportBtn) exportBtn.style.display = window._hidePreco ? 'none' : 'flex';
     const pdfBtn = document.getElementById('pdf-btn');
-    if (pdfBtn) pdfBtn.style.display = 'flex';
+    if (pdfBtn) pdfBtn.style.display = window._hidePreco ? 'none' : 'flex';
 
     document.title = `Espelho — ${emp.nome}`;
     document.getElementById('emp-nome').textContent  = _empNome;
@@ -1480,6 +1480,7 @@ function initMapaPinchZoom() {
 }
 
 async function baixarTabelaPDF() {
+  if (window._hidePreco) return;
   const units = window._units || [];
   if (!units.length) return;
   const p = _simParams;
@@ -1629,6 +1630,7 @@ async function baixarTabelaPDF() {
 }
 
 function exportarTabelaEspelho() {
+  if (window._hidePreco) return;
   const units = window._units || [];
   if (!units.length) return;
 
