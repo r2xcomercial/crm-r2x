@@ -127,6 +127,13 @@ app.use((req, res, next) => {
   next();
 });
 
+// Arquivos HTML do espelho e do app nunca devem ser cacheados pelo browser
+app.use((req, res, next) => {
+  if (req.path.endsWith('.html') || req.path === '/' || req.path.startsWith('/espelho')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, "public")));
 
 // Rotas sem extensão → arquivos HTML correspondentes
@@ -5099,17 +5106,22 @@ app.get('/api/espelho-publico/:slug/ping', (req, res) => {
 
 
 // GET /api/espelho-publico/:slug/leads — retorna leads do corretor autenticado para este empreendimento
-app.get('/api/espelho-publico/:slug/leads', autenticar, (req, res) => {
-  const u = req.usuario;
-  if (!u) return err(res, 'Não autorizado', 401);
+// Obs: rota sob /api/espelho-publico/ é pública no middleware, então validamos o token manualmente aqui
+app.get('/api/espelho-publico/:slug/leads', (req, res) => {
+  const token = req.headers['x-crm-token'] || req.query.token;
+  if (!token) return err(res, 'Não autorizado', 401);
+  let sessao;
+  try {
+    sessao = db.prepare(`SELECT u.id, u.perfil, u.corretor_id FROM sessoes s JOIN usuarios u ON u.id=s.usuario_id WHERE s.token=? AND s.expira_em > datetime('now') AND u.ativo=1`).get(token);
+  } catch(e) { return err(res, 'Erro de autenticação', 500); }
+  if (!sessao) return err(res, 'Sessão inválida ou expirada', 401);
   const emp = db.prepare("SELECT id FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
   if (!emp) return err(res, 'Empreendimento não encontrado', 404);
   let rows;
-  if (['admin','gestor','incorporador'].includes(u.perfil)) {
+  if (['admin','gestor','incorporador'].includes(sessao.perfil)) {
     rows = db.prepare(`SELECT id, nome, cpf, telefone, email, tipo_pessoa FROM leads WHERE empreendimento_id=? ORDER BY nome ASC`).all(emp.id);
   } else {
-    const cid = u.corretor_id;
-    rows = db.prepare(`SELECT id, nome, cpf, telefone, email, tipo_pessoa FROM leads WHERE empreendimento_id=? AND corretor_id=? ORDER BY nome ASC`).all(emp.id, cid);
+    rows = db.prepare(`SELECT id, nome, cpf, telefone, email, tipo_pessoa FROM leads WHERE empreendimento_id=? AND corretor_id=? ORDER BY nome ASC`).all(emp.id, sessao.corretor_id);
   }
   ok(res, rows);
 });
