@@ -90,19 +90,20 @@
   /* Modal genérico */
   .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:200; align-items:center; justify-content:center; padding:16px; }
   .modal-overlay.open { display:flex; }
-  .modal-box { background:#1e293b; border:1px solid #334155; border-radius:14px; padding:24px; width:100%; max-width:400px; }
+  .modal-box { background:#1e293b; border:1px solid #334155; border-radius:14px; padding:24px; width:100%; max-width:480px; max-height:90vh; overflow-y:auto; }
+  .modal-box.wide { max-width:560px; }
   .modal-box h3 { font-size:16px; font-weight:700; margin-bottom:16px; }
-  .modal-box label { display:block; font-size:12px; color:#94a3b8; margin-bottom:4px; margin-top:12px; }
-  .modal-box input, .modal-box textarea { width:100%; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0; font-size:13px; padding:9px 12px; outline:none; font-family:inherit; }
-  .modal-box input:focus, .modal-box textarea:focus { border-color:#14b8a6; }
+  .modal-box label { display:block; font-size:11px; color:#94a3b8; margin-bottom:3px; margin-top:10px; text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
+  .modal-box input, .modal-box textarea, .modal-box select { width:100%; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0; font-size:13px; padding:9px 12px; outline:none; font-family:inherit; box-sizing:border-box; }
+  .modal-box input:focus, .modal-box textarea:focus, .modal-box select:focus { border-color:#14b8a6; }
   .modal-box textarea { resize:vertical; min-height:70px; }
   .modal-btns { display:flex; gap:8px; margin-top:16px; }
   .modal-btns button { flex:1; padding:10px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; border:none; }
   .btn-cancel { background:#334155; color:#94a3b8; }
   .btn-confirm { background:#14b8a6; color:#fff; }
   .btn-confirm:hover { background:#0d9488; }
-  .modal-err { color:#f87171; font-size:12px; margin-top:8px; display:none; }
-  .modal-ok  { color:#4ade80; font-size:12px; margin-top:8px; display:none; }
+  .modal-err { color:#f87171; font-size:12px; margin-top:6px; min-height:16px; }
+  .modal-ok  { color:#4ade80; font-size:12px; margin-top:6px; min-height:16px; }
 
   main { padding: 0 24px 32px; }
 
@@ -425,25 +426,169 @@
   </div>
 </div>
 
-<!-- Modal cadastrar lead -->
-<div id="modal-lead" class="modal-overlay">
-  <div class="modal-box">
-    <h3>📋 Cadastrar Cliente</h3>
-    <p id="lead-unidade-desc" style="font-size:12px;color:#94a3b8;margin-bottom:4px"></p>
-    <label>Nome do cliente *</label>
-    <input id="lead-nome" type="text" placeholder="Nome completo">
-    <label>Telefone / WhatsApp *</label>
-    <input id="lead-tel" type="tel" placeholder="(48) 99999-9999">
-    <label>E-mail</label>
-    <input id="lead-email" type="email" placeholder="cliente@email.com">
-    <label>Observações</label>
-    <textarea id="lead-obs" placeholder="Interesse, timing, perfil..."></textarea>
+<!-- Modal cadastrar cliente (completo) -->
+<div id="modal-lead" class="modal-overlay" onclick="if(event.target===this)fecharModal('modal-lead')">
+  <div class="modal-box wide">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <h3 style="margin:0">📋 Cadastrar Cliente</h3>
+      <button onclick="fecharModal('modal-lead')" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;padding:4px">✕</button>
+    </div>
+    <p id="lead-unidade-desc" style="font-size:12px;color:#14b8a6;margin:0 0 14px;font-weight:600"></p>
+
+    <!-- Toggle PF / PJ -->
+    <div style="display:flex;gap:6px;margin-bottom:16px" id="lead-tipo-toggle">
+      <button id="ep-btn-pf" onclick="_epTipoPessoa('pf')"
+        style="flex:1;padding:9px;border-radius:8px;border:2px solid #14b8a6;background:rgba(20,184,166,.12);color:#14b8a6;font-size:13px;font-weight:700;cursor:pointer">
+        👤 Pessoa Física
+      </button>
+      <button id="ep-btn-pj" onclick="_epTipoPessoa('pj')"
+        style="flex:1;padding:9px;border-radius:8px;border:1px solid #334155;background:none;color:#64748b;font-size:13px;cursor:pointer">
+        🏢 Pessoa Jurídica
+      </button>
+    </div>
+
+    <!-- Campos PF -->
+    <div id="ep-campos-pf" style="display:flex;flex-direction:column;gap:0">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div style="grid-column:1/-1">
+          <label>Nome completo *</label>
+          <input id="ep-pf-nome" type="text" placeholder="Nome completo">
+        </div>
+        <div>
+          <label>CPF *</label>
+          <input id="ep-pf-cpf" type="text" placeholder="000.000.000-00" oninput="fmtCPF(this)" maxlength="14">
+        </div>
+        <div>
+          <label>RG</label>
+          <input id="ep-pf-rg" type="text" placeholder="00.000.000-0">
+        </div>
+        <div>
+          <label>Telefone / WhatsApp *</label>
+          <input id="ep-pf-tel" type="tel" placeholder="(48) 9xxxx-xxxx">
+        </div>
+        <div>
+          <label>E-mail *</label>
+          <input id="ep-pf-email" type="email" placeholder="cliente@email.com">
+        </div>
+        <div>
+          <label>Estado Civil</label>
+          <select id="ep-pf-ec" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:13px;padding:9px 12px;font-family:inherit">
+            <option value="">— Selecione —</option>
+            <option>solteiro</option><option>casado</option><option>divorciado</option>
+            <option>viuvo</option><option>uniao_estavel</option>
+          </select>
+        </div>
+        <div>
+          <label>Profissão</label>
+          <input id="ep-pf-prof" type="text" placeholder="Profissão">
+        </div>
+        <div>
+          <label>CEP</label>
+          <input id="ep-pf-cep" type="text" placeholder="00000-000" oninput="_epBuscarCep('pf',this)">
+        </div>
+        <div style="grid-column:1/-1">
+          <label>Endereço</label>
+          <input id="ep-pf-end" type="text" placeholder="Rua, Avenida...">
+        </div>
+        <div>
+          <label>Número</label>
+          <input id="ep-pf-num" type="text" placeholder="Nº">
+        </div>
+        <div>
+          <label>Complemento</label>
+          <input id="ep-pf-comp" type="text" placeholder="Apto, Bloco...">
+        </div>
+        <div>
+          <label>Bairro</label>
+          <input id="ep-pf-bairro" type="text" placeholder="Bairro">
+        </div>
+        <div>
+          <label>Cidade</label>
+          <input id="ep-pf-cidade" type="text" placeholder="Cidade">
+        </div>
+        <div>
+          <label>Estado (UF)</label>
+          <input id="ep-pf-estado" type="text" placeholder="SC" maxlength="2">
+        </div>
+        <div>
+          <label>Observações</label>
+          <input id="ep-pf-obs" type="text" placeholder="Interesse, timing, perfil...">
+        </div>
+      </div>
+    </div>
+
+    <!-- Campos PJ -->
+    <div id="ep-campos-pj" style="display:none;flex-direction:column;gap:0">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div style="grid-column:1/-1">
+          <label>Razão Social *</label>
+          <input id="ep-pj-rs" type="text" placeholder="Nome da empresa">
+        </div>
+        <div>
+          <label>CNPJ *</label>
+          <input id="ep-pj-cnpj" type="text" placeholder="00.000.000/0000-00">
+        </div>
+        <div>
+          <label>Telefone *</label>
+          <input id="ep-pj-tel" type="tel" placeholder="(48) 9xxxx-xxxx">
+        </div>
+        <div style="grid-column:1/-1">
+          <label>E-mail *</label>
+          <input id="ep-pj-email" type="email" placeholder="contato@empresa.com">
+        </div>
+        <div style="grid-column:1/-1;border-top:1px solid #334155;padding-top:10px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-top:4px">Representante Legal</div>
+        <div style="grid-column:1/-1">
+          <label>Nome do Responsável *</label>
+          <input id="ep-pj-rep-nome" type="text" placeholder="Nome completo">
+        </div>
+        <div>
+          <label>CPF do Responsável</label>
+          <input id="ep-pj-rep-cpf" type="text" placeholder="000.000.000-00" oninput="fmtCPF(this)" maxlength="14">
+        </div>
+        <div>
+          <label>Cargo</label>
+          <input id="ep-pj-rep-cargo" type="text" placeholder="Sócio, Diretor...">
+        </div>
+        <div style="grid-column:1/-1;border-top:1px solid #334155;padding-top:10px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-top:4px">Endereço da Empresa</div>
+        <div>
+          <label>CEP</label>
+          <input id="ep-pj-cep" type="text" placeholder="00000-000" oninput="_epBuscarCep('pj',this)">
+        </div>
+        <div style="grid-column:1/-1">
+          <label>Endereço</label>
+          <input id="ep-pj-end" type="text" placeholder="Rua, Avenida...">
+        </div>
+        <div>
+          <label>Número</label>
+          <input id="ep-pj-num" type="text" placeholder="Nº">
+        </div>
+        <div>
+          <label>Bairro</label>
+          <input id="ep-pj-bairro" type="text" placeholder="Bairro">
+        </div>
+        <div>
+          <label>Cidade</label>
+          <input id="ep-pj-cidade" type="text" placeholder="Cidade">
+        </div>
+        <div>
+          <label>Estado (UF)</label>
+          <input id="ep-pj-estado" type="text" placeholder="SC" maxlength="2">
+        </div>
+        <div style="grid-column:1/-1">
+          <label>Observações</label>
+          <input id="ep-pj-obs" type="text" placeholder="Interesse, timing, perfil...">
+        </div>
+      </div>
+    </div>
+
     <div id="lead-err" class="modal-err"></div>
     <div id="lead-ok"  class="modal-ok"></div>
-    <div class="modal-btns" id="lead-btns-cadastrar">
+
+    <div class="modal-btns" id="lead-btns-cadastrar" style="margin-top:12px">
       <button class="btn-cancel" onclick="fecharModal('modal-lead')">Cancelar</button>
       <button id="lead-submit-btn" class="btn-confirm" onclick="enviarLead()">Cadastrar</button>
     </div>
+
     <!-- Seção pós-cadastro: reservar + proposta -->
     <div id="lead-proposta-section" style="display:none;margin-top:12px;border-top:1px solid #334155;padding-top:14px">
       <div style="font-size:13px;font-weight:700;color:#34d399;margin-bottom:4px">✅ Cliente cadastrado!</div>
@@ -1944,51 +2089,124 @@ ${'<sc'+'ript>window.onload=()=>window.print()<'+'/sc'+'ript>'}
   w.document.close();
 }
 
+// ── Helpers do formulário de cadastro no espelho ─────────────────────────────
+let _epTipo = 'pf';
+function _epTipoPessoa(tipo) {
+  _epTipo = tipo;
+  const pfBtn = document.getElementById('ep-btn-pf'), pjBtn = document.getElementById('ep-btn-pj');
+  const pfCampos = document.getElementById('ep-campos-pf'), pjCampos = document.getElementById('ep-campos-pj');
+  if (tipo === 'pf') {
+    pfBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:2px solid #14b8a6;background:rgba(20,184,166,.12);color:#14b8a6;font-size:13px;font-weight:700;cursor:pointer';
+    pjBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:1px solid #334155;background:none;color:#64748b;font-size:13px;cursor:pointer';
+    pfCampos.style.display = 'flex'; pjCampos.style.display = 'none';
+  } else {
+    pjBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:2px solid #14b8a6;background:rgba(20,184,166,.12);color:#14b8a6;font-size:13px;font-weight:700;cursor:pointer';
+    pfBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:1px solid #334155;background:none;color:#64748b;font-size:13px;cursor:pointer';
+    pjCampos.style.display = 'flex'; pfCampos.style.display = 'none';
+  }
+}
+
+async function _epBuscarCep(tipo, el) {
+  const cep = (el.value || '').replace(/\D/g,'');
+  if (cep.length !== 8) return;
+  try {
+    const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`).then(x=>x.json());
+    if (r.erro) return;
+    const set = (id, val) => { const f = document.getElementById(`ep-${tipo}-${id}`); if(f && !f.value) f.value = val||''; };
+    set('end', r.logradouro); set('bairro', r.bairro); set('cidade', r.localidade); set('estado', r.uf);
+  } catch(_) {}
+}
+
 // ── Cadastrar cliente (lead) ──────────────────────────────────────────────────
 function abrirCadastrarLead(unitId) {
   _leadUnitId = unitId || null;
+  _epTipo = 'pf';
+  _epTipoPessoa('pf');
   const u = unitId ? (window._units || []).find(x => x.id === unitId) : null;
   const desc = document.getElementById('lead-unidade-desc');
-  if (desc) desc.textContent = u ? `Lote ${u.lote}${u.quadra ? ' · Quadra ' + u.quadra : ''} — ${_empNome}` : (_empNome || '');
-  document.getElementById('lead-nome').value  = '';
-  document.getElementById('lead-tel').value   = '';
-  document.getElementById('lead-email').value = '';
-  document.getElementById('lead-obs').value   = '';
+  if (desc) {
+    if (u) {
+      const isLot = (_empTipo || 'loteamento') !== 'vertical';
+      desc.textContent = isLot
+        ? `${u.quadra ? 'Q.'+u.quadra+' · ' : ''}Lote ${u.lote} — ${_empNome}`
+        : `Unidade ${u.lote}${u.quadra ? ' · Andar ' + u.quadra : ''} — ${_empNome}`;
+    } else {
+      desc.textContent = _empNome || '';
+    }
+  }
+  // Limpa todos os campos
+  ['ep-pf-nome','ep-pf-cpf','ep-pf-rg','ep-pf-tel','ep-pf-email','ep-pf-prof','ep-pf-cep','ep-pf-end','ep-pf-num','ep-pf-comp','ep-pf-bairro','ep-pf-cidade','ep-pf-estado','ep-pf-obs',
+   'ep-pj-rs','ep-pj-cnpj','ep-pj-tel','ep-pj-email','ep-pj-rep-nome','ep-pj-rep-cpf','ep-pj-rep-cargo','ep-pj-cep','ep-pj-end','ep-pj-num','ep-pj-bairro','ep-pj-cidade','ep-pj-estado','ep-pj-obs'
+  ].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  const ecEl = document.getElementById('ep-pf-ec'); if(ecEl) ecEl.value = '';
   document.getElementById('lead-err').textContent = '';
   document.getElementById('lead-ok').textContent  = '';
-  document.getElementById('lead-submit-btn').disabled  = false;
-  document.getElementById('lead-submit-btn').textContent = 'Cadastrar';
+  const submitBtn = document.getElementById('lead-submit-btn');
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Cadastrar';
   document.getElementById('lead-btns-cadastrar').style.display = '';
   document.getElementById('lead-proposta-section').style.display = 'none';
   document.getElementById('lead-proposta-err').textContent = '';
   window._leadNovoId = null;
   window._propostaCondIdx = 0;
   document.getElementById('modal-lead').classList.add('open');
-  setTimeout(() => document.getElementById('lead-nome').focus(), 80);
+  setTimeout(() => document.getElementById('ep-pf-nome')?.focus(), 80);
 }
 
+function _epGv(id) { return (document.getElementById(id)?.value || '').trim(); }
+
 async function enviarLead() {
-  const nome  = document.getElementById('lead-nome').value.trim();
-  const tel   = document.getElementById('lead-tel').value.trim();
-  const email = document.getElementById('lead-email').value.trim();
-  const obs   = document.getElementById('lead-obs').value.trim();
   const errEl = document.getElementById('lead-err');
   const okEl  = document.getElementById('lead-ok');
   errEl.textContent = '';
   okEl.textContent  = '';
-  if (!nome) { errEl.textContent = 'Informe o nome do cliente.'; return; }
-  if (!tel)  { errEl.textContent = 'Informe o telefone / WhatsApp.'; return; }
-  const btn = document.getElementById('lead-submit-btn');
-  btn.disabled = true;
-  btn.textContent = 'Salvando…';
-  try {
-    const body = {
-      nome, telefone: tel, email: email || null,
-      observacoes: obs || null,
+
+  const pj = _epTipo === 'pj';
+  let body;
+  if (pj) {
+    const rs = _epGv('ep-pj-rs'), cnpj = _epGv('ep-pj-cnpj'), tel = _epGv('ep-pj-tel'),
+          email = _epGv('ep-pj-email'), repNome = _epGv('ep-pj-rep-nome');
+    if (!rs)      { errEl.textContent = '⚠️ Informe a Razão Social.'; return; }
+    if (!cnpj)    { errEl.textContent = '⚠️ Informe o CNPJ.'; return; }
+    if (!tel)     { errEl.textContent = '⚠️ Informe o Telefone.'; return; }
+    if (!email)   { errEl.textContent = '⚠️ Informe o E-mail.'; return; }
+    if (!repNome) { errEl.textContent = '⚠️ Informe o nome do Responsável.'; return; }
+    body = {
+      pessoa_juridica: true, razao_social: rs, cnpj,
+      nome: repNome || rs, representante_nome: repNome,
+      representante_cpf: _epGv('ep-pj-rep-cpf'), representante_cargo: _epGv('ep-pj-rep-cargo'),
+      telefone: tel, email: email || null,
+      endereco: _epGv('ep-pj-end'), numero: _epGv('ep-pj-num'), bairro: _epGv('ep-pj-bairro'),
+      cep: _epGv('ep-pj-cep'), cidade: _epGv('ep-pj-cidade'), estado: _epGv('ep-pj-estado'),
+      observacoes: _epGv('ep-pj-obs') || null,
       corretor_id: _corretorId ? parseInt(_corretorId) : null,
       empreendimento_id: window._empId || null,
       status: 'novo', origem: 'espelho'
     };
+  } else {
+    const nome = _epGv('ep-pf-nome'), cpf = _epGv('ep-pf-cpf'),
+          tel  = _epGv('ep-pf-tel'), email = _epGv('ep-pf-email');
+    if (!nome)  { errEl.textContent = '⚠️ Informe o nome completo.'; return; }
+    if (!cpf)   { errEl.textContent = '⚠️ Informe o CPF.'; return; }
+    if (!tel)   { errEl.textContent = '⚠️ Informe o telefone / WhatsApp.'; return; }
+    if (!email) { errEl.textContent = '⚠️ Informe o e-mail.'; return; }
+    body = {
+      pessoa_juridica: false, nome, cpf, rg: _epGv('ep-pf-rg') || null,
+      estado_civil: _epGv('ep-pf-ec') || null, profissao: _epGv('ep-pf-prof') || null,
+      telefone: tel, email,
+      endereco: _epGv('ep-pf-end'), numero: _epGv('ep-pf-num'), complemento: _epGv('ep-pf-comp') || null,
+      bairro: _epGv('ep-pf-bairro'), cep: _epGv('ep-pf-cep'), cidade: _epGv('ep-pf-cidade'), estado: _epGv('ep-pf-estado'),
+      observacoes: _epGv('ep-pf-obs') || null,
+      corretor_id: _corretorId ? parseInt(_corretorId) : null,
+      empreendimento_id: window._empId || null,
+      status: 'novo', origem: 'espelho'
+    };
+  }
+
+  const btn = document.getElementById('lead-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Salvando…';
+  try {
     const r = await fetch('/api/leads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-crm-token': _corretorToken },
