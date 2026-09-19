@@ -3414,7 +3414,7 @@ app.get('/api/vendas/:id/comprovante', autenticar, (req, res) => {
   const vendaId = parseInt(req.params.id);
   const venda = db.prepare('SELECT corretor_id, comprovante_pix, comprovante_pix_nome, comprovante_pix_tipo FROM vendas WHERE id=?').get(vendaId);
   if (!venda) return err(res, 'Venda não encontrada', 404);
-  if (u?.perfil === 'corretor' && venda.corretor_id !== u.corretor_id)
+  if (!['admin','gestor','incorporador'].includes(u?.perfil))
     return err(res, 'Sem permissão', 403);
   if (!venda.comprovante_pix) return err(res, 'Comprovante não anexado', 404);
 

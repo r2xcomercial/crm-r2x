@@ -753,7 +753,6 @@
       </div>
       <span class="chip-change" onclick="_filaAcLimpar()">Trocar</span>
     </div>
-    <div style="margin-top:6px;font-size:11px;color:#475569">Não encontrou? <span style="color:#14b8a6;cursor:pointer;text-decoration:underline" onclick="fecharModal('modal-fila');abrirCadastrarLead(null)">Cadastre primeiro</span>.</div>
     <div id="fila-err" class="modal-err" style="margin-top:8px"></div>
     <div id="fila-ok" class="modal-ok"></div>
     <button id="fila-confirmar-btn" onclick="confirmarFila()" style="display:block;width:100%;padding:15px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#4f46e5,#4338ca);color:#fff;border:none;border-radius:10px;cursor:pointer;margin-top:16px;opacity:.5" disabled>🔔 Entrar na fila</button>
@@ -1040,15 +1039,6 @@ function abrirSimulacao(unitId) {
       </div>
       <div class="sim-aviso">* Simulação sujeita a alterações. Consulte a equipe da R2X.</div>
       </div>
-      <div id="sim-screen-2" style="display:none">
-        <div class="sim-body" style="border-top:1px solid #334155">
-          <div style="font-size:12px;color:#64748b;padding:0 0 8px">Preencha para enviar a proposta via WhatsApp:</div>
-          ${formFields}
-        </div>
-        <div class="sim-foot">
-          <button class="btn-sim secondary" onclick="voltarParaSimulacao()">← Voltar</button>
-          <button class="btn-sim wa" onclick="enviarPropostaWA(${unitId})">📲 Enviar WhatsApp</button>
-        </div>
       </div>`
     : `${reservarBtn ? `<div style="padding:10px 16px 4px">${reservarBtn}</div>` : ''}
       ${extraBtns}
