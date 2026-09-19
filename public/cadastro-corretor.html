@@ -127,10 +127,13 @@
   <div class="success-box" id="success-box">
     <div class="success-icon">🎉</div>
     <div class="success-title">Cadastro realizado!</div>
-    <div class="success-sub">Bem-vindo(a) à rede R2X.<br>Seu acesso foi criado com o e-mail informado.</div>
-    <div class="wpp-note">📲 Você receberá uma confirmação via WhatsApp com as instruções de acesso.</div>
-    <div id="btn-voltar-espelho" style="display:none;margin-top:20px">
-      <a id="link-espelho" href="#" class="btn" style="display:inline-block;text-decoration:none;text-align:center">Acessar Espelho de Vendas →</a>
+    <div class="success-sub">Bem-vindo(a) à rede R2X.<br>Use seu <strong>e-mail</strong> e a <strong>senha criada</strong> para entrar.</div>
+    <div id="btn-entrar" style="margin-top:20px">
+      <a id="link-espelho" href="#" class="btn" style="display:block;text-decoration:none;text-align:center">Entrar agora →</a>
+    </div>
+    <div style="margin-top:16px;font-size:12px;color:var(--text2)">
+      Esqueceu a senha depois?
+      <a href="https://wa.me/5548988228031?text=Ol%C3%A1%2C%20preciso%20redefinir%20minha%20senha%20no%20espelho%20da%20R2X." target="_blank" style="color:var(--accent);text-decoration:none;font-weight:600">Fale com a R2X</a>
     </div>
   </div>
 </div>
@@ -205,11 +208,8 @@ async function enviar(e) {
     if (!data.ok) throw new Error(data.error);
     document.getElementById('form').style.display = 'none';
     document.getElementById('success-box').style.display = 'block';
-    if (_redirectParam) {
-      const linkEl = document.getElementById('link-espelho');
-      linkEl.href = _redirectParam;
-      document.getElementById('btn-voltar-espelho').style.display = 'block';
-    }
+    const linkEl = document.getElementById('link-espelho');
+    linkEl.href = _redirectParam || '/espelho-publico';
   } catch(err) {
     alert('Erro: ' + err.message);
     btn.disabled = false; btn.textContent = 'Criar Cadastro';

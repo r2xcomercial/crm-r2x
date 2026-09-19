@@ -2344,14 +2344,6 @@ app.post("/api/corretores/publico", async (req, res) => {
     db.prepare('DELETE FROM corretores WHERE id=?').run(id);
     return err(res, 'Erro ao criar login: ' + (e.message.includes('UNIQUE') ? 'E-mail já em uso' : e.message));
   }
-  // WhatsApp de confirmação via Débora (fire-and-forget)
-  chatbotReq('/painel/enviar', {
-    method: 'POST',
-    body: JSON.stringify({
-      numero: telefone.replace(/\D/g,''),
-      mensagem: `Olá, *${nome}*! 🎉 Seu cadastro na R2X foi realizado com sucesso!\n\n*Login:* ${emailLower}\n\nAcesse o espelho de vendas pelo link que você recebeu para começar a trabalhar. Boas vendas!`
-    })
-  }).catch(() => {});
   ok(res, { id, mensagem: "Cadastro realizado com sucesso!" });
 });
 
