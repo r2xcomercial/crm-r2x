@@ -2946,11 +2946,18 @@ async function confirmarReserva() {
     });
     const rdData = await rv.json();
     if (!rdData.ok) throw new Error(rdData.error || 'Erro ao reservar');
-    const modoRes = window._modoReserva || 'pre_reserva_pix';
-    errEl.style.color = '#34d399';
-    errEl.textContent = modoRes === 'reserva_direta' ? '✅ Unidade reservada com sucesso!' : '✅ Pré-reserva criada! Envie o comprovante PIX em até 15 minutos.';
-    btn.textContent = 'Reservado ✓';
-    _confirmarReservaTimeout = setTimeout(() => { _confirmarReservaTimeout = null; fecharModal('modal-reservar'); carregar(); }, 2200);
+    if (rdData.data?.status === 'pre_reserva') {
+      // Fluxo PIX: fecha o modal de reserva e abre imediatamente o modal de comprovante
+      fecharModal('modal-reservar');
+      carregar(); // atualiza o espelho em background
+      abrirAnexarPix(rdData.data.venda_id, _reservarUnitId, rdData.data.comprovante_prazo_expira_em);
+    } else {
+      // Reserva direta (admin/gestor ou modo reserva_direta)
+      errEl.style.color = '#34d399';
+      errEl.textContent = '✅ Unidade reservada com sucesso!';
+      btn.textContent = 'Reservado ✓';
+      _confirmarReservaTimeout = setTimeout(() => { _confirmarReservaTimeout = null; fecharModal('modal-reservar'); carregar(); }, 2200);
+    }
   } catch(e) {
     errEl.textContent = e.message;
     btn.disabled = false; btn.textContent = '🏠 Confirmar reserva';
@@ -2962,7 +2969,7 @@ let _pixVendaId  = null;
 let _pixUnitId   = null;
 let _pixCountdownInterval = null;
 
-function abrirAnexarPix(vendaId, unitId) {
+function abrirAnexarPix(vendaId, unitId, prazoOverride) {
   _pixVendaId = vendaId;
   _pixUnitId  = unitId;
   const u = (window._units || []).find(x => x.id === unitId);
@@ -2972,10 +2979,11 @@ function abrirAnexarPix(vendaId, unitId) {
   document.getElementById('pix-arquivo-input').value = '';
   const envBtn = document.getElementById('pix-enviar-btn');
   envBtn.disabled = false; envBtn.textContent = '📤 Enviar comprovante';
-  // Inicia countdown
+  // Inicia countdown — usa prazo do response direto (logo após reserva) ou do cache de unidades
   clearInterval(_pixCountdownInterval);
-  if (u?.comprovante_prazo_expira_em) {
-    const prazoMs = _parsePrazoUTC(u.comprovante_prazo_expira_em).getTime();
+  const prazoStr = prazoOverride || u?.comprovante_prazo_expira_em;
+  if (prazoStr) {
+    const prazoMs = _parsePrazoUTC(prazoStr).getTime();
     const tick = () => {
       const el = document.getElementById('pix-modal-countdown');
       if (!el) { clearInterval(_pixCountdownInterval); return; }

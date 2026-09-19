@@ -3378,7 +3378,7 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
         db.prepare("UPDATE leads SET status=?, empreendimento_id=COALESCE(empreendimento_id,?) WHERE id=?")
           .run(statusInicial, empreendimento_id, lead.id);
       }
-      return { venda_id: rv.lastInsertRowid, lead_id: lead?.id||null, status: statusInicial, modo_reserva: modoReserva };
+      return { venda_id: rv.lastInsertRowid, lead_id: lead?.id||null, status: statusInicial, modo_reserva: modoReserva, comprovante_prazo_expira_em: prazoExpira };
     })();
 
     const logMsg = statusInicial === 'reserva' ? 'Reserva direta (sem PIX)' : 'Pré-reserva — aguardando comprovante Pix';
