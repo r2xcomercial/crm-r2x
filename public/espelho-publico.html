@@ -2648,6 +2648,8 @@ async function abrirReservar(unitId) {
   document.getElementById('reservar-chip').classList.remove('show');
   document.getElementById('reservar-step-condicao').style.display = 'none';
   document.getElementById('reservar-proposta-err').textContent = '';
+  const _btnConf = document.getElementById('reservar-confirmar-btn');
+  if (_btnConf) { _btnConf.disabled = false; _btnConf.textContent = '🏠 Confirmar reserva'; }
   // Busca clientes do corretor
   try {
     const r = await fetch(`/api/espelho-publico/${window._espelhoSlug}/leads`, { headers: { 'x-crm-token': _corretorToken } });
