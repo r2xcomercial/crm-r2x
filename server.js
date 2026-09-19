@@ -22,6 +22,18 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ─── SSE: broadcast de atualizações em tempo real ────────────────────────────
+const sseClients = new Map(); // empId → Set<res>
+
+function _broadcastRefresh(empId) {
+  const clients = sseClients.get(empId);
+  if (!clients?.size) return;
+  const msg = 'data: {"tipo":"refresh"}\n\n';
+  for (const r of [...clients]) {
+    try { r.write(msg); } catch(_) { clients.delete(r); }
+  }
+}
+
 // ─── AUTENTICAÇÃO MULTI-USUÁRIO ──────────────────────────────────────────────
 
 function gerarSalt() { return crypto.randomBytes(16).toString('hex'); }
@@ -2012,6 +2024,8 @@ app.put("/api/unidades/:id/status", autenticar, (req, res) => {
     }
   })();
   _logUnidade(unidadeId, uAntes?.status, status, req.usuario, null, 'Alteração manual de status');
+  const empRow = db.prepare("SELECT empreendimento_id FROM unidades WHERE id=?").get(unidadeId);
+  if (empRow) _broadcastRefresh(empRow.empreendimento_id);
   ok(res, {});
 });
 
@@ -3351,6 +3365,7 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
 
     const logMsg = statusInicial === 'reserva' ? 'Reserva direta (sem PIX)' : 'Pré-reserva — aguardando comprovante Pix';
     _logUnidade(unidade_id, 'disponivel', statusUnidade, req.usuario, resultado.venda_id, logMsg);
+    _broadcastRefresh(parseInt(empreendimento_id));
     ok(res, resultado);
   } catch(e) {
     err(res, e.message, e.status || 400);
@@ -3367,7 +3382,7 @@ app.post('/api/vendas/:id/comprovante', autenticar, upload.single('arquivo'), (r
   if (!tiposPermitidos.includes(mimetype)) return err(res, 'Formato não suportado. Use JPG, PNG, WEBP ou PDF.');
   if (size > 8 * 1024 * 1024) return err(res, 'Arquivo muito grande (máx 8 MB)');
 
-  const venda = db.prepare('SELECT id, corretor_id, status, unidade_id, comprovante_prazo_expira_em FROM vendas WHERE id=?').get(vendaId);
+  const venda = db.prepare('SELECT id, corretor_id, status, unidade_id, empreendimento_id, comprovante_prazo_expira_em FROM vendas WHERE id=?').get(vendaId);
   if (!venda) return err(res, 'Venda não encontrada', 404);
   if (u?.perfil === 'corretor' && venda.corretor_id !== u.corretor_id)
     return err(res, 'Sem permissão para esta reserva', 403);
@@ -3388,6 +3403,7 @@ app.post('/api/vendas/:id/comprovante', autenticar, upload.single('arquivo'), (r
   if (venda.status === 'pre_reserva') {
     _logUnidade(venda.unidade_id, 'pre_reserva', 'reservado', u, vendaId, 'Comprovante Pix recebido — pré-reserva confirmada');
   }
+  _broadcastRefresh(venda.empreendimento_id);
   ok(res, { ok: true, novoStatus: venda.status === 'pre_reserva' ? 'reserva' : venda.status });
 });
 
@@ -3431,7 +3447,7 @@ setInterval(() => {
   try {
     // 1) Cancela pré-reservas com prazo expirado
     const expiradas = db.prepare(`
-      SELECT v.id, v.unidade_id, v.corretor_id
+      SELECT v.id, v.unidade_id, v.corretor_id, v.empreendimento_id
       FROM vendas v
       WHERE v.status = 'pre_reserva'
         AND v.comprovante_pix IS NULL
@@ -3457,7 +3473,11 @@ setInterval(() => {
         }
       } catch(_) {}
     }
-    if (expiradas.length > 0) console.log(`[comprovante-job] ${expiradas.length} pré-reserva(s) cancelada(s)`);
+    if (expiradas.length > 0) {
+      console.log(`[comprovante-job] ${expiradas.length} pré-reserva(s) cancelada(s)`);
+      const empIds = [...new Set(expiradas.map(v => v.empreendimento_id).filter(Boolean))];
+      empIds.forEach(id => _broadcastRefresh(id));
+    }
 
     // 2) Verifica janelas de prioridade expiradas (corretor da fila não agiu)
     const janelasExpiradas = db.prepare(`
@@ -5092,6 +5112,20 @@ app.get('/espelho/:slug', (req, res) => {
   } catch(e) {
     res.sendFile(path.join(__dirname, 'public', 'espelho-publico.html'));
   }
+});
+
+// SSE: stream de eventos para corretores conectados ao espelho
+app.get('/api/espelho-publico/:slug/eventos', (req, res) => {
+  const emp = db.prepare("SELECT id FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
+  if (!emp) return res.status(404).end();
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  if (!sseClients.has(emp.id)) sseClients.set(emp.id, new Set());
+  sseClients.get(emp.id).add(res);
+  const keepAlive = setInterval(() => { try { res.write(': ping\n\n'); } catch(_) {} }, 25000);
+  req.on('close', () => { clearInterval(keepAlive); sseClients.get(emp.id)?.delete(res); });
 });
 
 // Diagnóstico público: verifica se o slug existe (sem expor dados sensíveis)

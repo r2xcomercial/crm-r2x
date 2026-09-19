@@ -761,7 +761,7 @@
 
 <main>
   <div id="conteudo"><div class="loading">Carregando espelho de vendas...</div></div>
-  <div class="refresh-bar">Atualiza automaticamente em <span id="countdown">3</span>s</div>
+  <div class="refresh-bar">Atualiza automaticamente em <span id="countdown">30</span>s</div>
 </main>
 
 <!-- Banner flutuante: pré-reserva aguardando PIX (só para o corretor dono) -->
@@ -787,7 +787,8 @@
 const slug = location.pathname.split('/espelho/')[1]?.split('/')[0]
           || new URLSearchParams(location.search).get('slug')
           || null;
-let countdown = 3, timer;
+let countdown = 30, timer;
+let _sseSource = null;
 let _empNome = '';
 let _empTipo = 'loteamento';
 let _simParams = null;
@@ -842,7 +843,7 @@ async function fazerLogin() {
     localStorage.setItem('espelho_perfil',   _corretorPerfil||'');
     document.getElementById('login-wall').classList.remove('active');
     renderCorretorArea();
-    carregar().then(iniciarContador);
+    carregar().then(() => { iniciarContador(); _iniciarSSE(); });
   } catch(e) {
     errEl.textContent = 'Erro de conexão.'; errEl.style.display = 'block'; btn.disabled=false; btn.textContent='Entrar';
   }
@@ -2581,13 +2582,30 @@ async function reservarEEnviarProposta() {
 
 function iniciarContador() {
   clearInterval(timer);
-  countdown = 3;
+  countdown = 30;
   document.getElementById('countdown').textContent = countdown;
   timer = setInterval(() => {
     countdown--;
     document.getElementById('countdown').textContent = countdown;
     if (countdown <= 0) { clearInterval(timer); carregar().then(iniciarContador); }
   }, 1000);
+}
+
+function _iniciarSSE() {
+  if (!slug) return;
+  if (_sseSource) { _sseSource.close(); _sseSource = null; }
+  const src = new EventSource(`/api/espelho-publico/${slug}/eventos`);
+  _sseSource = src;
+  src.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.tipo === 'refresh') { clearInterval(timer); carregar().then(iniciarContador); }
+    } catch(_) {}
+  };
+  src.onerror = () => {
+    // Em caso de erro reconecta automaticamente (comportamento padrão do EventSource)
+    // Se não suportado ou falha persistente, o polling de 30s continua funcionando
+  };
 }
 
 // ─── MODAL RESERVAR: autocomplete + condições ────────────────────────────────
@@ -3136,7 +3154,7 @@ if (!slug) {
   window.addEventListener('resize', ajustarMarcadores);
   // Só carrega o espelho se o corretor já está autenticado
   if (_corretorToken && _corretorNome) {
-    carregar().then(iniciarContador);
+    carregar().then(() => { iniciarContador(); _iniciarSSE(); });
   }
 }
 </script>
