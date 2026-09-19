@@ -2737,7 +2737,8 @@ async function abrirReservar(unitId) {
   document.getElementById('reservar-busca-cliente').value = '';
   document.getElementById('reservar-clear-btn').style.display = 'none';
   document.getElementById('reservar-dropdown').classList.remove('open');
-  document.getElementById('reservar-chip').classList.remove('show');
+  document.getElementById('reservar-cliente-card').style.display = 'none';
+  document.getElementById('reservar-search-area').style.display = 'block';
   document.getElementById('reservar-step-condicao').style.display = 'none';
   document.getElementById('reservar-proposta-err').textContent = '';
   const _btnConf = document.getElementById('reservar-confirmar-btn');
