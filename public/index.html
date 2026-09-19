@@ -23553,7 +23553,7 @@ async function enviarComprovanteUpload() {
 }
 
 async function verComprovante(vendaId) {
-  window.open(`/api/vendas/${vendaId}/comprovante`, '_blank');
+  window.open(`/api/vendas/${vendaId}/comprovante?token=${encodeURIComponent(TOKEN)}`, '_blank');
 }
 
 </script>

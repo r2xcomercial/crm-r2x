@@ -681,7 +681,6 @@
       <span class="chip-change" onclick="_resAcLimpar()">Trocar</span>
     </div>
     <div id="reservar-cliente-err" class="modal-err"></div>
-    <div style="margin-top:6px;font-size:11px;color:#475569">Não encontrou? <span style="color:#14b8a6;cursor:pointer;text-decoration:underline" onclick="fecharModal('modal-reservar');abrirCadastrarLead(null)">Cadastre o cliente primeiro</span>.</div>
 
     <!-- Condições de pagamento (aparece após selecionar cliente) -->
     <div id="reservar-step-condicao" style="display:none;margin-top:18px;border-top:1px solid #1e293b;padding-top:16px">
@@ -780,7 +779,7 @@
 <!-- Botão flutuante: cadastrar cliente (só aparece quando corretor logado) -->
 <button id="fab-lead" onclick="abrirCadastrarLead(null)" title="Cadastrar cliente" style="display:none">
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="12" y1="14" x2="12" y2="20"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
-  <span>Cliente</span>
+  <span>Cadastrar cliente</span>
 </button>
 
 <script>
@@ -1025,9 +1024,7 @@ function abrirSimulacao(unitId) {
     : '';
 
   // Build footer + optional form screen (screen-2)
-  const propostaBtn = (!hidePreco && p && preco && u.status === 'disponivel')
-    ? '<button class="btn-sim wa" onclick="mostrarFormProposta(' + unitId + ')">📲 Proposta</button>'
-    : '';
+  const propostaBtn = '';
   const formFields = [
     '<div class="sim-field"><label>Nome do Cliente *</label><input id="sf-cliente" type="text" placeholder="Ex: João da Silva" autocomplete="off"></div>',
     '<div class="sim-field"><label>CPF do Cliente</label><input id="sf-cpf" type="text" placeholder="000.000.000-00" oninput="fmtCPF(this)" maxlength="14" autocomplete="off"></div>',
@@ -1045,7 +1042,7 @@ function abrirSimulacao(unitId) {
       ${reservaBloqueadaMsg}
       <div class="sim-foot" style="border-top:1px solid #1e2d42">
         <button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button>
-        <button class="btn-sim primary" onclick="gerarPDFSimulacao(${unitId})">🖨️ PDF</button>
+        <button class="btn-sim primary" onclick="gerarPDFSimulacao(${unitId})">📄 Baixar proposta</button>
         ${propostaBtn}
       </div>
       <div class="sim-aviso">* Simulação sujeita a alterações. Consulte a equipe da R2X.</div>
