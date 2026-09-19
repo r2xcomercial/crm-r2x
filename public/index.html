@@ -6237,7 +6237,7 @@ function setFinTab(tab) {
   renderFinTab();
 }
 
-function renderFinTab() {
+async function renderFinTab() {
   const el = document.getElementById('fin-content');
   if (!el) return;
   if (finTab === 'entradas') {
@@ -6380,21 +6380,24 @@ function renderFinTab() {
   } else if (finTab === 'distribuicoes') {
     const rows = currentData.distribuicoes || [];
     const total = rows.reduce((s,d) => s+d.valor, 0);
+    const contas = await _getContas();
+    const contaMap = Object.fromEntries(contas.map(c => [c.id, c.nome]));
     el.innerHTML = `
       <div class="table-card">
         <div class="table-header"><div class="table-title">💸 Distribuições para Ramon — Total: ${fmt(total)}</div><button class="btn btn-primary" onclick="openDistModal()">+ Nova Distribuição</button></div>
         <table>
-          <thead><tr><th>Descrição</th><th>Valor</th><th>Data</th><th>Obs</th><th></th></tr></thead>
+          <thead><tr><th>Descrição</th><th>Valor</th><th>Data</th><th>Conta</th><th>Obs</th><th></th></tr></thead>
           <tbody>
             ${rows.length ? rows.map(d => `
               <tr>
                 <td>${d.descricao}</td>
                 <td style="color:var(--accent);font-weight:600">${fmt(d.valor)}</td>
                 <td>${fmtDate(d.data)}</td>
+                <td style="color:var(--text2);font-size:12px">${d.conta_id ? contaMap[d.conta_id]||'—' : '<span style="color:var(--danger);font-size:11px">sem conta</span>'}</td>
                 <td>${d.observacoes||'—'}</td>
                 <td><button class="btn-icon btn-delete" onclick="deleteDist(${d.id})">🗑️</button></td>
               </tr>
-            `).join('') : '<tr class="empty-row"><td colspan="5">Nenhuma distribuição</td></tr>'}
+            `).join('') : '<tr class="empty-row"><td colspan="6">Nenhuma distribuição</td></tr>'}
           </tbody>
         </table>
       </div>`;
@@ -8999,17 +9002,22 @@ async function marcarPago(id) {
   }, { saveLabel: '💳 Confirmar pagamento' });
 }
 
-function openDistModal() {
+async function openDistModal() {
+  const contas = await _getContas();
+  const contasOpts = `<option value="">— Não vincular a conta —</option>` +
+    contas.map(c => `<option value="${c.id}">${c.nome}${c.banco ? ` — ${c.banco}` : ''}</option>`).join('');
   openModal('Nova Distribuição para Ramon', `
     <div class="form-grid cols1">
       <div class="form-group"><label>Descrição</label><input id="f-desc" placeholder="Ex: Pró-labore Maio"></div>
       <div class="form-group"><label>Valor (R$) *</label><input id="f-valor" type="number"></div>
       <div class="form-group"><label>Data *</label><input id="f-data" type="date" value="${today()}"></div>
+      <div class="form-group"><label>Conta de saída *</label><select id="f-conta">${contasOpts}</select></div>
       <div class="form-group"><label>Observações</label><textarea id="f-obs"></textarea></div>
     </div>
   `, async () => {
-    const body = { descricao: v('f-desc')||'Distribuição', valor: parseFloat(v('f-valor')), data: v('f-data'), observacoes: v('f-obs') };
+    const body = { descricao: v('f-desc')||'Distribuição', valor: parseFloat(v('f-valor')), data: v('f-data'), observacoes: v('f-obs'), conta_id: v('f-conta')||null };
     if (!body.valor || !body.data) return toast('Valor e data obrigatórios', 'error');
+    if (!body.conta_id) return toast('Selecione a conta de saída', 'error');
     const r = await post('/api/financeiro/distribuicoes', body);
     if (!r.ok) return toast(r.error, 'error');
     toast('Distribuição registrada!'); closeModal(); renderFinanceiro();

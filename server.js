@@ -4755,9 +4755,10 @@ app.get("/api/financeiro/distribuicoes", (req, res) => {
 });
 
 app.post("/api/financeiro/distribuicoes", (req, res) => {
-  const { descricao, valor, data, observacoes } = req.body;
+  const { descricao, valor, data, observacoes, conta_id } = req.body;
   if (!valor || !data) return err(res, "Valor e data obrigatórios");
-  const r = db.prepare("INSERT INTO distribuicoes (descricao,valor,data,observacoes) VALUES (?,?,?,?)").run(descricao, valor, data, observacoes);
+  if (!conta_id) return err(res, "Selecione a conta de saída");
+  const r = db.prepare("INSERT INTO distribuicoes (descricao,valor,data,observacoes,conta_id) VALUES (?,?,?,?,?)").run(descricao, valor, data, observacoes, conta_id);
   ok(res, { id: r.lastInsertRowid });
 });
 
