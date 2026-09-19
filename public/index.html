@@ -23347,7 +23347,7 @@ async function _checarComprovantePendente(empId) {
             <div style="font-size:10px;color:#fb923c;opacity:.8;margin-bottom:2px">Vence em</div>
             <div id="cp-banner-countdown" style="font-size:28px;font-weight:900;font-family:monospace;color:#fb923c;letter-spacing:2px">--:--</div>
           </div>` : ''}
-          <button onclick="abrirUploadComprovante(${item.venda_id},'${(item.lead_nome||'').replace(/'/g,'\\'')}',${prazo?`'${prazo}'`:'null'})"
+          <button onclick="abrirUploadComprovante(${item.venda_id},'${(item.lead_nome||'').replace(/'/g,"\\'")}',${prazo?`'${prazo}'`:'null'})"
             style="width:100%;padding:12px;background:linear-gradient(135deg,#f97316,#ea580c);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:.3px">
             📎 Enviar Comprovante Pix agora
           </button>
