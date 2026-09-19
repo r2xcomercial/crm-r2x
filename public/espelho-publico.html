@@ -2794,29 +2794,7 @@ function _resRenderCondicoes() {
   _reservarCondIdx = 0;
   let html = '';
 
-  if (p && p.condicoes?.length && preco) {
-    // Modo simulador (espelho_params)
-    const entFixo = p?.entrada_tipo === 'valor';
-    const entV    = entFixo ? (p?.entrada_valor || 0) : preco * ((p?.entrada_pct || 0) / 100);
-    const totalRef = preco * ((p?.pRef || 0) / 100);
-    const saldo    = preco - entV - totalRef;
-    html = p.condicoes.map((c, i) => {
-      const pmv = calcPMT(saldo, c.nParc, c.juros || 0);
-      const total = entV + totalRef + c.nParc * pmv;
-      const jurosLabel = c.juros > 0 ? `${c.juros.toFixed(2)}% a.m.` : 'Sem juros';
-      return `<div class="res-cond-card ${i===0?'selected':''}" id="res-cond-card-${i}" onclick="_selResCondIdx(${i})">
-        <div class="cond-radio"></div>
-        <div class="res-cond-grid">
-          <div class="res-cond-label">${c.label || c.nParc+'x'}</div>
-          <div class="res-cond-key">Parcelas</div><div class="res-cond-val">${c.nParc}× ${fmt.format(pmv)}/mês</div>
-          <div class="res-cond-key">Juros</div><div class="res-cond-val">${jurosLabel}</div>
-          <div class="res-cond-key">Total</div><div class="res-cond-val accent">${fmt0.format(total)}</div>
-        </div>
-      </div>`;
-    }).join('');
-    _resAtualizarResumo(p, preco, entV, totalRef, saldo, 0);
-
-  } else if (padrao?.length) {
+  if (padrao?.length) {
     // Modo condições padrão (condicao_pagamento_padrao)
     html = padrao.map((c, i) => {
       const desc = parseFloat(c.desconto_pct) || 0;
@@ -2839,6 +2817,27 @@ function _resRenderCondicoes() {
     }).join('');
     _resAtualizarResumoPadrao(padrao[0], preco);
 
+  } else if (p && p.condicoes?.length && preco) {
+    // Fallback: condições do simulador (espelho_params) quando não há padrão configurado
+    const entFixo = p?.entrada_tipo === 'valor';
+    const entV    = entFixo ? (p?.entrada_valor || 0) : preco * ((p?.entrada_pct || 0) / 100);
+    const totalRef = preco * ((p?.pRef || 0) / 100);
+    const saldo    = preco - entV - totalRef;
+    html = p.condicoes.map((c, i) => {
+      const pmv = calcPMT(saldo, c.nParc, c.juros || 0);
+      const total = entV + totalRef + c.nParc * pmv;
+      const jurosLabel = c.juros > 0 ? `${c.juros.toFixed(2)}% a.m.` : 'Sem juros';
+      return `<div class="res-cond-card ${i===0?'selected':''}" id="res-cond-card-${i}" onclick="_selResCondIdx(${i})">
+        <div class="cond-radio"></div>
+        <div class="res-cond-grid">
+          <div class="res-cond-label">${c.label || c.nParc+'x'}</div>
+          <div class="res-cond-key">Parcelas</div><div class="res-cond-val">${c.nParc}× ${fmt.format(pmv)}/mês</div>
+          <div class="res-cond-key">Juros</div><div class="res-cond-val">${jurosLabel}</div>
+          <div class="res-cond-key">Total</div><div class="res-cond-val accent">${fmt0.format(total)}</div>
+        </div>
+      </div>`;
+    }).join('');
+    _resAtualizarResumo(p, preco, entV, totalRef, saldo, 0);
   } else {
     html = `<div style="font-size:12px;color:#64748b;padding:8px 0">Condições de pagamento ainda não configuradas.</div>`;
     document.getElementById('reservar-resumo-cond').style.display = 'none';
@@ -2892,14 +2891,14 @@ function _selResCondIdx(idx) {
   const padrao = window._padraoConds;
   const u = (window._units || []).find(x => x.id === _reservarUnitId);
   const preco = u?.preco || 0;
-  if (p?.condicoes?.length) {
+  if (padrao?.length) {
+    _resAtualizarResumoPadrao(padrao[idx], preco);
+  } else if (p?.condicoes?.length) {
     const entFixo = p?.entrada_tipo === 'valor';
     const entV    = entFixo ? (p?.entrada_valor||0) : preco * ((p?.entrada_pct||0)/100);
     const totalRef = preco * ((p?.pRef||0)/100);
     const saldo    = preco - entV - totalRef;
     _resAtualizarResumo(p, preco, entV, totalRef, saldo, idx);
-  } else if (padrao?.length) {
-    _resAtualizarResumoPadrao(padrao[idx], preco);
   }
 }
 
@@ -2927,19 +2926,19 @@ async function confirmarReserva() {
     const saldo    = preco - entV - totalRef;
     let condicao_proposta = null;
     const padrao = window._padraoConds;
-    if (p && p.condicoes?.length && p.condicoes[_reservarCondIdx]) {
-      const c = p.condicoes[_reservarCondIdx];
-      const pmv = calcPMT(saldo, c.nParc, c.juros||0);
-      condicao_proposta = { label: c.label||(c.nParc+'x'), nParc: c.nParc, juros: c.juros||0,
-        valor_entrada: Math.round(entV*100)/100, parcela_mensal: Math.round(pmv*100)/100,
-        valor_total: Math.round((entV+totalRef+c.nParc*pmv)*100)/100, data_proposta: new Date().toISOString().slice(0,10) };
-    } else if (padrao?.length && padrao[_reservarCondIdx]) {
+    if (padrao?.length && padrao[_reservarCondIdx]) {
       const c = padrao[_reservarCondIdx];
       const desc = parseFloat(c.desconto_pct) || 0;
       const precoFinal = desc > 0 ? preco * (1 - desc / 100) : preco;
       condicao_proposta = { label: c.nome || ('Condição '+(parseInt(_reservarCondIdx)+1)),
         desconto_pct: desc, valor_final: Math.round(precoFinal*100)/100,
         parcelas: c.parcelas || [], data_proposta: new Date().toISOString().slice(0,10) };
+    } else if (p && p.condicoes?.length && p.condicoes[_reservarCondIdx]) {
+      const c = p.condicoes[_reservarCondIdx];
+      const pmv = calcPMT(saldo, c.nParc, c.juros||0);
+      condicao_proposta = { label: c.label||(c.nParc+'x'), nParc: c.nParc, juros: c.juros||0,
+        valor_entrada: Math.round(entV*100)/100, parcela_mensal: Math.round(pmv*100)/100,
+        valor_total: Math.round((entV+totalRef+c.nParc*pmv)*100)/100, data_proposta: new Date().toISOString().slice(0,10) };
     }
     const rv = await fetch('/api/vendas/reserva-rapida', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'x-crm-token': _corretorToken },
