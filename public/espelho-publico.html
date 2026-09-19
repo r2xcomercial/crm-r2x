@@ -2638,8 +2638,11 @@ let _reservarLeadId = null;
 let _reservarCondIdx = 0;
 let _reservarClientesCache = [];
 let _resAcFocusIdx = -1;
+let _confirmarReservaTimeout = null;
 
 async function abrirReservar(unitId) {
+  // Cancela timeout de fechamento automático de reserva anterior
+  if (_confirmarReservaTimeout) { clearTimeout(_confirmarReservaTimeout); _confirmarReservaTimeout = null; }
   _reservarUnitId = unitId;
   _reservarLeadId = null;
   _reservarCondIdx = 0;
@@ -2893,7 +2896,7 @@ async function confirmarReserva() {
     errEl.style.color = '#34d399';
     errEl.textContent = modoRes === 'reserva_direta' ? '✅ Unidade reservada com sucesso!' : '✅ Pré-reserva criada! Envie o comprovante PIX em até 15 minutos.';
     btn.textContent = 'Reservado ✓';
-    setTimeout(() => { fecharModal('modal-reservar'); carregar(); }, 2200);
+    _confirmarReservaTimeout = setTimeout(() => { _confirmarReservaTimeout = null; fecharModal('modal-reservar'); carregar(); }, 2200);
   } catch(e) {
     errEl.textContent = e.message;
     btn.disabled = false; btn.textContent = '🏠 Confirmar reserva';
