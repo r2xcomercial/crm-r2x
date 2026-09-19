@@ -64,12 +64,14 @@
   .corretor-logado button { background:transparent; border:1px solid #334155; border-radius:6px; color:#94a3b8; font-size:11px; padding:4px 8px; cursor:pointer; }
   .btn-painel { display:inline-flex; align-items:center; gap:5px; background:#14b8a6; color:#fff; border:none; border-radius:7px; padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer; text-decoration:none; white-space:nowrap; transition:background .15s; }
   .btn-painel:hover { background:#0d9488; }
-  /* Banner flutuante de pré-reserva pendente */
-  #pix-banner {
+  /* Banners flutuantes de pré-reservas pendentes (um por unidade) */
+  #pix-banners-container {
     position:fixed; bottom:88px; left:50%; transform:translateX(-50%);
-    width:calc(100% - 32px); max-width:520px; z-index:750; display:none;
+    width:calc(100% - 32px); max-width:520px; z-index:750;
+    display:flex; flex-direction:column; gap:6px; pointer-events:none;
   }
-  #pix-banner-inner {
+  .pix-banner-item { pointer-events:all; }
+  .pix-banner-inner {
     background:#3b2a00; border:2px solid #eab308; border-radius:14px;
     padding:12px 14px; display:flex; align-items:center; gap:10px;
     animation:bannerYellowPulse 1.6s ease-in-out infinite;
@@ -78,16 +80,16 @@
     0%,100% { border-color:#eab308; box-shadow:0 0 0 0 rgba(234,179,8,0); }
     50%     { border-color:#fde047; box-shadow:0 0 18px rgba(234,179,8,.4); }
   }
-  #pix-banner-txt { flex:1; min-width:0; }
-  #pix-banner-titulo { font-size:12px; font-weight:800; color:#fde047; text-transform:uppercase; letter-spacing:.4px; }
-  #pix-banner-sub { font-size:12px; color:#ca8a04; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  #pix-banner-clock { font-size:22px; font-weight:900; font-family:monospace; color:#fde047; letter-spacing:2px; flex-shrink:0; }
-  #pix-banner-btn {
+  .pix-banner-txt { flex:1; min-width:0; }
+  .pix-banner-titulo { font-size:12px; font-weight:800; color:#fde047; text-transform:uppercase; letter-spacing:.4px; }
+  .pix-banner-sub { font-size:12px; color:#ca8a04; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pix-banner-clock { font-size:22px; font-weight:900; font-family:monospace; color:#fde047; letter-spacing:2px; flex-shrink:0; }
+  .pix-banner-btn {
     background:#eab308; color:#3b2a00; font-weight:800; font-size:12px;
     border:none; border-radius:8px; padding:8px 12px; cursor:pointer; flex-shrink:0; white-space:nowrap;
   }
-  #pix-banner-btn:hover { background:#fde047; }
-  @media(max-width:480px) { #pix-banner { bottom:80px; } #pix-banner-inner { padding:10px 12px; gap:8px; } }
+  .pix-banner-btn:hover { background:#fde047; }
+  @media(max-width:480px) { #pix-banners-container { bottom:80px; } .pix-banner-inner { padding:10px 12px; gap:8px; } }
 
   /* Botão flutuante de cadastrar cliente */
   #fab-lead { position:fixed; bottom:24px; right:20px; z-index:800; display:flex; align-items:center; gap:8px;
@@ -764,18 +766,8 @@
   <div class="refresh-bar">Atualiza automaticamente em <span id="countdown">30</span>s</div>
 </main>
 
-<!-- Banner flutuante: pré-reserva aguardando PIX (só para o corretor dono) -->
-<div id="pix-banner">
-  <div id="pix-banner-inner">
-    <div style="font-size:20px;flex-shrink:0">⏱️</div>
-    <div id="pix-banner-txt">
-      <div id="pix-banner-titulo">PIX pendente!</div>
-      <div id="pix-banner-sub">Pré-reserva ativa</div>
-    </div>
-    <div id="pix-banner-clock">--:--</div>
-    <button id="pix-banner-btn" onclick="_pixBannerEnviar()">📎 Enviar PIX</button>
-  </div>
-</div>
+<!-- Banners flutuantes: uma por pré-reserva pendente do corretor -->
+<div id="pix-banners-container"></div>
 
 <!-- Botão flutuante: cadastrar cliente (só aparece quando corretor logado) -->
 <button id="fab-lead" onclick="abrirCadastrarLead(null)" title="Cadastrar cliente" style="display:none">
@@ -1151,50 +1143,77 @@ function _iniciarCountdownSim(prazo) {
 }
 
 // ─── BANNER FLUTUANTE PIX PENDENTE ───────────────────────────────────────────
-let _bannerVendaId = null, _bannerUnitId = null, _bannerInterval = null;
+const _bannerIntervals = new Map(); // unitId → intervalId
 
 function _atualizarPixBanner() {
+  const container = document.getElementById('pix-banners-container');
+  if (!container) return;
+
   if (!_corretorToken || !_corretorId || _corretorPerfil !== 'corretor') {
-    _esconderPixBanner(); return;
+    _limparTodosBanners(); return;
   }
+
   const _cidNum = parseInt(_corretorId) || 0;
-  const minhaRes = (window._units || []).find(u =>
+  const minhasRes = (window._units || []).filter(u =>
     u.status === 'pre_reserva' && !u.tem_comprovante && u.venda_corretor_id === _cidNum
   );
-  if (!minhaRes) { _esconderPixBanner(); return; }
 
-  _bannerVendaId = minhaRes.venda_id;
-  _bannerUnitId  = minhaRes.id;
-  const desc = `Lote ${minhaRes.lote}${minhaRes.quadra ? ' · Q.' + minhaRes.quadra : ''}`;
-  document.getElementById('pix-banner-sub').textContent = desc;
-  document.getElementById('pix-banner').style.display = 'block';
+  // Remove banners de unidades que já não precisam
+  const idsAtivos = new Set(minhasRes.map(u => u.id));
+  for (const [uid, iv] of _bannerIntervals) {
+    if (!idsAtivos.has(uid)) {
+      clearInterval(iv);
+      _bannerIntervals.delete(uid);
+      const el = document.getElementById(`pix-banner-${uid}`);
+      if (el) el.remove();
+    }
+  }
 
-  clearInterval(_bannerInterval);
-  if (minhaRes.comprovante_prazo_expira_em) {
-    const prazoMs = _parsePrazoUTC(minhaRes.comprovante_prazo_expira_em).getTime();
-    const tick = () => {
-      const el = document.getElementById('pix-banner-clock');
-      if (!el) { clearInterval(_bannerInterval); return; }
-      const ms = prazoMs - Date.now();
-      if (ms <= 0) { el.textContent = '00:00'; el.style.color = '#f87171'; clearInterval(_bannerInterval); return; }
-      const mm = String(Math.floor(ms/60000)).padStart(2,'0');
-      const ss = String(Math.floor((ms%60000)/1000)).padStart(2,'0');
-      el.textContent = `${mm}:${ss}`;
-      el.style.color = ms < 3*60000 ? '#f87171' : '#fde047';
-    };
-    tick();
-    _bannerInterval = setInterval(tick, 1000);
+  // Cria ou atualiza banner por unidade
+  for (const res of minhasRes) {
+    const uid = res.id;
+    const desc = `Lote ${res.lote}${res.quadra ? ' · Q.' + res.quadra : ''}`;
+
+    if (!document.getElementById(`pix-banner-${uid}`)) {
+      const item = document.createElement('div');
+      item.id = `pix-banner-${uid}`;
+      item.className = 'pix-banner-item';
+      item.innerHTML = `<div class="pix-banner-inner">
+        <div style="font-size:18px;flex-shrink:0">⏱️</div>
+        <div class="pix-banner-txt">
+          <div class="pix-banner-titulo">PIX pendente!</div>
+          <div class="pix-banner-sub">${desc}</div>
+        </div>
+        <div class="pix-banner-clock" id="pix-clock-${uid}">--:--</div>
+        <button class="pix-banner-btn" onclick="abrirAnexarPix(${res.venda_id},${uid})">📎 Enviar PIX</button>
+      </div>`;
+      container.appendChild(item);
+    }
+
+    // Inicia countdown só uma vez por unidade
+    if (!_bannerIntervals.has(uid) && res.comprovante_prazo_expira_em) {
+      const prazoMs = _parsePrazoUTC(res.comprovante_prazo_expira_em).getTime();
+      const tick = () => {
+        const el = document.getElementById(`pix-clock-${uid}`);
+        if (!el) { clearInterval(_bannerIntervals.get(uid)); _bannerIntervals.delete(uid); return; }
+        const ms = prazoMs - Date.now();
+        if (ms <= 0) { el.textContent = '00:00'; el.style.color = '#f87171'; clearInterval(_bannerIntervals.get(uid)); _bannerIntervals.delete(uid); return; }
+        const mm = String(Math.floor(ms/60000)).padStart(2,'0');
+        const ss = String(Math.floor((ms%60000)/1000)).padStart(2,'0');
+        el.textContent = `${mm}:${ss}`;
+        el.style.color = ms < 3*60000 ? '#f87171' : '#fde047';
+      };
+      tick();
+      _bannerIntervals.set(uid, setInterval(tick, 1000));
+    }
   }
 }
 
-function _esconderPixBanner() {
-  clearInterval(_bannerInterval);
-  const el = document.getElementById('pix-banner');
-  if (el) el.style.display = 'none';
-}
-
-function _pixBannerEnviar() {
-  if (_bannerVendaId && _bannerUnitId) abrirAnexarPix(_bannerVendaId, _bannerUnitId);
+function _limparTodosBanners() {
+  for (const iv of _bannerIntervals.values()) clearInterval(iv);
+  _bannerIntervals.clear();
+  const container = document.getElementById('pix-banners-container');
+  if (container) container.innerHTML = '';
 }
 
 function mostrarFormProposta(unitId) {
