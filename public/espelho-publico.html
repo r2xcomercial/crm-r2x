@@ -1435,6 +1435,20 @@ async function carregar() {
     window._hideReserva  = configReservar  === 0;
     window._modoReserva  = modoReserva || 'pre_reserva_pix';
     window._espelhoSlug  = slug;
+
+    // Aviso para admin/gestor quando modo está como reserva_direta (sem PIX)
+    const avisoBannerEl = document.getElementById('_aviso-modo-reserva');
+    if (window._modoReserva === 'reserva_direta' && ['admin','gestor'].includes(_corretorPerfil)) {
+      if (!avisoBannerEl) {
+        const b = document.createElement('div');
+        b.id = '_aviso-modo-reserva';
+        b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9000;background:#7c3aed;color:#fff;font-size:12px;font-weight:700;text-align:center;padding:7px 16px;letter-spacing:.02em';
+        b.textContent = '⚠️ MODO RESERVA DIRETA ATIVO — corretores reservam sem enviar PIX. Para ativar o fluxo PIX, altere "Modelo de Reserva" nas configurações do empreendimento.';
+        document.body.prepend(b);
+      }
+    } else if (avisoBannerEl) {
+      avisoBannerEl.remove();
+    }
     _empNome    = emp.nome;
     _empTipo    = emp.tipo || 'loteamento';
     window._empId = emp.id || null;

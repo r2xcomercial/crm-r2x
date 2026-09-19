@@ -9474,4 +9474,10 @@ app.get('/api/unidades/:id/historico', autenticar, (req, res) => {
   ok(res, rows);
 });
 
-app.listen(PORT, () => console.log(`CRM R2X rodando em http://localhost:${PORT}`));
+app.listen(PORT, () => {
+  console.log(`CRM R2X rodando em http://localhost:${PORT}`);
+  try {
+    const emps = db.prepare("SELECT id, nome, COALESCE(modo_reserva,'pre_reserva_pix') as modo_reserva FROM empreendimentos ORDER BY id").all();
+    emps.forEach(e => console.log(`[modo_reserva] #${e.id} ${e.nome}: ${e.modo_reserva}`));
+  } catch(_) {}
+});
