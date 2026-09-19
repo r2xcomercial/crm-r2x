@@ -1011,10 +1011,10 @@ app.get("/api/empreendimentos/:id/unidades", (req, res) => {
   const rows = db.prepare(`
     SELECT u.*,
       (SELECT COUNT(*) FROM vagas_garagem vg WHERE vg.unidade_id = u.id) as num_vagas,
-      (SELECT v.id FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva') LIMIT 1) as venda_id,
-      (SELECT v.corretor_id FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva') LIMIT 1) as venda_corretor_id,
-      (SELECT CASE WHEN v.comprovante_pix IS NOT NULL THEN 1 ELSE 0 END FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva') LIMIT 1) as tem_comprovante,
-      (SELECT v.comprovante_prazo_expira_em FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva') LIMIT 1) as comprovante_prazo_expira_em,
+      (SELECT v.id FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as venda_id,
+      (SELECT v.corretor_id FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as venda_corretor_id,
+      (SELECT CASE WHEN v.comprovante_pix IS NOT NULL THEN 1 ELSE 0 END FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as tem_comprovante,
+      (SELECT v.comprovante_prazo_expira_em FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as comprovante_prazo_expira_em,
       (SELECT COUNT(*) FROM reserva_fila rf WHERE rf.unidade_id=u.id AND rf.status IN ('aguardando','notificado')) as fila_qtd,
       u.fila_prioridade_ate,
       u.fila_prioridade_corretor_id

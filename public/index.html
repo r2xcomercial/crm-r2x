@@ -23552,8 +23552,14 @@ async function enviarComprovanteUpload() {
   }
 }
 
-async function verComprovante(vendaId) {
-  window.open(`/api/vendas/${vendaId}/comprovante?token=${encodeURIComponent(TOKEN)}`, '_blank');
+function verComprovante(vendaId) {
+  const a = document.createElement('a');
+  a.href = `/api/vendas/${vendaId}/comprovante?token=${encodeURIComponent(TOKEN)}`;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 </script>
