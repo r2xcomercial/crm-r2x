@@ -670,35 +670,29 @@
     <p id="reservar-unidade-desc" style="font-size:12px;color:#14b8a6;margin:0 0 16px;font-weight:600"></p>
 
     <!-- Autocomplete de cliente -->
-    <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Cliente</div>
-    <div class="res-autocomplete-wrap">
-      <input id="reservar-busca-cliente" type="text" placeholder="Digite o nome, CPF ou telefone…" autocomplete="off"
-        oninput="_resAcInput()" onfocus="_resAcInput()" onkeydown="_resAcKey(event)">
-      <button class="res-clear-btn" id="reservar-clear-btn" onclick="_resAcLimpar()" style="display:none">✕</button>
-      <div class="res-dropdown" id="reservar-dropdown"></div>
-    </div>
-    <!-- Chip do cliente selecionado -->
-    <div class="res-selected-chip" id="reservar-chip">
-      <div class="res-drop-avatar" id="reservar-chip-avatar">👤</div>
-      <div style="flex:1">
-        <div class="chip-name" id="reservar-chip-nome"></div>
-        <div style="font-size:11px;color:#64748b" id="reservar-chip-sub"></div>
+    <div id="reservar-search-area">
+      <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Cliente</div>
+      <div class="res-autocomplete-wrap">
+        <input id="reservar-busca-cliente" type="text" placeholder="Digite o nome, CPF ou telefone…" autocomplete="off"
+          oninput="_resAcInput()" onfocus="_resAcInput()" onkeydown="_resAcKey(event)">
+        <button class="res-clear-btn" id="reservar-clear-btn" onclick="_resAcLimpar()" style="display:none">✕</button>
+        <div class="res-dropdown" id="reservar-dropdown"></div>
       </div>
-      <span class="chip-change" onclick="_resAcLimpar()">Trocar</span>
+    </div>
+    <!-- Card unificado do cliente selecionado -->
+    <div id="reservar-cliente-card" style="display:none;background:rgba(20,184,166,.1);border:1.5px solid rgba(20,184,166,.4);border-radius:10px;padding:12px 14px;display:none;align-items:center;gap:12px">
+      <div style="font-size:22px" id="reservar-dest-avatar">👤</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:2px">Cliente selecionado</div>
+        <div id="reservar-dest-nome" style="font-size:15px;font-weight:800;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+        <div id="reservar-dest-sub" style="font-size:11px;color:#94a3b8;margin-top:2px"></div>
+      </div>
+      <button onclick="_resAcLimpar()" style="background:rgba(20,184,166,.15);border:1px solid rgba(20,184,166,.4);color:#14b8a6;font-size:11px;font-weight:700;border-radius:6px;padding:5px 10px;cursor:pointer;white-space:nowrap;flex-shrink:0">Trocar cliente</button>
     </div>
     <div id="reservar-cliente-err" class="modal-err"></div>
 
     <!-- Condições de pagamento (aparece após selecionar cliente) -->
     <div id="reservar-step-condicao" style="display:none;margin-top:18px;border-top:1px solid #1e293b;padding-top:16px">
-      <!-- Cliente selecionado em destaque -->
-      <div id="reservar-cliente-destaque" style="background:rgba(20,184,166,.1);border:1.5px solid rgba(20,184,166,.35);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
-        <div style="font-size:20px" id="reservar-dest-avatar">👤</div>
-        <div>
-          <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:2px">Cliente</div>
-          <div id="reservar-dest-nome" style="font-size:15px;font-weight:800;color:#e2e8f0"></div>
-          <div id="reservar-dest-sub" style="font-size:11px;color:#94a3b8;margin-top:1px"></div>
-        </div>
-      </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em">Condição de pagamento</div>
         <button onclick="_resAbrirEditarProposta()" style="background:none;border:none;color:#14b8a6;font-size:11px;cursor:pointer;padding:0;font-weight:700;text-decoration:underline">✏️ Editar proposta</button>
@@ -2791,26 +2785,25 @@ function _resAcSelect(leadId) {
   _reservarLeadId = leadId;
   const c = _reservarClientesCache.find(x => x.id === leadId);
   if (!c) return;
-  // Fecha dropdown, mostra chip
   document.getElementById('reservar-dropdown').classList.remove('open');
   document.getElementById('reservar-busca-cliente').value = '';
   document.getElementById('reservar-busca-cliente').blur();
   document.getElementById('reservar-clear-btn').style.display = 'none';
   const av = c.tipo_pessoa==='pj' ? '🏢' : '👤';
-  document.getElementById('reservar-chip-avatar').textContent = av;
-  document.getElementById('reservar-chip-nome').textContent = c.nome || '(sem nome)';
-  document.getElementById('reservar-chip-sub').textContent = [c.telefone, c.cpf].filter(Boolean).join(' · ');
-  document.getElementById('reservar-chip').classList.add('show');
   document.getElementById('reservar-dest-avatar').textContent = av;
   document.getElementById('reservar-dest-nome').textContent = c.nome || '(sem nome)';
   document.getElementById('reservar-dest-sub').textContent = [c.telefone, c.cpf].filter(Boolean).join(' · ');
+  // Oculta campo de busca, exibe card unificado
+  document.getElementById('reservar-search-area').style.display = 'none';
+  document.getElementById('reservar-cliente-card').style.display = 'flex';
   document.getElementById('reservar-cliente-err').textContent = '';
   _resRenderCondicoes();
 }
 
 function _resAcLimpar() {
   _reservarLeadId = null;
-  document.getElementById('reservar-chip').classList.remove('show');
+  document.getElementById('reservar-cliente-card').style.display = 'none';
+  document.getElementById('reservar-search-area').style.display = 'block';
   document.getElementById('reservar-busca-cliente').value = '';
   document.getElementById('reservar-clear-btn').style.display = 'none';
   document.getElementById('reservar-dropdown').classList.remove('open');
