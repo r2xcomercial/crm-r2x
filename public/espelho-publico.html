@@ -761,7 +761,7 @@
 
 <main>
   <div id="conteudo"><div class="loading">Carregando espelho de vendas...</div></div>
-  <div class="refresh-bar">Atualiza automaticamente em <span id="countdown">15</span>s</div>
+  <div class="refresh-bar">Atualiza automaticamente em <span id="countdown">3</span>s</div>
 </main>
 
 <!-- Banner flutuante: pré-reserva aguardando PIX (só para o corretor dono) -->
@@ -787,7 +787,7 @@
 const slug = location.pathname.split('/espelho/')[1]?.split('/')[0]
           || new URLSearchParams(location.search).get('slug')
           || null;
-let countdown = 15, timer;
+let countdown = 3, timer;
 let _empNome = '';
 let _empTipo = 'loteamento';
 let _simParams = null;
@@ -2581,7 +2581,7 @@ async function reservarEEnviarProposta() {
 
 function iniciarContador() {
   clearInterval(timer);
-  countdown = 15;
+  countdown = 3;
   document.getElementById('countdown').textContent = countdown;
   timer = setInterval(() => {
     countdown--;
