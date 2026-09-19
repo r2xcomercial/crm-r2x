@@ -23553,52 +23553,67 @@ async function enviarComprovanteUpload() {
 }
 
 async function verComprovante(vendaId) {
+  if (!vendaId) { alert('ID da venda não encontrado.'); return; }
+  if (!TOKEN)   { alert('Sessão não autenticada. Recarregue a página.'); return; }
+  // Abre overlay com loading imediatamente (sem depender de async)
+  _abrirOverlayComprovante(null, null);
   try {
     const r = await fetch(`/api/vendas/${vendaId}/comprovante`, { headers: { 'x-crm-token': TOKEN } });
-    if (!r.ok) { const j = await r.json().catch(()=>({})); alert('Erro ao carregar comprovante: ' + (j.error || r.status)); return; }
-    const mime = r.headers.get('Content-Type') || '';
+    if (!r.ok) {
+      const j = await r.json().catch(()=>({}));
+      _vcSetConteudo(`<p style="color:#f87171;padding:30px;text-align:center;font-size:14px">❌ Erro ${r.status}: ${j.error || 'Não foi possível carregar o comprovante.'}</p>`, null);
+      return;
+    }
+    const mime = (r.headers.get('Content-Type') || '').split(';')[0].trim();
     const blob = await r.blob();
     const url  = URL.createObjectURL(blob);
-    _abrirOverlayComprovante(url, mime);
-  } catch(e) { alert('Erro: ' + e.message); }
+    _vcSetConteudo(null, { url, mime });
+  } catch(e) {
+    _vcSetConteudo(`<p style="color:#f87171;padding:30px;text-align:center;font-size:14px">❌ Erro de rede: ${e.message}</p>`, null);
+  }
 }
 
 function _abrirOverlayComprovante(url, mime) {
-  let ov = document.getElementById('_vc-overlay');
-  if (!ov) {
-    ov = document.createElement('div');
-    ov.id = '_vc-overlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:99999;display:none;align-items:center;justify-content:center;padding:16px';
-    ov.innerHTML = `<div style="width:100%;max-width:700px;max-height:90vh;display:flex;flex-direction:column;gap:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="color:#fff;font-weight:700;font-size:16px">📎 Comprovante Pix</span>
-        <button id="_vc-close" style="background:none;border:none;color:#94a3b8;font-size:26px;cursor:pointer;line-height:1;padding:4px">✕</button>
-      </div>
-      <div id="_vc-content" style="overflow:auto;border-radius:10px;background:#0f172a;display:flex;align-items:center;justify-content:center"></div>
-      <a id="_vc-dl" download="comprovante" style="display:block;text-align:center;padding:10px;background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.3);color:#4ade80;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">⬇️ Baixar arquivo</a>
-    </div>`;
-    document.body.appendChild(ov);
-    document.getElementById('_vc-close').onclick = _fecharOverlayComprovante;
-    ov.onclick = e => { if (e.target === ov) _fecharOverlayComprovante(); };
-  }
+  // Remove overlay anterior para recriar limpo
+  const old = document.getElementById('_vc-overlay');
+  if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = '_vc-overlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = `<div style="width:100%;max-width:720px;max-height:90vh;display:flex;flex-direction:column;gap:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <span style="color:#fff;font-weight:700;font-size:16px">📎 Comprovante Pix</span>
+      <button id="_vc-close" style="background:none;border:none;color:#94a3b8;font-size:26px;cursor:pointer;line-height:1;padding:4px">✕</button>
+    </div>
+    <div id="_vc-content" style="overflow:auto;border-radius:10px;background:#0f172a;min-height:120px;display:flex;align-items:center;justify-content:center">
+      <p style="color:#94a3b8;font-size:13px">Carregando…</p>
+    </div>
+    <a id="_vc-dl" href="#" download="comprovante" style="display:none;text-align:center;padding:10px;background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.3);color:#4ade80;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">⬇️ Baixar arquivo</a>
+  </div>`;
+  document.body.appendChild(ov);
+  document.getElementById('_vc-close').onclick = _fecharOverlayComprovante;
+  ov.onclick = e => { if (e.target === ov) _fecharOverlayComprovante(); };
+}
+
+function _vcSetConteudo(errorHtml, file) {
   const content = document.getElementById('_vc-content');
-  document.getElementById('_vc-dl').href = url;
+  const dl      = document.getElementById('_vc-dl');
+  if (!content) return;
+  if (errorHtml) { content.innerHTML = errorHtml; return; }
+  const { url, mime } = file;
+  dl.href = url; dl.style.display = 'block';
   if (mime.startsWith('image/')) {
-    content.innerHTML = `<img src="${url}" style="width:100%;height:auto;max-height:70vh;object-fit:contain;border-radius:8px">`;
+    content.innerHTML = `<img src="${url}" style="width:100%;height:auto;max-height:70vh;object-fit:contain;border-radius:8px;display:block">`;
   } else if (mime === 'application/pdf') {
     content.innerHTML = `<iframe src="${url}" style="width:100%;height:70vh;border:none;border-radius:8px"></iframe>`;
   } else {
-    content.innerHTML = `<p style="color:#94a3b8;padding:30px;text-align:center;font-size:13px">Pré-visualização indisponível para este formato. Use o botão abaixo para baixar.</p>`;
+    content.innerHTML = `<p style="color:#94a3b8;padding:30px;text-align:center;font-size:13px">Pré-visualização indisponível (${mime||'formato desconhecido'}).<br>Use o botão abaixo para baixar.</p>`;
   }
-  ov.style.display = 'flex';
 }
 
 function _fecharOverlayComprovante() {
   const ov = document.getElementById('_vc-overlay');
-  if (!ov) return;
-  ov.style.display = 'none';
-  const dl = document.getElementById('_vc-dl');
-  if (dl && dl.href.startsWith('blob:')) { URL.revokeObjectURL(dl.href); dl.href = '#'; }
+  if (ov) { const dl = document.getElementById('_vc-dl'); if (dl?.href?.startsWith('blob:')) URL.revokeObjectURL(dl.href); ov.remove(); }
 }
 
 </script>
