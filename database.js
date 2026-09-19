@@ -8,6 +8,24 @@ const db = new Database(dbPath);
 
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
+db.pragma("busy_timeout = 5000"); // evita SQLITE_BUSY imediato sob concorrência
+
+// Índices de performance — críticos para o espelho com 100 corretores simultâneos
+const perfIndexes = [
+  // Query do espelho: 4 subconsultas correlacionadas em vendas por unidade_id + status
+  "CREATE INDEX IF NOT EXISTS idx_vendas_unidade_status ON vendas(unidade_id, status)",
+  // Autenticação: lookup por token a cada request
+  "CREATE INDEX IF NOT EXISTS idx_sessoes_token ON sessoes(token)",
+  // Query de fila por unidade
+  "CREATE INDEX IF NOT EXISTS idx_reserva_fila_unidade ON reserva_fila(unidade_id, status)",
+  // Listagem de unidades por empreendimento
+  "CREATE INDEX IF NOT EXISTS idx_unidades_emp ON unidades(empreendimento_id)",
+  // Vagas por unidade
+  "CREATE INDEX IF NOT EXISTS idx_vagas_unidade ON vagas_garagem(unidade_id)",
+];
+for (const sql of perfIndexes) {
+  try { db.exec(sql); } catch (_) {}
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS clientes (
