@@ -2319,15 +2319,40 @@ app.get("/cadastro-corretor", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "cadastro-corretor.html"));
 });
 
-app.post("/api/corretores/publico", (req, res) => {
-  const { nome, cpf, creci, telefone, email, imobiliaria, cidade, estado, aniversario } = req.body;
-  if (!nome || !telefone) return err(res, "Nome e telefone obrigatórios");
-  const existente = db.prepare("SELECT id FROM corretores WHERE telefone=?").get(telefone);
-  if (existente) return err(res, "Corretor já cadastrado com este telefone");
-  const r = db.prepare(`INSERT INTO corretores (nome,cpf,creci,telefone,email,imobiliaria,cidade,estado,aniversario) VALUES (?,?,?,?,?,?,?,?,?)`).run(nome, cpf, creci, telefone, email, imobiliaria, cidade, estado, aniversario);
+app.post("/api/corretores/publico", async (req, res) => {
+  const { nome, creci, telefone, email, imobiliaria, cidade, estado, tipo_vinculo, senha, confirmar_senha } = req.body;
+  if (!nome || !email || !creci || !telefone || !cidade || !estado || !tipo_vinculo || !senha)
+    return err(res, "Preencha todos os campos obrigatórios");
+  if (tipo_vinculo === 'imobiliaria' && !imobiliaria)
+    return err(res, "Informe o nome da imobiliária");
+  if (senha !== confirmar_senha)
+    return err(res, "As senhas não conferem");
+  if (senha.length < 6 || !/[a-zA-Z]/.test(senha) || !/\d/.test(senha))
+    return err(res, "A senha deve ter no mínimo 6 caracteres com letras e números");
+  const emailLower = email.toLowerCase().trim();
+  const emailEmUso = db.prepare("SELECT id FROM usuarios WHERE LOWER(email)=?").get(emailLower)
+    || db.prepare("SELECT id FROM corretores WHERE LOWER(email)=?").get(emailLower);
+  if (emailEmUso) return err(res, "E-mail já cadastrado no sistema");
+  const r = db.prepare(`INSERT INTO corretores (nome,creci,telefone,email,imobiliaria,cidade,estado,tipo_vinculo) VALUES (?,?,?,?,?,?,?,?)`)
+    .run(nome, creci, telefone.replace(/\D/g,''), emailLower, imobiliaria||null, cidade, estado, tipo_vinculo);
   const id = r.lastInsertRowid;
-  const loginInfo = email ? _criarLoginCorretor(id, nome, email) : null;
-  ok(res, { id, loginInfo, mensagem: "Cadastro realizado com sucesso!" });
+  const salt = gerarSalt();
+  try {
+    db.prepare('INSERT INTO usuarios(nome,email,senha_hash,salt,perfil,corretor_id) VALUES(?,?,?,?,?,?)')
+      .run(nome, emailLower, hashSenha(senha, salt), salt, 'corretor', id);
+  } catch(e) {
+    db.prepare('DELETE FROM corretores WHERE id=?').run(id);
+    return err(res, 'Erro ao criar login: ' + (e.message.includes('UNIQUE') ? 'E-mail já em uso' : e.message));
+  }
+  // WhatsApp de confirmação via Débora (fire-and-forget)
+  chatbotReq('/painel/enviar', {
+    method: 'POST',
+    body: JSON.stringify({
+      numero: telefone.replace(/\D/g,''),
+      mensagem: `Olá, *${nome}*! 🎉 Seu cadastro na R2X foi realizado com sucesso!\n\n*Login:* ${emailLower}\n\nAcesse o espelho de vendas pelo link que você recebeu para começar a trabalhar. Boas vendas!`
+    })
+  }).catch(() => {});
+  ok(res, { id, mensagem: "Cadastro realizado com sucesso!" });
 });
 
 // ─── LEADS ───────────────────────────────────────────────────────────────────
@@ -5347,6 +5372,7 @@ try { db.exec('ALTER TABLE org_nodes ADD COLUMN responsabilidade_chave TEXT DEFA
 })();
 try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN pluggy_transaction_id TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE usuarios ADD COLUMN cliente_id INTEGER'); } catch(_) {}
+try { db.exec('ALTER TABLE corretores ADD COLUMN tipo_vinculo TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE financeiro_entradas ADD COLUMN nf_arquivo TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN motivo_perda TEXT'); } catch(_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN motivo_perda_outro TEXT'); } catch(_) {}

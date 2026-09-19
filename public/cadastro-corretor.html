@@ -5,74 +5,80 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cadastro de Corretor — R2X</title>
 <style>
-  :root { --navy: #0D1B2E; --accent: #00C4B4; --border: #243650; --card: #162032; --text: #E8EDF5; --text2: #94A3B8; }
+  :root { --navy: #0D1B2E; --accent: #00C4B4; --border: #243650; --card: #162032; --text: #E8EDF5; --text2: #94A3B8; --err: #F87171; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--navy); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 500px; padding: 36px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; width: 100%; max-width: 520px; padding: 36px; }
   .logo { text-align: center; margin-bottom: 28px; }
-  .logo-mark { width: 52px; height: 52px; background: var(--accent); border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-weight: 900; color: var(--navy); font-size: 22px; margin-bottom: 10px; }
   h1 { font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 4px; }
   .subtitle { font-size: 13px; color: var(--text2); text-align: center; margin-bottom: 28px; }
   .form-group { margin-bottom: 16px; }
   label { display: block; font-size: 12px; color: var(--text2); font-weight: 500; margin-bottom: 5px; }
   input, select { width: 100%; background: #1A2840; border: 1px solid var(--border); color: var(--text); padding: 11px 14px; border-radius: 8px; font-size: 14px; outline: none; transition: border-color .15s; }
   input:focus, select:focus { border-color: var(--accent); }
+  input.invalid { border-color: var(--err); }
   select option { background: #0D1B2E; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .radio-group { display: flex; gap: 12px; margin-top: 4px; }
+  .radio-group label { display: flex; align-items: center; gap: 7px; font-size: 14px; color: var(--text); font-weight: 400; cursor: pointer; }
+  .radio-group input[type=radio] { width: auto; accent-color: var(--accent); margin: 0; }
+  .hint { font-size: 11px; color: var(--text2); margin-top: 4px; }
+  .err-msg { font-size: 12px; color: var(--err); margin-top: 4px; display: none; }
+  .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); margin: 20px 0 14px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
   .btn { width: 100%; padding: 13px; background: var(--accent); color: var(--navy); border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 8px; transition: opacity .15s; }
   .btn:hover { opacity: .88; }
   .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .required { color: var(--accent); }
   .success-box { display: none; text-align: center; padding: 28px 0; }
   .success-icon { font-size: 56px; margin-bottom: 12px; }
-  .success-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
-  .success-sub { font-size: 14px; color: var(--text2); }
-  .required { color: var(--accent); }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .success-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+  .success-sub { font-size: 14px; color: var(--text2); line-height: 1.6; }
+  .wpp-note { margin-top: 18px; background: #0f2818; border: 1px solid #166534; border-radius: 10px; padding: 14px 16px; font-size: 13px; color: #86efac; line-height: 1.5; }
   @media(max-width: 480px) { .grid2 { grid-template-columns: 1fr; } .card { padding: 24px; } }
 </style>
 </head>
 <body>
 <div class="card">
   <div class="logo">
-    <img src="/icon-192.png" style="width:56px;height:56px;border-radius:14px;margin-bottom:10px">
+    <img src="/icon-192.png" style="width:56px;height:56px;border-radius:14px;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto">
     <h1>Cadastro de Corretor</h1>
-    <p class="subtitle">Inteligência Comercial em Lançamentos Imobiliários — Preencha seus dados para integrar nossa rede</p>
+    <p class="subtitle">Inteligência Comercial em Lançamentos Imobiliários<br>Preencha seus dados para integrar nossa rede</p>
   </div>
 
-  <form id="form" onsubmit="enviar(event)">
+  <form id="form" onsubmit="enviar(event)" novalidate>
+    <div class="section-title">Dados Pessoais</div>
+
     <div class="form-group">
       <label>Nome completo <span class="required">*</span></label>
-      <input id="nome" type="text" placeholder="Seu nome completo" required>
+      <input id="nome" type="text" placeholder="Seu nome completo" required autocomplete="name">
     </div>
-    <div class="grid2">
-      <div class="form-group">
-        <label>CPF</label>
-        <input id="cpf" type="text" placeholder="000.000.000-00" maxlength="14" oninput="maskCPF(this)">
-      </div>
-      <div class="form-group">
-        <label>CRECI</label>
-        <input id="creci" type="text" placeholder="SC-12345">
-      </div>
+
+    <div class="form-group">
+      <label>E-mail <span class="required">*</span></label>
+      <input id="email" type="email" placeholder="seu@email.com" required autocomplete="email">
+      <div class="err-msg" id="err-email"></div>
     </div>
+
     <div class="form-group">
       <label>WhatsApp <span class="required">*</span></label>
-      <input id="telefone" type="tel" placeholder="(48) 99999-9999" required oninput="maskPhone(this)">
+      <input id="telefone" type="tel" placeholder="(48) 99999-9999" required oninput="maskPhone(this)" autocomplete="tel">
     </div>
+
     <div class="form-group">
-      <label>E-mail</label>
-      <input id="email" type="email" placeholder="seu@email.com">
+      <label>CRECI <span class="required">*</span></label>
+      <input id="creci" type="text" placeholder="SC-12345" required>
     </div>
-    <div class="form-group">
-      <label>Imobiliária / Empresa</label>
-      <input id="imobiliaria" type="text" placeholder="Nome da imobiliária (ou autônomo)">
-    </div>
+
+    <div class="section-title">Localização</div>
+
     <div class="grid2">
       <div class="form-group">
-        <label>Cidade</label>
-        <input id="cidade" type="text" placeholder="Criciúma">
+        <label>Cidade <span class="required">*</span></label>
+        <input id="cidade" type="text" placeholder="Criciúma" required>
       </div>
       <div class="form-group">
-        <label>Estado</label>
-        <select id="estado">
+        <label>Estado <span class="required">*</span></label>
+        <select id="estado" required>
           <option value="">—</option>
           <option>AC</option><option>AL</option><option>AP</option><option>AM</option>
           <option>BA</option><option>CE</option><option>DF</option><option>ES</option>
@@ -84,25 +90,45 @@
         </select>
       </div>
     </div>
+
+    <div class="section-title">Vínculo Profissional</div>
+
     <div class="form-group">
-      <label>Data de Nascimento</label>
-      <input id="aniversario" type="date">
+      <label>Tipo de vínculo <span class="required">*</span></label>
+      <div class="radio-group">
+        <label><input type="radio" name="tipo_vinculo" value="autonomo" onchange="onVinculo(this)"> Autônomo</label>
+        <label><input type="radio" name="tipo_vinculo" value="imobiliaria" onchange="onVinculo(this)"> Imobiliária</label>
+      </div>
     </div>
-    <button type="submit" class="btn" id="btn-enviar">Enviar Cadastro</button>
+
+    <div class="form-group" id="grp-imobiliaria" style="display:none">
+      <label>Nome da imobiliária <span class="required">*</span></label>
+      <input id="imobiliaria" type="text" placeholder="Imobiliária XYZ Ltda">
+    </div>
+
+    <div class="section-title">Acesso ao Sistema</div>
+
+    <div class="form-group">
+      <label>Senha <span class="required">*</span></label>
+      <input id="senha" type="password" placeholder="Mínimo 6 caracteres" required autocomplete="new-password" oninput="validarSenha()">
+      <div class="hint">Mínimo 6 caracteres com letras e números.</div>
+      <div class="err-msg" id="err-senha"></div>
+    </div>
+
+    <div class="form-group">
+      <label>Confirmar senha <span class="required">*</span></label>
+      <input id="confirmar_senha" type="password" placeholder="Repita a senha" required autocomplete="new-password" oninput="validarSenha()">
+      <div class="err-msg" id="err-confirmar"></div>
+    </div>
+
+    <button type="submit" class="btn" id="btn-enviar">Criar Cadastro</button>
   </form>
 
   <div class="success-box" id="success-box">
     <div class="success-icon">🎉</div>
     <div class="success-title">Cadastro realizado!</div>
-    <div class="success-sub">Bem-vindo à rede R2X.</div>
-    <div id="success-credenciais" style="display:none;margin-top:20px;text-align:left;background:#0f2818;border:1px solid #166534;border-radius:10px;padding:16px 18px">
-      <div style="font-size:13px;font-weight:700;color:#4ade80;margin-bottom:10px">🔑 Suas credenciais de acesso</div>
-      <div style="font-size:12px;color:#86efac;margin-bottom:4px">Login (e-mail):</div>
-      <div style="font-size:14px;font-weight:600;font-family:monospace;color:#bbf7d0;margin-bottom:12px" id="sc-login"></div>
-      <div style="font-size:12px;color:#86efac;margin-bottom:4px">Senha temporária:</div>
-      <div style="font-size:22px;font-weight:700;letter-spacing:4px;font-family:monospace;color:#bbf7d0" id="sc-senha"></div>
-      <div style="font-size:11px;color:#4ade80;margin-top:10px">Guarde esta senha — ela não será exibida novamente.</div>
-    </div>
+    <div class="success-sub">Bem-vindo(a) à rede R2X.<br>Seu acesso foi criado com o e-mail informado.</div>
+    <div class="wpp-note">📲 Você receberá uma confirmação via WhatsApp com as instruções de acesso.</div>
     <div id="btn-voltar-espelho" style="display:none;margin-top:20px">
       <a id="link-espelho" href="#" class="btn" style="display:inline-block;text-decoration:none;text-align:center">Acessar Espelho de Vendas →</a>
     </div>
@@ -116,49 +142,69 @@ function maskPhone(el) {
   else if (v.length >= 3) v = `(${v.slice(0,2)}) ${v.slice(2)}`;
   el.value = v;
 }
-function maskCPF(el) {
-  let v = el.value.replace(/\D/g,'').slice(0,11);
-  if (v.length >= 10) v = `${v.slice(0,3)}.${v.slice(3,6)}.${v.slice(6,9)}-${v.slice(9)}`;
-  else if (v.length >= 7) v = `${v.slice(0,3)}.${v.slice(3,6)}.${v.slice(6)}`;
-  else if (v.length >= 4) v = `${v.slice(0,3)}.${v.slice(3)}`;
-  el.value = v;
+
+function onVinculo(radio) {
+  document.getElementById('grp-imobiliaria').style.display = radio.value === 'imobiliaria' ? 'block' : 'none';
+}
+
+function validarSenha() {
+  const s = document.getElementById('senha').value;
+  const c = document.getElementById('confirmar_senha').value;
+  const eS = document.getElementById('err-senha');
+  const eC = document.getElementById('err-confirmar');
+  eS.style.display = 'none';
+  eC.style.display = 'none';
+  if (s.length > 0 && (s.length < 6 || !/[a-zA-Z]/.test(s) || !/\d/.test(s))) {
+    eS.textContent = 'Mínimo 6 caracteres com letras e números.';
+    eS.style.display = 'block';
+    document.getElementById('senha').classList.add('invalid');
+  } else {
+    document.getElementById('senha').classList.remove('invalid');
+  }
+  if (c.length > 0 && s !== c) {
+    eC.textContent = 'As senhas não conferem.';
+    eC.style.display = 'block';
+    document.getElementById('confirmar_senha').classList.add('invalid');
+  } else {
+    document.getElementById('confirmar_senha').classList.remove('invalid');
+  }
 }
 
 const _redirectParam = new URLSearchParams(location.search).get('redirect') || null;
 
 async function enviar(e) {
   e.preventDefault();
+  const nome = document.getElementById('nome').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const telefone = document.getElementById('telefone').value.replace(/\D/g,'');
+  const creci = document.getElementById('creci').value.trim();
+  const cidade = document.getElementById('cidade').value.trim();
+  const estado = document.getElementById('estado').value;
+  const tipoRadio = document.querySelector('input[name="tipo_vinculo"]:checked');
+  const tipo_vinculo = tipoRadio ? tipoRadio.value : '';
+  const imobiliaria = document.getElementById('imobiliaria').value.trim();
+  const senha = document.getElementById('senha').value;
+  const confirmar_senha = document.getElementById('confirmar_senha').value;
+
+  if (!nome || !email || !creci || !telefone || !cidade || !estado) { alert('Preencha todos os campos obrigatórios.'); return; }
+  if (!tipo_vinculo) { alert('Selecione o tipo de vínculo.'); return; }
+  if (tipo_vinculo === 'imobiliaria' && !imobiliaria) { alert('Informe o nome da imobiliária.'); return; }
+  if (!senha || senha.length < 6 || !/[a-zA-Z]/.test(senha) || !/\d/.test(senha)) { alert('A senha deve ter no mínimo 6 caracteres com letras e números.'); return; }
+  if (senha !== confirmar_senha) { alert('As senhas não conferem.'); return; }
+
   const btn = document.getElementById('btn-enviar');
   btn.disabled = true; btn.textContent = 'Enviando...';
-
-  const tel = document.getElementById('telefone').value.replace(/\D/g,'');
-  const body = {
-    nome: document.getElementById('nome').value,
-    cpf: document.getElementById('cpf').value,
-    creci: document.getElementById('creci').value,
-    telefone: tel,
-    email: document.getElementById('email').value,
-    imobiliaria: document.getElementById('imobiliaria').value,
-    cidade: document.getElementById('cidade').value,
-    estado: document.getElementById('estado').value,
-    aniversario: document.getElementById('aniversario').value,
-  };
 
   try {
     const r = await fetch('/api/corretores/publico', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ nome, email, creci, telefone, cidade, estado, tipo_vinculo, imobiliaria, senha, confirmar_senha })
     });
     const data = await r.json();
     if (!data.ok) throw new Error(data.error);
     document.getElementById('form').style.display = 'none';
     document.getElementById('success-box').style.display = 'block';
-    if (data.data?.loginInfo && !data.data.loginInfo.erro) {
-      document.getElementById('sc-login').textContent = data.data.loginInfo.login;
-      document.getElementById('sc-senha').textContent = data.data.loginInfo.senha_temp;
-      document.getElementById('success-credenciais').style.display = 'block';
-    }
     if (_redirectParam) {
       const linkEl = document.getElementById('link-espelho');
       linkEl.href = _redirectParam;
@@ -166,7 +212,7 @@ async function enviar(e) {
     }
   } catch(err) {
     alert('Erro: ' + err.message);
-    btn.disabled = false; btn.textContent = 'Enviar Cadastro';
+    btn.disabled = false; btn.textContent = 'Criar Cadastro';
   }
 }
 </script>
