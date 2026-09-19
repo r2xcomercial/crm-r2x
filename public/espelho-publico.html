@@ -1155,8 +1155,10 @@ function _atualizarPixBanner() {
 
   const _cidNum = parseInt(_corretorId) || 0;
   const minhasRes = (window._units || []).filter(u =>
-    u.status === 'pre_reserva' && !u.tem_comprovante && u.venda_corretor_id === _cidNum
+    u.status === 'pre_reserva' && !u.tem_comprovante && String(u.venda_corretor_id) === String(_cidNum)
   );
+  console.log('[banner] cidNum=%o unidades_pre=%o matches=%o', _cidNum,
+    (window._units||[]).filter(u=>u.status==='pre_reserva').length, minhasRes.length);
 
   // Remove banners de unidades que já não precisam
   const idsAtivos = new Set(minhasRes.map(u => u.id));
