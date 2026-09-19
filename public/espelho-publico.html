@@ -3208,8 +3208,9 @@ function _iniciarCountdownLancPub(inicio, serverTime) {
 }
 
 function _mostrarContadorFinalPub(ms) {
-  const FINAL_MS = 5 * 60 * 1000;
-  const totalMs = window._lancTotalMsPub || ms;
+  const FINAL_MS = 30 * 60 * 1000; // exibe overlay nos últimos 30 min
+  if (ms > FINAL_MS) { _removerContadorFinalPub(); return; } // ainda longe — espelho normal
+  const totalMs = FINAL_MS;
   let ov = document.getElementById('lanc-pub-overlay');
   if (!ov) {
     ov = document.createElement('div');
@@ -3248,13 +3249,13 @@ function _mostrarContadorFinalPub(ms) {
   const prog = document.getElementById('lanc-pub-prog');
   if (mmEl) mmEl.textContent = mm;
   if (ssEl) ssEl.textContent = ss;
-  const isLast10 = ms <= 10000, isLast30 = ms <= 30000, isFinal5 = ms <= FINAL_MS;
-  const cor  = isLast10 ? '#f87171' : isLast30 ? '#fb923c' : isFinal5 ? '#fbbf24' : '#fde68a';
-  const glow = isLast10 ? '0 0 80px rgba(248,113,113,.55)' : isLast30 ? '0 0 70px rgba(251,146,60,.45)' : '0 0 60px rgba(253,230,138,.35)';
-  const anim = isLast10 ? 'lancPulse .35s ease-in-out infinite alternate' : isLast30 ? 'lancPulse .65s ease-in-out infinite alternate' : '';
+  const isLast10 = ms <= 10000, isLast30s = ms <= 30000, isLast5min = ms <= 5 * 60 * 1000;
+  const cor  = isLast10 ? '#f87171' : isLast30s ? '#fb923c' : isLast5min ? '#fbbf24' : '#fde68a';
+  const glow = isLast10 ? '0 0 80px rgba(248,113,113,.55)' : isLast30s ? '0 0 70px rgba(251,146,60,.45)' : '0 0 60px rgba(253,230,138,.35)';
+  const anim = isLast10 ? 'lancPulse .35s ease-in-out infinite alternate' : isLast30s ? 'lancPulse .65s ease-in-out infinite alternate' : '';
   if (mmEl) { mmEl.style.color = cor; mmEl.style.textShadow = glow; mmEl.style.animation = anim; }
   if (ssEl) { ssEl.style.color = cor; ssEl.style.textShadow = glow; ssEl.style.animation = anim; }
-  const progPct = isFinal5 ? ((1 - ms / FINAL_MS) * 100) : 0;
+  const progPct = (1 - ms / totalMs) * 100;
   if (prog) prog.style.width = progPct + '%';
 }
 
