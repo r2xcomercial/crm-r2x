@@ -5071,6 +5071,8 @@ app.get('/api/espelho-publico/:slug', (req, res) => {
   }
 
   const lancAtivo = _getLancAtivo(emp.id);
+  // Lançamento ativo libera automaticamente preços e reservas, independente dos checkboxes do painel
+  if (lancAtivo?.status === 'ativo') { configVerTabela = 1; configReservar = 1; }
   ok(res, { empreendimento: emp, imagem: mapa?.svg_data || null, units, resumo, espelhoParams, condicaoPadrao, markerSize: emp.espelho_marker_size || 20, mapsUrl: emp.maps_url || null, driveUrl: emp.drive_url || null, socialUrl: emp.social_url || null, configVerTabela, configReservar, modoReserva: emp.modo_reserva || 'pre_reserva_pix', atualizado_em: new Date().toISOString(), lancamento: lancAtivo || null, server_time: new Date().toISOString() });
 });
 
@@ -9241,14 +9243,22 @@ app.get('/api/corretor/empreendimentos', autenticar, (req, res) => {
   if (!cid) return ok(res, []);
   const temRegistro = db.prepare('SELECT 1 FROM corretor_empreendimento_acesso WHERE corretor_id=? LIMIT 1').get(cid);
   if (!temRegistro) {
-    return ok(res, db.prepare(`SELECT id, nome, cidade, estado, tipo, status, espelho_slug, COALESCE(config_ver_tabela,1) AS pode_ver_tabela, COALESCE(config_reservar,1) AS pode_reservar FROM empreendimentos WHERE COALESCE(config_visivel,1)=1 ORDER BY nome`).all());
+    return ok(res, db.prepare(`
+      SELECT e.id, e.nome, e.cidade, e.estado, e.tipo, e.status, e.espelho_slug,
+        CASE WHEN l.id IS NOT NULL THEN 1 ELSE COALESCE(e.config_ver_tabela,1) END AS pode_ver_tabela,
+        CASE WHEN l.id IS NOT NULL THEN 1 ELSE COALESCE(e.config_reservar,1)   END AS pode_reservar
+      FROM empreendimentos e
+      LEFT JOIN lancamentos l ON l.empreendimento_id = e.id AND l.status = 'ativo'
+      WHERE COALESCE(e.config_visivel,1)=1 ORDER BY e.nome
+    `).all());
   }
   ok(res, db.prepare(`
     SELECT e.id, e.nome, e.cidade, e.estado, e.tipo, e.status, e.espelho_slug,
-           COALESCE(a.pode_ver_tabela, 1) * COALESCE(e.config_ver_tabela, 1) AS pode_ver_tabela,
-           COALESCE(a.pode_reservar, 1)   * COALESCE(e.config_reservar, 1)   AS pode_reservar
+           CASE WHEN l.id IS NOT NULL THEN 1 ELSE COALESCE(a.pode_ver_tabela,1) * COALESCE(e.config_ver_tabela,1) END AS pode_ver_tabela,
+           CASE WHEN l.id IS NOT NULL THEN 1 ELSE COALESCE(a.pode_reservar,1)   * COALESCE(e.config_reservar,1)   END AS pode_reservar
     FROM empreendimentos e
     JOIN corretor_empreendimento_acesso a ON a.empreendimento_id = e.id AND a.corretor_id = ?
+    LEFT JOIN lancamentos l ON l.empreendimento_id = e.id AND l.status = 'ativo'
     WHERE a.liberado = 1 AND COALESCE(e.config_visivel,1) = 1
     ORDER BY e.nome
   `).all(cid));
