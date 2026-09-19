@@ -143,10 +143,7 @@
     <div class="success-title">Cadastro realizado!</div>
     <div class="success-sub">Bem-vindo(a) à rede R2X.<br>Use seu <strong>e-mail</strong> e a <strong>senha criada</strong> para entrar.</div>
     <div id="btn-entrar" style="margin-top:20px;display:none">
-      <a id="link-espelho" href="#" class="btn" style="display:block;text-decoration:none;text-align:center">Entrar agora →</a>
-    </div>
-    <div id="success-no-redirect" style="display:none;margin-top:18px;background:#1a2840;border:1px solid #243650;border-radius:10px;padding:14px 16px;font-size:13px;color:#94a3b8;line-height:1.6;text-align:left">
-      ✅ Seu acesso está pronto.<br>Use o <strong>link do espelho de vendas</strong> compartilhado pelo gestor R2X para fazer login com seu e-mail e senha.
+      <a id="link-espelho" href="/login" class="btn" style="display:block;text-decoration:none;text-align:center">Entrar no Meu Painel →</a>
     </div>
     <div style="margin-top:16px;font-size:12px;color:var(--text2)">
       Esqueceu a senha depois?
@@ -235,14 +232,8 @@ async function enviar(e) {
     if (!data.ok) throw new Error(data.error);
     document.getElementById('form').style.display = 'none';
     document.getElementById('success-box').style.display = 'block';
-    if (_redirectParam) {
-      const linkEl = document.getElementById('link-espelho');
-      linkEl.href = _redirectParam;
-      document.getElementById('btn-entrar').style.display = 'block';
-    } else {
-      document.getElementById('btn-entrar').style.display = 'none';
-      document.getElementById('success-no-redirect').style.display = 'block';
-    }
+    document.getElementById('link-espelho').href = '/login';
+    document.getElementById('btn-entrar').style.display = 'block';
   } catch(err) {
     alert('Erro: ' + err.message);
     btn.disabled = false; btn.textContent = 'Criar Cadastro';

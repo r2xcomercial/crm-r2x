@@ -836,6 +836,11 @@ async function fazerLogin() {
     localStorage.setItem('espelho_nome',     _corretorNome);
     localStorage.setItem('espelho_corretor', _corretorId||'');
     localStorage.setItem('espelho_perfil',   _corretorPerfil||'');
+    // Sincroniza com o painel principal para evitar login duplo
+    localStorage.setItem('crm_token', _corretorToken);
+    localStorage.setItem('crm_usuario', JSON.stringify({ nome: _corretorNome, perfil: _corretorPerfil, corretor_id: _corretorId||null, cliente_id: d.data.cliente_id||null }));
+    // Corretor sempre inicia no Meu Painel; admin/gestor ficam no espelho
+    if (_corretorPerfil === 'corretor') { window.location.href = '/'; return; }
     document.getElementById('login-wall').classList.remove('active');
     renderCorretorArea();
     carregar().then(() => { iniciarContador(); _iniciarSSE(); });
