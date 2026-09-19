@@ -485,7 +485,7 @@ app.get('/api/health', (req, res) => {
 app.post('/api/auth/login', (req, res) => {
   const { email, senha } = req.body;
   if (!email || !senha) return err(res, 'Email e senha obrigatórios');
-  const u = db.prepare('SELECT * FROM usuarios WHERE email=? AND ativo=1').get(email.trim());
+  const u = db.prepare('SELECT * FROM usuarios WHERE LOWER(email)=LOWER(?) AND ativo=1').get(email.trim());
   if (!u || hashSenha(senha, u.salt) !== u.senha_hash) return err(res, 'Credenciais inválidas', 401);
   const token = gerarToken();
   const expira = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().replace('T',' ').slice(0,19);
