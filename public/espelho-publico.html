@@ -115,9 +115,9 @@
   .login-card .login-btn:disabled { opacity:.6; cursor:default; }
 
   /* Modal genérico */
-  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:200; align-items:center; justify-content:center; padding:16px; }
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:200; align-items:flex-start; justify-content:center; padding:16px; overflow-y:auto; }
   .modal-overlay.open { display:flex; }
-  .modal-box { background:#1e293b; border:1px solid #334155; border-radius:14px; padding:24px; width:100%; max-width:480px; max-height:90vh; overflow-y:auto; }
+  .modal-box { background:#1e293b; border:1px solid #334155; border-radius:14px; padding:24px; width:100%; max-width:480px; margin:auto; }
   .modal-box.wide { max-width:560px; }
   .modal-box h3 { font-size:16px; font-weight:700; margin-bottom:16px; }
   .modal-box label { display:block; font-size:11px; color:#94a3b8; margin-bottom:3px; margin-top:10px; text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
@@ -690,14 +690,23 @@
 
     <!-- Condições de pagamento (aparece após selecionar cliente) -->
     <div id="reservar-step-condicao" style="display:none;margin-top:18px;border-top:1px solid #1e293b;padding-top:16px">
+      <!-- Cliente selecionado em destaque -->
+      <div id="reservar-cliente-destaque" style="background:rgba(20,184,166,.1);border:1.5px solid rgba(20,184,166,.35);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+        <div style="font-size:20px" id="reservar-dest-avatar">👤</div>
+        <div>
+          <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:2px">Cliente</div>
+          <div id="reservar-dest-nome" style="font-size:15px;font-weight:800;color:#e2e8f0"></div>
+          <div id="reservar-dest-sub" style="font-size:11px;color:#94a3b8;margin-top:1px"></div>
+        </div>
+      </div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em">Condição de pagamento</div>
         <button onclick="_resAbrirEditarProposta()" style="background:none;border:none;color:#14b8a6;font-size:11px;cursor:pointer;padding:0;font-weight:700;text-decoration:underline">✏️ Editar proposta</button>
       </div>
       <div id="reservar-conds-html"></div>
       <!-- Resumo da condição selecionada -->
-      <div id="reservar-resumo-cond" style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:12px 14px;margin-top:10px;display:none">
-        <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Resumo da proposta</div>
+      <div id="reservar-resumo-cond" style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:12px 14px;margin-top:10px;display:none">
+        <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Resumo da proposta</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="reservar-resumo-grid"></div>
       </div>
       <div id="reservar-proposta-err" class="modal-err" style="margin-top:8px"></div>
@@ -952,11 +961,29 @@ function abrirSimulacao(unitId) {
   let entV = 0, entLabel = '', entDetalhe = '';
   let condsHtml = '';
 
-  if (p && preco) {
+  const padraoConds = window._padraoConds;
+  if (padraoConds?.length && preco) {
+    // Mostra as condições padrão configuradas (condicaoPadrao) em vez das do simulador genérico
+    condsHtml = padraoConds.map((c, i) => {
+      const desc = parseFloat(c.desconto_pct) || 0;
+      const precoFinal = desc > 0 ? preco * (1 - desc / 100) : preco;
+      const parcelasRows = (c.parcelas||[]).map(p2 => {
+        const qtd = parseInt(p2.qtd)||1;
+        const val = parseFloat(p2.valor);
+        return val > 0 ? `<div class="sim-cond-row"><span class="sim-cond-key">${p2.titulo||''}</span><span class="sim-cond-val">${qtd > 1 ? qtd+'× ' : ''}${fmt0.format(val)}${qtd > 1 ? '/mês' : ''}</span></div>` : '';
+      }).join('');
+      const discountRow = desc > 0 ? `<div class="sim-cond-row"><span class="sim-cond-key">Desconto</span><span class="sim-cond-val" style="color:#34d399">${desc}%</span></div>` : '';
+      const totalRow = desc > 0 ? `<div class="sim-cond-total-row"><span class="sim-cond-total-lbl">Valor final</span><span class="sim-cond-total-val" style="color:#34d399">${fmt0.format(precoFinal)}</span></div>` : '';
+      return `<div class="sim-cond-card${i === 0 ? ' first' : ''}">
+        <div class="sim-cond-label">${c.nome || 'Condição '+(i+1)}</div>
+        <div class="sim-cond-rows">${discountRow}${parcelasRows}</div>
+        ${totalRow}
+      </div>`;
+    }).join('');
+  } else if (p && preco) {
     const entFixo = p.entrada_tipo === 'valor';
     entV = entFixo ? (p.entrada_valor || 0) : preco * ((p.entrada_pct || 0) / 100);
     const entParcN = p.entrada_parc || 1;
-    const pctFmt = entFixo ? fmt0.format(entV) : ((p.entrada_pct||0).toFixed(0) + '% — ' + fmt0.format(entV));
     entLabel = fmt.format(entV);
     entDetalhe = entParcN > 1
       ? `${entParcN}× de ${fmt.format(entV / entParcN)}`
@@ -972,8 +999,10 @@ function abrirSimulacao(unitId) {
       const semJuros = !c.juros;
       const chk = semJuros && Math.abs(totalCond - preco) < 1 ? ' ✓' : '';
       const balaoInfo = totalRef > 0 ? `<div class="sim-cond-row"><span class="sim-cond-key">Balões</span><span class="sim-cond-val">${fmt0.format(totalRef)}</span></div>` : '';
+      const condLabel = c.label || (c.nParc + 'x');
+      const jurosStr = c.juros > 0 ? ` · ${c.juros.toFixed(2)}% a.m.` : (c.label ? '' : ' · sem juros');
       return `<div class="sim-cond-card${i === 0 ? ' first' : ''}">
-        <div class="sim-cond-label">${c.label || c.nParc + 'x'} ${c.juros > 0 ? '· ' + c.juros.toFixed(2) + '% a.m.' : '· sem juros'}</div>
+        <div class="sim-cond-label">${condLabel}${jurosStr}</div>
         <div class="sim-cond-rows">
           ${balaoInfo}
           <div class="sim-cond-row">
@@ -2767,10 +2796,14 @@ function _resAcSelect(leadId) {
   document.getElementById('reservar-busca-cliente').value = '';
   document.getElementById('reservar-busca-cliente').blur();
   document.getElementById('reservar-clear-btn').style.display = 'none';
-  document.getElementById('reservar-chip-avatar').textContent = c.tipo_pessoa==='pj' ? '🏢' : '👤';
+  const av = c.tipo_pessoa==='pj' ? '🏢' : '👤';
+  document.getElementById('reservar-chip-avatar').textContent = av;
   document.getElementById('reservar-chip-nome').textContent = c.nome || '(sem nome)';
   document.getElementById('reservar-chip-sub').textContent = [c.telefone, c.cpf].filter(Boolean).join(' · ');
   document.getElementById('reservar-chip').classList.add('show');
+  document.getElementById('reservar-dest-avatar').textContent = av;
+  document.getElementById('reservar-dest-nome').textContent = c.nome || '(sem nome)';
+  document.getElementById('reservar-dest-sub').textContent = [c.telefone, c.cpf].filter(Boolean).join(' · ');
   document.getElementById('reservar-cliente-err').textContent = '';
   _resRenderCondicoes();
 }
@@ -2860,7 +2893,7 @@ function _resAtualizarResumo(p, preco, entV, totalRef, saldo, idx) {
     ['Parcelas', `${c.nParc}× ${fmt.format(pmv)}/mês`],
     ['Total', fmt0.format(total)],
   ].filter(Boolean);
-  grid.innerHTML = rows.map(([k, v]) => `<div style="font-size:11px;color:#64748b">${k}</div><div style="font-size:12px;color:#e2e8f0;font-weight:600;text-align:right">${v}</div>`).join('');
+  grid.innerHTML = rows.map(([k, v]) => `<div style="font-size:11px;color:#cbd5e1">${k}</div><div style="font-size:12px;color:#fff;font-weight:700;text-align:right">${v}</div>`).join('');
   document.getElementById('reservar-resumo-cond').style.display = 'block';
 }
 
@@ -2880,7 +2913,7 @@ function _resAtualizarResumoPadrao(cond, preco) {
     const val = parseFloat(p.valor);
     if (p.titulo) rows.push([p.titulo, val > 0 ? `${qtd > 1 ? qtd+'× ' : ''}${fmt0.format(val)}` : '—']);
   });
-  grid.innerHTML = rows.map(([k, v]) => `<div style="font-size:11px;color:#64748b">${k}</div><div style="font-size:12px;color:#e2e8f0;font-weight:600;text-align:right">${v}</div>`).join('');
+  grid.innerHTML = rows.map(([k, v]) => `<div style="font-size:11px;color:#cbd5e1">${k}</div><div style="font-size:12px;color:#fff;font-weight:700;text-align:right">${v}</div>`).join('');
   document.getElementById('reservar-resumo-cond').style.display = 'block';
 }
 
@@ -2942,7 +2975,7 @@ async function confirmarReserva() {
     }
     const rv = await fetch('/api/vendas/reserva-rapida', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'x-crm-token': _corretorToken },
-      body: JSON.stringify({ empreendimento_id: window._empId, unidade_id: _reservarUnitId, lead_id: _reservarLeadId, condicao_proposta })
+      body: JSON.stringify({ empreendimento_id: window._empId, unidade_id: _reservarUnitId, lead_id: _reservarLeadId, condicao_proposta, from_espelho: true })
     });
     const rdData = await rv.json();
     if (!rdData.ok) throw new Error(rdData.error || 'Erro ao reservar');

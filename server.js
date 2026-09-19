@@ -3268,7 +3268,7 @@ app.get("/api/vendas/:id/unidades", autenticar, (req, res) => {
 // ─── RESERVA RÁPIDA ──────────────────────────────────────────────────────────
 app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
   const u = req.usuario;
-  const { empreendimento_id, unidade_id, lead_id, lead_nome, lead_telefone, corretor_id, condicao_proposta } = req.body;
+  const { empreendimento_id, unidade_id, lead_id, lead_nome, lead_telefone, corretor_id, condicao_proposta, from_espelho } = req.body;
   if (!empreendimento_id || !unidade_id) return err(res, "Empreendimento e unidade obrigatórios");
 
   // Bloqueia corretor sem acesso ao empreendimento
@@ -3305,8 +3305,9 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
   const empRow = db.prepare("SELECT modo_reserva FROM empreendimentos WHERE id=?").get(parseInt(empreendimento_id));
   const modoReserva = empRow?.modo_reserva || 'pre_reserva_pix';
 
-  // Admin/gestor/incorporador: sempre reserva direta (sem PIX). Corretor: segue modo_reserva do empreendimento.
-  const isAdminReserva = ['admin','gestor','incorporador'].includes(u?.perfil);
+  // Via espelho (from_espelho=true), todos os perfis seguem o modo_reserva configurado — sem bypass de admin.
+  // Via CRM admin (from_espelho=false/null), admin/gestor/incorporador fazem reserva direta.
+  const isAdminReserva = ['admin','gestor','incorporador'].includes(u?.perfil) && !from_espelho;
   const reservaDireta  = isAdminReserva || modoReserva === 'reserva_direta';
   // Em modo pre_reserva_pix, condicao_proposta é apenas dado — status sempre pre_reserva para que o fluxo PIX funcione
   const statusInicial = reservaDireta ? 'reserva'
