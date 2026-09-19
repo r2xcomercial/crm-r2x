@@ -4452,10 +4452,16 @@ function openEmpModal(e = {}) {
             const selOpts = (cls, opts, val) => `<select class="${cls}" style="padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:11px;width:100%;box-sizing:border-box">${opts.map(o => `<option value="${o}" ${o===(val||opts[0])?'selected':''}>${o}</option>`).join('')}</select>`;
             return conds.map(cond => `
               <div class="ecp-condicao" style="border:1px solid rgba(34,197,94,.25);border-radius:8px;padding:10px 12px;background:rgba(0,0,0,.15)">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-                  <input type="text" class="ecp-nome" placeholder="Nome (ex: 10% + 48x sem juros)" value="${(cond.nome||'').replace(/"/g,'&quot;')}" style="flex:1;padding:5px 10px;border-radius:6px;border:1px solid rgba(34,197,94,.3);background:var(--navy2);color:var(--text1);font-size:12px;font-weight:600">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                  <input type="text" class="ecp-nome" placeholder="Nome (ex: À vista c/ desconto)" value="${(cond.nome||'').replace(/"/g,'&quot;')}" style="flex:1;padding:5px 10px;border-radius:6px;border:1px solid rgba(34,197,94,.3);background:var(--navy2);color:var(--text1);font-size:12px;font-weight:600">
                   <button type="button" onclick="addEmpCpParcela(this)" style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap">+ Parcela</button>
                   <button type="button" onclick="this.closest('.ecp-condicao').remove()" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:6px;padding:4px 8px;font-size:13px;cursor:pointer">✕</button>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+                  <label style="font-size:11px;color:#94a3b8;white-space:nowrap">% Desconto à vista:</label>
+                  <input type="number" class="ecp-desconto" min="0" max="100" step="0.5" placeholder="0" value="${cond.desconto_pct||''}"
+                    style="width:72px;padding:4px 8px;border-radius:6px;border:1px solid rgba(34,197,94,.3);background:var(--navy2);color:#4ade80;font-size:12px;font-weight:700;text-align:center">
+                  <span style="font-size:11px;color:#64748b">% — deixe 0 se não há desconto</span>
                 </div>
                 <div class="ecp-parcelas-list" style="display:flex;flex-direction:column;gap:6px">
                   ${(cond.parcelas||[]).map(p => `
@@ -4608,6 +4614,7 @@ function openEmpModal(e = {}) {
       modo_reserva:      document.getElementById('f-modo-reserva')?.value || 'pre_reserva_pix',
       condicao_pagamento_padrao: [...document.querySelectorAll('#emp-cp-list .ecp-condicao')].map(cond => ({
         nome: cond.querySelector('.ecp-nome')?.value?.trim() || '',
+        desconto_pct: parseFloat(cond.querySelector('.ecp-desconto')?.value) || 0,
         parcelas: [...cond.querySelectorAll('.emp-cp-row')].map(row => ({
           titulo: row.querySelector('.ecp-titulo')?.value?.trim() || '',
           vencimento: row.querySelector('.ecp-vencimento')?.value || null,
@@ -4628,21 +4635,27 @@ function openEmpModal(e = {}) {
   if (e.id) setTimeout(() => renderNuLista(e.id), 0);
 }
 
-function addEmpCondicao(nome = '', parcelas = []) {
+function addEmpCondicao(nome = '', parcelas = [], descontoPct = 0) {
   const list = document.getElementById('emp-cp-list');
   if (!list) return;
   const cond = document.createElement('div');
   cond.className = 'ecp-condicao';
   cond.style.cssText = 'border:1px solid rgba(34,197,94,.25);border-radius:8px;padding:10px 12px;background:rgba(0,0,0,.15)';
   cond.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <input type="text" class="ecp-nome" placeholder="Nome (ex: 10% + 48x sem juros)" value="${nome.replace(/"/g,'&quot;')}" style="flex:1;padding:5px 10px;border-radius:6px;border:1px solid rgba(34,197,94,.3);background:var(--navy2);color:var(--text1);font-size:12px;font-weight:600">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <input type="text" class="ecp-nome" placeholder="Nome (ex: À vista c/ desconto)" value="${nome.replace(/"/g,'&quot;')}" style="flex:1;padding:5px 10px;border-radius:6px;border:1px solid rgba(34,197,94,.3);background:var(--navy2);color:var(--text1);font-size:12px;font-weight:600">
       <button type="button" onclick="addEmpCpParcela(this)" style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;white-space:nowrap">+ Parcela</button>
       <button type="button" onclick="this.closest('.ecp-condicao').remove()" style="background:rgba(239,68,68,.15);color:var(--danger);border:none;border-radius:6px;padding:4px 8px;font-size:13px;cursor:pointer">✕</button>
     </div>
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+      <label style="font-size:11px;color:#94a3b8;white-space:nowrap">% Desconto à vista:</label>
+      <input type="number" class="ecp-desconto" min="0" max="100" step="0.5" placeholder="0" value="${descontoPct||''}"
+        style="width:72px;padding:4px 8px;border-radius:6px;border:1px solid rgba(34,197,94,.3);background:var(--navy2);color:#4ade80;font-size:12px;font-weight:700;text-align:center">
+      <span style="font-size:11px;color:#64748b">% — deixe 0 se não há desconto</span>
+    </div>
     <div class="ecp-parcelas-list" style="display:flex;flex-direction:column;gap:6px"></div>`;
   list.appendChild(cond);
-  parcelas.forEach(p => addEmpCpParcela(cond.querySelector('button'), p));
+  parcelas.forEach(p => addEmpCpParcela(cond.querySelector('[onclick="addEmpCpParcela(this)"]'), p));
   cond.querySelector('.ecp-nome').focus();
 }
 
