@@ -2032,11 +2032,18 @@ async function baixarTabelaPDF() {
   const entParcN = p?.entrada_parc || 1;
   const nRef     = p?.nRef || 0;
   const condicoes = p?.condicoes || [];
+  // Condições padrão do empreendimento (fallback quando simulador não tem condicoes)
+  const padraoConds = (!condicoes.length && Array.isArray(window._padraoConds) && window._padraoConds.length)
+    ? window._padraoConds : [];
+  const usaPadrao = padraoConds.length > 0;
 
   // Colunas
+  const condHeaders = usaPadrao
+    ? padraoConds.map(c => c.nome || 'Condição')
+    : condicoes.map(c => c.label || c.nParc+'x');
   const head = isLoteamento
-    ? ['Quadra','Lote','Área','Valor', ...(p?['Entrada']:[]), ...(nRef>0?['Balão (cada)']:[]), ...condicoes.map(c=>c.label||c.nParc+'x'), 'Status']
-    : ['Andar','Unidade','Tipologia','Área','Valor', ...(p?['Entrada']:[]), ...(nRef>0?['Balão (cada)']:[]), ...condicoes.map(c=>c.label||c.nParc+'x'), 'Status'];
+    ? ['Quadra','Lote','Área','Valor', ...(p?['Entrada']:[]), ...(nRef>0?['Balão (cada)']:[]), ...condHeaders, 'Status']
+    : ['Andar','Unidade','Tipologia','Área','Valor', ...(p?['Entrada']:[]), ...(nRef>0?['Balão (cada)']:[]), ...condHeaders, 'Status'];
 
   const statusLabel = s => s==='vendido'?'VENDIDO':s==='reservado'?'RESERVADO':s==='indisponivel'?'INDISPONÍVEL':'DISPONÍVEL';
   const statusClr   = s => s==='vendido'?[146,64,14]:s==='reservado'?[217,119,6]:s==='indisponivel'?[100,116,139]:[22,163,74];
@@ -2055,9 +2062,25 @@ async function baixarTabelaPDF() {
         ? fmtR(entV) + ` (${entParcN}x ${fmtR(entV/entParcN)})`
         : fmtR(entV);
       refCell = nRef>0 ? fmtR(refVal) : '—';
-      condCells = condicoes.map(c => fmtR(calcPMT(saldo, c.nParc, c.juros||0)) + '/mês');
-    } else {
+      if (!usaPadrao) condCells = condicoes.map(c => fmtR(calcPMT(saldo, c.nParc, c.juros||0)) + '/mês');
+    } else if (!usaPadrao) {
       condCells = condicoes.map(() => '—');
+    }
+    // Células para condições padrão: desconto aplicado ao preço + resumo das parcelas
+    if (usaPadrao && P) {
+      condCells = padraoConds.map(c => {
+        const desc = parseFloat(c.desconto_pct) || 0;
+        const precoFinal = desc > 0 ? P * (1 - desc / 100) : P;
+        const resumo = (c.parcelas||[]).map(pp => {
+          const qtd = parseInt(pp.qtd) || 1;
+          const val = parseFloat(pp.valor) || 0;
+          const valStr = val > 0 ? ` ${fmtR(val)}` : '';
+          return `${qtd > 1 ? qtd+'x' : pp.titulo||''}${valStr}`;
+        }).join(' + ');
+        return desc > 0 ? `${fmtR(precoFinal)}\n(-${desc}%)` : (resumo || 'Ver condições');
+      });
+    } else if (usaPadrao) {
+      condCells = padraoConds.map(() => '—');
     }
 
     const andarLabel = (() => { const fo=_flo2(String(u.quadra||'')); return fo===0&&String(u.quadra||'').match(/t[eé]r/i)?'Térreo':!isNaN(parseFloat(u.quadra))?`${parseFloat(u.quadra)}°`:String(u.quadra||'—'); })();
@@ -2153,7 +2176,11 @@ function exportarTabelaEspelho() {
   });
 
   // Params — espelhoParams armazena pct como 0-100
-  const condicoes = p?.condicoes || [{label:'60x sem juros', nParc:60, juros:0}];
+  const _simCondicoes = p?.condicoes || [];
+  const padraoConds2 = (!_simCondicoes.length && Array.isArray(window._padraoConds) && window._padraoConds.length)
+    ? window._padraoConds : [];
+  const usaPadrao2 = padraoConds2.length > 0;
+  const condicoes = _simCondicoes.length ? _simCondicoes : (usaPadrao2 ? [] : [{label:'60x sem juros', nParc:60, juros:0}]);
   const nRef      = p?.nRef || 0;
   const entFixo   = p?.entrada_tipo === 'valor';
   const entParcN  = p?.entrada_parc || 1;
@@ -2167,9 +2194,9 @@ function exportarTabelaEspelho() {
         ? `${(p.entrada_pct||0).toFixed(0)}% · ${entParcN}x`
         : `${(p.entrada_pct||0).toFixed(0)}% · à vista`);
 
-  const condCols  = condicoes.map(c =>
-    `<th class="right">${c.label||c.nParc+'x'}<span class="sub">${c.juros>0?c.juros.toFixed(2)+'% a.m.':'sem juros'}</span></th>`
-  ).join('');
+  const condCols = usaPadrao2
+    ? padraoConds2.map(c => `<th class="right">${c.nome||'Condição'}<span class="sub">${c.desconto_pct>0?'-'+c.desconto_pct+'%':((c.parcelas||[]).map(pp=>pp.qtd>1?pp.qtd+'x '+pp.titulo:pp.titulo).join(' + '))}</span></th>`).join('')
+    : condicoes.map(c => `<th class="right">${c.label||c.nParc+'x'}<span class="sub">${c.juros>0?c.juros.toFixed(2)+'% a.m.':'sem juros'}</span></th>`).join('');
   const refColHd  = nRef > 0
     ? `<th class="right">Balões ${nRef}<span class="sub">${refPct}% do valor · cada</span></th>` : '';
 
@@ -2202,16 +2229,31 @@ function exportarTabelaEspelho() {
       refCell = nRef > 0 ? fmt2(refVal) : '—';
 
       const cp = isLoteamento ? '2px 4px' : '5px 10px';
-      condCells = condicoes.map(c => {
-        const pmv = calcPMT(saldo, c.nParc, c.juros);
-        const totalC = entV + totalRef + c.nParc * pmv;
-        const ok = !c.juros && Math.abs(totalC - P) < 0.10;
-        const chk = !c.juros ? `<span style="font-size:9px;color:${ok?'#166534':'#991b1b'};font-weight:700">${ok?'✓':'⚠'}</span>` : '';
-        return `<td style="padding:${cp};font-size:${isLoteamento?'10px':'12px'};font-weight:700;text-align:right;white-space:nowrap">${fmt2(pmv)} ${chk}</td>`;
-      }).join('');
+      if (usaPadrao2) {
+        condCells = padraoConds2.map(c => {
+          const desc = parseFloat(c.desconto_pct) || 0;
+          const precoFinal = desc > 0 ? P * (1 - desc / 100) : null;
+          const resumo = (c.parcelas||[]).map(pp => {
+            const val = parseFloat(pp.valor) || 0;
+            const qtd = parseInt(pp.qtd) || 1;
+            return qtd > 1 ? `${qtd}x ${val>0?fmt2(val/qtd):''}` : (pp.titulo||'');
+          }).join(' + ');
+          const txt = precoFinal ? `${fmt2(precoFinal)}<br><span style="font-size:9px;color:#166534">-${desc}%</span>` : (resumo || '—');
+          return `<td style="padding:${cp};font-size:${isLoteamento?'10px':'12px'};font-weight:700;text-align:right;white-space:nowrap">${txt}</td>`;
+        }).join('');
+      } else {
+        condCells = condicoes.map(c => {
+          const pmv = calcPMT(saldo, c.nParc, c.juros);
+          const totalC = entV + totalRef + c.nParc * pmv;
+          const ok = !c.juros && Math.abs(totalC - P) < 0.10;
+          const chk = !c.juros ? `<span style="font-size:9px;color:${ok?'#166534':'#991b1b'};font-weight:700">${ok?'✓':'⚠'}</span>` : '';
+          return `<td style="padding:${cp};font-size:${isLoteamento?'10px':'12px'};font-weight:700;text-align:right;white-space:nowrap">${fmt2(pmv)} ${chk}</td>`;
+        }).join('');
+      }
     } else {
       const cp = isLoteamento ? '2px 4px' : '5px 10px';
-      condCells = condicoes.map(() => `<td style="padding:${cp};text-align:right;color:#9ca3af">—</td>`).join('');
+      const colsToFill = usaPadrao2 ? padraoConds2 : condicoes;
+      condCells = colsToFill.map(() => `<td style="padding:${cp};text-align:right;color:#9ca3af">—</td>`).join('');
     }
 
     const st       = u.status || 'disponivel';
