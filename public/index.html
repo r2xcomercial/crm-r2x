@@ -4464,18 +4464,16 @@ function openEmpModal(e = {}) {
                   <span style="font-size:11px;color:#64748b">% — deixe 0 se não há desconto</span>
                 </div>
                 <div class="ecp-parcelas-list" style="display:flex;flex-direction:column;gap:6px">
-                  <div style="display:grid;grid-template-columns:2fr 1.1fr 50px 36px 1.1fr 26px;gap:5px;padding:0 2px 2px">
+                  <div style="display:grid;grid-template-columns:2fr 50px 36px 1.3fr 26px;gap:5px;padding:0 2px 2px">
                     <span style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Tipo / Descrição</span>
-                    <span style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em">1º Vencimento</span>
                     <span style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;text-align:center">Qtd</span>
                     <span style="font-size:9px;color:#f59e0b;font-weight:900;text-align:center">R$/%</span>
                     <span style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Valor por parcela</span>
                   </div>
                   ${(cond.parcelas||[]).map(p => `
                     <div class="emp-cp-row" style="border:1px solid var(--border);border-radius:7px;padding:7px 9px;display:flex;flex-direction:column;gap:5px;background:rgba(0,0,0,.1)">
-                      <div style="display:grid;grid-template-columns:2fr 1.1fr 50px 36px 1.1fr 26px;gap:5px;align-items:center">
+                      <div style="display:grid;grid-template-columns:2fr 50px 36px 1.3fr 26px;gap:5px;align-items:center">
                         <input type="text" class="ecp-titulo" placeholder="ex: Entrada" value="${(p.titulo||'').replace(/"/g,'&quot;')}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-                        <input type="date" class="ecp-vencimento" value="${p.vencimento||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
                         <input type="number" class="ecp-qtd" min="1" placeholder="Qtd" value="${p.qtd||1}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
                         <button type="button" class="ecp-tipo-toggle" data-tipo="${p.tipo_valor||'R$'}" onclick="_ecpToggleTipo(this)" style="border:1px solid var(--border);border-radius:6px;padding:4px 0;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:.03em;width:100%;text-align:center;background:${(p.tipo_valor||'R$')==='%'?'rgba(245,158,11,.2)':'rgba(100,116,139,.12)'};color:${(p.tipo_valor||'R$')==='%'?'#f59e0b':'#94a3b8'};transition:all .15s">${p.tipo_valor||'R$'}</button>
                         <input type="number" class="ecp-valor" step="0.01" placeholder="0,00" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
@@ -4634,7 +4632,6 @@ function openEmpModal(e = {}) {
         desconto_pct: parseFloat(cond.querySelector('.ecp-desconto')?.value) || 0,
         parcelas: [...cond.querySelectorAll('.emp-cp-row')].map(row => ({
           titulo: row.querySelector('.ecp-titulo')?.value?.trim() || '',
-          vencimento: row.querySelector('.ecp-vencimento')?.value || null,
           qtd: parseInt(row.querySelector('.ecp-qtd')?.value) || 1,
           valor: parseFloat(row.querySelector('.ecp-valor')?.value) || 0,
           tipo_valor: row.querySelector('.ecp-tipo-toggle')?.dataset.tipo || 'R$',
@@ -4672,9 +4669,8 @@ function addEmpCondicao(nome = '', parcelas = [], descontoPct = 0) {
       <span style="font-size:11px;color:#64748b">% — deixe 0 se não há desconto</span>
     </div>
     <div class="ecp-parcelas-list" style="display:flex;flex-direction:column;gap:6px">
-      <div style="display:grid;grid-template-columns:2fr 1.1fr 50px 36px 1.1fr 26px;gap:5px;padding:0 2px 2px">
+      <div style="display:grid;grid-template-columns:2fr 50px 36px 1.3fr 26px;gap:5px;padding:0 2px 2px">
         <span style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Tipo / Descrição</span>
-        <span style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em">1º Vencimento</span>
         <span style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;text-align:center">Qtd</span>
         <span style="font-size:9px;color:#f59e0b;font-weight:900;text-align:center">R$/%</span>
         <span style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em">Valor por parcela</span>
@@ -4702,9 +4698,8 @@ function addEmpCpParcela(btn, p = {}) {
   row.className = 'emp-cp-row';
   row.style.cssText = 'border:1px solid var(--border);border-radius:7px;padding:7px 9px;display:flex;flex-direction:column;gap:5px;background:rgba(0,0,0,.1)';
   row.innerHTML = `
-    <div style="display:grid;grid-template-columns:2fr 1.1fr 50px 36px 1.1fr 26px;gap:5px;align-items:center">
+    <div style="display:grid;grid-template-columns:2fr 50px 36px 1.3fr 26px;gap:5px;align-items:center">
       <input type="text" class="ecp-titulo" placeholder="ex: Entrada" value="${(p.titulo||'').replace(/"/g,'&quot;')}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
-      <input type="date" class="ecp-vencimento" value="${p.vencimento||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
       <input type="number" class="ecp-qtd" min="1" placeholder="Qtd" value="${p.qtd||1}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box;text-align:center">
       <button type="button" class="ecp-tipo-toggle" data-tipo="${p.tipo_valor||'R$'}" onclick="_ecpToggleTipo(this)" style="border:1px solid var(--border);border-radius:6px;padding:4px 0;font-size:10px;font-weight:800;cursor:pointer;letter-spacing:.03em;width:100%;text-align:center;background:rgba(100,116,139,.12);color:#94a3b8;transition:all .15s">${p.tipo_valor||'R$'}</button>
       <input type="number" class="ecp-valor" step="0.01" placeholder="0,00" value="${p.valor||''}" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:12px;width:100%;box-sizing:border-box">
