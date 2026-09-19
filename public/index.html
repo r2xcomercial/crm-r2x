@@ -15559,11 +15559,48 @@ function initUsuarioUI() {
 
 // ─── USUÁRIOS CRUD ────────────────────────────────────────────────────────────
 
+let _usuariosCache = [];
+function _filtrarUsuarios() {
+  const q    = (document.getElementById('usr-busca')?.value || '').toLowerCase().trim();
+  const perf = document.getElementById('usr-perfil')?.value || '';
+  const ativ = document.getElementById('usr-ativo')?.value || '';
+  const ord  = document.getElementById('usr-ordem')?.value || 'nome-az';
+  let lista = [..._usuariosCache];
+  if (q)    lista = lista.filter(u => u.nome.toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q));
+  if (perf) lista = lista.filter(u => u.perfil === perf);
+  if (ativ !== '') lista = lista.filter(u => String(u.ativo) === ativ);
+  lista.sort((a, b) => {
+    if (ord === 'nome-az')   return a.nome.localeCompare(b.nome, 'pt-BR');
+    if (ord === 'nome-za')   return b.nome.localeCompare(a.nome, 'pt-BR');
+    if (ord === 'recente')   return (b.id||0) - (a.id||0);
+    if (ord === 'antigo')    return (a.id||0) - (b.id||0);
+    if (ord === 'perfil')    return a.perfil.localeCompare(b.perfil, 'pt-BR');
+    return 0;
+  });
+  const tbody = document.getElementById('usr-tbody');
+  const count = document.getElementById('usr-count');
+  if (count) count.textContent = `${lista.length}${lista.length !== _usuariosCache.length ? ' de '+_usuariosCache.length : ''}`;
+  if (!tbody) return;
+  tbody.innerHTML = lista.length ? lista.map(u => `
+    <tr>
+      <td><strong>${u.nome}</strong></td>
+      <td style="font-family:monospace;font-size:12px">${u.email}</td>
+      <td><span class="badge ${u.perfil==='admin'?'badge-accent':u.perfil==='gestor'?'badge-blue':u.perfil==='incorporador'?'badge-yellow':'badge-gray'}">${u.perfil}</span></td>
+      <td>${u.corretor_nome ? `<span style="color:var(--accent)">👤 ${u.corretor_nome}</span>` : u.cliente_nome ? `<span style="color:var(--warning)">🏢 ${u.cliente_nome}</span>` : '<span style="color:var(--text2)">—</span>'}</td>
+      <td><span class="badge ${u.ativo?'badge-green':'badge-red'}">${u.ativo?'✅ Sim':'🚫 Não'}</span></td>
+      <td style="font-size:12px">${fmtDate(u.criado_em)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn-icon btn-edit" onclick="openUsuarioModal(${JSON.stringify(u).replace(/"/g,'&quot;')})">✏️</button>
+        <button class="btn-icon btn-delete" onclick="deleteUsuario(${u.id})">🗑️</button>
+      </td>
+    </tr>
+  `).join('') : '<tr class="empty-row"><td colspan="7">Nenhum usuário encontrado</td></tr>';
+}
+
 async function renderUsuarios() {
   const [ru, rc] = await Promise.all([get('/api/usuarios'), get('/api/corretores')]);
-  const usuarios  = ru.data || [];
+  _usuariosCache  = ru.data || [];
   const corretores = rc.data || [];
-  // Corretores sem login
   const semLogin  = corretores.filter(c => c.ativo && !c.usuario_id);
 
   document.getElementById('content').innerHTML = `
@@ -15577,29 +15614,41 @@ async function renderUsuarios() {
     </div>` : ''}
     <div class="table-card">
       <div class="table-header">
-        <div class="table-title">👤 Usuários do Sistema (${usuarios.length})</div>
+        <div class="table-title">👤 Usuários do Sistema (<span id="usr-count">${_usuariosCache.length}</span>)</div>
         <div style="font-size:12px;color:var(--text2)">💡 Login de corretor é criado automaticamente no cadastro. Para gerenciar, use 🔑 na lista de Corretores</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center">
+        <input id="usr-busca" type="text" placeholder="🔍 Buscar por nome ou e-mail…" oninput="_filtrarUsuarios()"
+          style="flex:1;min-width:200px;padding:7px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+        <select id="usr-perfil" onchange="_filtrarUsuarios()"
+          style="padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          <option value="">Todos os perfis</option>
+          <option value="corretor">Corretor</option>
+          <option value="gestor">Gestor</option>
+          <option value="admin">Admin</option>
+          <option value="incorporador">Incorporador</option>
+        </select>
+        <select id="usr-ativo" onchange="_filtrarUsuarios()"
+          style="padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          <option value="">Todos</option>
+          <option value="1">Ativos</option>
+          <option value="0">Inativos</option>
+        </select>
+        <select id="usr-ordem" onchange="_filtrarUsuarios()"
+          style="padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+          <option value="nome-az">Nome A→Z</option>
+          <option value="nome-za">Nome Z→A</option>
+          <option value="recente">Mais recentes</option>
+          <option value="antigo">Mais antigos</option>
+          <option value="perfil">Perfil</option>
+        </select>
       </div>
       <table>
         <thead><tr><th>Nome</th><th>E-mail / Usuário</th><th>Perfil</th><th>Vínculo</th><th>Ativo</th><th>Criado em</th><th></th></tr></thead>
-        <tbody>
-          ${usuarios.length ? usuarios.map(u => `
-            <tr>
-              <td><strong>${u.nome}</strong></td>
-              <td style="font-family:monospace;font-size:12px">${u.email}</td>
-              <td><span class="badge ${u.perfil==='admin'?'badge-accent':u.perfil==='gestor'?'badge-blue':u.perfil==='incorporador'?'badge-yellow':'badge-gray'}">${u.perfil}</span></td>
-              <td>${u.corretor_nome ? `<span style="color:var(--accent)">👤 ${u.corretor_nome}</span>` : u.cliente_nome ? `<span style="color:var(--warning)">🏢 ${u.cliente_nome}</span>` : '<span style="color:var(--text2)">—</span>'}</td>
-              <td><span class="badge ${u.ativo?'badge-green':'badge-red'}">${u.ativo?'✅ Sim':'🚫 Não'}</span></td>
-              <td style="font-size:12px">${fmtDate(u.criado_em)}</td>
-              <td style="white-space:nowrap">
-                <button class="btn-icon btn-edit" onclick="openUsuarioModal(${JSON.stringify(u).replace(/"/g,'&quot;')})">✏️</button>
-                <button class="btn-icon btn-delete" onclick="deleteUsuario(${u.id})">🗑️</button>
-              </td>
-            </tr>
-          `).join('') : '<tr class="empty-row"><td colspan="7">Nenhum usuário cadastrado</td></tr>'}
-        </tbody>
+        <tbody id="usr-tbody"></tbody>
       </table>
     </div>`;
+  _filtrarUsuarios();
 }
 
 function openUsuarioModal(u = {}) {
