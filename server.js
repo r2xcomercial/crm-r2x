@@ -3436,10 +3436,18 @@ app.get('/api/vendas/:id/comprovante', autenticar, (req, res) => {
     return err(res, 'Sem permissão', 403);
   if (!venda.comprovante_pix) return err(res, 'Comprovante não anexado', 404);
 
-  const buf = Buffer.from(venda.comprovante_pix, 'base64');
-  res.setHeader('Content-Type', venda.comprovante_pix_tipo || 'application/octet-stream');
-  res.setHeader('Content-Disposition', `inline; filename="${venda.comprovante_pix_nome || 'comprovante'}"`);
-  res.send(buf);
+  try {
+    const raw = venda.comprovante_pix;
+    // raw pode ser string (base64) ou Buffer (BLOB legacy) — normaliza para Buffer
+    const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw, 'base64');
+    res.setHeader('Content-Type', venda.comprovante_pix_tipo || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${venda.comprovante_pix_nome || 'comprovante'}"`);
+    res.setHeader('Content-Length', buf.length);
+    res.send(buf);
+  } catch(e) {
+    console.error('Erro ao servir comprovante venda', vendaId, e.message);
+    err(res, 'Erro interno ao carregar comprovante', 500);
+  }
 });
 
 // ─── JOB: cancela pré-reservas expiradas + avança fila de prioridade ──────────
