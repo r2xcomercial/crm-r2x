@@ -23555,43 +23555,27 @@ async function enviarComprovanteUpload() {
 async function verComprovante(vendaId) {
   if (!vendaId) { alert('ID da venda não encontrado.'); return; }
   if (!TOKEN)   { alert('Sessão não autenticada. Recarregue a página.'); return; }
-  // Abre a janela ANTES do await para preservar o gesto do usuário (evita bloqueio de popup)
-  const w = window.open('', '_blank');
-  if (w) {
-    w.document.write('<html><head><title>Comprovante Pix</title><style>body{margin:0;background:#0f172a;color:#94a3b8;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;font-size:14px}</style></head><body><div>Carregando comprovante…</div></body></html>');
-    w.document.close();
-  } else {
-    // Popup bloqueado — usa overlay como fallback
-    _abrirOverlayComprovante(null, null);
-  }
+  // Sempre usa overlay na mesma página — confiável em qualquer ambiente sem depender de popup
+  _abrirOverlayComprovante(null, null);
   try {
     const r = await fetch(`/api/vendas/${vendaId}/comprovante`, { headers: { 'x-crm-token': TOKEN } });
     if (!r.ok) {
       const j = await r.json().catch(()=>({}));
-      const msg = `❌ Erro ${r.status}: ${j.error || 'Não foi possível carregar o comprovante.'}`;
-      if (w) { w.document.body.innerHTML = `<div style="color:#f87171;padding:30px;text-align:center">${msg}</div>`; }
-      else    { _vcSetConteudo(`<p style="color:#f87171;padding:30px;text-align:center;font-size:14px">${msg}</p>`, null); }
+      _vcSetConteudo(`<p style="color:#f87171;padding:30px;text-align:center;font-size:14px">❌ Erro ${r.status}: ${j.error || 'Não foi possível carregar o comprovante.'}</p>`, null);
       return;
     }
     const mime = (r.headers.get('Content-Type') || '').split(';')[0].trim();
     const blob = await r.blob();
-    const url  = URL.createObjectURL(blob);
-    if (w) {
-      if (mime.startsWith('image/')) {
-        w.document.open();
-        w.document.write(`<html><head><title>Comprovante Pix</title><style>body{margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh}img{max-width:100%;height:auto}</style></head><body><img src="${url}"></body></html>`);
-        w.document.close();
-      } else {
-        w.location.href = url;
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 120000);
-    } else {
-      _vcSetConteudo(null, { url, mime });
-    }
+    // Converte para base64 data URL — evita problemas de blob URL cross-window
+    const dataUrl = await new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result);
+      fr.onerror = rej;
+      fr.readAsDataURL(blob);
+    });
+    _vcSetConteudo(null, { url: dataUrl, mime });
   } catch(e) {
-    const msg = `❌ Erro de rede: ${e.message}`;
-    if (w) { w.document.body.innerHTML = `<div style="color:#f87171;padding:30px;text-align:center">${msg}</div>`; }
-    else    { _vcSetConteudo(`<p style="color:#f87171;padding:30px;text-align:center;font-size:14px">${msg}</p>`, null); }
+    _vcSetConteudo(`<p style="color:#f87171;padding:30px;text-align:center;font-size:14px">❌ Erro de rede: ${e.message}</p>`, null);
   }
 }
 
