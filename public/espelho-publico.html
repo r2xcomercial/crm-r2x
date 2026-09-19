@@ -1149,16 +1149,14 @@ function _atualizarPixBanner() {
   const container = document.getElementById('pix-banners-container');
   if (!container) return;
 
-  if (!_corretorToken || !_corretorId || _corretorPerfil !== 'corretor') {
+  if (!_corretorToken || _corretorPerfil !== 'corretor') {
     _limparTodosBanners(); return;
   }
 
-  const _cidNum = parseInt(_corretorId) || 0;
+  // Mostra banner para TODA pre-reserva sem comprovante vinculada
   const minhasRes = (window._units || []).filter(u =>
-    u.status === 'pre_reserva' && !u.tem_comprovante && String(u.venda_corretor_id) === String(_cidNum)
+    u.status === 'pre_reserva' && !u.tem_comprovante && u.venda_id
   );
-  console.log('[banner] cidNum=%o unidades_pre=%o matches=%o', _cidNum,
-    (window._units||[]).filter(u=>u.status==='pre_reserva').length, minhasRes.length);
 
   // Remove banners de unidades que já não precisam
   const idsAtivos = new Set(minhasRes.map(u => u.id));
