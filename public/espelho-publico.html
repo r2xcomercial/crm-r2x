@@ -680,7 +680,7 @@
       </div>
     </div>
     <!-- Card unificado do cliente selecionado -->
-    <div id="reservar-cliente-card" style="display:none;background:rgba(20,184,166,.1);border:1.5px solid rgba(20,184,166,.4);border-radius:10px;padding:12px 14px;display:none;align-items:center;gap:12px">
+    <div id="reservar-cliente-card" style="display:none;background:rgba(20,184,166,.1);border:1.5px solid rgba(20,184,166,.4);border-radius:10px;padding:12px 14px;align-items:center;gap:12px">
       <div style="font-size:22px" id="reservar-dest-avatar">👤</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:2px">Cliente selecionado</div>
@@ -1141,6 +1141,11 @@ function abrirSimulacao(unitId) {
 function fecharSimulacao() {
   clearInterval(window._simCountdownInterval);
   document.getElementById('sim-overlay')?.remove();
+  // Se o modal de reserva está aberto, re-renderiza as condições com os parâmetros atualizados
+  const modalReservar = document.getElementById('modal-reservar');
+  if (modalReservar?.classList.contains('open') && _reservarLeadId) {
+    _resRenderCondicoes();
+  }
 }
 
 function _parsePrazoUTC(s) { return s ? new Date(s.replace(' ','T')+'Z') : null; }
@@ -2732,7 +2737,8 @@ async function abrirReservar(unitId) {
   _reservarCondIdx = 0;
   _resAcFocusIdx = -1;
   const u = (window._units || []).find(x => x.id === unitId);
-  document.getElementById('reservar-unidade-desc').textContent = u ? `Lote ${u.lote}${u.quadra ? ' · Quadra ' + u.quadra : ''} — ${_empNome}` : _empNome;
+  const _precoStr = u?.preco ? ` · ${fmt0.format(u.preco)}` : '';
+  document.getElementById('reservar-unidade-desc').textContent = u ? `Lote ${u.lote}${u.quadra ? ' · Quadra ' + u.quadra : ''} — ${_empNome}${_precoStr}` : _empNome;
   document.getElementById('reservar-cliente-err').textContent = '';
   document.getElementById('reservar-busca-cliente').value = '';
   document.getElementById('reservar-clear-btn').style.display = 'none';
@@ -2910,7 +2916,7 @@ function _resAtualizarResumoPadrao(cond, preco) {
   }
   (cond.parcelas||[]).forEach(p => {
     const qtd = parseInt(p.qtd) || 1;
-    const val = parseFloat(p.valor);
+    const val = _ecpResolveVal(p, preco);
     if (p.titulo) rows.push([p.titulo, val > 0 ? `${qtd > 1 ? qtd+'× ' : ''}${fmt0.format(val)}` : '—']);
   });
   grid.innerHTML = rows.map(([k, v]) => `<div style="font-size:11px;color:#cbd5e1">${k}</div><div style="font-size:12px;color:#fff;font-weight:700;text-align:right">${v}</div>`).join('');
@@ -2936,8 +2942,6 @@ function _selResCondIdx(idx) {
 }
 
 function _resAbrirEditarProposta() {
-  fecharModal('modal-reservar');
-  // Abre modal de simulação para editar condições
   const u = (window._units || []).find(x => x.id === _reservarUnitId);
   if (u) abrirSimulacao(u.id);
 }
@@ -2965,7 +2969,8 @@ async function confirmarReserva() {
       const precoFinal = desc > 0 ? preco * (1 - desc / 100) : preco;
       condicao_proposta = { label: c.nome || ('Condição '+(parseInt(_reservarCondIdx)+1)),
         desconto_pct: desc, valor_final: Math.round(precoFinal*100)/100,
-        parcelas: c.parcelas || [], data_proposta: new Date().toISOString().slice(0,10) };
+        parcelas: (c.parcelas || []).map(p => ({ ...p, valor_rs: Math.round(_ecpResolveVal(p, precoFinal)*100)/100 })),
+        data_proposta: new Date().toISOString().slice(0,10) };
     } else if (p && p.condicoes?.length && p.condicoes[_reservarCondIdx]) {
       const c = p.condicoes[_reservarCondIdx];
       const pmv = calcPMT(saldo, c.nParc, c.juros||0);
@@ -3021,7 +3026,14 @@ function abrirAnexarPix(vendaId, unitId, prazoOverride) {
       const el = document.getElementById('pix-modal-countdown');
       if (!el) { clearInterval(_pixCountdownInterval); return; }
       const ms = prazoMs - Date.now();
-      if (ms <= 0) { el.textContent = '00:00'; el.style.color = '#f87171'; clearInterval(_pixCountdownInterval); return; }
+      if (ms <= 0) {
+        el.textContent = '00:00'; el.style.color = '#f87171'; clearInterval(_pixCountdownInterval);
+        const btn = document.getElementById('pix-enviar-btn');
+        if (btn) { btn.disabled = true; btn.textContent = '⏰ Prazo expirado'; }
+        const errEl = document.getElementById('pix-err');
+        if (errEl && !errEl.textContent) errEl.textContent = 'O prazo para envio expirou. Entre em contato com o gestor.';
+        return;
+      }
       const mm = String(Math.floor(ms/60000)).padStart(2,'0');
       const ss = String(Math.floor((ms%60000)/1000)).padStart(2,'0');
       el.textContent = `${mm}:${ss}`;
