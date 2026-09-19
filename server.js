@@ -117,6 +117,7 @@ app.use((req, res, next) => {
     req.path.startsWith('/api/lancamento/')      ||   // status do lançamento para espelho
     req.path === '/api/server-time'              ||
     req.path === '/api/vendas/reserva-rapida'   ||
+    req.path.match(/^\/api\/vendas\/\d+\/comprovante$/) ||  // upload/visualizar comprovante PIX
     (req.path === '/api/leads' && req.method === 'POST');
   // Empreendimentos: apenas leitura de dados necessários para o espelho
   const empSubPermitido = ['/unidades', '/mapa', '/espelho'].some(s => req.path.includes(s));
