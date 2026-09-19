@@ -3290,9 +3290,9 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
   // Admin/gestor/incorporador: sempre reserva direta (sem PIX). Corretor: segue modo_reserva do empreendimento.
   const isAdminReserva = ['admin','gestor','incorporador'].includes(u?.perfil);
   const reservaDireta  = isAdminReserva || modoReserva === 'reserva_direta';
-  // reserva_direta ignora condicao_proposta e vai direto para 'reserva' (sem PIX, sem aprovação)
+  // Em modo pre_reserva_pix, condicao_proposta é apenas dado — status sempre pre_reserva para que o fluxo PIX funcione
   const statusInicial = reservaDireta ? 'reserva'
-    : (condicao_proposta ? 'proposta' : 'pre_reserva');
+    : (condicao_proposta && modoReserva !== 'pre_reserva_pix' ? 'proposta' : 'pre_reserva');
   const statusUnidade = statusInicial === 'proposta' ? 'pre_reserva'
     : (statusInicial === 'reserva' ? 'reservado' : 'pre_reserva');
 
@@ -3391,16 +3391,16 @@ app.post('/api/vendas/:id/comprovante', autenticar, upload.single('arquivo'), (r
 
   const base64 = buffer.toString('base64');
   db.transaction(() => {
-    const novoStatus = venda.status === 'pre_reserva' ? 'reserva' : venda.status;
+    const novoStatus = ['pre_reserva','proposta'].includes(venda.status) ? 'reserva' : venda.status;
     db.prepare(`UPDATE vendas SET comprovante_pix=?, comprovante_pix_nome=?, comprovante_pix_tipo=?, comprovante_prazo_expira_em=NULL, status=? WHERE id=?`)
       .run(base64, originalname, mimetype, novoStatus, vendaId);
-    if (venda.status === 'pre_reserva' && venda.unidade_id) {
+    if (['pre_reserva','proposta'].includes(venda.status) && venda.unidade_id) {
       db.prepare("UPDATE unidades SET status='reservado' WHERE id=? AND status='pre_reserva'").run(venda.unidade_id);
       // Encerrar fila desta unidade (pré-reserva virou reserva confirmada)
       db.prepare("UPDATE reserva_fila SET status='encerrado' WHERE unidade_id=? AND status IN ('aguardando','notificado')").run(venda.unidade_id);
     }
   })();
-  if (venda.status === 'pre_reserva') {
+  if (['pre_reserva','proposta'].includes(venda.status)) {
     _logUnidade(venda.unidade_id, 'pre_reserva', 'reservado', u, vendaId, 'Comprovante Pix recebido — pré-reserva confirmada');
   }
   _broadcastRefresh(venda.empreendimento_id);
@@ -5029,10 +5029,10 @@ app.get('/api/espelho-publico/:slug', (req, res) => {
     SELECT u.id, u.quadra, u.lote, u.area_m2, u.preco, u.status, u.mapa_x, u.mapa_y,
       u.fila_prioridade_ate, u.fila_prioridade_corretor_id,
       (SELECT COUNT(*) FROM vendas v WHERE v.unidade_id=u.id AND v.status NOT IN ('distrato','cancelado','perdida')) as tem_venda,
-      (SELECT v2.id FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva') LIMIT 1) as venda_id,
-      (SELECT v2.corretor_id FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva') LIMIT 1) as venda_corretor_id,
-      (SELECT CASE WHEN v2.comprovante_pix IS NOT NULL THEN 1 ELSE 0 END FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva') LIMIT 1) as tem_comprovante,
-      (SELECT v2.comprovante_prazo_expira_em FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva') LIMIT 1) as comprovante_prazo_expira_em,
+      (SELECT v2.id FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as venda_id,
+      (SELECT v2.corretor_id FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as venda_corretor_id,
+      (SELECT CASE WHEN v2.comprovante_pix IS NOT NULL THEN 1 ELSE 0 END FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as tem_comprovante,
+      (SELECT v2.comprovante_prazo_expira_em FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as comprovante_prazo_expira_em,
       (SELECT COUNT(*) FROM reserva_fila rf WHERE rf.unidade_id=u.id AND rf.status IN ('aguardando','notificado')) as fila_qtd
     FROM unidades u WHERE u.empreendimento_id=? ORDER BY CAST(u.quadra AS REAL), CAST(REPLACE(u.lote,'-',' ') AS REAL), u.lote
   `).all(emp.id);
