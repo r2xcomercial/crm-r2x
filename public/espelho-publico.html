@@ -64,6 +64,31 @@
   .corretor-logado button { background:transparent; border:1px solid #334155; border-radius:6px; color:#94a3b8; font-size:11px; padding:4px 8px; cursor:pointer; }
   .btn-painel { display:inline-flex; align-items:center; gap:5px; background:#14b8a6; color:#fff; border:none; border-radius:7px; padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer; text-decoration:none; white-space:nowrap; transition:background .15s; }
   .btn-painel:hover { background:#0d9488; }
+  /* Banner flutuante de pré-reserva pendente */
+  #pix-banner {
+    position:fixed; bottom:88px; left:50%; transform:translateX(-50%);
+    width:calc(100% - 32px); max-width:520px; z-index:750; display:none;
+  }
+  #pix-banner-inner {
+    background:#3b2a00; border:2px solid #eab308; border-radius:14px;
+    padding:12px 14px; display:flex; align-items:center; gap:10px;
+    animation:bannerYellowPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes bannerYellowPulse {
+    0%,100% { border-color:#eab308; box-shadow:0 0 0 0 rgba(234,179,8,0); }
+    50%     { border-color:#fde047; box-shadow:0 0 18px rgba(234,179,8,.4); }
+  }
+  #pix-banner-txt { flex:1; min-width:0; }
+  #pix-banner-titulo { font-size:12px; font-weight:800; color:#fde047; text-transform:uppercase; letter-spacing:.4px; }
+  #pix-banner-sub { font-size:12px; color:#ca8a04; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #pix-banner-clock { font-size:22px; font-weight:900; font-family:monospace; color:#fde047; letter-spacing:2px; flex-shrink:0; }
+  #pix-banner-btn {
+    background:#eab308; color:#3b2a00; font-weight:800; font-size:12px;
+    border:none; border-radius:8px; padding:8px 12px; cursor:pointer; flex-shrink:0; white-space:nowrap;
+  }
+  #pix-banner-btn:hover { background:#fde047; }
+  @media(max-width:480px) { #pix-banner { bottom:80px; } #pix-banner-inner { padding:10px 12px; gap:8px; } }
+
   /* Botão flutuante de cadastrar cliente */
   #fab-lead { position:fixed; bottom:24px; right:20px; z-index:800; display:flex; align-items:center; gap:8px;
     background:#14b8a6; color:#fff; border:none; border-radius:50px; padding:13px 20px; font-size:14px; font-weight:700;
@@ -121,12 +146,12 @@
   }
   .marcador:hover { transform: translate(-50%,-50%) scale(1.4); z-index: 10; }
   .marcador.disponivel  { background: #22c55e; }
-  .marcador.pre_reserva { background: #f97316; animation: preReservaPulse 1.8s ease-in-out infinite; }
-  .marcador.reservado   { background: #f59e0b; }
+  .marcador.pre_reserva { background: #eab308; animation: preReservaPulse 1.8s ease-in-out infinite; }
+  .marcador.reservado   { background: #f97316; }
   .marcador.vendido     { background: #ef4444; }
   @keyframes preReservaPulse {
     0%,100% { opacity:1; box-shadow:none; }
-    50%     { opacity:.75; box-shadow:0 0 12px rgba(249,115,22,.5); }
+    50%     { opacity:.75; box-shadow:0 0 12px rgba(234,179,8,.6); }
   }
   .marcador.entregue    { background: #ef4444; }
   .marcador.indisponivel { background: #64748b; }
@@ -157,12 +182,12 @@
   .tile .lote-num { font-size: 15px; line-height: 1; }
   .tile .quadra   { font-size: 10px; opacity: .7; margin-top: 2px; }
   .tile.disponivel  { background: #14532d; border-color: #22c55e; color: #4ade80; }
-  .tile.pre_reserva { background: #431407; border-color: #f97316; color: #fdba74; animation: preReservaTilePulse 1.8s ease-in-out infinite; }
+  .tile.pre_reserva { background: #3b2a00; border-color: #eab308; color: #fde047; animation: preReservaTilePulse 1.8s ease-in-out infinite; }
   @keyframes preReservaTilePulse {
-    0%,100% { border-color:#f97316; background:#431407; box-shadow:none; }
-    50%     { border-color:#fb923c; background:#5c1e08; box-shadow:0 0 10px rgba(249,115,22,.45); }
+    0%,100% { border-color:#eab308; background:#3b2a00; box-shadow:none; }
+    50%     { border-color:#fde047; background:#4f3800; box-shadow:0 0 12px rgba(234,179,8,.5); }
   }
-  .tile.reservado   { background: #78350f; border-color: #f59e0b; color: #fbbf24; }
+  .tile.reservado   { background: #431407; border-color: #f97316; color: #fdba74; }
   .tile.vendido     { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
   .tile.entregue    { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
   .tile.indisponivel { background: #1e293b; border-color: #64748b; color: #94a3b8; }
@@ -179,8 +204,8 @@
   .leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; }
   .leg-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
   .leg-dot.disponivel   { background: #22c55e; }
-  .leg-dot.pre_reserva  { background: #f97316; }
-  .leg-dot.reservado    { background: #f59e0b; }
+  .leg-dot.pre_reserva  { background: #eab308; }
+  .leg-dot.reservado    { background: #f97316; }
   .leg-dot.vendido      { background: #ef4444; }
   .leg-dot.entregue     { background: #8b5cf6; }
   .leg-dot.indisponivel { background: #64748b; }
@@ -292,8 +317,8 @@
   }
   .predio-unit:hover { transform: translateY(-3px); z-index: 5; }
   .predio-unit.disponivel  { background: #14532d; border-color: #22c55e; color: #4ade80; }
-  .predio-unit.pre_reserva { background: #431407; border-color: #f97316; color: #fdba74; animation: preReservaTilePulse 1.8s ease-in-out infinite; }
-  .predio-unit.reservado   { background: #78350f; border-color: #f59e0b; color: #fbbf24; }
+  .predio-unit.pre_reserva { background: #3b2a00; border-color: #eab308; color: #fde047; animation: preReservaTilePulse 1.8s ease-in-out infinite; }
+  .predio-unit.reservado   { background: #431407; border-color: #f97316; color: #fdba74; }
   .predio-unit.vendido     { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
   .predio-unit.entregue    { background: #4c1d95; border-color: #a78bfa; color: #c4b5fd; }
   .predio-unit.indisponivel { background: #1e293b; border-color: #475569; color: #64748b; }
@@ -739,6 +764,19 @@
   <div class="refresh-bar">Atualiza automaticamente em <span id="countdown">15</span>s</div>
 </main>
 
+<!-- Banner flutuante: pré-reserva aguardando PIX (só para o corretor dono) -->
+<div id="pix-banner">
+  <div id="pix-banner-inner">
+    <div style="font-size:20px;flex-shrink:0">⏱️</div>
+    <div id="pix-banner-txt">
+      <div id="pix-banner-titulo">PIX pendente!</div>
+      <div id="pix-banner-sub">Pré-reserva ativa</div>
+    </div>
+    <div id="pix-banner-clock">--:--</div>
+    <button id="pix-banner-btn" onclick="_pixBannerEnviar()">📎 Enviar PIX</button>
+  </div>
+</div>
+
 <!-- Botão flutuante: cadastrar cliente (só aparece quando corretor logado) -->
 <button id="fab-lead" onclick="abrirCadastrarLead(null)" title="Cadastrar cliente" style="display:none">
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="12" y1="14" x2="12" y2="20"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
@@ -955,7 +993,7 @@ function abrirSimulacao(unitId) {
 
   const dispVendido = u.status === 'vendido' || u.status === 'reservado' || u.status === 'pre_reserva';
   const statusBadge = dispVendido
-    ? `<span style="background:${u.status==='vendido'?'#7f1d1d':u.status==='pre_reserva'?'#431407':'#78350f'};color:${u.status==='vendido'?'#fca5a5':u.status==='pre_reserva'?'#fdba74':'#fbbf24'};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${statusLabel(u.status).toUpperCase()}</span>`
+    ? `<span style="background:${u.status==='vendido'?'#7f1d1d':u.status==='pre_reserva'?'#3b2a00':'#431407'};color:${u.status==='vendido'?'#fca5a5':u.status==='pre_reserva'?'#fde047':'#fdba74'};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${statusLabel(u.status).toUpperCase()}</span>`
     : '';
 
   const semParamsHtml = !p || !preco ? `<div class="sim-no-params">
@@ -1037,16 +1075,20 @@ function abrirSimulacao(unitId) {
       </div>
       <div id="sim-screen-1">
       <div class="sim-body">
-        ${u.status === 'pre_reserva' ? `<div style="background:rgba(249,115,22,.1);border:2px solid rgba(249,115,22,.5);border-radius:10px;padding:14px;margin-bottom:14px;animation:preReservaPulse 2s ease-in-out infinite">
+        ${u.status === 'pre_reserva' ? `<div style="background:rgba(234,179,8,.1);border:2px solid rgba(234,179,8,.6);border-radius:10px;padding:14px;margin-bottom:14px;animation:preReservaTilePulse 2s ease-in-out infinite">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <div style="font-size:12px;font-weight:800;color:#fb923c;text-transform:uppercase;letter-spacing:.5px">🟠 Pré-reserva ativa</div>
-            <div style="background:rgba(249,115,22,.2);border:1px solid rgba(249,115,22,.4);border-radius:6px;padding:2px 7px;font-size:10px;color:#fb923c;font-weight:700">≠ RESERVADA</div>
+            <div style="font-size:12px;font-weight:800;color:#fde047;text-transform:uppercase;letter-spacing:.5px">🟡 Pré-reserva ativa</div>
+            <div style="background:rgba(234,179,8,.2);border:1px solid rgba(234,179,8,.4);border-radius:6px;padding:2px 7px;font-size:10px;color:#fde047;font-weight:700">Aguarda PIX</div>
           </div>
           ${u.comprovante_prazo_expira_em ? `<div style="text-align:center">
-            <div style="font-size:11px;color:#fb923c;opacity:.8;margin-bottom:2px">Vence em</div>
-            <div id="sim-prazo-countdown" style="font-size:32px;font-weight:900;font-family:monospace;color:#fb923c;letter-spacing:3px">--:--</div>
-            <div style="font-size:11px;color:var(--text2,#94a3b8);margin-top:4px">Se o comprovante Pix não for enviado no prazo, a unidade fica disponível novamente.</div>
+            <div style="font-size:11px;color:#fde047;opacity:.8;margin-bottom:2px">Vence em</div>
+            <div id="sim-prazo-countdown" style="font-size:32px;font-weight:900;font-family:monospace;color:#fde047;letter-spacing:3px">--:--</div>
+            <div style="font-size:11px;color:var(--text2,#94a3b8);margin-top:4px">Se o comprovante PIX não for enviado no prazo, a unidade fica disponível novamente.</div>
           </div>` : ''}
+        </div>` : ''}
+        ${u.status === 'reservado' ? `<div style="background:rgba(249,115,22,.1);border:2px solid rgba(249,115,22,.5);border-radius:10px;padding:14px;margin-bottom:14px;text-align:center">
+          <div style="font-size:13px;font-weight:800;color:#fb923c;margin-bottom:6px">✅ Unidade reservada com PIX</div>
+          <div style="font-size:12px;color:#94a3b8;line-height:1.5">Comprovante de pagamento recebido.<br>Esta unidade está reservada.</div>
         </div>` : ''}
         <div class="sim-info-grid">
           ${u.area_m2 ? `<div class="sim-info-cell"><div class="lbl">Área</div><div class="val">${Number(u.area_m2).toLocaleString('pt-BR', {minimumFractionDigits:2})} m²</div></div>` : ''}
@@ -1107,6 +1149,53 @@ function _iniciarCountdownSim(prazo) {
   };
   tick();
   window._simCountdownInterval = setInterval(tick, 1000);
+}
+
+// ─── BANNER FLUTUANTE PIX PENDENTE ───────────────────────────────────────────
+let _bannerVendaId = null, _bannerUnitId = null, _bannerInterval = null;
+
+function _atualizarPixBanner() {
+  if (!_corretorToken || !_corretorId || _corretorPerfil !== 'corretor') {
+    _esconderPixBanner(); return;
+  }
+  const _cidNum = parseInt(_corretorId) || 0;
+  const minhaRes = (window._units || []).find(u =>
+    u.status === 'pre_reserva' && !u.tem_comprovante && u.venda_corretor_id === _cidNum
+  );
+  if (!minhaRes) { _esconderPixBanner(); return; }
+
+  _bannerVendaId = minhaRes.venda_id;
+  _bannerUnitId  = minhaRes.id;
+  const desc = `Lote ${minhaRes.lote}${minhaRes.quadra ? ' · Q.' + minhaRes.quadra : ''}`;
+  document.getElementById('pix-banner-sub').textContent = desc;
+  document.getElementById('pix-banner').style.display = 'block';
+
+  clearInterval(_bannerInterval);
+  if (minhaRes.comprovante_prazo_expira_em) {
+    const prazoMs = _parsePrazoUTC(minhaRes.comprovante_prazo_expira_em).getTime();
+    const tick = () => {
+      const el = document.getElementById('pix-banner-clock');
+      if (!el) { clearInterval(_bannerInterval); return; }
+      const ms = prazoMs - Date.now();
+      if (ms <= 0) { el.textContent = '00:00'; el.style.color = '#f87171'; clearInterval(_bannerInterval); return; }
+      const mm = String(Math.floor(ms/60000)).padStart(2,'0');
+      const ss = String(Math.floor((ms%60000)/1000)).padStart(2,'0');
+      el.textContent = `${mm}:${ss}`;
+      el.style.color = ms < 3*60000 ? '#f87171' : '#fde047';
+    };
+    tick();
+    _bannerInterval = setInterval(tick, 1000);
+  }
+}
+
+function _esconderPixBanner() {
+  clearInterval(_bannerInterval);
+  const el = document.getElementById('pix-banner');
+  if (el) el.style.display = 'none';
+}
+
+function _pixBannerEnviar() {
+  if (_bannerVendaId && _bannerUnitId) abrirAnexarPix(_bannerVendaId, _bannerUnitId);
 }
 
 function mostrarFormProposta(unitId) {
@@ -1392,6 +1481,7 @@ async function carregar() {
     };
     units.sort(sortNum);
     window._units = units;
+    _atualizarPixBanner();
     const comPosicao = units.filter(u => u.mapa_x != null && u.mapa_y != null);
     const html = [];
 
