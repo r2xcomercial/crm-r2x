@@ -64,32 +64,33 @@
   .corretor-logado button { background:transparent; border:1px solid #334155; border-radius:6px; color:#94a3b8; font-size:11px; padding:4px 8px; cursor:pointer; }
   .btn-painel { display:inline-flex; align-items:center; gap:5px; background:#14b8a6; color:#fff; border:none; border-radius:7px; padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer; text-decoration:none; white-space:nowrap; transition:background .15s; }
   .btn-painel:hover { background:#0d9488; }
-  /* Banners flutuantes de pré-reservas pendentes (um por unidade) */
+  /* Banners flutuantes de pré-reservas pendentes — canto inferior direito */
   #pix-banners-container {
-    position:fixed; bottom:88px; left:50%; transform:translateX(-50%);
-    width:calc(100% - 32px); max-width:520px; z-index:750;
+    position:fixed; bottom:16px; right:16px;
+    width:240px; z-index:750;
     display:flex; flex-direction:column; gap:6px; pointer-events:none;
   }
   .pix-banner-item { pointer-events:all; }
   .pix-banner-inner {
-    background:#3b2a00; border:2px solid #eab308; border-radius:14px;
-    padding:12px 14px; display:flex; align-items:center; gap:10px;
+    background:#3b2a00; border:2px solid #eab308; border-radius:12px;
+    padding:9px 11px; display:flex; flex-direction:column; gap:5px;
     animation:bannerYellowPulse 1.6s ease-in-out infinite;
   }
   @keyframes bannerYellowPulse {
     0%,100% { border-color:#eab308; box-shadow:0 0 0 0 rgba(234,179,8,0); }
-    50%     { border-color:#fde047; box-shadow:0 0 18px rgba(234,179,8,.4); }
+    50%     { border-color:#fde047; box-shadow:0 0 14px rgba(234,179,8,.4); }
   }
-  .pix-banner-txt { flex:1; min-width:0; }
-  .pix-banner-titulo { font-size:12px; font-weight:800; color:#fde047; text-transform:uppercase; letter-spacing:.4px; }
-  .pix-banner-sub { font-size:12px; color:#ca8a04; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .pix-banner-clock { font-size:22px; font-weight:900; font-family:monospace; color:#fde047; letter-spacing:2px; flex-shrink:0; }
+  .pix-banner-txt { min-width:0; }
+  .pix-banner-titulo { font-size:10px; font-weight:800; color:#fde047; text-transform:uppercase; letter-spacing:.4px; }
+  .pix-banner-sub { font-size:11px; color:#ca8a04; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pix-banner-row { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+  .pix-banner-clock { font-size:18px; font-weight:900; font-family:monospace; color:#fde047; letter-spacing:2px; }
   .pix-banner-btn {
-    background:#eab308; color:#3b2a00; font-weight:800; font-size:12px;
-    border:none; border-radius:8px; padding:8px 12px; cursor:pointer; flex-shrink:0; white-space:nowrap;
+    background:#eab308; color:#3b2a00; font-weight:800; font-size:11px;
+    border:none; border-radius:7px; padding:5px 10px; cursor:pointer; white-space:nowrap;
   }
   .pix-banner-btn:hover { background:#fde047; }
-  @media(max-width:480px) { #pix-banners-container { bottom:80px; } .pix-banner-inner { padding:10px 12px; gap:8px; } }
+  @media(max-width:480px) { #pix-banners-container { width:calc(100% - 32px); right:16px; bottom:70px; } }
 
   /* Botão flutuante de cadastrar cliente */
   #fab-lead { position:fixed; bottom:24px; right:20px; z-index:800; display:flex; align-items:center; gap:8px;
@@ -1219,13 +1220,14 @@ function _atualizarPixBanner() {
       item.id = `pix-banner-${uid}`;
       item.className = 'pix-banner-item';
       item.innerHTML = `<div class="pix-banner-inner">
-        <div style="font-size:18px;flex-shrink:0">⏱️</div>
         <div class="pix-banner-txt">
-          <div class="pix-banner-titulo">PIX pendente!</div>
+          <div class="pix-banner-titulo">⏱️ PIX pendente!</div>
           <div class="pix-banner-sub">${desc}</div>
         </div>
-        <div class="pix-banner-clock" id="pix-clock-${uid}">--:--</div>
-        ${acaoBotao}
+        <div class="pix-banner-row">
+          <div class="pix-banner-clock" id="pix-clock-${uid}">--:--</div>
+          ${acaoBotao}
+        </div>
       </div>`;
       container.appendChild(item);
     }
