@@ -930,6 +930,11 @@ let _socialUrl = null;
 
 const fmt  = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
 const fmt0 = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+// Resolve valor de parcela: se tipo_valor='%', calcula sobre o preço do lote
+function _ecpResolveVal(p, preco) {
+  const raw = parseFloat(p.valor) || 0;
+  return p.tipo_valor === '%' ? (raw / 100) * (preco || 0) : raw;
+}
 
 function statusLabel(s) {
   return { disponivel: 'Disponível', pre_reserva: 'Pré-reserva', reservado: 'Reservado', vendido: 'Vendido', entregue: 'Vendido', indisponivel: 'Indisponível' }[s] || s;
@@ -963,8 +968,9 @@ function abrirSimulacao(unitId) {
       const precoFinal = desc > 0 ? preco * (1 - desc / 100) : preco;
       const parcelasRows = (c.parcelas||[]).map(p2 => {
         const qtd = parseInt(p2.qtd)||1;
-        const val = parseFloat(p2.valor);
-        return val > 0 ? `<div class="sim-cond-row"><span class="sim-cond-key">${p2.titulo||''}</span><span class="sim-cond-val">${qtd > 1 ? qtd+'× ' : ''}${fmt0.format(val)}${qtd > 1 ? '/mês' : ''}</span></div>` : '';
+        const val = _ecpResolveVal(p2, preco);
+        const sufixoPct = p2.tipo_valor === '%' ? ` (${p2.valor}%)` : '';
+        return val > 0 ? `<div class="sim-cond-row"><span class="sim-cond-key">${p2.titulo||''}${sufixoPct}</span><span class="sim-cond-val">${qtd > 1 ? qtd+'× ' : ''}${fmt0.format(val)}${qtd > 1 ? '/mês' : ''}</span></div>` : '';
       }).join('');
       const discountRow = desc > 0 ? `<div class="sim-cond-row"><span class="sim-cond-key">Desconto</span><span class="sim-cond-val" style="color:#34d399">${desc}%</span></div>` : '';
       const totalRow = desc > 0 ? `<div class="sim-cond-total-row"><span class="sim-cond-total-lbl">Valor final</span><span class="sim-cond-total-val" style="color:#34d399">${fmt0.format(precoFinal)}</span></div>` : '';
@@ -2105,7 +2111,7 @@ async function baixarTabelaPDF() {
         const precoFinal = desc > 0 ? P * (1 - desc / 100) : P;
         const resumo = (c.parcelas||[]).map(pp => {
           const qtd = parseInt(pp.qtd) || 1;
-          const val = parseFloat(pp.valor) || 0;
+          const val = _ecpResolveVal(pp, P);
           const valStr = val > 0 ? ` ${fmtR(val)}` : '';
           return `${qtd > 1 ? qtd+'x' : pp.titulo||''}${valStr}`;
         }).join(' + ');
@@ -2266,7 +2272,7 @@ function exportarTabelaEspelho() {
           const desc = parseFloat(c.desconto_pct) || 0;
           const precoFinal = desc > 0 ? P * (1 - desc / 100) : null;
           const resumo = (c.parcelas||[]).map(pp => {
-            const val = parseFloat(pp.valor) || 0;
+            const val = _ecpResolveVal(pp, P);
             const qtd = parseInt(pp.qtd) || 1;
             return qtd > 1 ? `${qtd}x ${val>0?fmt2(val/qtd):''}` : (pp.titulo||'');
           }).join(' + ');
@@ -2827,7 +2833,7 @@ function _resRenderCondicoes() {
       const precoFinal = desc > 0 ? preco * (1 - desc / 100) : preco;
       const resumoParcelas = (c.parcelas||[]).map(p => {
         const qtd = parseInt(p.qtd) || 1;
-        const val = parseFloat(p.valor);
+        const val = _ecpResolveVal(p, preco);
         const valStr = val > 0 ? ` · ${fmt0.format(val)}${qtd > 1 ? '/mês' : ''}` : '';
         return `${qtd > 1 ? qtd+'× ' : ''}${p.titulo||''}${valStr}`;
       }).join('  +  ');
