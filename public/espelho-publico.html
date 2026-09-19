@@ -1153,7 +1153,9 @@ function _atualizarPixBanner() {
     _limparTodosBanners(); return;
   }
 
-  // Mostra banner para TODA pre-reserva sem comprovante vinculada
+  const _cidNum = parseInt(_corretorId) || 0;
+
+  // Banners: toda pre-reserva sem comprovante (o dono vê botão de envio, outros só veem o countdown)
   const minhasRes = (window._units || []).filter(u =>
     u.status === 'pre_reserva' && !u.tem_comprovante && u.venda_id
   );
@@ -1169,10 +1171,15 @@ function _atualizarPixBanner() {
     }
   }
 
-  // Cria ou atualiza banner por unidade
+  // Cria banner por unidade
   for (const res of minhasRes) {
     const uid = res.id;
     const desc = `Lote ${res.lote}${res.quadra ? ' · Q.' + res.quadra : ''}`;
+    // Botão só para o dono da reserva (ou quando não é possível determinar o dono)
+    const eDono = !_cidNum || String(res.venda_corretor_id) === String(_cidNum);
+    const acaoBotao = eDono
+      ? `<button class="pix-banner-btn" onclick="abrirAnexarPix(${res.venda_id},${uid})">📎 Enviar PIX</button>`
+      : `<span style="font-size:11px;color:#ca8a04;flex-shrink:0">Aguardando…</span>`;
 
     if (!document.getElementById(`pix-banner-${uid}`)) {
       const item = document.createElement('div');
@@ -1185,7 +1192,7 @@ function _atualizarPixBanner() {
           <div class="pix-banner-sub">${desc}</div>
         </div>
         <div class="pix-banner-clock" id="pix-clock-${uid}">--:--</div>
-        <button class="pix-banner-btn" onclick="abrirAnexarPix(${res.venda_id},${uid})">📎 Enviar PIX</button>
+        ${acaoBotao}
       </div>`;
       container.appendChild(item);
     }
