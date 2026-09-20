@@ -59,7 +59,7 @@ function _criarLoginCorretor(corretorId, nome, loginEmail) {
   }
 }
 
-const APIs_PUBLICAS = ["/api/corretores/publico", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/", "/api/pluggy/webhook"];
+const APIs_PUBLICAS = ["/api/corretores/publico", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/", "/api/pluggy/webhook", "/api/exportar/contatos"];
 
 function autenticar(req, res, next) {
   if (!req.path.startsWith("/api/")) return next();
