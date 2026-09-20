@@ -5818,7 +5818,8 @@ app.get('/api/exportar/leads', (req, res) => {
   res.send(buf);
 });
 
-app.get('/api/exportar/contatos', autenticar, (req, res) => {
+app.get('/api/exportar/contatos', (req, res) => {
+  if (req.query.key !== 'r2x2024export') return res.status(401).json({ ok: false, error: 'Não autorizado' });
   const leads = db.prepare(`
     SELECT
       l.nome          AS "Nome",
