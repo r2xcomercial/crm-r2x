@@ -3734,7 +3734,7 @@ app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
   const empId = parseInt(req.params.id);
   if (!empId) return err(res, 'ID inválido');
   const u = req.usuario;
-  if (!corretorTemAcesso(u, empId)) return err(res, 'Acesso negado a este empreendimento', 403);
+  if (u?.perfil !== 'admin') return err(res, 'Acesso restrito ao administrador', 403);
 
   // Colunas de vendas ativas
   const KANBAN_STATUS = ['reserva', 'proposta', 'aprovado', 'ativo'];

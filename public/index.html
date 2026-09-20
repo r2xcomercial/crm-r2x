@@ -10494,7 +10494,7 @@ async function verEspelho(empId) {
       <button class="btn btn-secondary" onclick="verUnidades(${empId})" style="font-size:12px;padding:6px 12px">📋 Lista</button>
       <button class="btn btn-secondary" onclick="abrirReajusteTabela(${empId})" style="font-size:12px;padding:6px 12px;color:#60a5fa;border-color:rgba(96,165,250,.4)" title="Reajustar preços da tabela de unidades">📈 Reajustar</button>
       <button class="btn btn-secondary" onclick="abrirExportarTabela(${empId})" style="font-size:12px;padding:6px 12px;color:#4ade80;border-color:rgba(74,222,128,.4)" title="Gerar tabela de vendas com simulação de pagamento">📄 Exportar Tabela</button>
-      <button class="btn btn-secondary" onclick="renderEmpKanban(${empId})" style="font-size:12px;padding:6px 12px;color:#34d399;border-color:rgba(52,211,153,.4)" title="Funil de vendas Kanban">📊 Kanban</button>
+      ${USUARIO.perfil === 'admin' ? `<button class="btn btn-secondary" onclick="renderEmpKanban(${empId})" style="font-size:12px;padding:6px 12px;color:#34d399;border-color:rgba(52,211,153,.4)" title="Funil de vendas Kanban">📊 Kanban</button>` : ''}
       <label class="btn btn-secondary" style="font-size:12px;padding:6px 12px;cursor:pointer" title="Envie o PDF ou imagem da planta urbanística para importar lotes automaticamente">
         📐 Importar da Planta
         <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" style="display:none" onchange="analisarPlanta(this,${empId},'${(emp.nome||'').replace(/'/g,"\\'")}')">
