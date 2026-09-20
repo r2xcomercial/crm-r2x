@@ -3524,10 +3524,25 @@ setInterval(() => {
       try {
         db.prepare("UPDATE reserva_fila SET status='expirado' WHERE id=?").run(rf.id);
         db.prepare("UPDATE unidades SET fila_prioridade_ate=NULL, fila_prioridade_corretor_id=NULL WHERE id=?").run(rf.unidade_id);
-        _avancarFila(rf.unidade_id);
+        const temFila = _avancarFila(rf.unidade_id);
+        if (!temFila) {
+          // Sem mais fila e sem venda ativa de pre_reserva → libera a unidade
+          const vendaAtiva = db.prepare("SELECT id FROM vendas WHERE unidade_id=? AND status='pre_reserva'").get(rf.unidade_id);
+          if (!vendaAtiva) {
+            db.prepare("UPDATE unidades SET status='disponivel' WHERE id=? AND status='pre_reserva'").run(rf.unidade_id);
+            _logUnidade(rf.unidade_id, 'pre_reserva', 'disponivel', null, null, 'Janela de prioridade expirada sem fila — unidade liberada');
+          }
+        }
       } catch(_) {}
     }
-    if (janelasExpiradas.length > 0) console.log(`[fila-job] ${janelasExpiradas.length} janela(s) de prioridade expirada(s)`);
+    if (janelasExpiradas.length > 0) {
+      console.log(`[fila-job] ${janelasExpiradas.length} janela(s) de prioridade expirada(s)`);
+      const empIds = [...new Set(janelasExpiradas.map(rf => {
+        const u = db.prepare("SELECT empreendimento_id FROM unidades WHERE id=?").get(rf.unidade_id);
+        return u?.empreendimento_id;
+      }).filter(Boolean))];
+      empIds.forEach(id => _broadcastRefresh(id));
+    }
   } catch(_) {}
 }, 60_000);
 
