@@ -59,7 +59,7 @@ function _criarLoginCorretor(corretorId, nome, loginEmail) {
   }
 }
 
-const APIs_PUBLICAS = ["/api/corretores/publico", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/", "/api/pluggy/webhook", "/api/exportar/contatos"];
+const APIs_PUBLICAS = ["/api/corretores/publico", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/", "/api/pluggy/webhook"];
 
 function autenticar(req, res, next) {
   if (!req.path.startsWith("/api/")) return next();
@@ -5818,8 +5818,7 @@ app.get('/api/exportar/leads', (req, res) => {
   res.send(buf);
 });
 
-app.get('/api/exportar/contatos', (req, res) => {
-  if (req.query.key !== 'r2x2024export') return res.status(401).json({ ok: false, error: 'Não autorizado' });
+app.get('/api/exportar/contatos', autenticar, (req, res) => {
   const leads = db.prepare(`
     SELECT
       l.nome          AS "Nome",
