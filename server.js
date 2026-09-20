@@ -4317,7 +4317,7 @@ app.get("/api/vendas/ranking", (req, res) => {
   let sql = `
     SELECT c.nome, c.imobiliaria, COUNT(v.id) as vendas, COALESCE(SUM(v.valor),0) as vgv
     FROM vendas v JOIN corretores c ON c.id=v.corretor_id
-    WHERE v.status='ativo'
+    WHERE v.status IN ('aprovado','ativo')
   `;
   const params = [];
   if (empreendimento_id) { sql += " AND v.empreendimento_id=?"; params.push(empreendimento_id); }
@@ -5049,7 +5049,7 @@ app.get("/api/vendas/ranking/imobiliarias", (req, res) => {
       COUNT(DISTINCT v.empreendimento_id) as empreendimentos
     FROM vendas v
     JOIN corretores c ON c.id=v.corretor_id
-    WHERE v.status='ativo'
+    WHERE v.status IN ('aprovado','ativo')
     AND c.imobiliaria IS NOT NULL AND c.imobiliaria != ''
     GROUP BY c.imobiliaria
     ORDER BY vgv DESC LIMIT 20
