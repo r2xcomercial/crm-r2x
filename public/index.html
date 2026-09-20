@@ -1458,8 +1458,9 @@ async function openLeadModal(lead = {}, onSave = null) {
         <span id="doc-status" style="font-size:11px;color:var(--text2)"></span>
       </div>
       <div class="form-grid">
-        <div class="form-group"><label>CPF *</label><input id="f-cpf" value="${lead.cpf||''}" placeholder="000.000.000-00"></div>
+        <div class="form-group"><label>CPF *</label><input id="f-cpf" value="${lead.cpf||''}" placeholder="000.000.000-00" oninput="verificarDuplicidadeCpf(this.value,${lead.id||0})"></div>
         <div class="form-group"><label>RG</label><input id="f-rg" value="${lead.rg||''}" placeholder="00.000.000-0"></div>
+        <div id="aviso-dup-cpf" class="form-group span2" style="display:none;padding:10px 14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:8px;font-size:13px;font-weight:600;color:#f87171">🚫 Esse cliente já está cadastrado, favor contatar a R2X.</div>
         <div class="form-group"><label>Estado Civil *</label>
           <select id="f-estado-civil"><option value="">—</option>${(()=>{const ec=lead.estado_civil||'';const lb={solteiro:'Solteiro(a)',casado:'Casado(a)',divorciado:'Divorciado(a)',viuvo:'Viúvo(a)',uniao_estavel:'União Estável'};return['solteiro','casado','divorciado','viuvo','uniao_estavel'].map(v=>'<option value="'+v+'" '+(ec===v?'selected':'')+'>'+lb[v]+'</option>').join('');})()}</select>
         </div>
@@ -1583,6 +1584,13 @@ async function openLeadModal(lead = {}, onSave = null) {
     if (!v('f-cidade-end'))    erros.push('Cidade');
     if (!v('f-estado-uf'))     erros.push('Estado (UF)');
     if (erros.length) return toast(`Preencha os campos obrigatórios: ${erros.join(', ')}`, 'error');
+    if (!isPjSave) {
+      const cpfDigits = (v('f-cpf')||'').replace(/\D/g,'');
+      if (cpfDigits.length === 11) {
+        const dupCpf = (leadsData||[]).find(l => l.id != (lead.id||0) && l.cpf && l.cpf.replace(/\D/g,'') === cpfDigits);
+        if (dupCpf) return toast('Esse cliente já está cadastrado, favor contatar a R2X.', 'error');
+      }
+    }
     const corretorId = v('f-corretor') || document.getElementById('f-corretor-hidden')?.value || null;
     const statusSelecionado = v('f-status');
     // Auto-move: se corretor foi atribuído e status ainda é 'novo', vai para com_corretor
@@ -2217,6 +2225,15 @@ async function verificarDuplicidadeLead(tel) {
   } else {
     el.style.display = 'none';
   }
+}
+
+function verificarDuplicidadeCpf(cpf, currentId) {
+  const el = document.getElementById('aviso-dup-cpf');
+  if (!el) return;
+  const digits = (cpf||'').replace(/\D/g,'');
+  if (digits.length < 11) { el.style.display = 'none'; return; }
+  const dup = (leadsData||[]).find(l => l.id != currentId && l.cpf && l.cpf.replace(/\D/g,'') === digits);
+  el.style.display = dup ? '' : 'none';
 }
 
 // Modal de lead rápido — acessível de qualquer tela
