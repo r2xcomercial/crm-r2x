@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>CRM R2X</title>
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#0D1B2E">
+<meta name="theme-color" content="#07113A">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="R2X CRM">
@@ -17,19 +17,19 @@
 <!-- Pluggy Connect carregado sob demanda em pluggyCarregarWidget() -->
 <style>
   :root {
-    --navy: #0D1B2E;
-    --navy2: #142236;
-    --navy3: #1E3352;
-    --accent: #00C4B4;
-    --accent2: #0099CC;
+    --navy: #07113A;
+    --navy2: #0A1A52;
+    --navy3: #112268;
+    --accent: #5B8AFF;
+    --accent2: #2E5FD4;
     --success: #22C55E;
     --warning: #F59E0B;
     --danger: #EF4444;
     --text: #E8EDF5;
-    --text2: #94A3B8;
-    --border: #243650;
-    --card: #162032;
-    --card2: #1A2840;
+    --text2: #8BAAC8;
+    --border: #1A2E7A;
+    --card: #091540;
+    --card2: #0D1C50;
     --white: #FFFFFF;
     --sidebar-w: 240px;
   }
@@ -573,7 +573,7 @@ const FASES_LANCAMENTO = [
   { id: 'ancoragem',     label: 'Ancoragem',      icon: '⚓', color: '#8B5CF6', rgb: '139,92,246'  },
   { id: 'treinamento',   label: 'Treinamento',    icon: '🎓', color: '#3B82F6', rgb: '59,130,246'  },
   { id: 'represamento',  label: 'Represamento',   icon: '💧', color: '#06B6D4', rgb: '6,182,212'   },
-  { id: 'lancamento',    label: 'Lançamento',     icon: '🚀', color: '#00C4B4', rgb: '0,196,180'   },
+  { id: 'lancamento',    label: 'Lançamento',     icon: '🚀', color: '#5B8AFF', rgb: '0,196,180'   },
   { id: 'pos_lancamento',label: 'Pós-Lançamento', icon: '🎯', color: '#22C55E', rgb: '34,197,94'   },
 ];
 
@@ -785,7 +785,7 @@ async function renderDashboard() {
   const fuilMap = {};
   (funil_detalhado || []).forEach(f => { fuilMap[f.status] = (fuilMap[f.status]||0) + f.n; });
   const fstages = [
-    { label:'Captado',     statuses:['novo','qualificado','com_corretor','visitou','proposta','reserva','vendido','perdido','sem_venda'], color:'#00C4B4' },
+    { label:'Captado',     statuses:['novo','qualificado','com_corretor','visitou','proposta','reserva','vendido','perdido','sem_venda'], color:'#5B8AFF' },
     { label:'Qualificado', statuses:['qualificado','com_corretor','visitou','proposta','reserva','vendido'], color:'#38BDF8' },
     { label:'Visitou',     statuses:['visitou','proposta','reserva','vendido'], color:'#A78BFA' },
     { label:'Proposta',    statuses:['proposta','reserva','vendido'], color:'#FBBF24' },
@@ -1006,7 +1006,7 @@ async function renderDashboard() {
             const wppLink = tel ? `https://wa.me/55${tel}?text=${mensagem}` : null;
             if (ehProximo) return `
               <div class="aniv-item" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;margin-bottom:6px;background:linear-gradient(135deg,rgba(0,196,180,.15),rgba(99,102,241,.12));border:1px solid rgba(0,196,180,.35)">
-                <div style="display:flex;flex-direction:column;align-items:center;background:var(--accent);color:#0f172a;border-radius:10px;padding:6px 10px;font-weight:900;font-size:16px;min-width:40px;text-align:center;line-height:1">
+                <div style="display:flex;flex-direction:column;align-items:center;background:var(--accent);color:#07113A;border-radius:10px;padding:6px 10px;font-weight:900;font-size:16px;min-width:40px;text-align:center;line-height:1">
                   ${dia}<div style="font-size:9px;font-weight:600;margin-top:2px;opacity:.8">PRÓX.</div>
                 </div>
                 <div style="flex:1;min-width:0">
@@ -1017,7 +1017,7 @@ async function renderDashboard() {
               </div>`;
             return `
               <div class="aniv-item" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-                <div style="background:${ehHoje?'#f59e0b':'var(--navy3)'};color:${ehHoje?'#0f172a':'var(--text2)'};border-radius:8px;padding:4px 8px;font-weight:700;font-size:13px;min-width:34px;text-align:center">${dia}</div>
+                <div style="background:${ehHoje?'#f59e0b':'var(--navy3)'};color:${ehHoje?'#07113A':'var(--text2)'};border-radius:8px;padding:4px 8px;font-weight:700;font-size:13px;min-width:34px;text-align:center">${dia}</div>
                 <div style="flex:1;min-width:0">
                   <div style="font-weight:${ehHoje?700:500};font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.nome||'—'}${ehHoje?' 🎂':''}</div>
                   <div style="font-size:11px;color:var(--text2)">${a.tipo==='corretor'?'👤 Corretor':a.tipo==='cliente'?'🏢 Incorporador':'🎯 Cliente'}</div>
@@ -1095,7 +1095,7 @@ async function renderDashboard() {
     data: {
       labels: meses12.map(m => m.label),
       datasets: [
-        { label: 'VGV (R$)', data: meses12.map(m => m.vgv), backgroundColor: 'rgba(0,196,180,0.7)', borderColor: '#00C4B4', borderWidth: 1, borderRadius: 4, yAxisID: 'y' },
+        { label: 'VGV (R$)', data: meses12.map(m => m.vgv), backgroundColor: 'rgba(91,138,255,0.7)', borderColor: '#5B8AFF', borderWidth: 1, borderRadius: 4, yAxisID: 'y' },
         { label: 'Vendas', data: meses12.map(m => m.qtd), type: 'line', borderColor: '#FBBF24', backgroundColor: 'rgba(251,191,36,0.08)', pointBackgroundColor: '#FBBF24', pointRadius: 3, tension: 0.3, yAxisID: 'y2' }
       ]
     },
@@ -1997,7 +1997,7 @@ async function importarLeads(input) {
 // ─── KANBAN DE LEADS ─────────────────────────────────────────────────────────
 
 const KANBAN_COLS = [
-  { status: 'novo',         label: '📥 Captado',          color: '#00C4B4', badge: 'badge-accent', extra: [] },
+  { status: 'novo',         label: '📥 Captado',          color: '#5B8AFF', badge: 'badge-accent', extra: [] },
   { status: 'qualificado',  label: '✅ Qualificado',       color: '#38BDF8', badge: 'badge-blue',   extra: [] },
   { status: 'com_corretor', label: '👤 Distribuído',       color: '#60A5FA', badge: 'badge-blue',   extra: [] },
   { status: 'visitou',      label: '🏠 Atend./Visita',     color: '#A78BFA', badge: 'badge-purple', extra: [] },
@@ -2345,7 +2345,7 @@ async function renderPainel() {
   // ── Cards de empreendimentos ─────────────────────────────────────────────────
   const cardsHtml = emps.map(e => {
     const fase = FASES_LANCAMENTO.find(f => f.id === (e.fase_lancamento || 'aquecimento')) || FASES_LANCAMENTO[0];
-    const vsoColor = e.vso >= 75 ? '#22C55E' : e.vso >= 40 ? '#F59E0B' : '#00C4B4';
+    const vsoColor = e.vso >= 75 ? '#22C55E' : e.vso >= 40 ? '#F59E0B' : '#5B8AFF';
     const pctV = e.unidades_total > 0 ? (e.unidades_vendidas / e.unidades_total * 100).toFixed(1) : 0;
     const pctR = e.unidades_total > 0 ? (e.unidades_reservadas / e.unidades_total * 100).toFixed(1) : 0;
 
@@ -4894,7 +4894,7 @@ function imprimirChecklist(empId, empNome) {
     .header-left p  { font-size: 11px; color: #555; }
     .header-right   { font-size: 11px; color: #555; text-align: right; }
     table { width: 100%; border-collapse: collapse; }
-    thead th { background: #0D1B2E; color: #fff; padding: 8px 10px; font-size: 11px; font-weight: 700; border: 1px solid #0D1B2E; text-align: left; }
+    thead th { background: #07113A; color: #fff; padding: 8px 10px; font-size: 11px; font-weight: 700; border: 1px solid #07113A; text-align: left; }
     .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #ccc; display: flex; justify-content: space-between; font-size: 10px; color: #888; }
     .assinatura { margin-top: 40px; display: flex; gap: 60px; }
     .assinatura div { flex: 1; }
@@ -9738,7 +9738,7 @@ async function verEspelhoImagem(empId, emp, mapaData) {
           <span style="font-size:10px;color:#cbd5e1;white-space:nowrap">⬤ Bolinhas</span>
           <input type="range" id="marker-size-range" min="8" max="60" value="20"
             oninput="mapaMarkerResize(this.value,${empId})"
-            style="width:80px;cursor:pointer;accent-color:#14b8a6">
+            style="width:80px;cursor:pointer;accent-color:#5B8AFF">
           <span id="marker-size-val" style="font-size:10px;color:#fff;min-width:22px;text-align:right">20px</span>
         </div>` : ''}
         <!-- Controles de zoom -->
@@ -13271,20 +13271,20 @@ async function gerarRelatorio(empId) {
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,sans-serif;color:#1a1a2e;font-size:13px;padding:32px 40px}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0D1B2E;padding-bottom:16px;margin-bottom:28px}
-    .logo{font-size:26px;font-weight:900;letter-spacing:-1px;color:#0D1B2E}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #07113A;padding-bottom:16px;margin-bottom:28px}
+    .logo{font-size:26px;font-weight:900;letter-spacing:-1px;color:#07113A}
     .logo span{color:#00C4B4}
     .logo small{display:block;font-size:11px;font-weight:400;color:#666;margin-top:2px}
     .report-info{text-align:right;font-size:12px;color:#555}
-    .report-info strong{display:block;font-size:18px;color:#0D1B2E;margin-bottom:4px}
-    h2{font-size:16px;font-weight:700;color:#0D1B2E;margin:24px 0 12px;border-left:4px solid #00C4B4;padding-left:10px}
+    .report-info strong{display:block;font-size:18px;color:#07113A;margin-bottom:4px}
+    h2{font-size:16px;font-weight:700;color:#07113A;margin:24px 0 12px;border-left:4px solid #00C4B4;padding-left:10px}
     .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
     .kpi{background:#f5f7fa;border-radius:8px;padding:14px 16px;border:1px solid #e0e4ea}
     .kpi label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#666;display:block;margin-bottom:4px}
-    .kpi strong{font-size:18px;font-weight:900;color:#0D1B2E}
+    .kpi strong{font-size:18px;font-weight:900;color:#07113A}
     .kpi small{font-size:11px;color:#888;display:block;margin-top:2px}
     table{width:100%;border-collapse:collapse;margin-bottom:20px}
-    th{background:#0D1B2E;color:#fff;padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+    th{background:#07113A;color:#fff;padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
     td{padding:8px 12px;border-bottom:1px solid #eee;font-size:12px}
     tr:nth-child(even) td{background:#fafbfc}
     .badge-g{background:#e6f9ee;color:#1a8a4a;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
@@ -13446,36 +13446,36 @@ async function gerarRelatorioCorretor(corretorId) {
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,sans-serif;color:#1a1a2e;font-size:13px;padding:32px 40px}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0D1B2E;padding-bottom:16px;margin-bottom:28px}
-    .logo{font-size:26px;font-weight:900;letter-spacing:-1px;color:#0D1B2E}.logo span{color:#00C4B4}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #07113A;padding-bottom:16px;margin-bottom:28px}
+    .logo{font-size:26px;font-weight:900;letter-spacing:-1px;color:#07113A}.logo span{color:#00C4B4}
     .logo small{display:block;font-size:11px;font-weight:400;color:#666;margin-top:2px}
     .report-info{text-align:right;font-size:12px;color:#555}
-    .report-info strong{display:block;font-size:18px;color:#0D1B2E;margin-bottom:4px}
+    .report-info strong{display:block;font-size:18px;color:#07113A;margin-bottom:4px}
     .perfil{display:flex;gap:24px;align-items:flex-start;background:#f5f7fa;border-radius:10px;padding:20px 24px;margin-bottom:28px;border:1px solid #e0e4ea}
-    .perfil-avatar{width:64px;height:64px;border-radius:50%;background:#0D1B2E;color:#00C4B4;font-size:28px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .perfil-avatar{width:64px;height:64px;border-radius:50%;background:#07113A;color:#00C4B4;font-size:28px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0}
     .perfil-info{flex:1}
-    .perfil-info h2{font-size:20px;font-weight:900;color:#0D1B2E;margin-bottom:6px}
+    .perfil-info h2{font-size:20px;font-weight:900;color:#07113A;margin-bottom:6px}
     .perfil-info .meta{font-size:12px;color:#555;display:flex;flex-wrap:wrap;gap:12px}
     .perfil-info .meta span{display:flex;align-items:center;gap:4px}
     .badge-ativo{background:#e6f9ee;color:#1a8a4a;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700}
     .badge-inativo{background:#fdecea;color:#b91c1c;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700}
-    h2.section{font-size:14px;font-weight:700;color:#0D1B2E;margin:24px 0 12px;border-left:4px solid #00C4B4;padding-left:10px}
+    h2.section{font-size:14px;font-weight:700;color:#07113A;margin:24px 0 12px;border-left:4px solid #00C4B4;padding-left:10px}
     .kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
     .kpi{background:#f5f7fa;border-radius:8px;padding:14px 16px;border:1px solid #e0e4ea}
     .kpi label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#666;display:block;margin-bottom:4px}
-    .kpi strong{font-size:18px;font-weight:900;color:#0D1B2E}
+    .kpi strong{font-size:18px;font-weight:900;color:#07113A}
     .kpi small{font-size:11px;color:#888;display:block;margin-top:2px}
     table{width:100%;border-collapse:collapse;margin-bottom:20px}
-    th{background:#0D1B2E;color:#fff;padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+    th{background:#07113A;color:#fff;padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
     td{padding:8px 12px;border-bottom:1px solid #eee;font-size:12px}
     tr:nth-child(even) td{background:#fafbfc}
     .bar-wrap{background:#eee;border-radius:4px;height:8px;display:inline-block;width:80px;vertical-align:middle;margin-right:6px}
     .bar-fill{height:100%;border-radius:4px;background:#00C4B4}
     .funil-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #eee}
     .funil-label{min-width:90px;font-size:12px;color:#555}
-    .funil-n{min-width:28px;text-align:right;font-weight:700;color:#0D1B2E}
+    .funil-n{min-width:28px;text-align:right;font-weight:700;color:#07113A}
     .meta-box{background:#f5f7fa;border-radius:8px;padding:16px;border:1px solid #e0e4ea;margin-bottom:20px}
-    .meta-box h3{font-size:13px;font-weight:700;color:#0D1B2E;margin-bottom:12px}
+    .meta-box h3{font-size:13px;font-weight:700;color:#07113A;margin-bottom:12px}
     .meta-item{display:flex;align-items:center;gap:12px;margin-bottom:8px;font-size:12px}
     .meta-item label{min-width:110px;color:#666}
     .meta-item .val{font-weight:700;min-width:80px}
@@ -13592,7 +13592,7 @@ async function gerarRelatorioCorretor(corretorId) {
       const pct = Math.round((f.n/leads.length)*100);
       return `<div class="funil-row">
         <div class="funil-label">${statusLabel[f.status]}</div>
-        <div class="bar-wrap" style="width:160px"><div class="bar-fill" style="width:${pct}%;background:${f.status==='vendido'?'#22C55E':f.status==='perdido'?'#EF4444':'#00C4B4'}"></div></div>
+        <div class="bar-wrap" style="width:160px"><div class="bar-fill" style="width:${pct}%;background:${f.status==='vendido'?'#22C55E':f.status==='perdido'?'#EF4444':'#5B8AFF'}"></div></div>
         <div class="funil-n">${f.n}</div>
         <div style="font-size:11px;color:#888">(${pct}%)</div>
       </div>`;
@@ -15944,18 +15944,18 @@ function exportarCorretoresPDF() {
   body { font-family:Arial,sans-serif; padding:16px; color:#111; font-size:12px }
   @page { size:A4 landscape; margin:10mm }
   @media print { .no-print { display:none } }
-  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; padding-bottom:10px; border-bottom:2px solid #0D1B2E }
-  h1 { font-size:18px; font-weight:900; color:#0D1B2E }
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; padding-bottom:10px; border-bottom:2px solid #07113A }
+  h1 { font-size:18px; font-weight:900; color:#07113A }
   .logo-sub { font-size:11px; color:#6b7280; margin-top:2px }
   .stats { display:flex; gap:10px; margin-bottom:14px }
   .stat { border:1px solid #e5e7eb; border-radius:6px; padding:6px 16px; text-align:center }
-  .stat .n { font-size:18px; font-weight:900; color:#0D1B2E }
+  .stat .n { font-size:18px; font-weight:900; color:#07113A }
   .stat .l { font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:.5px }
   table { width:100%; border-collapse:collapse }
-  th { background:#0D1B2E; color:#fff; padding:6px 8px; font-size:9px; font-weight:700; text-align:left; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap }
+  th { background:#07113A; color:#fff; padding:6px 8px; font-size:9px; font-weight:700; text-align:left; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap }
   td { padding:5px 8px; font-size:11px; border-bottom:1px solid #e5e7eb }
   tr:nth-child(even) td { background:#f9fafb }
-  .btn-print { position:fixed; bottom:20px; right:20px; background:#0D1B2E; color:#fff; border:none; border-radius:8px; padding:10px 20px; font-size:13px; font-weight:700; cursor:pointer }
+  .btn-print { position:fixed; bottom:20px; right:20px; background:#07113A; color:#fff; border:none; border-radius:8px; padding:10px 20px; font-size:13px; font-weight:700; cursor:pointer }
   .footer { margin-top:14px; font-size:10px; color:#9ca3af; text-align:center }
 </style></head><body>
 <div class="header">
@@ -20618,7 +20618,7 @@ function _renderMetodoTab() {
     { id:'aquecimento',  label:'Aquecimento',  icon:'🔥', desc:'Estruturação de corretores e parceiros. Apresentação do produto, regras e dinâmica comercial.', cor:'#F97316', rgb:'249,115,22' },
     { id:'ancoragem',    label:'Ancoragem',    icon:'⚓', desc:'Posicionamento e precificação do produto. Definição de tabelas, condições e estratégia de preço.', cor:'#8B5CF6', rgb:'139,92,246' },
     { id:'treinamento',  label:'Treinamento',  icon:'🎓', desc:'Meeting de capacitação da força de vendas. Alinhamento técnico, product training e simulações comerciais.', cor:'#06B6D4', rgb:'6,182,212' },
-    { id:'represamento', label:'Represamento', icon:'💧', desc:'Captação de leads (pré-cadastro) antes do evento. Geração de demanda e lista de interessados qualificados.', cor:'#00C4B4', rgb:'0,196,180' },
+    { id:'represamento', label:'Represamento', icon:'💧', desc:'Captação de leads (pré-cadastro) antes do evento. Geração de demanda e lista de interessados qualificados.', cor:'#5B8AFF', rgb:'0,196,180' },
     { id:'lancamento',   label:'Lançamento',   icon:'🚀', desc:'Evento de lançamento — digital ou presencial. Pico de vendas com todos os gatilhos ativados simultaneamente.', cor:'#22C55E', rgb:'34,197,94' },
   ];
 
@@ -20699,7 +20699,7 @@ function _renderMetodoTab() {
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text2);font-weight:700;margin-bottom:14px">Gatilhos de Persuasão</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
           ${GATILHOS.map((g,i) => {
-            const colors = ['#F97316','#8B5CF6','#06B6D4','#EF4444','#00C4B4','#22C55E'];
+            const colors = ['#F97316','#8B5CF6','#06B6D4','#EF4444','#5B8AFF','#22C55E'];
             const rgb = ['249,115,22','139,92,246','6,182,212','239,68,68','0,196,180','34,197,94'];
             return `
               <div style="background:rgba(${rgb[i]},.08);border:1px solid rgba(${rgb[i]},.3);border-radius:10px;padding:16px">
@@ -22918,7 +22918,7 @@ function _intRenderChart(kpis) {
       datasets: [{
         label: 'Fluxo Acumulado',
         data: kpis.acum,
-        borderColor: '#00C4B4',
+        borderColor: '#5B8AFF',
         backgroundColor: (ctx) => {
           const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 220);
           g.addColorStop(0, 'rgba(0,196,180,.25)');

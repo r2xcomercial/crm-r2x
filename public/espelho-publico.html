@@ -6,25 +6,25 @@
 <title>Espelho de Vendas</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #07113A; color: #e2e8f0; min-height: 100vh; }
 
-  header { background: #1e293b; border-bottom: 1px solid #334155; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  header { background: #0A1A52; border-bottom: 1px solid #1A2E7A; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
   .logo { font-size: 20px; font-weight: 800; color: #fff; }
-  .logo span { color: #14b8a6; }
-  .atualizado { font-size: 12px; color: #64748b; text-align: right; }
-  .atualizado strong { color: #94a3b8; }
+  .logo span { color: #5B8AFF; }
+  .atualizado { font-size: 12px; color: #6E8FBB; text-align: right; }
+  .atualizado strong { color: #8BAAC8; }
 
   /* Info bar: nome do empreendimento + localização + ações */
-  .info-bar { background: #162032; border-bottom: 1px solid #1e2d42; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  .info-bar { background: #091540; border-bottom: 1px solid #0E1E68; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
   .info-bar-left { display: flex; flex-direction: column; gap: 3px; }
   .info-bar-nome { font-size: 20px; font-weight: 800; color: #f1f5f9; line-height: 1.1; }
-  .info-bar-local { font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 5px; }
+  .info-bar-local { font-size: 13px; color: #6E8FBB; display: flex; align-items: center; gap: 5px; }
   .info-bar-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .corretor-area-wrap { display: flex; align-items: center; }
 
   /* Status summary */
-  .resumo { display: flex; gap: 10px; padding: 14px 24px; flex-wrap: wrap; background: #0f172a; border-bottom: 1px solid #1e2d42; }
-  .resumo-card { flex: 1; min-width: 100px; background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 12px 14px; text-align: center; position: relative; overflow: hidden; }
+  .resumo { display: flex; gap: 10px; padding: 14px 24px; flex-wrap: wrap; background: #07113A; border-bottom: 1px solid #0E1E68; }
+  .resumo-card { flex: 1; min-width: 100px; background: #0A1A52; border: 1px solid #1A2E7A; border-radius: 10px; padding: 12px 14px; text-align: center; position: relative; overflow: hidden; }
   .resumo-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 10px 10px 0 0; }
   .resumo-card.disp::before  { background: #22c55e; }
   .resumo-card.preres::before { background: #f97316; }
@@ -33,16 +33,16 @@
   .resumo-card.total::before { background: #475569; }
   .resumo-card.indisp::before { background: #475569; }
   .resumo-card .num { font-size: 32px; font-weight: 900; line-height: 1; letter-spacing: -1px; }
-  .resumo-card .label { font-size: 11px; color: #64748b; margin-top: 5px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  .resumo-card .label { font-size: 11px; color: #6E8FBB; margin-top: 5px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
   .resumo-card.disp .num   { color: #22c55e; }
   .resumo-card.preres .num { color: #f97316; }
   .resumo-card.res .num    { color: #f59e0b; }
   .resumo-card.vend .num   { color: #ef4444; }
   .resumo-card.total .num  { color: #e2e8f0; }
-  .resumo-card.indisp .num { color: #94a3b8; }
+  .resumo-card.indisp .num { color: #8BAAC8; }
 
   /* Export toolbar */
-  .export-bar { display: none; gap: 8px; padding: 10px 24px; background: #0f172a; border-bottom: 1px solid #1e2d42; flex-wrap: wrap; align-items: center; }
+  .export-bar { display: none; gap: 8px; padding: 10px 24px; background: #07113A; border-bottom: 1px solid #0E1E68; flex-wrap: wrap; align-items: center; }
   .export-bar.visible { display: flex; }
 
   /* Action buttons (maps/drive/social/export) */
@@ -55,15 +55,15 @@
   .social-btn { display:flex; align-items:center; gap:6px; background:#c13584; color:#fff; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:700; text-decoration:none; white-space:nowrap; transition:background .15s; border:1px solid #9c2a6a; }
   .social-btn:hover { background:#9c2a6a; }
   .social-btn svg { flex-shrink:0; }
-  .export-btn { display:none; align-items:center; gap:6px; background:#475569; color:#fff; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; transition:background .15s; border:1px solid #334155; }
-  .export-btn:hover { background:#334155; }
+  .export-btn { display:none; align-items:center; gap:6px; background:#475569; color:#fff; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:700; cursor:pointer; white-space:nowrap; transition:background .15s; border:1px solid #1A2E7A; }
+  .export-btn:hover { background:#1A2E7A; }
   .export-btn svg { flex-shrink:0; }
 
   /* Login corretor */
   .corretor-logado { display:flex; align-items:center; gap:8px; font-size:12px; color:#4ade80; font-weight:600; white-space:nowrap; flex-wrap:wrap; }
-  .corretor-logado button { background:transparent; border:1px solid #334155; border-radius:6px; color:#94a3b8; font-size:11px; padding:4px 8px; cursor:pointer; }
-  .btn-painel { display:inline-flex; align-items:center; gap:5px; background:#14b8a6; color:#fff; border:none; border-radius:7px; padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer; text-decoration:none; white-space:nowrap; transition:background .15s; }
-  .btn-painel:hover { background:#0d9488; }
+  .corretor-logado button { background:transparent; border:1px solid #1A2E7A; border-radius:6px; color:#8BAAC8; font-size:11px; padding:4px 8px; cursor:pointer; }
+  .btn-painel { display:inline-flex; align-items:center; gap:5px; background:#5B8AFF; color:#fff; border:none; border-radius:7px; padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer; text-decoration:none; white-space:nowrap; transition:background .15s; }
+  .btn-painel:hover { background:#2E5FD4; }
   /* Banners flutuantes de pré-reservas pendentes — canto inferior direito */
   #pix-banners-container {
     position:fixed; bottom:16px; right:16px;
@@ -95,42 +95,42 @@
 
   /* Botão flutuante de cadastrar cliente */
   #fab-lead { position:fixed; bottom:24px; right:20px; z-index:800; display:flex; align-items:center; gap:8px;
-    background:#14b8a6; color:#fff; border:none; border-radius:50px; padding:13px 20px; font-size:14px; font-weight:700;
+    background:#5B8AFF; color:#fff; border:none; border-radius:50px; padding:13px 20px; font-size:14px; font-weight:700;
     cursor:pointer; box-shadow:0 4px 20px rgba(0,0,0,.35); transition:transform .15s, background .15s; }
-  #fab-lead:hover { background:#0d9488; transform:scale(1.04); }
+  #fab-lead:hover { background:#2E5FD4; transform:scale(1.04); }
   #fab-lead:active { transform:scale(.97); }
   @media(max-width:480px) { #fab-lead { padding:12px 16px; font-size:13px; bottom:16px; right:14px; } }
 
   /* Tela de login fullscreen */
-  #login-wall { display:none; position:fixed; inset:0; background:#0f172a; z-index:9999; align-items:center; justify-content:center; }
+  #login-wall { display:none; position:fixed; inset:0; background:#07113A; z-index:9999; align-items:center; justify-content:center; }
   #login-wall.active { display:flex; }
-  .login-card { background:#1e293b; border:1px solid #334155; border-radius:16px; padding:36px 32px; width:100%; max-width:380px; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+  .login-card { background:#0A1A52; border:1px solid #1A2E7A; border-radius:16px; padding:36px 32px; width:100%; max-width:380px; box-shadow:0 20px 60px rgba(0,0,0,.5); }
   .login-card .login-logo { font-size:22px; font-weight:900; color:#fff; margin-bottom:4px; }
-  .login-card .login-logo span { color:#14b8a6; }
-  .login-card .login-sub { font-size:13px; color:#64748b; margin-bottom:28px; }
-  .login-card label { display:block; font-size:12px; color:#94a3b8; margin-bottom:5px; margin-top:14px; }
-  .login-card input { width:100%; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0; font-size:14px; padding:11px 14px; outline:none; font-family:inherit; transition:border .15s; }
-  .login-card input:focus { border-color:#14b8a6; }
+  .login-card .login-logo span { color:#5B8AFF; }
+  .login-card .login-sub { font-size:13px; color:#6E8FBB; margin-bottom:28px; }
+  .login-card label { display:block; font-size:12px; color:#8BAAC8; margin-bottom:5px; margin-top:14px; }
+  .login-card input { width:100%; background:#07113A; border:1px solid #1A2E7A; border-radius:8px; color:#e2e8f0; font-size:14px; padding:11px 14px; outline:none; font-family:inherit; transition:border .15s; }
+  .login-card input:focus { border-color:#5B8AFF; }
   .login-card .login-err { color:#f87171; font-size:12px; margin-top:10px; display:none; }
-  .login-card .login-btn { width:100%; margin-top:20px; padding:12px; border-radius:10px; background:#14b8a6; color:#fff; font-size:14px; font-weight:700; border:none; cursor:pointer; transition:background .15s; }
-  .login-card .login-btn:hover { background:#0d9488; }
+  .login-card .login-btn { width:100%; margin-top:20px; padding:12px; border-radius:10px; background:#5B8AFF; color:#fff; font-size:14px; font-weight:700; border:none; cursor:pointer; transition:background .15s; }
+  .login-card .login-btn:hover { background:#2E5FD4; }
   .login-card .login-btn:disabled { opacity:.6; cursor:default; }
 
   /* Modal genérico */
   .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:200; align-items:flex-start; justify-content:center; padding:16px; overflow-y:auto; }
   .modal-overlay.open { display:flex; }
-  .modal-box { background:#1e293b; border:1px solid #334155; border-radius:14px; padding:24px; width:100%; max-width:480px; margin:auto; }
+  .modal-box { background:#0A1A52; border:1px solid #1A2E7A; border-radius:14px; padding:24px; width:100%; max-width:480px; margin:auto; }
   .modal-box.wide { max-width:560px; }
   .modal-box h3 { font-size:16px; font-weight:700; margin-bottom:16px; }
-  .modal-box label { display:block; font-size:11px; color:#94a3b8; margin-bottom:3px; margin-top:10px; text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
-  .modal-box input, .modal-box textarea, .modal-box select { width:100%; background:#0f172a; border:1px solid #334155; border-radius:8px; color:#e2e8f0; font-size:13px; padding:9px 12px; outline:none; font-family:inherit; box-sizing:border-box; }
-  .modal-box input:focus, .modal-box textarea:focus, .modal-box select:focus { border-color:#14b8a6; }
+  .modal-box label { display:block; font-size:11px; color:#8BAAC8; margin-bottom:3px; margin-top:10px; text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
+  .modal-box input, .modal-box textarea, .modal-box select { width:100%; background:#07113A; border:1px solid #1A2E7A; border-radius:8px; color:#e2e8f0; font-size:13px; padding:9px 12px; outline:none; font-family:inherit; box-sizing:border-box; }
+  .modal-box input:focus, .modal-box textarea:focus, .modal-box select:focus { border-color:#5B8AFF; }
   .modal-box textarea { resize:vertical; min-height:70px; }
   .modal-btns { display:flex; gap:8px; margin-top:16px; }
   .modal-btns button { flex:1; padding:10px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; border:none; }
-  .btn-cancel { background:#334155; color:#94a3b8; }
-  .btn-confirm { background:#14b8a6; color:#fff; }
-  .btn-confirm:hover { background:#0d9488; }
+  .btn-cancel { background:#1A2E7A; color:#8BAAC8; }
+  .btn-confirm { background:#5B8AFF; color:#fff; }
+  .btn-confirm:hover { background:#2E5FD4; }
   .modal-err { color:#f87171; font-size:12px; margin-top:6px; min-height:16px; }
   .modal-ok  { color:#4ade80; font-size:12px; margin-top:6px; min-height:16px; }
 
@@ -158,10 +158,10 @@
     50%     { opacity:.75; box-shadow:0 0 12px rgba(234,179,8,.6); }
   }
   .marcador.entregue    { background: #ef4444; }
-  .marcador.indisponivel { background: #64748b; }
+  .marcador.indisponivel { background: #6E8FBB; }
   .marcador .tip {
     display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
-    background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+    background: #07113A; border: 1px solid #1A2E7A; border-radius: 6px;
     padding: 6px 10px; white-space: nowrap; font-size: 11px; z-index: 20;
     pointer-events: none; line-height: 1.5;
   }
@@ -169,7 +169,7 @@
 
   /* Grade de tiles */
   .grade-section { margin-top: 0; }
-  .grade-titulo { font-size: 14px; font-weight: 600; color: #94a3b8; margin-bottom: 12px; }
+  .grade-titulo { font-size: 14px; font-weight: 600; color: #8BAAC8; margin-bottom: 12px; }
   .grade {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
@@ -194,10 +194,10 @@
   .tile.reservado   { background: #431407; border-color: #f97316; color: #fdba74; }
   .tile.vendido     { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
   .tile.entregue    { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
-  .tile.indisponivel { background: #1e293b; border-color: #64748b; color: #94a3b8; }
+  .tile.indisponivel { background: #0A1A52; border-color: #6E8FBB; color: #8BAAC8; }
   .tile .tip2 {
     display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
-    background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+    background: #0A1A52; border: 1px solid #1A2E7A; border-radius: 6px;
     padding: 6px 10px; white-space: nowrap; font-size: 11px; z-index: 20;
     pointer-events: none; line-height: 1.5; color: #e2e8f0;
   }
@@ -205,14 +205,14 @@
 
   /* Legenda */
   .legenda { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0 20px; align-items: center; }
-  .leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; }
+  .leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #8BAAC8; }
   .leg-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
   .leg-dot.disponivel   { background: #22c55e; }
   .leg-dot.pre_reserva  { background: #eab308; }
   .leg-dot.reservado    { background: #f97316; }
   .leg-dot.vendido      { background: #ef4444; }
   .leg-dot.entregue     { background: #8b5cf6; }
-  .leg-dot.indisponivel { background: #64748b; }
+  .leg-dot.indisponivel { background: #6E8FBB; }
   .leg-sim-hint { margin-left: auto; font-size: 11px; color: #475569; display: flex; align-items: center; gap: 5px; }
 
   /* Modal de simulação */
@@ -221,18 +221,18 @@
     display: flex; align-items: center; justify-content: center; padding: 16px;
   }
   .sim-modal {
-    background: #1e293b; border: 1px solid #334155; border-radius: 14px;
+    background: #0A1A52; border: 1px solid #1A2E7A; border-radius: 14px;
     max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto;
     box-shadow: 0 24px 48px rgba(0,0,0,.6);
   }
   .sim-head {
-    padding: 18px 20px 14px; border-bottom: 1px solid #334155;
+    padding: 18px 20px 14px; border-bottom: 1px solid #1A2E7A;
     display: flex; justify-content: space-between; align-items: flex-start;
   }
   .sim-head-left .sim-title { font-size: 17px; font-weight: 800; color: #f1f5f9; }
-  .sim-head-left .sim-sub   { font-size: 12px; color: #64748b; margin-top: 2px; }
+  .sim-head-left .sim-sub   { font-size: 12px; color: #6E8FBB; margin-top: 2px; }
   .sim-close {
-    background: none; border: none; color: #64748b; font-size: 20px; cursor: pointer;
+    background: none; border: none; color: #6E8FBB; font-size: 20px; cursor: pointer;
     padding: 0 4px; line-height: 1; flex-shrink: 0; margin-left: 12px;
   }
   .sim-close:hover { color: #e2e8f0; }
@@ -241,75 +241,75 @@
     display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
   }
   .sim-info-cell {
-    background: #0f172a; border-radius: 8px; padding: 10px 12px;
+    background: #07113A; border-radius: 8px; padding: 10px 12px;
   }
-  .sim-info-cell .lbl { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
+  .sim-info-cell .lbl { font-size: 10px; color: #6E8FBB; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px; }
   .sim-info-cell .val { font-size: 15px; font-weight: 700; color: #e2e8f0; }
-  .sim-info-cell .val.price { color: #14b8a6; font-size: 17px; }
+  .sim-info-cell .val.price { color: #5B8AFF; font-size: 17px; }
   .sim-section-title {
-    font-size: 11px; color: #64748b; text-transform: uppercase;
+    font-size: 11px; color: #6E8FBB; text-transform: uppercase;
     letter-spacing: .07em; margin-bottom: 8px; font-weight: 600;
   }
   .sim-entrada-box {
-    background: #0f172a; border-radius: 8px; padding: 12px 14px;
+    background: #07113A; border-radius: 8px; padding: 12px 14px;
   }
   .sim-entrada-row { display: flex; justify-content: space-between; align-items: baseline; }
   .sim-entrada-total { font-size: 16px; font-weight: 800; color: #fbbf24; }
-  .sim-entrada-detalhe { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+  .sim-entrada-detalhe { font-size: 12px; color: #8BAAC8; margin-top: 4px; }
   .sim-cond-card {
-    background: #0f172a; border-radius: 8px; padding: 12px 14px;
-    border-left: 3px solid #334155;
+    background: #07113A; border-radius: 8px; padding: 12px 14px;
+    border-left: 3px solid #1A2E7A;
   }
-  .sim-cond-card.first { border-left-color: #14b8a6; }
+  .sim-cond-card.first { border-left-color: #5B8AFF; }
   .sim-cond-label { font-size: 13px; font-weight: 700; color: #e2e8f0; margin-bottom: 6px; }
   .sim-cond-rows { display: flex; flex-direction: column; gap: 3px; }
   .sim-cond-row  { display: flex; justify-content: space-between; font-size: 12px; }
-  .sim-cond-key  { color: #94a3b8; }
+  .sim-cond-key  { color: #8BAAC8; }
   .sim-cond-val  { color: #e2e8f0; font-weight: 600; }
-  .sim-cond-total-row { display: flex; justify-content: space-between; font-size: 13px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #1e293b; }
-  .sim-cond-total-lbl { color: #64748b; font-weight: 600; }
+  .sim-cond-total-row { display: flex; justify-content: space-between; font-size: 13px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #0A1A52; }
+  .sim-cond-total-lbl { color: #6E8FBB; font-weight: 600; }
   .sim-cond-total-val { color: #e2e8f0; font-weight: 800; }
-  .sim-no-params { background: #0f172a; border-radius: 8px; padding: 14px; font-size: 13px; color: #64748b; text-align: center; }
+  .sim-no-params { background: #07113A; border-radius: 8px; padding: 14px; font-size: 13px; color: #6E8FBB; text-align: center; }
   .sim-foot {
-    padding: 14px 20px; border-top: 1px solid #334155;
+    padding: 14px 20px; border-top: 1px solid #1A2E7A;
     display: flex; gap: 10px; justify-content: flex-end;
   }
   .btn-sim { padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
-  .btn-sim.secondary { background: #334155; color: #e2e8f0; }
+  .btn-sim.secondary { background: #1A2E7A; color: #e2e8f0; }
   .btn-sim.secondary:hover { background: #475569; }
-  .btn-sim.primary { background: #0d9488; color: #fff; }
+  .btn-sim.primary { background: #2E5FD4; color: #fff; }
   .btn-sim.primary:hover { background: #0f766e; }
   .sim-aviso { font-size: 10px; color: #475569; text-align: center; padding: 0 20px 14px; }
   /* Botão WhatsApp */
   .btn-sim.wa { background: #25d366; color: #fff; }
   .btn-sim.wa:hover { background: #1ebe5e; }
   /* Botão principal de reserva */
-  .btn-reservar-principal { display: block; width: 100%; padding: 14px 20px; font-size: 15px; font-weight: 800; background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%); color: #fff; border: none; border-radius: 10px; cursor: pointer; letter-spacing: .02em; box-shadow: 0 4px 14px rgba(13,148,136,.35); transition: transform .15s, box-shadow .15s; }
-  .btn-reservar-principal:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(13,148,136,.5); background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); }
+  .btn-reservar-principal { display: block; width: 100%; padding: 14px 20px; font-size: 15px; font-weight: 800; background: linear-gradient(135deg, #2E5FD4 0%, #0f766e 100%); color: #fff; border: none; border-radius: 10px; cursor: pointer; letter-spacing: .02em; box-shadow: 0 4px 14px rgba(13,148,136,.35); transition: transform .15s, box-shadow .15s; }
+  .btn-reservar-principal:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(13,148,136,.5); background: linear-gradient(135deg, #5B8AFF 0%, #2E5FD4 100%); }
   /* Campos do formulário de proposta */
   .sim-field { display: flex; flex-direction: column; gap: 5px; }
-  .sim-field label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
-  .sim-field input, .sim-field textarea { background: #0f172a; border: 1px solid #334155; border-radius: 7px; color: #e2e8f0; font-size: 13px; padding: 8px 12px; width: 100%; font-family: inherit; }
-  .sim-field input:focus, .sim-field textarea:focus { outline: none; border-color: #14b8a6; }
+  .sim-field label { font-size: 10px; color: #6E8FBB; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  .sim-field input, .sim-field textarea { background: #07113A; border: 1px solid #1A2E7A; border-radius: 7px; color: #e2e8f0; font-size: 13px; padding: 8px 12px; width: 100%; font-family: inherit; }
+  .sim-field input:focus, .sim-field textarea:focus { outline: none; border-color: #5B8AFF; }
   .sim-field textarea { resize: vertical; min-height: 80px; }
 
   /* Contador regressivo */
   .refresh-bar { text-align: center; font-size: 11px; color: #475569; padding: 8px 0 4px; }
-  .refresh-bar span { color: #14b8a6; font-weight: 600; }
+  .refresh-bar span { color: #5B8AFF; font-weight: 600; }
 
-  .loading { text-align: center; padding: 80px 24px; color: #64748b; }
+  .loading { text-align: center; padding: 80px 24px; color: #6E8FBB; }
   .erro    { text-align: center; padding: 60px 24px; color: #ef4444; }
 
   /* Vista de prédio (building sales map) */
   .predio-wrap { margin-top: 0; }
   .predio-vso { margin-bottom: 16px; }
-  .predio-vso-bar { height: 7px; border-radius: 4px; background: #1e293b; overflow: hidden; display: flex; margin-bottom: 6px; }
+  .predio-vso-bar { height: 7px; border-radius: 4px; background: #0A1A52; overflow: hidden; display: flex; margin-bottom: 6px; }
   .predio-vso-bar > div { height: 100%; transition: width .5s ease; }
   .predio-vso-labels { display: flex; gap: 16px; font-size: 11px; flex-wrap: wrap; }
-  .predio-frame { border: 1px solid #334155; border-radius: 10px; overflow: hidden; }
-  .predio-andar { display: flex; align-items: stretch; border-bottom: 1px solid #1e293b; }
+  .predio-frame { border: 1px solid #1A2E7A; border-radius: 10px; overflow: hidden; }
+  .predio-andar { display: flex; align-items: stretch; border-bottom: 1px solid #0A1A52; }
   .predio-andar:last-child { border-bottom: none; }
-  .predio-label { width: 58px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 4px; background: #0f172a; border-right: 1px solid #1e293b; gap: 2px; }
+  .predio-label { width: 58px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 4px; background: #07113A; border-right: 1px solid #0A1A52; gap: 2px; }
   .predio-num { font-size: 14px; font-weight: 700; color: #f1f5f9; font-variant-numeric: tabular-nums; }
   .predio-tag { font-size: 9px; color: #475569; text-transform: uppercase; letter-spacing: .05em; }
   .predio-units { flex: 1; display: flex; gap: 8px; padding: 8px 12px; align-items: stretch; background: #0c1322; }
@@ -325,12 +325,12 @@
   .predio-unit.reservado   { background: #431407; border-color: #f97316; color: #fdba74; }
   .predio-unit.vendido     { background: #7f1d1d; border-color: #ef4444; color: #fca5a5; }
   .predio-unit.entregue    { background: #4c1d95; border-color: #a78bfa; color: #c4b5fd; }
-  .predio-unit.indisponivel { background: #1e293b; border-color: #475569; color: #64748b; }
+  .predio-unit.indisponivel { background: #0A1A52; border-color: #475569; color: #6E8FBB; }
   .predio-unit-num  { font-size: 14px; font-weight: 700; line-height: 1; }
   .predio-unit-area { font-size: 10px; opacity: .7; margin-top: 2px; }
   .predio-unit .tip2 {
     display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
-    background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+    background: #0A1A52; border: 1px solid #1A2E7A; border-radius: 6px;
     padding: 6px 10px; white-space: nowrap; font-size: 11px; z-index: 20;
     pointer-events: none; line-height: 1.5; color: #e2e8f0;
   }
@@ -448,11 +448,11 @@
     <input id="login-senha" type="password" placeholder="••••••••" autocomplete="current-password">
     <div id="login-err" class="login-err"></div>
     <button class="login-btn" id="login-submit-btn" onclick="fazerLogin()">Entrar</button>
-    <div style="text-align:center;margin-top:14px;font-size:12px;color:#64748b">
+    <div style="text-align:center;margin-top:14px;font-size:12px;color:#6E8FBB">
       Não tem cadastro?
       <a id="link-solicitar-acesso" href="#" onclick="irParaCadastro(event)" style="color:#00c4b4;text-decoration:none;font-weight:600">Solicitar Acesso</a>
     </div>
-    <div style="text-align:center;margin-top:8px;font-size:12px;color:#64748b">
+    <div style="text-align:center;margin-top:8px;font-size:12px;color:#6E8FBB">
       Esqueceu a senha?
       <a href="https://wa.me/5548988228031?text=Ol%C3%A1%2C%20preciso%20redefinir%20minha%20senha%20no%20espelho%20da%20R2X." target="_blank" style="color:#00c4b4;text-decoration:none;font-weight:600">Fale com a R2X</a>
     </div>
@@ -464,18 +464,18 @@
   <div class="modal-box wide">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <h3 style="margin:0">📋 Cadastrar Cliente</h3>
-      <button onclick="fecharModal('modal-lead')" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;padding:4px">✕</button>
+      <button onclick="fecharModal('modal-lead')" style="background:none;border:none;color:#6E8FBB;font-size:18px;cursor:pointer;padding:4px">✕</button>
     </div>
-    <p id="lead-unidade-desc" style="font-size:12px;color:#14b8a6;margin:0 0 14px;font-weight:600"></p>
+    <p id="lead-unidade-desc" style="font-size:12px;color:#5B8AFF;margin:0 0 14px;font-weight:600"></p>
 
     <!-- Toggle PF / PJ -->
     <div style="display:flex;gap:6px;margin-bottom:16px" id="lead-tipo-toggle">
       <button id="ep-btn-pf" onclick="_epTipoPessoa('pf')"
-        style="flex:1;padding:9px;border-radius:8px;border:2px solid #14b8a6;background:rgba(20,184,166,.12);color:#14b8a6;font-size:13px;font-weight:700;cursor:pointer">
+        style="flex:1;padding:9px;border-radius:8px;border:2px solid #5B8AFF;background:rgba(20,184,166,.12);color:#5B8AFF;font-size:13px;font-weight:700;cursor:pointer">
         👤 Pessoa Física
       </button>
       <button id="ep-btn-pj" onclick="_epTipoPessoa('pj')"
-        style="flex:1;padding:9px;border-radius:8px;border:1px solid #334155;background:none;color:#64748b;font-size:13px;cursor:pointer">
+        style="flex:1;padding:9px;border-radius:8px;border:1px solid #1A2E7A;background:none;color:#6E8FBB;font-size:13px;cursor:pointer">
         🏢 Pessoa Jurídica
       </button>
     </div>
@@ -505,7 +505,7 @@
         </div>
         <div>
           <label>Estado Civil</label>
-          <select id="ep-pf-ec" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:13px;padding:9px 12px;font-family:inherit">
+          <select id="ep-pf-ec" style="width:100%;background:#07113A;border:1px solid #1A2E7A;border-radius:8px;color:#e2e8f0;font-size:13px;padding:9px 12px;font-family:inherit">
             <option value="">— Selecione —</option>
             <option>solteiro</option><option>casado</option><option>divorciado</option>
             <option>viuvo</option><option>uniao_estavel</option>
@@ -569,7 +569,7 @@
           <label>E-mail *</label>
           <input id="ep-pj-email" type="email" placeholder="contato@empresa.com">
         </div>
-        <div style="grid-column:1/-1;border-top:1px solid #334155;padding-top:10px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-top:4px">Representante Legal</div>
+        <div style="grid-column:1/-1;border-top:1px solid #1A2E7A;padding-top:10px;font-size:11px;font-weight:700;color:#6E8FBB;text-transform:uppercase;letter-spacing:.5px;margin-top:4px">Representante Legal</div>
         <div style="grid-column:1/-1">
           <label>Nome do Responsável *</label>
           <input id="ep-pj-rep-nome" type="text" placeholder="Nome completo">
@@ -582,7 +582,7 @@
           <label>Cargo</label>
           <input id="ep-pj-rep-cargo" type="text" placeholder="Sócio, Diretor...">
         </div>
-        <div style="grid-column:1/-1;border-top:1px solid #334155;padding-top:10px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-top:4px">Endereço da Empresa</div>
+        <div style="grid-column:1/-1;border-top:1px solid #1A2E7A;padding-top:10px;font-size:11px;font-weight:700;color:#6E8FBB;text-transform:uppercase;letter-spacing:.5px;margin-top:4px">Endereço da Empresa</div>
         <div>
           <label>CEP</label>
           <input id="ep-pj-cep" type="text" placeholder="00000-000" oninput="_epBuscarCep('pj',this)">
@@ -623,12 +623,12 @@
     </div>
 
     <!-- Seção pós-cadastro: reservar + proposta -->
-    <div id="lead-proposta-section" style="display:none;margin-top:12px;border-top:1px solid #334155;padding-top:14px">
+    <div id="lead-proposta-section" style="display:none;margin-top:12px;border-top:1px solid #1A2E7A;padding-top:14px">
       <div style="font-size:13px;font-weight:700;color:#34d399;margin-bottom:4px">✅ Cliente cadastrado!</div>
-      <div style="font-size:12px;color:#94a3b8;margin-bottom:12px">Selecione as condições de pagamento e confirme a reserva:</div>
+      <div style="font-size:12px;color:#8BAAC8;margin-bottom:12px">Selecione as condições de pagamento e confirme a reserva:</div>
       <div id="lead-conds-html" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
       <div id="lead-proposta-err" class="modal-err"></div>
-      <button id="lead-proposta-btn" onclick="reservarEEnviarProposta()" style="display:block;width:100%;padding:14px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;border:none;border-radius:10px;cursor:pointer;margin-bottom:8px;box-shadow:0 4px 14px rgba(13,148,136,.35)">🏠 Pré-reservar + Proposta</button>
+      <button id="lead-proposta-btn" onclick="reservarEEnviarProposta()" style="display:block;width:100%;padding:14px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#2E5FD4,#0f766e);color:#fff;border:none;border-radius:10px;cursor:pointer;margin-bottom:8px;box-shadow:0 4px 14px rgba(13,148,136,.35)">🏠 Pré-reservar + Proposta</button>
       <button class="btn-cancel" style="display:block;width:100%" onclick="fecharModal('modal-lead')">Só cadastrar, reservar depois</button>
     </div>
   </div>
@@ -637,43 +637,43 @@
 <!-- Modal: Reservar unidade (seleção de cliente + condições) -->
 <style>
 .res-autocomplete-wrap { position:relative; margin-bottom:4px; }
-.res-autocomplete-wrap input { width:100%;background:#0f172a;border:1px solid #334155;border-radius:10px;color:#e2e8f0;font-size:14px;padding:11px 40px 11px 14px;outline:none;font-family:inherit;box-sizing:border-box;transition:border-color .15s; }
-.res-autocomplete-wrap input:focus { border-color:#14b8a6; }
+.res-autocomplete-wrap input { width:100%;background:#07113A;border:1px solid #1A2E7A;border-radius:10px;color:#e2e8f0;font-size:14px;padding:11px 40px 11px 14px;outline:none;font-family:inherit;box-sizing:border-box;transition:border-color .15s; }
+.res-autocomplete-wrap input:focus { border-color:#5B8AFF; }
 .res-autocomplete-wrap .res-clear-btn { position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#475569;font-size:16px;cursor:pointer;padding:4px;line-height:1; }
-.res-dropdown { position:absolute;top:calc(100% + 4px);left:0;right:0;background:#1e293b;border:1px solid #334155;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:200;max-height:220px;overflow-y:auto;display:none; }
+.res-dropdown { position:absolute;top:calc(100% + 4px);left:0;right:0;background:#0A1A52;border:1px solid #1A2E7A;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:200;max-height:220px;overflow-y:auto;display:none; }
 .res-dropdown.open { display:block; }
 .res-drop-item { display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid rgba(51,65,85,.5);transition:background .1s; }
 .res-drop-item:last-child { border-bottom:none; }
 .res-drop-item:hover, .res-drop-item.focused { background:rgba(20,184,166,.08); }
 .res-drop-item .res-drop-avatar { width:32px;height:32px;border-radius:50%;background:rgba(20,184,166,.12);border:1px solid rgba(20,184,166,.25);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0; }
 .res-drop-item .res-drop-name { font-size:13px;font-weight:700;color:#e2e8f0; }
-.res-drop-item .res-drop-sub { font-size:11px;color:#64748b;margin-top:1px; }
+.res-drop-item .res-drop-sub { font-size:11px;color:#6E8FBB;margin-top:1px; }
 .res-selected-chip { display:none;align-items:center;gap:10px;background:rgba(20,184,166,.08);border:1.5px solid rgba(20,184,166,.4);border-radius:10px;padding:10px 14px;margin-top:4px; }
 .res-selected-chip.show { display:flex; }
 .res-selected-chip .chip-name { font-size:14px;font-weight:700;color:#e2e8f0;flex:1; }
-.res-selected-chip .chip-change { font-size:11px;color:#14b8a6;cursor:pointer;text-decoration:underline;white-space:nowrap; }
-.res-cond-card { display:flex;align-items:center;gap:12px;background:#0f172a;border:2px solid #334155;border-radius:10px;padding:12px 14px;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:6px; }
-.res-cond-card.selected { border-color:#14b8a6;background:rgba(20,184,166,.06); }
-.res-cond-card .cond-radio { width:18px;height:18px;border-radius:50%;border:2px solid #334155;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:border-color .15s; }
-.res-cond-card.selected .cond-radio { border-color:#14b8a6; }
-.res-cond-card.selected .cond-radio::after { content:'';width:8px;height:8px;border-radius:50%;background:#14b8a6;display:block; }
+.res-selected-chip .chip-change { font-size:11px;color:#5B8AFF;cursor:pointer;text-decoration:underline;white-space:nowrap; }
+.res-cond-card { display:flex;align-items:center;gap:12px;background:#07113A;border:2px solid #1A2E7A;border-radius:10px;padding:12px 14px;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:6px; }
+.res-cond-card.selected { border-color:#5B8AFF;background:rgba(20,184,166,.06); }
+.res-cond-card .cond-radio { width:18px;height:18px;border-radius:50%;border:2px solid #1A2E7A;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:border-color .15s; }
+.res-cond-card.selected .cond-radio { border-color:#5B8AFF; }
+.res-cond-card.selected .cond-radio::after { content:'';width:8px;height:8px;border-radius:50%;background:#5B8AFF;display:block; }
 .res-cond-grid { display:grid;grid-template-columns:1fr auto;gap:2px 12px;flex:1; }
 .res-cond-label { font-size:13px;font-weight:700;color:#e2e8f0;grid-column:1/-1; }
-.res-cond-key { font-size:11px;color:#64748b; }
-.res-cond-val { font-size:11px;color:#94a3b8;text-align:right; }
+.res-cond-key { font-size:11px;color:#6E8FBB; }
+.res-cond-val { font-size:11px;color:#8BAAC8;text-align:right; }
 .res-cond-val.accent { color:#34d399;font-weight:700; }
 </style>
 <div id="modal-reservar" class="modal-overlay" onclick="if(event.target===this)fecharModal('modal-reservar')">
   <div class="modal-box wide">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <h3 style="margin:0;font-size:16px">🏠 Pré-reserva de Unidade</h3>
-      <button onclick="fecharModal('modal-reservar')" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;padding:4px">✕</button>
+      <button onclick="fecharModal('modal-reservar')" style="background:none;border:none;color:#6E8FBB;font-size:18px;cursor:pointer;padding:4px">✕</button>
     </div>
-    <p id="reservar-unidade-desc" style="font-size:12px;color:#14b8a6;margin:0 0 16px;font-weight:600"></p>
+    <p id="reservar-unidade-desc" style="font-size:12px;color:#5B8AFF;margin:0 0 16px;font-weight:600"></p>
 
     <!-- Autocomplete de cliente -->
     <div id="reservar-search-area">
-      <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Cliente</div>
+      <div style="font-size:10px;font-weight:700;color:#6E8FBB;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Cliente</div>
       <div class="res-autocomplete-wrap">
         <input id="reservar-busca-cliente" type="text" placeholder="Digite o nome, CPF ou telefone…" autocomplete="off"
           oninput="_resAcInput()" onfocus="_resAcInput()" onkeydown="_resAcKey(event)">
@@ -685,29 +685,29 @@
     <div id="reservar-cliente-card" style="display:none;background:rgba(20,184,166,.1);border:1.5px solid rgba(20,184,166,.4);border-radius:10px;padding:12px 14px;align-items:center;gap:12px">
       <div style="font-size:22px" id="reservar-dest-avatar">👤</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:2px">Cliente selecionado</div>
+        <div style="font-size:10px;color:#6E8FBB;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:2px">Cliente selecionado</div>
         <div id="reservar-dest-nome" style="font-size:15px;font-weight:800;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
-        <div id="reservar-dest-sub" style="font-size:11px;color:#94a3b8;margin-top:2px"></div>
+        <div id="reservar-dest-sub" style="font-size:11px;color:#8BAAC8;margin-top:2px"></div>
       </div>
-      <button onclick="_resAcLimpar()" style="background:rgba(20,184,166,.15);border:1px solid rgba(20,184,166,.4);color:#14b8a6;font-size:11px;font-weight:700;border-radius:6px;padding:5px 10px;cursor:pointer;white-space:nowrap;flex-shrink:0">Trocar cliente</button>
+      <button onclick="_resAcLimpar()" style="background:rgba(20,184,166,.15);border:1px solid rgba(20,184,166,.4);color:#5B8AFF;font-size:11px;font-weight:700;border-radius:6px;padding:5px 10px;cursor:pointer;white-space:nowrap;flex-shrink:0">Trocar cliente</button>
     </div>
     <div id="reservar-cliente-err" class="modal-err"></div>
 
     <!-- Condições de pagamento (aparece após selecionar cliente) -->
-    <div id="reservar-step-condicao" style="display:none;margin-top:18px;border-top:1px solid #1e293b;padding-top:16px">
+    <div id="reservar-step-condicao" style="display:none;margin-top:18px;border-top:1px solid #0A1A52;padding-top:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em">Condição de pagamento</div>
-        <button onclick="_resAbrirEditarProposta()" style="background:none;border:none;color:#14b8a6;font-size:11px;cursor:pointer;padding:0;font-weight:700;text-decoration:underline">✏️ Editar proposta</button>
+        <div style="font-size:10px;font-weight:700;color:#6E8FBB;text-transform:uppercase;letter-spacing:.08em">Condição de pagamento</div>
+        <button onclick="_resAbrirEditarProposta()" style="background:none;border:none;color:#5B8AFF;font-size:11px;cursor:pointer;padding:0;font-weight:700;text-decoration:underline">✏️ Editar proposta</button>
       </div>
       <div id="reservar-conds-html"></div>
       <!-- Resumo da condição selecionada -->
-      <div id="reservar-resumo-cond" style="background:#0f172a;border:1px solid #334155;border-radius:10px;padding:12px 14px;margin-top:10px;display:none">
-        <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Resumo da proposta</div>
+      <div id="reservar-resumo-cond" style="background:#07113A;border:1px solid #1A2E7A;border-radius:10px;padding:12px 14px;margin-top:10px;display:none">
+        <div style="font-size:10px;font-weight:700;color:#8BAAC8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Resumo da proposta</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="reservar-resumo-grid"></div>
       </div>
       <div id="reservar-proposta-err" class="modal-err" style="margin-top:8px"></div>
-      <button id="reservar-confirmar-btn" onclick="confirmarReserva()" style="display:block;width:100%;padding:15px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;border:none;border-radius:10px;cursor:pointer;box-shadow:0 4px 14px rgba(13,148,136,.35);margin-top:14px;letter-spacing:.02em">🏠 Confirmar pré-reserva</button>
-      <button style="display:block;width:100%;margin-top:8px;background:none;border:none;color:#64748b;font-size:13px;cursor:pointer;padding:8px" onclick="fecharModal('modal-reservar')">Cancelar</button>
+      <button id="reservar-confirmar-btn" onclick="confirmarReserva()" style="display:block;width:100%;padding:15px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#2E5FD4,#0f766e);color:#fff;border:none;border-radius:10px;cursor:pointer;box-shadow:0 4px 14px rgba(13,148,136,.35);margin-top:14px;letter-spacing:.02em">🏠 Confirmar pré-reserva</button>
+      <button style="display:block;width:100%;margin-top:8px;background:none;border:none;color:#6E8FBB;font-size:13px;cursor:pointer;padding:8px" onclick="fecharModal('modal-reservar')">Cancelar</button>
     </div>
   </div>
 </div>
@@ -717,16 +717,16 @@
   <div class="modal-box">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <h3 style="margin:0">📎 Comprovante PIX</h3>
-      <button onclick="fecharModal('modal-pix-upload')" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;padding:4px">✕</button>
+      <button onclick="fecharModal('modal-pix-upload')" style="background:none;border:none;color:#6E8FBB;font-size:18px;cursor:pointer;padding:4px">✕</button>
     </div>
     <p id="pix-unidade-desc" style="font-size:12px;color:#fb923c;margin:0 0 4px;font-weight:600"></p>
-    <div id="pix-countdown-display" style="text-align:center;padding:10px 0 14px;border-bottom:1px solid #334155;margin-bottom:14px">
+    <div id="pix-countdown-display" style="text-align:center;padding:10px 0 14px;border-bottom:1px solid #1A2E7A;margin-bottom:14px">
       <div style="font-size:11px;color:#fb923c;opacity:.8;margin-bottom:2px">Tempo restante para enviar</div>
       <div id="pix-modal-countdown" style="font-size:36px;font-weight:900;font-family:monospace;color:#fb923c;letter-spacing:3px">--:--</div>
     </div>
-    <label style="display:block;font-size:11px;color:#94a3b8;margin-bottom:3px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Selecione o arquivo (imagem ou PDF)</label>
-    <input id="pix-arquivo-input" type="file" accept="image/*,.pdf" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:13px;padding:9px 12px;box-sizing:border-box">
-    <div style="font-size:11px;color:#64748b;margin-top:5px">Tamanho máximo: 8 MB</div>
+    <label style="display:block;font-size:11px;color:#8BAAC8;margin-bottom:3px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Selecione o arquivo (imagem ou PDF)</label>
+    <input id="pix-arquivo-input" type="file" accept="image/*,.pdf" style="width:100%;background:#07113A;border:1px solid #1A2E7A;border-radius:8px;color:#e2e8f0;font-size:13px;padding:9px 12px;box-sizing:border-box">
+    <div style="font-size:11px;color:#6E8FBB;margin-top:5px">Tamanho máximo: 8 MB</div>
     <div id="pix-err" class="modal-err"></div>
     <div id="pix-ok" class="modal-ok"></div>
     <div class="modal-btns" style="margin-top:14px">
@@ -741,13 +741,13 @@
   <div class="modal-box wide">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <h3 style="margin:0;font-size:16px">🔔 Fila de Espera</h3>
-      <button onclick="fecharModal('modal-fila')" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;padding:4px">✕</button>
+      <button onclick="fecharModal('modal-fila')" style="background:none;border:none;color:#6E8FBB;font-size:18px;cursor:pointer;padding:4px">✕</button>
     </div>
     <p id="fila-unidade-desc" style="font-size:12px;color:#a5b4fc;margin:0 0 12px;font-weight:600"></p>
-    <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#94a3b8;line-height:1.6">
+    <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#8BAAC8;line-height:1.6">
       Se o comprovante PIX não for enviado em 15 minutos, a reserva é cancelada e a unidade passa para o próximo da fila.
     </div>
-    <div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Cliente</div>
+    <div style="font-size:10px;font-weight:700;color:#6E8FBB;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Cliente</div>
     <div class="res-autocomplete-wrap">
       <input id="fila-busca-cliente" type="text" placeholder="Digite o nome, CPF ou telefone…" autocomplete="off"
         oninput="_filaAcInput()" onfocus="_filaAcInput()" onkeydown="_filaAcKey(event)">
@@ -758,14 +758,14 @@
       <div class="res-drop-avatar" id="fila-chip-avatar">👤</div>
       <div style="flex:1">
         <div class="chip-name" id="fila-chip-nome"></div>
-        <div style="font-size:11px;color:#64748b" id="fila-chip-sub"></div>
+        <div style="font-size:11px;color:#6E8FBB" id="fila-chip-sub"></div>
       </div>
       <span class="chip-change" onclick="_filaAcLimpar()">Trocar</span>
     </div>
     <div id="fila-err" class="modal-err" style="margin-top:8px"></div>
     <div id="fila-ok" class="modal-ok"></div>
     <button id="fila-confirmar-btn" onclick="confirmarFila()" style="display:block;width:100%;padding:15px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#4f46e5,#4338ca);color:#fff;border:none;border-radius:10px;cursor:pointer;margin-top:16px;opacity:.5" disabled>🔔 Entrar na fila</button>
-    <button style="display:block;width:100%;margin-top:8px;background:none;border:none;color:#64748b;font-size:13px;cursor:pointer;padding:8px" onclick="fecharModal('modal-fila')">Cancelar</button>
+    <button style="display:block;width:100%;margin-top:8px;background:none;border:none;color:#6E8FBB;font-size:13px;cursor:pointer;padding:8px" onclick="fecharModal('modal-fila')">Cancelar</button>
   </div>
 </div>
 
@@ -1072,7 +1072,7 @@ function abrirSimulacao(unitId) {
     ? `${reservarBtn ? `<div style="padding:10px 16px 4px">${reservarBtn}</div>` : ''}
       ${extraBtns}
       ${reservaBloqueadaMsg}
-      <div class="sim-foot" style="border-top:1px solid #1e2d42">
+      <div class="sim-foot" style="border-top:1px solid #0E1E68">
         <button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button>
         <button class="btn-sim primary" onclick="gerarPDFSimulacao(${unitId})">📄 Baixar proposta</button>
         ${propostaBtn}
@@ -1104,12 +1104,12 @@ function abrirSimulacao(unitId) {
           ${u.comprovante_prazo_expira_em ? `<div style="text-align:center">
             <div style="font-size:11px;color:#fde047;opacity:.8;margin-bottom:2px">Vence em</div>
             <div id="sim-prazo-countdown" style="font-size:32px;font-weight:900;font-family:monospace;color:#fde047;letter-spacing:3px">--:--</div>
-            <div style="font-size:11px;color:var(--text2,#94a3b8);margin-top:4px">Se o comprovante PIX não for enviado no prazo, a unidade fica disponível novamente.</div>
+            <div style="font-size:11px;color:var(--text2,#8BAAC8);margin-top:4px">Se o comprovante PIX não for enviado no prazo, a unidade fica disponível novamente.</div>
           </div>` : ''}
         </div>` : ''}
         ${u.status === 'reservado' ? `<div style="background:rgba(249,115,22,.1);border:2px solid rgba(249,115,22,.5);border-radius:10px;padding:14px;margin-bottom:14px;text-align:center">
           <div style="font-size:13px;font-weight:800;color:#fb923c;margin-bottom:6px">✅ Unidade reservada com PIX</div>
-          <div style="font-size:12px;color:#94a3b8;line-height:1.5">Comprovante de pagamento recebido.<br>Esta unidade está reservada.</div>
+          <div style="font-size:12px;color:#8BAAC8;line-height:1.5">Comprovante de pagamento recebido.<br>Esta unidade está reservada.</div>
         </div>` : ''}
         <div class="sim-info-grid">
           ${u.area_m2 ? `<div class="sim-info-cell"><div class="lbl">Área</div><div class="val">${Number(u.area_m2).toLocaleString('pt-BR', {minimumFractionDigits:2})} m²</div></div>` : ''}
@@ -1121,7 +1121,7 @@ function abrirSimulacao(unitId) {
           <div class="sim-section-title">Entrada</div>
           <div class="sim-entrada-box">
             <div class="sim-entrada-row">
-              <span style="font-size:13px;color:#94a3b8">Valor da entrada</span>
+              <span style="font-size:13px;color:#8BAAC8">Valor da entrada</span>
               <span class="sim-entrada-total">${entLabel}</span>
             </div>
             <div class="sim-entrada-detalhe">${entDetalhe}</div>
@@ -1426,7 +1426,7 @@ function gerarPDFSimulacao(unitId) {
     ${u.quadra ? `<tr><td>Quadra</td><td>${u.quadra}</td></tr>` : ''}
     <tr><td>Lote</td><td>${u.lote}</td></tr>
     ${u.area_m2 ? `<tr><td>Área</td><td>${Number(u.area_m2).toLocaleString('pt-BR', {minimumFractionDigits:2})} m²</td></tr>` : ''}
-    ${preco ? `<tr><td style="font-weight:700">Valor do Lote</td><td style="font-size:16px;color:#0d9488">${fmt0.format(preco)}</td></tr>` : ''}
+    ${preco ? `<tr><td style="font-weight:700">Valor do Lote</td><td style="font-size:16px;color:#2E5FD4">${fmt0.format(preco)}</td></tr>` : ''}
   </table>
 </div>
 
@@ -1698,7 +1698,7 @@ function ajustarMarcadores() {
 }
 
 function renderEspelhoPredio(grupoKeys, grupos) {
-  if (!grupoKeys.length) return '<div style="padding:40px;text-align:center;color:#64748b">Nenhuma unidade encontrada</div>';
+  if (!grupoKeys.length) return '<div style="padding:40px;text-align:center;color:#6E8FBB">Nenhuma unidade encontrada</div>';
 
   const extractNum = lote => {
     const m = String(lote).match(/\b(\d{1,4}[A-Za-z]?)\b/);
@@ -1731,8 +1731,8 @@ function renderEspelhoPredio(grupoKeys, grupos) {
     return '';
   });
 
-  const stClr = { disponivel:'#4ade80', reservado:'#fbbf24', vendido:'#f87171', indisponivel:'#94a3b8' };
-  const bgMap  = { disponivel:'#14532d', reservado:'#78350f', vendido:'#7f1d1d', indisponivel:'#1e293b' };
+  const stClr = { disponivel:'#4ade80', reservado:'#fbbf24', vendido:'#f87171', indisponivel:'#8BAAC8' };
+  const bgMap  = { disponivel:'#14532d', reservado:'#78350f', vendido:'#7f1d1d', indisponivel:'#0A1A52' };
   const bdMap  = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#ef4444', indisponivel:'#475569' };
 
   const thead = `<tr>
@@ -1741,7 +1741,7 @@ function renderEspelhoPredio(grupoKeys, grupos) {
       const tip = colTips[i];
       return `<th style="padding:0 4px 10px;text-align:center;min-width:72px;max-width:72px">
         <div style="font-size:11px;font-weight:700;color:#e2e8f0">${colLabels[i]}</div>
-        ${tip ? `<div style="font-size:8px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:68px">${tip}</div>` : ''}
+        ${tip ? `<div style="font-size:8px;color:#6E8FBB;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:68px">${tip}</div>` : ''}
       </th>`;
     }).join('')}
   </tr>`;
@@ -1762,8 +1762,8 @@ function renderEspelhoPredio(grupoKeys, grupos) {
       if (!u) return `<td style="padding:3px 4px"><div style="width:68px;height:58px"></div></td>`;
       const num = extractNum(u.lote);
       const tip = u.tipologia || extractTip(u.lote);
-      const clr = stClr[u.status] || '#94a3b8';
-      const bg  = bgMap[u.status]  || '#1e293b';
+      const clr = stClr[u.status] || '#8BAAC8';
+      const bg  = bgMap[u.status]  || '#0A1A52';
       const bd  = bdMap[u.status]  || '#475569';
       const tooltipLines = [`Apto ${num}`, tip, u.area_m2 ? u.area_m2 + 'm²' : '', (!window._hidePreco && u.preco && u.status === 'disponivel') ? fmt0.format(u.preco) : ''].filter(Boolean).join(' · ');
       return `<td style="padding:3px 4px">
@@ -1781,11 +1781,11 @@ function renderEspelhoPredio(grupoKeys, grupos) {
     }).join('');
 
     return `<tr>
-      <td style="padding:3px 12px 3px 0;vertical-align:middle;border-right:2px solid #1e293b">
+      <td style="padding:3px 12px 3px 0;vertical-align:middle;border-right:2px solid #0A1A52">
         <div style="text-align:right;padding-right:6px;white-space:nowrap">
           <div style="font-size:12px;font-weight:700;color:#f1f5f9">${andLabel}</div>
           <div style="font-size:8px;color:#475569;margin-top:2px;line-height:1.5">
-            <span style="color:#4ade80">${cntG.d}▪</span> <span style="color:#fbbf24">${cntG.r}▪</span> <span style="color:#f87171">${cntG.v}▪</span>${cntG.i ? ` <span style="color:#64748b">${cntG.i}▪</span>` : ''}
+            <span style="color:#4ade80">${cntG.d}▪</span> <span style="color:#fbbf24">${cntG.r}▪</span> <span style="color:#f87171">${cntG.v}▪</span>${cntG.i ? ` <span style="color:#6E8FBB">${cntG.i}▪</span>` : ''}
           </div>
         </div>
       </td>
@@ -2321,12 +2321,12 @@ function exportarTabelaEspelho() {
       : isRes
         ? 'background:#fef3c7;border-bottom:2px solid #fcd34d;border-left:4px solid #f59e0b'
         : isIndisp
-          ? 'background:#f0f4f8;border-bottom:2px solid #94a3b8;border-left:4px solid #64748b'
+          ? 'background:#f0f4f8;border-bottom:2px solid #8BAAC8;border-left:4px solid #6E8FBB'
           : 'background:#ffffff;border-bottom:2px solid #d1d5db;border-left:4px solid transparent';
     const textDeco  = isVend ? 'text-decoration:line-through' : isIndisp ? 'text-decoration:underline;opacity:.65' : '';
-    const numColor  = isRes ? '#92400e' : isVend ? '#78350f' : isIndisp ? '#64748b' : '#111827';
-    const textColor = isRes ? 'color:#92400e' : isVend ? 'color:#78350f' : isIndisp ? 'color:#64748b' : 'color:#374151';
-    const badgeBg   = isVend ? '#92400e' : isRes ? '#d97706' : isIndisp ? '#64748b' : '#16a34a';
+    const numColor  = isRes ? '#92400e' : isVend ? '#78350f' : isIndisp ? '#6E8FBB' : '#111827';
+    const textColor = isRes ? 'color:#92400e' : isVend ? 'color:#78350f' : isIndisp ? 'color:#6E8FBB' : 'color:#374151';
+    const badgeBg   = isVend ? '#92400e' : isRes ? '#d97706' : isIndisp ? '#6E8FBB' : '#16a34a';
     const badgeTxt  = isVend ? 'VENDIDO' : isRes ? 'RESERVADO' : isIndisp ? 'INDISPONÍVEL' : 'DISPONÍVEL';
     const badgeExtra = isRes ? 'box-shadow:0 0 0 2px #f59e0b' : isVend ? 'box-shadow:0 0 0 2px #92400e' : '';
     const badge = `<span style="display:inline-block;padding:2px 8px;border-radius:99px;font-size:9px;font-weight:800;background:${badgeBg};color:#fff;letter-spacing:.3px;${badgeExtra}">${badgeTxt}</span>`;
@@ -2388,7 +2388,7 @@ function exportarTabelaEspelho() {
   .header-right .data  { font-size: ${isLoteamento ? '10px' : '15px'}; font-weight: 900; color: #000; }
   .header-right .titulo { font-size: ${isLoteamento ? '7px' : '8px'}; color: #374151; text-transform: uppercase; letter-spacing: 1px; }
   table { width: 100%; border-collapse: collapse; font-size: ${isLoteamento ? '8px' : '10.5px'}; }
-  thead th { background: #0f172a !important; color: #ffffff !important; padding: ${isLoteamento ? '4px 4px 3px' : '7px 8px 6px'}; font-size: ${isLoteamento ? '7.5px' : '9.5px'}; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; vertical-align: bottom; border: 1px solid #0f172a; }
+  thead th { background: #07113A !important; color: #ffffff !important; padding: ${isLoteamento ? '4px 4px 3px' : '7px 8px 6px'}; font-size: ${isLoteamento ? '7.5px' : '9.5px'}; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; vertical-align: bottom; border: 1px solid #07113A; }
   thead th .sub { display: block; font-size: ${isLoteamento ? '6.5px' : '8.5px'}; font-weight: 400; opacity: .75; text-transform: none; letter-spacing: 0; margin-top: 1px; color: #cbd5e1; }
   thead th.right  { text-align: right; }
   thead th.center { text-align: center; }
@@ -2461,12 +2461,12 @@ function _epTipoPessoa(tipo) {
   const pfBtn = document.getElementById('ep-btn-pf'), pjBtn = document.getElementById('ep-btn-pj');
   const pfCampos = document.getElementById('ep-campos-pf'), pjCampos = document.getElementById('ep-campos-pj');
   if (tipo === 'pf') {
-    pfBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:2px solid #14b8a6;background:rgba(20,184,166,.12);color:#14b8a6;font-size:13px;font-weight:700;cursor:pointer';
-    pjBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:1px solid #334155;background:none;color:#64748b;font-size:13px;cursor:pointer';
+    pfBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:2px solid #5B8AFF;background:rgba(20,184,166,.12);color:#5B8AFF;font-size:13px;font-weight:700;cursor:pointer';
+    pjBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:1px solid #1A2E7A;background:none;color:#6E8FBB;font-size:13px;cursor:pointer';
     pfCampos.style.display = 'flex'; pjCampos.style.display = 'none';
   } else {
-    pjBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:2px solid #14b8a6;background:rgba(20,184,166,.12);color:#14b8a6;font-size:13px;font-weight:700;cursor:pointer';
-    pfBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:1px solid #334155;background:none;color:#64748b;font-size:13px;cursor:pointer';
+    pjBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:2px solid #5B8AFF;background:rgba(20,184,166,.12);color:#5B8AFF;font-size:13px;font-weight:700;cursor:pointer';
+    pfBtn.style.cssText = 'flex:1;padding:9px;border-radius:8px;border:1px solid #1A2E7A;background:none;color:#6E8FBB;font-size:13px;cursor:pointer';
     pjCampos.style.display = 'flex'; pfCampos.style.display = 'none';
   }
 }
@@ -2599,16 +2599,16 @@ async function enviarLead() {
         condsHtml = p.condicoes.map((c, i) => {
           const pmv = calcPMT(saldo, c.nParc, c.juros || 0);
           const total = entV + totalRef + c.nParc * pmv;
-          return `<label style="display:flex;align-items:flex-start;gap:8px;background:${i===0?'rgba(52,211,153,.1)':'rgba(51,65,85,.5)'};border:1px solid ${i===0?'#34d399':'#334155'};border-radius:8px;padding:8px 10px;cursor:pointer" id="lead-cond-card-${i}" onclick="selLeadCond(${i})">
+          return `<label style="display:flex;align-items:flex-start;gap:8px;background:${i===0?'rgba(52,211,153,.1)':'rgba(51,65,85,.5)'};border:1px solid ${i===0?'#34d399':'#1A2E7A'};border-radius:8px;padding:8px 10px;cursor:pointer" id="lead-cond-card-${i}" onclick="selLeadCond(${i})">
             <input type="radio" name="lead-cond" value="${i}" ${i===0?'checked':''} style="margin-top:2px">
             <div>
               <div style="font-size:12px;font-weight:700;color:#e2e8f0">${c.label || c.nParc+'x'} ${c.juros > 0 ? '· '+c.juros.toFixed(2)+'% a.m.' : '· sem juros'}</div>
-              <div style="font-size:11px;color:#94a3b8">${c.nParc}× ${fmt.format(pmv)}/mês · Total ${fmt0.format(total)}</div>
+              <div style="font-size:11px;color:#8BAAC8">${c.nParc}× ${fmt.format(pmv)}/mês · Total ${fmt0.format(total)}</div>
             </div>
           </label>`;
         }).join('');
       } else {
-        condsHtml = `<div style="font-size:12px;color:#94a3b8;padding:8px 0">Nenhuma condição pré-configurada. A reserva será registrada sem proposta específica.</div>`;
+        condsHtml = `<div style="font-size:12px;color:#8BAAC8;padding:8px 0">Nenhuma condição pré-configurada. A reserva será registrada sem proposta específica.</div>`;
       }
 
       // Ajusta label do botão de reserva conforme modo
@@ -2643,7 +2643,7 @@ function selLeadCond(idx) {
     const card = document.getElementById('lead-cond-card-' + i);
     if (!card) return;
     card.style.background = i === idx ? 'rgba(52,211,153,.1)' : 'rgba(51,65,85,.5)';
-    card.style.borderColor = i === idx ? '#34d399' : '#334155';
+    card.style.borderColor = i === idx ? '#34d399' : '#1A2E7A';
     const radio = card.querySelector('input[type=radio]');
     if (radio) radio.checked = (i === idx);
   });
@@ -2891,7 +2891,7 @@ function _resRenderCondicoes() {
     }).join('');
     _resAtualizarResumo(p, preco, entV, totalRef, saldo, 0);
   } else {
-    html = `<div style="font-size:12px;color:#64748b;padding:8px 0">Condições de pagamento ainda não configuradas.</div>`;
+    html = `<div style="font-size:12px;color:#6E8FBB;padding:8px 0">Condições de pagamento ainda não configuradas.</div>`;
     document.getElementById('reservar-resumo-cond').style.display = 'none';
   }
   document.getElementById('reservar-conds-html').innerHTML = html;
@@ -3135,7 +3135,7 @@ function _filaAcInput() {
       onmousedown="_filaAcSelect(${c.id})" onmouseover="this.classList.add('focused');" onmouseout="this.classList.remove('focused');">
       <div class="res-drop-avatar">${c.tipo_pessoa==='pj'?'🏢':'👤'}</div>
       <div><div style="font-size:13px;font-weight:700;color:#e2e8f0">${c.nome||'(sem nome)'}</div>
-      <div style="font-size:11px;color:#64748b">${c.telefone||''} ${c.cpf?'· '+c.cpf:''}</div></div>
+      <div style="font-size:11px;color:#6E8FBB">${c.telefone||''} ${c.cpf?'· '+c.cpf:''}</div></div>
     </div>`).join('');
   dd.classList.add('open');
 }
