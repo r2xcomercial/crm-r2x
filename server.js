@@ -5818,6 +5818,57 @@ app.get('/api/exportar/leads', (req, res) => {
   res.send(buf);
 });
 
+app.get('/api/exportar/contatos', autenticar, (req, res) => {
+  const leads = db.prepare(`
+    SELECT
+      l.nome          AS "Nome",
+      l.telefone      AS "Telefone",
+      l.email         AS "E-mail",
+      l.cpf           AS "CPF",
+      l.cidade        AS "Cidade",
+      l.estado        AS "Estado",
+      l.status        AS "Status",
+      l.origem        AS "Origem",
+      l.objetivo      AS "Objetivo",
+      l.faixa_investimento AS "Faixa de Investimento",
+      l.estado_civil  AS "Estado Civil",
+      l.profissao     AS "Profissão",
+      l.aniversario   AS "Aniversário",
+      l.observacoes   AS "Observações",
+      c.nome          AS "Corretor",
+      e.nome          AS "Empreendimento",
+      l.criado_em     AS "Cadastrado em"
+    FROM leads l
+    LEFT JOIN corretores c ON c.id = l.corretor_id
+    LEFT JOIN empreendimentos e ON e.id = l.empreendimento_id
+    ORDER BY l.criado_em DESC
+  `).all();
+
+  const corretores = db.prepare(`
+    SELECT
+      c.nome          AS "Nome",
+      c.telefone      AS "Telefone",
+      c.email         AS "E-mail",
+      c.cpf           AS "CPF",
+      c.creci         AS "CRECI",
+      c.imobiliaria   AS "Imobiliária",
+      c.cidade        AS "Cidade",
+      c.estado        AS "Estado",
+      CASE WHEN c.ativo=1 THEN 'Ativo' ELSE 'Inativo' END AS "Status",
+      c.criado_em     AS "Cadastrado em"
+    FROM corretores c
+    ORDER BY c.nome ASC
+  `).all();
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(leads),     'Leads');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(corretores),'Corretores');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="contatos-${new Date().toISOString().slice(0,10)}.xlsx"`);
+  res.send(buf);
+});
+
 app.get('/api/exportar/vendas', (req, res) => {
   const { emp, mes, incorporador } = req.query;
   const conditions = ['1=1'];
