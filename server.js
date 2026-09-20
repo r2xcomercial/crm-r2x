@@ -3554,9 +3554,19 @@ app.post('/api/lancamento/:empId/fila', autenticar, (req, res) => {
   if (unidade.status === 'disponivel') return err(res, 'Unidade disponível — reserve diretamente ao invés de entrar na fila');
   if (unidade.status === 'vendido') return err(res, 'Unidade já vendida. Não é possível entrar na fila.');
 
-  // Não pode entrar 2x na mesma fila
-  const jaEsta = db.prepare("SELECT id FROM reserva_fila WHERE unidade_id=? AND corretor_id=? AND status IN ('aguardando','notificado')").get(unidade_id, u?.corretor_id || 0);
-  if (jaEsta) return err(res, 'Você já está na fila desta unidade');
+  // Corretor só pode ter UMA entrada ativa em qualquer fila do empreendimento
+  if (u?.perfil === 'corretor' && u?.corretor_id) {
+    const jaEmFila = db.prepare(`
+      SELECT rf.id, u2.lote, u2.quadra FROM reserva_fila rf
+      JOIN unidades u2 ON u2.id = rf.unidade_id
+      WHERE rf.corretor_id=? AND rf.empreendimento_id=? AND rf.status IN ('aguardando','notificado')
+      LIMIT 1
+    `).get(u.corretor_id, empId);
+    if (jaEmFila) {
+      const loc = jaEmFila.lote ? `Lote ${jaEmFila.lote}${jaEmFila.quadra ? ' Qd '+jaEmFila.quadra : ''}` : 'outra unidade';
+      return err(res, `Você já tem um cliente na fila de ${loc}. Remova-o antes de entrar em outra fila.`);
+    }
+  }
 
   const posicao = (db.prepare("SELECT COALESCE(MAX(posicao),0)+1 AS p FROM reserva_fila WHERE unidade_id=? AND status IN ('aguardando','notificado')").get(unidade_id).p);
 
