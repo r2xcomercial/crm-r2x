@@ -67,7 +67,7 @@
   /* Banners flutuantes de pré-reservas pendentes — canto inferior direito */
   #pix-banners-container {
     position:fixed; bottom:16px; right:16px;
-    width:240px; z-index:750;
+    width:260px; z-index:9999;
     display:flex; flex-direction:column; gap:6px; pointer-events:none;
   }
   .pix-banner-item { pointer-events:all; }
@@ -83,6 +83,7 @@
   .pix-banner-txt { min-width:0; }
   .pix-banner-titulo { font-size:10px; font-weight:800; color:#fde047; text-transform:uppercase; letter-spacing:.4px; }
   .pix-banner-sub { font-size:11px; color:#ca8a04; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pix-banner-cliente { font-size:12px; font-weight:700; color:#fde047; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .pix-banner-row { display:flex; align-items:center; justify-content:space-between; gap:6px; }
   .pix-banner-clock { font-size:18px; font-weight:900; font-family:monospace; color:#fde047; letter-spacing:2px; }
   .pix-banner-btn {
@@ -1190,7 +1191,7 @@ function _atualizarPixBanner() {
   const _cidNum = parseInt(_corretorId) || 0;
   const _isCorretor = _corretorPerfil === 'corretor';
 
-  // Banners: toda pre-reserva sem comprovante (o dono vê botão de envio, outros só veem o countdown)
+  // Banners: toda pre-reserva sem comprovante
   const minhasRes = (window._units || []).filter(u =>
     u.status === 'pre_reserva' && !u.tem_comprovante && u.venda_id
   );
@@ -1209,11 +1210,13 @@ function _atualizarPixBanner() {
   // Cria banner por unidade
   for (const res of minhasRes) {
     const uid = res.id;
-    const desc = `Lote ${res.lote}${res.quadra ? ' · Q.' + res.quadra : ''}${res.venda_lead_nome ? ' · ' + res.venda_lead_nome : ''}`;
-    // Botão só para o corretor dono da reserva
+    const locDesc = `Lote ${res.lote}${res.quadra ? ' · Q.' + res.quadra : ''}`;
+    const clienteNome = res.venda_lead_nome || '';
+    // Dono da reserva OU admin/gestor/incorporador podem enviar PIX
     const eDono = _isCorretor && (!_cidNum || String(res.venda_corretor_id) === String(_cidNum));
-    const acaoBotao = eDono
-      ? `<button class="pix-banner-btn" onclick="abrirAnexarPix(${res.venda_id},${uid})">📎 Enviar PIX</button>`
+    const podeEnviar = eDono || !_isCorretor;
+    const acaoBotao = podeEnviar
+      ? `<button class="pix-banner-btn" onclick="abrirAnexarPix(${res.venda_id},${uid})">📤 Enviar PIX</button>`
       : `<span style="font-size:11px;color:#ca8a04;flex-shrink:0">Aguardando…</span>`;
 
     if (!document.getElementById(`pix-banner-${uid}`)) {
@@ -1223,7 +1226,8 @@ function _atualizarPixBanner() {
       item.innerHTML = `<div class="pix-banner-inner">
         <div class="pix-banner-txt">
           <div class="pix-banner-titulo">⏱️ PIX pendente!</div>
-          <div class="pix-banner-sub">${desc}</div>
+          <div class="pix-banner-sub">${locDesc}</div>
+          ${clienteNome ? `<div class="pix-banner-cliente">👤 ${clienteNome}</div>` : ''}
         </div>
         <div class="pix-banner-row">
           <div class="pix-banner-clock" id="pix-clock-${uid}">--:--</div>
@@ -1638,8 +1642,14 @@ async function carregar() {
       document.getElementById('conteudo').innerHTML = html.join('');
     }
 
-    // Lançamento: contador regressivo se agendado
+    // Lançamento: contador regressivo se agendado; esconde botão de cadastrar cliente
     _removerContadorFinalPub();
+    const _fabEl = document.getElementById('fab-lead');
+    if (lancData) {
+      if (_fabEl) _fabEl.style.display = 'none';
+    } else {
+      if (_fabEl && _corretorPerfil !== 'incorporador') _fabEl.style.display = 'flex';
+    }
     if (lancData && lancData.status === 'agendado') {
       _iniciarCountdownLancPub(lancData.data_hora_inicio, srvTime);
     }
