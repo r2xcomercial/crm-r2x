@@ -667,4 +667,19 @@ db.exec(`
 try { db.exec(`CREATE INDEX IF NOT EXISTS idx_carteira_emp_venc ON carteira_parcelas(empreendimento_id, data_vencimento, status)`); } catch(_) {}
 try { db.exec(`CREATE INDEX IF NOT EXISTS idx_carteira_venda ON carteira_parcelas(venda_id, numero)`); } catch(_) {}
 
+// ─── DOCUMENTOS DO LEAD ───────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS documentos_lead (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    tipo TEXT NOT NULL,
+    nome_original TEXT,
+    dados TEXT NOT NULL,
+    mime_type TEXT,
+    tamanho INTEGER,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    criado_por INTEGER
+  );
+`);
+
 module.exports = db;

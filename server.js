@@ -119,7 +119,9 @@ app.use((req, res, next) => {
     req.path === '/api/vendas/reserva-rapida'   ||
     req.path.match(/^\/api\/vendas\/\d+\/comprovante$/) ||  // upload/visualizar comprovante PIX
     (req.path === '/api/leads' && req.method === 'POST') ||
-    req.path === '/api/leads/extrair-documento';
+    req.path === '/api/leads/extrair-documento' ||
+    /^\/api\/leads\/\d+\/documentos$/.test(req.path) ||
+    /^\/api\/leads\/documentos\/\d+\/arquivo$/.test(req.path);
   // Empreendimentos: apenas leitura de dados necessários para o espelho
   const empSubPermitido = ['/unidades', '/mapa', '/espelho'].some(s => req.path.includes(s));
   const empLeitura = req.method === 'GET' && (
@@ -3453,6 +3455,44 @@ app.get('/api/vendas/:id/comprovante', autenticar, (req, res) => {
   } catch(e) {
     console.error('Erro ao servir comprovante venda', vendaId, e.message);
     err(res, 'Erro interno ao carregar comprovante', 500);
+  }
+});
+
+// ─── DOCUMENTOS DO LEAD ──────────────────────────────────────────────────────
+app.post('/api/leads/:id/documentos', autenticar, upload.single('arquivo'), (req, res) => {
+  const leadId = parseInt(req.params.id);
+  if (!req.file) return err(res, 'Nenhum arquivo enviado');
+  const { mimetype, buffer, originalname, size } = req.file;
+  const tiposPermitidos = ['image/jpeg','image/png','image/webp','image/heic','application/pdf'];
+  if (!tiposPermitidos.includes(mimetype)) return err(res, 'Formato não suportado. Use JPG, PNG, WEBP ou PDF.');
+  if (size > 10 * 1024 * 1024) return err(res, 'Arquivo muito grande (máx 10 MB)');
+  const tipo = req.body.tipo || 'outro';
+  const base64 = buffer.toString('base64');
+  const r = db.prepare(
+    `INSERT INTO documentos_lead (lead_id, tipo, nome_original, dados, mime_type, tamanho, criado_por) VALUES (?,?,?,?,?,?,?)`
+  ).run(leadId, tipo, originalname, base64, mimetype, size, req.usuario?.id || null);
+  ok(res, { id: r.lastInsertRowid, tipo, nome_original: originalname, mime_type: mimetype, tamanho: size });
+});
+
+app.get('/api/leads/:id/documentos', autenticar, (req, res) => {
+  const docs = db.prepare(
+    `SELECT id, tipo, nome_original, mime_type, tamanho, criado_em FROM documentos_lead WHERE lead_id=? ORDER BY criado_em ASC`
+  ).all(parseInt(req.params.id));
+  ok(res, docs);
+});
+
+app.get('/api/leads/documentos/:docId/arquivo', autenticar, (req, res) => {
+  const doc = db.prepare(`SELECT * FROM documentos_lead WHERE id=?`).get(parseInt(req.params.docId));
+  if (!doc) return err(res, 'Documento não encontrado', 404);
+  try {
+    const raw = doc.dados;
+    const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw, 'base64');
+    res.setHeader('Content-Type', doc.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${doc.nome_original || 'documento'}"`);
+    res.setHeader('Content-Length', buf.length);
+    res.send(buf);
+  } catch(e) {
+    err(res, 'Erro ao carregar documento', 500);
   }
 });
 

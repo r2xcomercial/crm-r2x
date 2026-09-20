@@ -1449,13 +1449,13 @@ async function openLeadModal(lead = {}, onSave = null) {
     <input type="hidden" id="f-pessoa-juridica" value="${lead.pessoa_juridica?'1':'0'}">
 
     <div id="bloco-pf" style="display:${lead.pessoa_juridica?'none':'block'}">
-      <div style="margin-bottom:12px;padding:10px 14px;background:rgba(96,165,250,.06);border:1px dashed rgba(96,165,250,.3);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <span style="font-size:12px;color:var(--text2);flex:1;min-width:140px">📷 Envie a CNH ou RG para preencher automaticamente</span>
+      <div id="doc-cnh-box" style="margin-bottom:12px;padding:10px 14px;background:rgba(239,68,68,.05);border:1px dashed rgba(239,68,68,.4);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text2);flex:1;min-width:140px">📷 CNH ou RG <span style="color:#f87171;font-weight:700">*</span> — envio obrigatório</span>
         <label style="cursor:pointer;background:var(--accent);color:var(--navy);border-radius:6px;padding:7px 14px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px">
           <span id="doc-btn-txt">📄 Carregar CNH / RG</span>
           <input type="file" accept="image/*,application/pdf" style="display:none" onchange="extrairDocumento(this,'identidade')">
         </label>
-        <span id="doc-status" style="font-size:11px;color:var(--text2)"></span>
+        <span id="doc-status" style="font-size:11px;color:var(--text2)">${lead.id ? '(já salvo)' : ''}</span>
       </div>
       <div class="form-grid">
         <div class="form-group"><label>CPF *</label><input id="f-cpf" value="${lead.cpf||''}" placeholder="000.000.000-00" oninput="verificarDuplicidadeCpf(this.value,${lead.id||0})"></div>
@@ -1501,13 +1501,13 @@ async function openLeadModal(lead = {}, onSave = null) {
     </div>
 
     ${sec('📍','Endereço')}
-    <div style="margin-bottom:12px;padding:8px 12px;background:rgba(96,165,250,.06);border:1px dashed rgba(96,165,250,.3);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <span style="font-size:12px;color:var(--text2);flex:1;min-width:140px">📋 Envie um comprovante de residência para preencher automaticamente</span>
+    <div id="doc-res-box" style="margin-bottom:12px;padding:8px 12px;background:rgba(239,68,68,.05);border:1px dashed rgba(239,68,68,.4);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--text2);flex:1;min-width:140px">📋 Comprovante de Residência <span style="color:#f87171;font-weight:700">*</span> — envio obrigatório</span>
       <label style="cursor:pointer;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px">
         <span id="end-btn-txt">📄 Carregar comprovante</span>
         <input type="file" accept="image/*,application/pdf" style="display:none" onchange="extrairDocumento(this,'endereco')">
       </label>
-      <span id="end-status" style="font-size:11px;color:var(--text2)"></span>
+      <span id="end-status" style="font-size:11px;color:var(--text2)">${lead.id ? '(já salvo)' : ''}</span>
     </div>
     <div class="form-grid">
       <div class="form-group span2"><label>Logradouro *</label><input id="f-endereco" value="${lead.endereco||''}" placeholder="Rua, Avenida, etc."></div>
@@ -1528,6 +1528,15 @@ async function openLeadModal(lead = {}, onSave = null) {
 
     <!-- campo cidade oculto para compatibilidade com save -->
     <input type="hidden" id="f-cidade" value="${lead.cidade||''}">
+
+    ${sec('📁','Documentos')}
+    <div id="docs-lead-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
+      ${lead.id ? '<div style="color:var(--text2);font-size:12px">Carregando...</div>' : '<div style="color:var(--text2);font-size:12px">Os documentos serão salvos após o cadastro.</div>'}
+    </div>
+    ${lead.id ? `<label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600">
+      ➕ Adicionar documento
+      <input type="file" accept="image/*,application/pdf" style="display:none" onchange="adicionarDocLeadModal(this,${lead.id})">
+    </label>` : ''}
 
     ${lead.telefone ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <div style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">📱 Ação Rápida WhatsApp</div>
@@ -1618,10 +1627,15 @@ async function openLeadModal(lead = {}, onSave = null) {
       representante_nome: v('f-rep-nome')||null, representante_cpf: v('f-rep-cpf')||null,
       representante_rg: v('f-rep-rg')||null, representante_cargo: v('f-rep-cargo')||null
     };
+    if (!lead.id && !isPjSave) {
+      if (!_leadDocCnh)        return toast('Envie a CNH ou RG do cliente (obrigatório).', 'error');
+      if (!_leadDocResidencia) return toast('Envie o comprovante de residência (obrigatório).', 'error');
+    }
     const r = lead.id ? await put(`/api/leads/${lead.id}`, body) : await post('/api/leads', body);
     if (!r.ok) return toast(r.error, 'error');
     const leadId = lead.id || r.id;
-    // Salva compradores adicionais
+    if (_leadDocCnh)        await _uploadDocLead(leadId, _leadDocCnh, 'cnh');
+    if (_leadDocResidencia) await _uploadDocLead(leadId, _leadDocResidencia, 'comprovante_residencia');
     await salvarCompradores(leadId, lead.id ? true : false);
     toast(lead.id ? 'Lead atualizado!' : 'Lead criado!');
     closeModal();
@@ -1629,7 +1643,8 @@ async function openLeadModal(lead = {}, onSave = null) {
     else { if (currentPage === 'kanban') renderKanban(); else renderLeads(); }
   });
   document.getElementById('modal').classList.add('modal-wide');
-  if (lead.id) { carregarTimeline(lead.id); carregarVisitas(lead.id); carregarCompradores(lead.id); }
+  _leadDocCnh = null; _leadDocResidencia = null;
+  if (lead.id) { carregarTimeline(lead.id); carregarVisitas(lead.id); carregarCompradores(lead.id); carregarDocsLead(lead.id); }
 }
 
 function togglePjLead(isPj) {
@@ -1739,12 +1754,70 @@ async function extrairDocumento(input, tipo) {
 
     const preenchidos = Object.values(c).filter(x => x && x !== null).length;
     if (statusEl) statusEl.textContent = '✅ ' + preenchidos + ' campos extraídos';
-    if (btn) btn.textContent = '📄 Carregar outro';
+    if (btn) btn.textContent = '✅ Enviado — carregar outro';
+    if (tipo === 'identidade') {
+      _leadDocCnh = file;
+      const box = document.getElementById('doc-cnh-box');
+      if (box) { box.style.background='rgba(34,197,94,.08)'; box.style.borderColor='rgba(34,197,94,.5)'; }
+    } else if (tipo === 'endereco') {
+      _leadDocResidencia = file;
+      const box = document.getElementById('doc-res-box');
+      if (box) { box.style.background='rgba(34,197,94,.08)'; box.style.borderColor='rgba(34,197,94,.5)'; }
+    }
   } catch(e) {
     if (statusEl) statusEl.textContent = '❌ Erro de conexão';
     if (btn) btn.textContent = '📄 Carregar documento';
   }
   input.disabled = false;
+  input.value = '';
+}
+
+let _leadDocCnh = null;
+let _leadDocResidencia = null;
+
+async function _uploadDocLead(leadId, file, tipo) {
+  try {
+    const fd = new FormData();
+    fd.append('arquivo', file);
+    fd.append('tipo', tipo);
+    await fetch(`/api/leads/${leadId}/documentos`, {
+      method: 'POST',
+      headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' },
+      body: fd
+    });
+  } catch(_) {}
+}
+
+async function carregarDocsLead(leadId) {
+  const el = document.getElementById('docs-lead-list');
+  if (!el) return;
+  const r = await get(`/api/leads/${leadId}/documentos`);
+  if (!r.ok) { el.innerHTML = '<span style="font-size:12px;color:var(--danger)">Erro ao carregar documentos</span>'; return; }
+  const docs = r.data || [];
+  const labels = { cnh: 'CNH / RG', comprovante_residencia: 'Comprovante de Residência', outro: 'Outro' };
+  if (!docs.length) { el.innerHTML = '<span style="font-size:12px;color:var(--text2)">Nenhum documento enviado ainda.</span>'; return; }
+  el.innerHTML = docs.map(d => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--navy3);border-radius:8px;border:1px solid var(--border)">
+      <span style="font-size:18px">${(d.mime_type||'').includes('pdf') ? '📄' : '🖼️'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:var(--text)">${labels[d.tipo]||d.tipo}</div>
+        <div style="font-size:11px;color:var(--text2)">${d.nome_original||'arquivo'} · ${new Date(d.criado_em+'Z').toLocaleDateString('pt-BR')}</div>
+      </div>
+      <a href="/api/leads/documentos/${d.id}/arquivo?token=${encodeURIComponent(localStorage.getItem('crm_token')||'')}" target="_blank"
+        style="background:var(--accent);color:var(--navy);border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;text-decoration:none;white-space:nowrap">Ver</a>
+    </div>`).join('');
+}
+
+async function adicionarDocLeadModal(input, leadId) {
+  const file = input.files[0];
+  if (!file) return;
+  const tipo = prompt('Tipo do documento:\n1 = CNH / RG\n2 = Comprovante de Residência\n3 = Outro\n\nDigite 1, 2 ou 3:');
+  const mapa = { '1': 'cnh', '2': 'comprovante_residencia', '3': 'outro' };
+  const tipoVal = mapa[tipo] || 'outro';
+  toast('Enviando documento...', 'info');
+  await _uploadDocLead(leadId, file, tipoVal);
+  await carregarDocsLead(leadId);
+  toast('Documento salvo!');
   input.value = '';
 }
 
