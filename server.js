@@ -118,7 +118,8 @@ app.use((req, res, next) => {
     req.path === '/api/server-time'              ||
     req.path === '/api/vendas/reserva-rapida'   ||
     req.path.match(/^\/api\/vendas\/\d+\/comprovante$/) ||  // upload/visualizar comprovante PIX
-    (req.path === '/api/leads' && req.method === 'POST');
+    (req.path === '/api/leads' && req.method === 'POST') ||
+    req.path === '/api/leads/extrair-documento';
   // Empreendimentos: apenas leitura de dados necessários para o espelho
   const empSubPermitido = ['/unidades', '/mapa', '/espelho'].some(s => req.path.includes(s));
   const empLeitura = req.method === 'GET' && (
