@@ -17910,6 +17910,7 @@ async function renderCorretorPainel(tab) {
       ${tabBtn('agenda',     '📋', 'Agenda', totalAlertas||null)}
       ${tabBtn('financeiro', '💰', 'Financeiro')}
       ${tabBtn('calc',       '🧮', 'Calculadora')}
+      ${tabBtn('conta',      '🔑', 'Minha Conta')}
     </div>
 
     <!-- Conteúdo da aba -->
@@ -18062,7 +18063,50 @@ async function _renderCpTab() {
 
   } else if (_cpTab === 'calc') {
     renderCalculadora(el);
+
+  } else if (_cpTab === 'conta') {
+    el.innerHTML = `
+      <div style="max-width:480px;margin:0 auto">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px">
+          <div style="font-size:15px;font-weight:700;margin-bottom:4px">🔑 Alterar Senha</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:20px">Defina uma nova senha para o seu acesso ao CRM.</div>
+          <div class="form-group" style="margin-bottom:12px">
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Senha atual</label>
+            <input type="password" id="cp-senha-atual" placeholder="••••••••"
+              style="width:100%;padding:10px 12px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;box-sizing:border-box">
+          </div>
+          <div class="form-group" style="margin-bottom:12px">
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Nova senha</label>
+            <input type="password" id="cp-senha-nova" placeholder="Mínimo 6 caracteres"
+              style="width:100%;padding:10px 12px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;box-sizing:border-box">
+          </div>
+          <div class="form-group" style="margin-bottom:20px">
+            <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Confirmar nova senha</label>
+            <input type="password" id="cp-senha-conf" placeholder="Repita a nova senha"
+              style="width:100%;padding:10px 12px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;box-sizing:border-box">
+          </div>
+          <button onclick="alterarSenhaCorretor()"
+            style="width:100%;padding:12px;background:var(--accent);color:var(--navy);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer">
+            Salvar nova senha
+          </button>
+        </div>
+      </div>`;
   }
+}
+
+async function alterarSenhaCorretor() {
+  const atual = document.getElementById('cp-senha-atual')?.value || '';
+  const nova  = document.getElementById('cp-senha-nova')?.value  || '';
+  const conf  = document.getElementById('cp-senha-conf')?.value  || '';
+  if (!atual) return toast('Informe a senha atual', 'error');
+  if (nova.length < 6) return toast('A nova senha deve ter pelo menos 6 caracteres', 'error');
+  if (nova !== conf) return toast('As senhas não coincidem', 'error');
+  const r = await put('/api/corretor/senha', { senha_atual: atual, senha_nova: nova });
+  if (!r.ok) return toast(r.error || 'Erro ao alterar senha', 'error');
+  toast('✅ Senha alterada com sucesso!');
+  document.getElementById('cp-senha-atual').value = '';
+  document.getElementById('cp-senha-nova').value  = '';
+  document.getElementById('cp-senha-conf').value  = '';
 }
 
 async function _renderEmpCorretorTab(el) {

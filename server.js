@@ -2971,6 +2971,22 @@ app.put("/api/corretor/config", (req, res) => {
   ok(res, {});
 });
 
+// ─── CORRETOR: ALTERAR SENHA ─────────────────────────────────────────────────
+app.put("/api/corretor/senha", autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u) return err(res, 'Não autenticado', 401);
+  const { senha_atual, senha_nova } = req.body;
+  if (!senha_atual || !senha_nova) return err(res, 'Campos obrigatórios');
+  if (senha_nova.length < 6) return err(res, 'A nova senha deve ter pelo menos 6 caracteres');
+  const usuario = db.prepare('SELECT * FROM usuarios WHERE id=?').get(u.id);
+  if (!usuario) return err(res, 'Usuário não encontrado', 404);
+  if (hashSenha(senha_atual, usuario.salt) !== usuario.senha_hash) return err(res, 'Senha atual incorreta', 400);
+  const novoSalt = gerarSalt();
+  const novoHash = hashSenha(senha_nova, novoSalt);
+  db.prepare('UPDATE usuarios SET senha_hash=?, salt=? WHERE id=?').run(novoHash, novoSalt, u.id);
+  ok(res, {});
+});
+
 // ─── CORRETOR: DESPESAS ───────────────────────────────────────────────────────
 app.get("/api/corretor/despesas", (req, res) => {
   const cid = guardaCorretor(req, res); if (!cid) return;
