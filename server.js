@@ -573,8 +573,12 @@ app.get("/api/dashboard", (req, res) => {
   try {
   const leads_total = db.prepare("SELECT COUNT(*) as n FROM leads").get().n;
   const leads_novos = db.prepare("SELECT COUNT(*) as n FROM leads WHERE status='novo' OR (status NOT IN ('com_corretor','vendido','sem_venda','qualificado','visitou','proposta','perdido'))").get().n;
-  const vendas_mes = db.prepare(`SELECT COALESCE(SUM(valor),0) as total FROM vendas WHERE strftime('%Y-%m', data_venda) = strftime('%Y-%m','now')`).get().total;
-  const vendas_total = db.prepare("SELECT COUNT(*) as n FROM vendas WHERE status='ativo'").get().n;
+  const _vmes = db.prepare(`SELECT COALESCE(SUM(valor),0) as total, COUNT(*) as n FROM vendas WHERE status='ativo' AND strftime('%Y-%m', data_venda) = strftime('%Y-%m','now')`).get();
+  const vendas_mes = _vmes.total;
+  const vendas_mes_qtd = _vmes.n;
+  const _vtotal = db.prepare("SELECT COUNT(*) as n, COALESCE(SUM(valor),0) as total FROM vendas WHERE status='ativo'").get();
+  const vendas_total = _vtotal.n;
+  const vendas_total_valor = _vtotal.total;
   const entradas_pendentes = db.prepare("SELECT COALESCE(SUM(valor),0) as total FROM financeiro_entradas WHERE status='pendente'").get().total;
   const clientes_total = db.prepare("SELECT COUNT(*) as n FROM clientes").get().n;
   const corretores_ativos = db.prepare("SELECT COUNT(*) as n FROM corretores WHERE ativo=1").get().n;
@@ -798,7 +802,7 @@ app.get("/api/dashboard", (req, res) => {
 
   ok(res, {
     kpis: {
-      leads_total, leads_novos, vendas_mes, vendas_total, entradas_pendentes, clientes_total,
+      leads_total, leads_novos, vendas_mes, vendas_mes_qtd, vendas_total, vendas_total_valor, entradas_pendentes, clientes_total,
       corretores_ativos, corretores_total, corretores_com_vendas, empreendimentos,
       ticket_medio, ticket_medio_mes, taxa_distrato, ciclo_medio_dias,
       cac_por_lead, cac_por_venda, gasto_marketing_mes, taxa_conversao_geral,

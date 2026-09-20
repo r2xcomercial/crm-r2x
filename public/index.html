@@ -884,7 +884,8 @@ async function renderDashboard() {
     </div>` : ''}
     <div class="kpi-grid">
       ${kpi('🎯', 'Clientes Novos', kpis.leads_novos, `${kpis.leads_total} total`)}
-      ${kpi('🏆', 'Vendas no Mês', fmt(kpis.vendas_mes), `${kpis.vendas_total} negócios ativos`)}
+      ${kpi('🏆', 'Vendas no Mês', fmt(kpis.vendas_mes), `${kpis.vendas_mes_qtd} venda${kpis.vendas_mes_qtd!==1?'s':''} neste mês`)}
+      ${kpi('📂', 'Portfólio Ativo', fmt(kpis.vendas_total_valor), `${kpis.vendas_total} negócios ativos`)}
       ${!isGestor ? kpi('💰', 'Recebíveis Pendentes', fmt(kpis.entradas_pendentes), 'a receber') : ''}
       ${kpi('🏗️', 'Empreendimentos', kpis.empreendimentos, '')}
       ${kpi('🏢', 'Incorporadores', kpis.clientes_total, 'loteadores/incorporadores')}
