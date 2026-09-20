@@ -473,6 +473,7 @@
     <div class="nav-item" onclick="navigate('financeiro')"><span class="icon">💰</span> Financeiro</div>
     <div class="nav-item" onclick="navigate('caixa')"><span class="icon">🏦</span> Caixa</div>
     <div class="nav-item" onclick="navigate('relatorios')"><span class="icon">📈</span> Relatórios</div>
+    <div class="nav-item" onclick="navigate('carteira')"><span class="icon">📋</span> Carteira</div>
     <div class="nav-item" onclick="navigate('gestao-pessoal')"><span class="icon">🧘</span> Gestão Pessoal</div>
     <div class="nav-section">Inteligência</div>
     <div class="nav-item" onclick="navigate('inteligencia')"><span class="icon">🔬</span> Inteligência de Empreend.</div>
@@ -613,7 +614,7 @@ function navigate(page) {
 const pageTitles = {
   dashboard: 'Dashboard', leads: 'Clientes', kanban: 'Kanban de Clientes', vendas: 'Vendas',
   clientes: 'Incorporadores', empreendimentos: 'Empreendimentos', corretores: 'Corretores',
-  financeiro: 'Financeiro', caixa: 'Caixa & Conferência Bancária', relatorios: 'Relatórios', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
+  financeiro: 'Financeiro', caixa: 'Caixa & Conferência Bancária', relatorios: 'Relatórios', carteira: 'Carteira de Recebíveis', calendario: 'Calendário de Lançamentos', ranking: 'Ranking de Corretores',
   painel: 'Painel de Lançamento', usuarios: 'Usuários do Sistema', calculadora: 'Calculadora de Financiamento',
   'corretor-painel': 'Meu Painel', 'incorporador-painel': 'Portal do Incorporador',
   eventos: 'Eventos de Lançamento', 'gestao-pessoal': 'Gestão Pessoal',
@@ -655,6 +656,7 @@ async function renderPage(page) {
       case 'financeiro': await renderFinanceiro(); break;
       case 'caixa': await renderCaixa(); break;
       case 'relatorios': await renderRelatorios(); break;
+      case 'carteira': await renderCarteira(); break;
       case 'calendario': await renderCalendario(); break;
       case 'ranking': await renderRanking(); break;
       case 'painel': await renderPainel(); break;
@@ -16658,6 +16660,318 @@ function relSetPreset(ini, fim) {
   _relFiltros.data_inicio = ini;
   _relFiltros.data_fim    = fim;
   renderRelatorios();
+}
+
+// ─── CARTEIRA DE RECEBÍVEIS ───────────────────────────────────────────────────
+let _cart = { empId: null, mes: '', status: 'todos', parcelas: [], sel: new Set() };
+
+async function renderCarteira() {
+  const empR = await get('/api/empreendimentos');
+  const emps = empR.data || [];
+  if (!_cart.empId && emps.length) _cart.empId = emps[0].id;
+  if (!_cart.mes) { const h = new Date(); _cart.mes = `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}`; }
+  const c = document.getElementById('content');
+  c.innerHTML = `
+    <div style="max-width:1300px">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;background:var(--navy2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Empreendimento</div>
+          <select id="cart-emp" onchange="_cart.empId=+this.value;_cartLoad()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px">
+            ${emps.map(e=>`<option value="${e.id}"${e.id===_cart.empId?' selected':''}>${e.nome}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Mês</div>
+          <input type="month" id="cart-mes" value="${_cart.mes}" onchange="_cart.mes=this.value;_cartLoad()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px">
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Status</div>
+          <select id="cart-status-sel" onchange="_cart.status=this.value;_cartLoadParcelas()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px">
+            <option value="todos"${_cart.status==='todos'?' selected':''}>Todos</option>
+            <option value="pendente"${_cart.status==='pendente'?' selected':''}>Pendente</option>
+            <option value="atrasado"${_cart.status==='atrasado'?' selected':''}>Atrasado</option>
+            <option value="pago"${_cart.status==='pago'?' selected':''}>Pago</option>
+            <option value="renegociado"${_cart.status==='renegociado'?' selected':''}>Renegociado</option>
+          </select>
+        </div>
+        <button onclick="_cartLoad()" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer">🔄 Atualizar</button>
+        <button onclick="_cartAbrirGerar()" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer">+ Gerar Cronograma</button>
+        <div id="cart-bulk-wrap" style="display:none;margin-left:auto">
+          <button onclick="_cartBaixarMultiplas()" style="padding:7px 16px;border-radius:8px;background:#22c55e;color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer">✓ Baixar selecionadas (<span id="cart-sel-n">0</span>)</button>
+        </div>
+      </div>
+      <div id="cart-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px"><div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text2)">Carregando...</div></div>
+      <div id="cart-aging" style="margin-bottom:16px"></div>
+      <div id="cart-table"><div style="text-align:center;padding:40px;color:var(--text2)">Carregando...</div></div>
+    </div>`;
+  if (_cart.empId) _cartLoad();
+}
+
+async function _cartLoad() {
+  await Promise.all([_cartLoadResumo(), _cartLoadParcelas()]);
+}
+
+async function _cartLoadResumo() {
+  if (!_cart.empId) return;
+  const r = await get(`/api/carteira/resumo/${_cart.empId}`);
+  if (!r.ok) return;
+  const d = r.data;
+  const fmt = v => 'R$ ' + (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const kpisEl = document.getElementById('cart-kpis');
+  if (kpisEl) kpisEl.innerHTML = `
+    ${_cartKpi('📅 A receber no mês', fmt(d.doMes?.v), `${d.doMes?.n||0} parcelas`, 'var(--accent)')}
+    ${_cartKpi('✅ Recebido total', fmt(d.pagas?.v), (d.pagas?.n||0)+' parcelas', '#22c55e')}
+    ${_cartKpi('⚠️ Em atraso', fmt(d.atrasadas?.v), `${d.atrasadas?.n||0} parcelas`, 'var(--danger)')}
+    ${_cartKpi('💼 Total na carteira', fmt(d.total?.v), `${d.total?.n||0} parcelas`, '#a78bfa')}
+  `;
+  const ag = d.aging || {};
+  const agTotal = (ag.d30?.v||0)+(ag.d60?.v||0)+(ag.d90?.v||0)+(ag.mais?.v||0);
+  const agEl = document.getElementById('cart-aging');
+  if (agEl) agEl.innerHTML = agTotal > 0 ? `
+    <div style="background:var(--navy2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">📊 Aging de Inadimplência</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+        ${_cartAgingCard('0–30 dias', ag.d30, '#fbbf24')}
+        ${_cartAgingCard('31–60 dias', ag.d60, '#f97316')}
+        ${_cartAgingCard('61–90 dias', ag.d90, '#ef4444')}
+        ${_cartAgingCard('+90 dias', ag.mais, '#b91c1c')}
+      </div>
+    </div>` : '';
+}
+
+function _cartKpi(titulo, valor, sub, cor) {
+  return `<div style="background:var(--navy2);border:1px solid var(--border);border-left:3px solid ${cor};border-radius:12px;padding:14px 16px">
+    <div style="font-size:11px;color:var(--text2);margin-bottom:6px">${titulo}</div>
+    <div style="font-size:20px;font-weight:700;color:${cor};font-variant-numeric:tabular-nums">${valor}</div>
+    <div style="font-size:11px;color:var(--text2);margin-top:3px">${sub}</div>
+  </div>`;
+}
+
+function _cartAgingCard(label, dados, cor) {
+  const fmt = v => 'R$ ' + (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return `<div style="background:var(--navy3);border-radius:9px;padding:10px 12px;border-left:3px solid ${cor}">
+    <div style="font-size:10px;font-weight:700;color:${cor};text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${label}</div>
+    <div style="font-size:16px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums">${fmt(dados?.v)}</div>
+    <div style="font-size:11px;color:var(--text2)">${dados?.n||0} parcelas</div>
+  </div>`;
+}
+
+async function _cartLoadParcelas() {
+  if (!_cart.empId) return;
+  const q = new URLSearchParams({ status: _cart.status });
+  if (_cart.mes) q.set('mes', _cart.mes);
+  const r = await get(`/api/carteira/parcelas/${_cart.empId}?${q}`);
+  _cart.parcelas = r.data || [];
+  _cart.sel = new Set();
+  _cartUpdateBulk();
+  _cartRenderTabela();
+}
+
+function _cartRenderTabela() {
+  const wrap = document.getElementById('cart-table');
+  if (!wrap) return;
+  const ps = _cart.parcelas;
+  const fmt = v => 'R$ ' + (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtD = s => { if(!s) return '—'; const [y,m,d]=s.split('-'); return `${d}/${m}/${y}`; };
+  const badge = st => {
+    const m = { pendente:['#1e40af','#dbeafe','Pendente'], atrasado:['#b91c1c','#fee2e2','Atrasado'], pago:['#15803d','#dcfce7','Pago'], renegociado:['#92400e','#fef3c7','Renegociado'], cancelado:['#374151','#f3f4f6','Cancelado'] };
+    const [tc,bg,lbl] = (m[st]||['#6b7280','#f3f4f6',st]);
+    return `<span style="padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;background:${bg};color:${tc};text-transform:uppercase;letter-spacing:.5px">${lbl}</span>`;
+  };
+  if (!ps.length) {
+    wrap.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text2);background:var(--navy2);border:1px solid var(--border);border-radius:12px">Nenhuma parcela encontrada para os filtros selecionados.<br><br><button onclick="_cartAbrirGerar()" style="padding:8px 18px;border-radius:8px;background:var(--accent);color:#fff;border:none;font-size:13px;font-weight:700;cursor:pointer">+ Gerar primeiro cronograma</button></div>`;
+    return;
+  }
+  const rows = ps.map(p => {
+    const canBaixa = ['pendente','atrasado'].includes(p.status);
+    const isSel = _cart.sel.has(p.id);
+    const acoes = canBaixa
+      ? `<button onclick="_cartAbrirBaixa(${p.id},${p.valor_original})" style="padding:3px 9px;border-radius:5px;background:#22c55e;color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer">✓</button>
+         <button onclick="_cartAbrirReneg(${p.id},'${p.data_vencimento||''}',${p.valor_original})" style="padding:3px 8px;border-radius:5px;background:var(--navy3);color:var(--text);border:1px solid var(--border);font-size:10px;cursor:pointer" title="Renegociar">↻</button>`
+      : p.status === 'pago'
+      ? `<button onclick="_cartEstornar(${p.id})" style="padding:3px 8px;border-radius:5px;background:var(--navy3);color:var(--danger);border:1px solid var(--danger);font-size:10px;cursor:pointer" title="Estornar">⟲</button>`
+      : '';
+    const vPago = p.valor_pago != null ? fmt(p.valor_pago) : p.status === 'pago' ? fmt(p.valor_original) : '—';
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:7px 10px;text-align:center"><input type="checkbox" ${!canBaixa?'disabled':''} ${isSel?'checked':''} onchange="_cartToggleSel(${p.id},this.checked)" style="cursor:pointer"></td>
+      <td style="padding:7px 10px;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap">${fmtD(p.data_vencimento)}</td>
+      <td style="padding:7px 10px;font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.lead_nome||'—'}</td>
+      <td style="padding:7px 10px;font-size:12px;white-space:nowrap">${p.lote?'L.'+p.lote+(p.quadra?' Q.'+p.quadra:''):'—'}</td>
+      <td style="padding:7px 10px;font-size:11px;color:var(--text2);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.descricao||''}">${p.descricao||'—'}</td>
+      <td style="padding:7px 10px;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap">${fmt(p.valor_original)}</td>
+      <td style="padding:7px 10px;font-size:12px;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;color:${p.status==='pago'?'#22c55e':'var(--text2)'}">${vPago}</td>
+      <td style="padding:7px 10px">${badge(p.status)}</td>
+      <td style="padding:7px 10px;white-space:nowrap"><div style="display:flex;gap:5px">${acoes}</div></td>
+    </tr>`;
+  }).join('');
+  const totalV = ps.reduce((a,p)=>a+p.valor_original,0);
+  wrap.innerHTML = `
+    <div style="background:var(--navy2);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:var(--navy3)">
+            <th style="padding:8px 10px;width:36px;text-align:center"><input type="checkbox" onchange="_cartSelAll(this.checked)"></th>
+            <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--text2);white-space:nowrap">Vencimento</th>
+            <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--text2)">Comprador</th>
+            <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--text2)">Lote</th>
+            <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--text2)">Descrição</th>
+            <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;color:var(--text2)">Valor</th>
+            <th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;color:var(--text2)">Pago</th>
+            <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--text2)">Status</th>
+            <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--text2)">Ações</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div style="padding:10px 14px;border-top:1px solid var(--border);font-size:11px;color:var(--text2)">${ps.length} parcelas · Total filtrado: R$ ${totalV.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+    </div>`;
+}
+
+function _cartToggleSel(id, checked) {
+  if (checked) _cart.sel.add(id); else _cart.sel.delete(id);
+  _cartUpdateBulk();
+}
+
+function _cartSelAll(checked) {
+  if (checked) _cart.parcelas.filter(p=>['pendente','atrasado'].includes(p.status)).forEach(p=>_cart.sel.add(p.id));
+  else _cart.sel.clear();
+  _cartRenderTabela();
+  _cartUpdateBulk();
+}
+
+function _cartUpdateBulk() {
+  const n = _cart.sel.size;
+  const wrap = document.getElementById('cart-bulk-wrap');
+  const numEl = document.getElementById('cart-sel-n');
+  if (wrap) wrap.style.display = n > 0 ? 'block' : 'none';
+  if (numEl) numEl.textContent = n;
+}
+
+function _cartAbrirBaixa(id, valor) {
+  const hoje = new Date().toISOString().slice(0,10);
+  openModal('✓ Baixar Pagamento', `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">Data de Pagamento</div>
+        <input type="date" id="cart-baixa-dt" value="${hoje}" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;box-sizing:border-box">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">Valor Recebido (R$)</div>
+        <input type="number" id="cart-baixa-vl" value="${valor}" step="0.01" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;box-sizing:border-box">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">Observações</div>
+        <input type="text" id="cart-baixa-obs" placeholder="Opcional" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;box-sizing:border-box">
+      </div>
+    </div>`, () => _cartSalvarBaixa(id), { saveLabel: '✓ Confirmar Baixa' });
+}
+
+async function _cartSalvarBaixa(id) {
+  const dt = document.getElementById('cart-baixa-dt')?.value;
+  const vl = document.getElementById('cart-baixa-vl')?.value;
+  const obs = document.getElementById('cart-baixa-obs')?.value;
+  const r = await post(`/api/carteira/parcela/${id}/pagar`, { data_pagamento: dt, valor_pago: parseFloat(vl), observacoes: obs });
+  if (r.ok) { toast('Baixa registrada!'); closeModal(); _cartLoad(); }
+  else toast('Erro: ' + (r.error || 'falha'), 'error');
+}
+
+async function _cartEstornar(id) {
+  if (!confirm('Estornar este pagamento?')) return;
+  const r = await post(`/api/carteira/parcela/${id}/estornar`, {});
+  if (r.ok) { toast('Estorno realizado.'); _cartLoad(); }
+  else toast('Erro: ' + (r.error || 'falha'), 'error');
+}
+
+function _cartAbrirReneg(id, dataAtual, valorAtual) {
+  openModal('↻ Renegociar Parcela', `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">Nova Data de Vencimento</div>
+        <input type="date" id="cart-reneg-dt" value="${dataAtual||''}" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;box-sizing:border-box">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">Novo Valor (R$)</div>
+        <input type="number" id="cart-reneg-vl" value="${valorAtual}" step="0.01" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;box-sizing:border-box">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">Motivo / Observações</div>
+        <input type="text" id="cart-reneg-obs" placeholder="Ex: Dificuldade financeira — acordo de 30 dias" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;box-sizing:border-box">
+      </div>
+    </div>`, () => _cartSalvarReneg(id), { saveLabel: '↻ Confirmar Renegociação' });
+}
+
+async function _cartSalvarReneg(id) {
+  const dt = document.getElementById('cart-reneg-dt')?.value;
+  const vl = document.getElementById('cart-reneg-vl')?.value;
+  const obs = document.getElementById('cart-reneg-obs')?.value;
+  const r = await post(`/api/carteira/parcela/${id}/renegociar`, { nova_data: dt, novo_valor: parseFloat(vl), observacoes: obs });
+  if (r.ok) { toast('Renegociação salva!'); closeModal(); _cartLoad(); }
+  else toast('Erro: ' + (r.error || 'falha'), 'error');
+}
+
+async function _cartAbrirGerar() {
+  if (!_cart.empId) { toast('Selecione um empreendimento.'); return; }
+  const r = await get(`/api/carteira/contratos/${_cart.empId}`);
+  const contratos = r.data || [];
+  if (!contratos.length) { toast('Nenhum contrato ativo neste empreendimento.'); return; }
+  const hoje = new Date().toISOString().slice(0,10);
+  openModal('📋 Gerar Cronograma', `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">Contrato / Comprador</div>
+        <select id="cart-ger-venda" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;box-sizing:border-box">
+          ${contratos.map(c=>`<option value="${c.id}">${c.lead_nome||'–'} · Lote ${c.lote||'?'}${c.quadra?' Q.'+c.quadra:''}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">Data do 1º Vencimento</div>
+        <input type="date" id="cart-ger-dt" value="${hoje}" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;box-sizing:border-box">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">Índice de Correção</div>
+          <select id="cart-ger-ind" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;box-sizing:border-box">
+            <option value="nenhum">Nenhum</option>
+            <option value="IPCA">IPCA</option>
+            <option value="INPC">INPC</option>
+            <option value="IGP-M">IGP-M</option>
+            <option value="CUB-SC">CUB-SC</option>
+            <option value="CUB-RS">CUB-RS</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">Mora (%/mês)</div>
+          <input type="number" id="cart-ger-jur" value="1" step="0.01" min="0" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;box-sizing:border-box">
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px">Multa (%)</div>
+          <input type="number" id="cart-ger-mul" value="2" step="0.01" min="0" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;box-sizing:border-box">
+        </div>
+      </div>
+      <div style="background:var(--navy3);border-radius:8px;padding:10px;font-size:11px;color:var(--text2)">⚠️ Se já existir um cronograma para este contrato, ele será <strong>substituído</strong>.</div>
+    </div>`, () => _cartSalvarGerar(), { saveLabel: '📋 Gerar' });
+}
+
+async function _cartSalvarGerar() {
+  const vendaId = document.getElementById('cart-ger-venda')?.value;
+  const dt = document.getElementById('cart-ger-dt')?.value;
+  const ind = document.getElementById('cart-ger-ind')?.value;
+  const jur = document.getElementById('cart-ger-jur')?.value;
+  const mul = document.getElementById('cart-ger-mul')?.value;
+  if (!vendaId || !dt) { toast('Selecione o contrato e a data.'); return; }
+  const r = await post(`/api/carteira/${vendaId}/gerar`, { data_primeiro_vencimento: dt, indice: ind, juros_mora_pct: parseFloat(jur||0), multa_atraso_pct: parseFloat(mul||2) });
+  if (r.ok) { toast(`✅ ${r.data.geradas} parcelas geradas!`); closeModal(); _cart.status = 'todos'; _cartLoad(); }
+  else toast('Erro: ' + (r.error || 'falha'), 'error');
+}
+
+async function _cartBaixarMultiplas() {
+  const ids = [..._cart.sel];
+  if (!ids.length) return;
+  const hoje = new Date().toISOString().slice(0,10);
+  if (!confirm(`Baixar ${ids.length} parcela(s) com data ${hoje.split('-').reverse().join('/')}?`)) return;
+  const r = await post('/api/carteira/baixar-multiplas', { ids, data_pagamento: hoje });
+  if (r.ok) { toast(`✅ ${r.data.baixadas} parcelas baixadas!`); _cartLoad(); }
+  else toast('Erro: ' + (r.error || 'falha'), 'error');
 }
 
 function relAba(aba) {

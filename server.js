@@ -9503,6 +9503,153 @@ app.get('/api/unidades/:id/historico', autenticar, (req, res) => {
   ok(res, rows);
 });
 
+// ─── CARTEIRA DE RECEBÍVEIS ───────────────────────────────────────────────────
+
+function _carteiraAdmin(req, res) {
+  if (!['admin','gestor','incorporador'].includes(req.usuario?.perfil)) {
+    err(res, 'Acesso negado', 403); return false;
+  }
+  return true;
+}
+
+function _gerarCronogramaParcelas(venda, cfg) {
+  let cond;
+  try { cond = JSON.parse(venda.condicao_proposta || 'null'); } catch(_) { cond = null; }
+  if (!cond?.parcelas?.length) return [];
+  const parcelas = [];
+  let numero = 0, mesOffset = 0;
+  const base = new Date(cfg.data_primeiro_vencimento + 'T12:00:00Z');
+  for (const grupo of cond.parcelas) {
+    const qtd = Math.max(1, parseInt(grupo.qtd) || 1);
+    const titulo = (grupo.titulo || 'Parcela').trim();
+    const tipo = /entrada/i.test(titulo) ? 'entrada' : /refor[cç]/i.test(titulo) ? 'reforco' : 'parcela';
+    let valorUnit = 0;
+    if (grupo.valor_rs != null) {
+      valorUnit = grupo.tipo_valor === '%' ? grupo.valor_rs / qtd : grupo.valor_rs;
+    } else {
+      valorUnit = grupo.valor || 0;
+    }
+    valorUnit = Math.round(valorUnit * 100) / 100;
+    for (let i = 0; i < qtd; i++) {
+      numero++;
+      const d = new Date(base);
+      d.setUTCMonth(d.getUTCMonth() + mesOffset);
+      parcelas.push({ numero, tipo, descricao: qtd > 1 ? `${titulo} ${i + 1}/${qtd}` : titulo, valor_original: valorUnit, data_vencimento: d.toISOString().slice(0, 10) });
+      mesOffset++;
+    }
+  }
+  return parcelas;
+}
+
+app.get('/api/carteira/contratos/:empId', autenticar, (req, res) => {
+  if (!_carteiraAdmin(req, res)) return;
+  const empId = parseInt(req.params.empId);
+  const rows = db.prepare(`
+    SELECT v.id, v.data_venda, v.condicao_proposta,
+      l.nome as lead_nome, u.lote, u.quadra, u.preco
+    FROM vendas v
+    LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN unidades u ON u.id = v.unidade_id
+    WHERE v.empreendimento_id = ? AND v.status IN ('pre_reserva','reserva','proposta','ativo')
+    ORDER BY u.quadra, CAST(u.lote AS REAL), u.lote
+  `).all(empId);
+  ok(res, rows);
+});
+
+app.get('/api/carteira/resumo/:empId', autenticar, (req, res) => {
+  if (!_carteiraAdmin(req, res)) return;
+  const empId = parseInt(req.params.empId);
+  const hoje = new Date().toISOString().slice(0, 10);
+  const mesAtual = hoje.slice(0, 7);
+  db.prepare(`UPDATE carteira_parcelas SET status='atrasado', atualizado_em=CURRENT_TIMESTAMP WHERE empreendimento_id=? AND status='pendente' AND data_vencimento<?`).run(empId, hoje);
+  const total = db.prepare(`SELECT COALESCE(SUM(valor_original),0) as v, COUNT(*) as n FROM carteira_parcelas WHERE empreendimento_id=? AND status NOT IN ('cancelado')`).get(empId);
+  const pagas = db.prepare(`SELECT COALESCE(SUM(COALESCE(valor_pago,valor_original)),0) as v, COUNT(*) as n FROM carteira_parcelas WHERE empreendimento_id=? AND status='pago'`).get(empId);
+  const atrasadas = db.prepare(`SELECT COALESCE(SUM(valor_original),0) as v, COUNT(*) as n FROM carteira_parcelas WHERE empreendimento_id=? AND status='atrasado'`).get(empId);
+  const doMes = db.prepare(`SELECT COALESCE(SUM(valor_original),0) as v, COUNT(*) as n FROM carteira_parcelas WHERE empreendimento_id=? AND data_vencimento LIKE ? AND status NOT IN ('pago','cancelado')`).get(empId, mesAtual + '%');
+  const d30 = new Date(); d30.setDate(d30.getDate() - 30); const s30 = d30.toISOString().slice(0, 10);
+  const d60 = new Date(); d60.setDate(d60.getDate() - 60); const s60 = d60.toISOString().slice(0, 10);
+  const d90 = new Date(); d90.setDate(d90.getDate() - 90); const s90 = d90.toISOString().slice(0, 10);
+  const ag30  = db.prepare(`SELECT COALESCE(SUM(valor_original),0) as v, COUNT(*) as n FROM carteira_parcelas WHERE empreendimento_id=? AND status='atrasado' AND data_vencimento>=?`).get(empId, s30);
+  const ag60  = db.prepare(`SELECT COALESCE(SUM(valor_original),0) as v, COUNT(*) as n FROM carteira_parcelas WHERE empreendimento_id=? AND status='atrasado' AND data_vencimento>=? AND data_vencimento<?`).get(empId, s60, s30);
+  const ag90  = db.prepare(`SELECT COALESCE(SUM(valor_original),0) as v, COUNT(*) as n FROM carteira_parcelas WHERE empreendimento_id=? AND status='atrasado' AND data_vencimento>=? AND data_vencimento<?`).get(empId, s90, s60);
+  const agMais = db.prepare(`SELECT COALESCE(SUM(valor_original),0) as v, COUNT(*) as n FROM carteira_parcelas WHERE empreendimento_id=? AND status='atrasado' AND data_vencimento<?`).get(empId, s90);
+  ok(res, { total, pagas, atrasadas, doMes, aging: { d30: ag30, d60: ag60, d90: ag90, mais: agMais } });
+});
+
+app.get('/api/carteira/parcelas/:empId', autenticar, (req, res) => {
+  if (!_carteiraAdmin(req, res)) return;
+  const empId = parseInt(req.params.empId);
+  const hoje = new Date().toISOString().slice(0, 10);
+  db.prepare(`UPDATE carteira_parcelas SET status='atrasado', atualizado_em=CURRENT_TIMESTAMP WHERE empreendimento_id=? AND status='pendente' AND data_vencimento<?`).run(empId, hoje);
+  const { status, mes, venda_id } = req.query;
+  let sql = `SELECT cp.*, l.nome as lead_nome, u.lote, u.quadra FROM carteira_parcelas cp LEFT JOIN vendas v ON v.id=cp.venda_id LEFT JOIN leads l ON l.id=v.lead_id LEFT JOIN unidades u ON u.id=v.unidade_id WHERE cp.empreendimento_id=?`;
+  const params = [empId];
+  if (status && status !== 'todos') { sql += ` AND cp.status=?`; params.push(status); }
+  if (mes) { sql += ` AND cp.data_vencimento LIKE ?`; params.push(mes + '%'); }
+  if (venda_id) { sql += ` AND cp.venda_id=?`; params.push(parseInt(venda_id)); }
+  sql += ` ORDER BY cp.data_vencimento, cp.venda_id, cp.numero LIMIT 500`;
+  ok(res, db.prepare(sql).all(...params));
+});
+
+app.post('/api/carteira/:vendaId/gerar', autenticar, (req, res) => {
+  if (!_carteiraAdmin(req, res)) return;
+  const vendaId = parseInt(req.params.vendaId);
+  const { data_primeiro_vencimento, indice = 'nenhum', juros_mora_pct = 0, multa_atraso_pct = 2 } = req.body;
+  if (!data_primeiro_vencimento) return err(res, 'Data do primeiro vencimento obrigatória');
+  const venda = db.prepare(`SELECT v.*, e.id as emp_id FROM vendas v JOIN empreendimentos e ON e.id=v.empreendimento_id WHERE v.id=?`).get(vendaId);
+  if (!venda) return err(res, 'Venda não encontrada', 404);
+  const parcelas = _gerarCronogramaParcelas(venda, { data_primeiro_vencimento });
+  if (!parcelas.length) return err(res, 'Sem condição de pagamento cadastrada nesta venda.');
+  db.transaction(() => {
+    db.prepare(`DELETE FROM carteira_parcelas WHERE venda_id=?`).run(vendaId);
+    db.prepare(`INSERT OR REPLACE INTO carteira_config(venda_id,indice,periodicidade,juros_mora_pct,multa_atraso_pct,data_primeiro_vencimento) VALUES(?,?,?,?,?,?)`).run(vendaId, indice, 'mensal', parseFloat(juros_mora_pct), parseFloat(multa_atraso_pct), data_primeiro_vencimento);
+    const stmt = db.prepare(`INSERT INTO carteira_parcelas(venda_id,empreendimento_id,numero,tipo,descricao,valor_original,data_vencimento) VALUES(?,?,?,?,?,?,?)`);
+    for (const p of parcelas) stmt.run(vendaId, venda.emp_id, p.numero, p.tipo, p.descricao, p.valor_original, p.data_vencimento);
+  })();
+  ok(res, { geradas: parcelas.length, preview: parcelas.slice(0, 5) });
+});
+
+app.post('/api/carteira/parcela/:id/pagar', autenticar, (req, res) => {
+  if (!_carteiraAdmin(req, res)) return;
+  const { data_pagamento, valor_pago, observacoes } = req.body;
+  const hoje = new Date().toISOString().slice(0, 10);
+  db.prepare(`UPDATE carteira_parcelas SET status='pago', data_pagamento=?, valor_pago=?, observacoes=?, atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(data_pagamento || hoje, valor_pago != null ? parseFloat(valor_pago) : null, observacoes || null, parseInt(req.params.id));
+  ok(res, { ok: true });
+});
+
+app.post('/api/carteira/baixar-multiplas', autenticar, (req, res) => {
+  if (!_carteiraAdmin(req, res)) return;
+  const { ids, data_pagamento } = req.body;
+  if (!Array.isArray(ids) || !ids.length) return err(res, 'Nenhuma parcela selecionada');
+  const hoje = new Date().toISOString().slice(0, 10);
+  const stmt = db.prepare(`UPDATE carteira_parcelas SET status='pago', data_pagamento=?, atualizado_em=CURRENT_TIMESTAMP WHERE id=? AND status!='pago'`);
+  db.transaction(() => ids.forEach(id => stmt.run(data_pagamento || hoje, parseInt(id))))();
+  ok(res, { baixadas: ids.length });
+});
+
+app.post('/api/carteira/parcela/:id/estornar', autenticar, (req, res) => {
+  if (!_carteiraAdmin(req, res)) return;
+  const p = db.prepare(`SELECT data_vencimento FROM carteira_parcelas WHERE id=?`).get(parseInt(req.params.id));
+  const hoje = new Date().toISOString().slice(0, 10);
+  const novoStatus = p && p.data_vencimento < hoje ? 'atrasado' : 'pendente';
+  db.prepare(`UPDATE carteira_parcelas SET status=?, data_pagamento=NULL, valor_pago=NULL, observacoes=NULL, atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(novoStatus, parseInt(req.params.id));
+  ok(res, { ok: true });
+});
+
+app.post('/api/carteira/parcela/:id/renegociar', autenticar, (req, res) => {
+  if (!_carteiraAdmin(req, res)) return;
+  const { nova_data, novo_valor, observacoes } = req.body;
+  db.prepare(`UPDATE carteira_parcelas SET status='renegociado', data_vencimento=COALESCE(?,data_vencimento), valor_original=COALESCE(?,valor_original), observacoes=?, atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(nova_data || null, novo_valor != null ? parseFloat(novo_valor) : null, observacoes || null, parseInt(req.params.id));
+  ok(res, { ok: true });
+});
+
+app.put('/api/carteira/parcela/:id', autenticar, (req, res) => {
+  if (!_carteiraAdmin(req, res)) return;
+  const { descricao, valor_original, data_vencimento, status, observacoes } = req.body;
+  db.prepare(`UPDATE carteira_parcelas SET descricao=COALESCE(?,descricao), valor_original=COALESCE(?,valor_original), data_vencimento=COALESCE(?,data_vencimento), status=COALESCE(?,status), observacoes=COALESCE(?,observacoes), atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(descricao || null, valor_original != null ? parseFloat(valor_original) : null, data_vencimento || null, status || null, observacoes !== undefined ? observacoes : null, parseInt(req.params.id));
+  ok(res, { ok: true });
+});
+
 app.listen(PORT, () => {
   console.log(`CRM R2X rodando em http://localhost:${PORT}`);
   try {

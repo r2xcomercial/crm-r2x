@@ -625,4 +625,46 @@ db.exec(`
   );
 `);
 
+// ─── CARTEIRA DE RECEBÍVEIS ───────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS carteira_parcelas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    venda_id INTEGER NOT NULL REFERENCES vendas(id) ON DELETE CASCADE,
+    empreendimento_id INTEGER NOT NULL REFERENCES empreendimentos(id),
+    numero INTEGER NOT NULL,
+    tipo TEXT DEFAULT 'parcela',
+    descricao TEXT,
+    valor_original REAL NOT NULL DEFAULT 0,
+    data_vencimento TEXT NOT NULL,
+    data_pagamento TEXT,
+    valor_pago REAL,
+    status TEXT DEFAULT 'pendente',
+    observacoes TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS carteira_config (
+    venda_id INTEGER PRIMARY KEY REFERENCES vendas(id) ON DELETE CASCADE,
+    indice TEXT DEFAULT 'nenhum',
+    periodicidade TEXT DEFAULT 'mensal',
+    juros_mora_pct REAL DEFAULT 0,
+    multa_atraso_pct REAL DEFAULT 2,
+    data_primeiro_vencimento TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS carteira_indices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    indice TEXT NOT NULL,
+    mes TEXT NOT NULL,
+    valor_pct REAL NOT NULL DEFAULT 0,
+    fonte TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(indice, mes)
+  );
+`);
+try { db.exec(`CREATE INDEX IF NOT EXISTS idx_carteira_emp_venc ON carteira_parcelas(empreendimento_id, data_vencimento, status)`); } catch(_) {}
+try { db.exec(`CREATE INDEX IF NOT EXISTS idx_carteira_venda ON carteira_parcelas(venda_id, numero)`); } catch(_) {}
+
 module.exports = db;
