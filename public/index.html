@@ -1373,10 +1373,8 @@ async function openLeadModal(lead = {}, onSave = null) {
     const er = await get('/api/empreendimentos');
     if (er.ok) empData = er.data || [];
   }
-  const isCorretor = lead.tipo === 'corretor';
   const sec = (icon, title) => `<div style="display:flex;align-items:center;gap:8px;margin:20px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border)"><span style="font-size:15px">${icon}</span><span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2)">${title}</span></div>`;
   openModal(lead.id ? 'Editar Cliente' : 'Novo Cliente', `
-    ${lead.tipo === 'corretor' ? `<div style="background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.3);border-radius:10px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px"><span style="font-size:18px">🏷️</span><div><div style="font-size:13px;font-weight:600;color:#60a5fa">Cliente qualificado como Corretor Parceiro</div><div style="font-size:11px;color:var(--text2)">CRECI e imobiliária visíveis abaixo</div></div></div>` : ''}
 
     ${sec('👤','Identificação')}
     <div class="form-grid">
@@ -1389,13 +1387,6 @@ async function openLeadModal(lead = {}, onSave = null) {
 
     ${sec('🎯','Qualificação')}
     <div class="form-grid">
-      <div class="form-group" ${USUARIO.perfil==='corretor' ? 'style="display:none"' : ''}><label>Tipo de Cliente</label>
-        <select id="f-tipo-lead" onchange="toggleCamposCorretor(this.value)">
-          <option value="" ${!lead.tipo?'selected':''}>— Comprador —</option>
-          <option value="corretor" ${lead.tipo==='corretor'?'selected':''}>🏷️ Corretor Parceiro</option>
-          <option value="investidor" ${lead.tipo==='investidor'?'selected':''}>💼 Investidor</option>
-        </select>
-      </div>
       <div class="form-group"><label>Origem</label>
         <select id="f-origem">
           <option value="meta_ads" ${(lead.origem||'manual')==='meta_ads'?'selected':''}>📘 Meta Ads</option>
@@ -1446,10 +1437,6 @@ async function openLeadModal(lead = {}, onSave = null) {
           <label>Descreva o motivo</label>
           <input id="f-motivo-outro" value="${lead.motivo_perda_outro||''}" placeholder="Descreva o motivo da perda">
         </div>
-      </div>
-      <div id="campos-corretor" style="display:${isCorretor?'contents':'none'}">
-        <div class="form-group"><label>CRECI</label><input id="f-creci" value="${lead.creci||''}" placeholder="CRECI 12345-F"></div>
-        <div class="form-group"><label>Imobiliária</label><input id="f-imob" value="${lead.imobiliaria||''}" placeholder="Nome da imobiliária"></div>
       </div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${lead.observacoes||''}</textarea></div>
     </div>
@@ -1580,25 +1567,22 @@ async function openLeadModal(lead = {}, onSave = null) {
     </div>
     ` : ''}
   `, async () => {
-    const tipoLead = v('f-tipo-lead') || null;
     const isPjSave = document.getElementById('f-pessoa-juridica')?.value === '1';
-    if (tipoLead !== 'corretor') {
-      const erros = [];
-      if (!v('f-email'))         erros.push('E-mail');
-      if (!v('f-aniv'))          erros.push('Data de Nascimento');
-      if (!v('f-emp'))           erros.push('Empreendimento de interesse');
-      if (!isPjSave) {
-        if (!v('f-cpf'))         erros.push('CPF');
-        if (!v('f-estado-civil'))erros.push('Estado Civil');
-        if (!v('f-profissao'))   erros.push('Profissão');
-      }
-      if (!v('f-endereco'))      erros.push('Logradouro');
-      if (!v('f-numero'))        erros.push('Número');
-      if (!v('f-bairro'))        erros.push('Bairro');
-      if (!v('f-cidade-end'))    erros.push('Cidade');
-      if (!v('f-estado-uf'))     erros.push('Estado (UF)');
-      if (erros.length) return toast(`Preencha os campos obrigatórios: ${erros.join(', ')}`, 'error');
+    const erros = [];
+    if (!v('f-email'))         erros.push('E-mail');
+    if (!v('f-aniv'))          erros.push('Data de Nascimento');
+    if (!v('f-emp'))           erros.push('Empreendimento de interesse');
+    if (!isPjSave) {
+      if (!v('f-cpf'))         erros.push('CPF');
+      if (!v('f-estado-civil'))erros.push('Estado Civil');
+      if (!v('f-profissao'))   erros.push('Profissão');
     }
+    if (!v('f-endereco'))      erros.push('Logradouro');
+    if (!v('f-numero'))        erros.push('Número');
+    if (!v('f-bairro'))        erros.push('Bairro');
+    if (!v('f-cidade-end'))    erros.push('Cidade');
+    if (!v('f-estado-uf'))     erros.push('Estado (UF)');
+    if (erros.length) return toast(`Preencha os campos obrigatórios: ${erros.join(', ')}`, 'error');
     const corretorId = v('f-corretor') || document.getElementById('f-corretor-hidden')?.value || null;
     const statusSelecionado = v('f-status');
     // Auto-move: se corretor foi atribuído e status ainda é 'novo', vai para com_corretor
@@ -1610,11 +1594,9 @@ async function openLeadModal(lead = {}, onSave = null) {
       objetivo: v('f-obj'), faixa_investimento: v('f-faixa'), prazo: v('f-prazo'),
       origem: v('f-origem') || 'manual',
       status: statusFinal, corretor_id: corretorId, empreendimento_id: v('f-emp')||null,
-      aniversario: v('f-aniv')||null, observacoes: v('f-obs'), tipo: tipoLead,
+      aniversario: v('f-aniv')||null, observacoes: v('f-obs'),
       motivo_perda: ['sem_venda','perdido'].includes(statusFinal) ? (v('f-motivo-perda')||null) : null,
       motivo_perda_outro: ['sem_venda','perdido'].includes(statusFinal) && v('f-motivo-perda')==='outro' ? (v('f-motivo-outro')||null) : null,
-      creci: tipoLead==='corretor' ? (v('f-creci')||null) : null,
-      imobiliaria: tipoLead==='corretor' ? (v('f-imob')||null) : null,
       cpf: v('f-cpf')||null, rg: v('f-rg')||null,
       estado_civil: v('f-estado-civil')||null, profissao: v('f-profissao')||null,
       nome_pai: v('f-nome-pai')||null, nome_mae: v('f-nome-mae')||null,
