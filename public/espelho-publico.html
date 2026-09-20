@@ -627,7 +627,7 @@
       <div style="font-size:12px;color:#94a3b8;margin-bottom:12px">Selecione as condições de pagamento e confirme a reserva:</div>
       <div id="lead-conds-html" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
       <div id="lead-proposta-err" class="modal-err"></div>
-      <button id="lead-proposta-btn" onclick="reservarEEnviarProposta()" style="display:block;width:100%;padding:14px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;border:none;border-radius:10px;cursor:pointer;margin-bottom:8px;box-shadow:0 4px 14px rgba(13,148,136,.35)">🏠 Reservar + Proposta</button>
+      <button id="lead-proposta-btn" onclick="reservarEEnviarProposta()" style="display:block;width:100%;padding:14px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;border:none;border-radius:10px;cursor:pointer;margin-bottom:8px;box-shadow:0 4px 14px rgba(13,148,136,.35)">🏠 Pré-reservar + Proposta</button>
       <button class="btn-cancel" style="display:block;width:100%" onclick="fecharModal('modal-lead')">Só cadastrar, reservar depois</button>
     </div>
   </div>
@@ -665,7 +665,7 @@
 <div id="modal-reservar" class="modal-overlay" onclick="if(event.target===this)fecharModal('modal-reservar')">
   <div class="modal-box wide">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-      <h3 style="margin:0;font-size:16px">🏠 Reservar Unidade</h3>
+      <h3 style="margin:0;font-size:16px">🏠 Pré-reserva de Unidade</h3>
       <button onclick="fecharModal('modal-reservar')" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;padding:4px">✕</button>
     </div>
     <p id="reservar-unidade-desc" style="font-size:12px;color:#14b8a6;margin:0 0 16px;font-weight:600"></p>
@@ -705,7 +705,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px" id="reservar-resumo-grid"></div>
       </div>
       <div id="reservar-proposta-err" class="modal-err" style="margin-top:8px"></div>
-      <button id="reservar-confirmar-btn" onclick="confirmarReserva()" style="display:block;width:100%;padding:15px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;border:none;border-radius:10px;cursor:pointer;box-shadow:0 4px 14px rgba(13,148,136,.35);margin-top:14px;letter-spacing:.02em">🏠 Confirmar reserva</button>
+      <button id="reservar-confirmar-btn" onclick="confirmarReserva()" style="display:block;width:100%;padding:15px;font-size:15px;font-weight:800;background:linear-gradient(135deg,#0d9488,#0f766e);color:#fff;border:none;border-radius:10px;cursor:pointer;box-shadow:0 4px 14px rgba(13,148,136,.35);margin-top:14px;letter-spacing:.02em">🏠 Confirmar pré-reserva</button>
       <button style="display:block;width:100%;margin-top:8px;background:none;border:none;color:#64748b;font-size:13px;cursor:pointer;padding:8px" onclick="fecharModal('modal-reservar')">Cancelar</button>
     </div>
   </div>
@@ -1039,8 +1039,8 @@ function abrirSimulacao(unitId) {
   const reservarBtn = (!hideReserva && _corretorToken && u.status === 'disponivel')
     ? `<button class="btn-sim btn-reservar-principal" onclick="fecharSimulacao();abrirReservar(${unitId})">
         ${modoRes === 'reserva_direta'
-          ? '🏠 Reservar esta unidade'
-          : '🏠 Reservar · aguarda PIX 15min'}
+          ? '🏠 Pré-reservar esta unidade'
+          : '🏠 Pré-reservar · aguarda PIX 15min'}
       </button>`
     : '';
   // Botão para corretor dono da pré-reserva anexar PIX
@@ -2604,8 +2604,8 @@ async function enviarLead() {
       // Ajusta label do botão de reserva conforme modo
       const modoRes = window._modoReserva || 'pre_reserva_pix';
       const reservaBtnLabel = modoRes === 'reserva_direta'
-        ? '🏠 Reservar agora'
-        : '🏠 Reservar · aguarda PIX 15min';
+        ? '🏠 Pré-reservar agora'
+        : '🏠 Pré-reservar · aguarda PIX 15min';
       const reservaBtnEl = document.getElementById('lead-proposta-btn');
       if (reservaBtnEl) reservaBtnEl.textContent = reservaBtnLabel;
 
@@ -2692,7 +2692,7 @@ async function reservarEEnviarProposta() {
   } catch(e) {
     errEl.textContent = e.message;
     btn.disabled = false;
-    btn.textContent = '🏠 Reservar + Proposta';
+    btn.textContent = '🏠 Pré-reservar + Proposta';
   }
 }
 
