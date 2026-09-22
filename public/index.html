@@ -1461,10 +1461,10 @@ async function openLeadModal(lead = {}, onSave = null) {
         <div class="form-group"><label>CPF *</label><input id="f-cpf" value="${lead.cpf||''}" placeholder="000.000.000-00" oninput="verificarDuplicidadeCpf(this.value,${lead.id||0})"></div>
         <div class="form-group"><label>RG</label><input id="f-rg" value="${lead.rg||''}" placeholder="00.000.000-0"></div>
         <div id="aviso-dup-cpf" class="form-group span2" style="display:none;padding:10px 14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);border-radius:8px;font-size:13px;font-weight:600;color:#f87171">🚫 Esse cliente já está cadastrado, favor contatar a R2X.</div>
-        <div class="form-group"><label>Estado Civil *</label>
+        <div class="form-group"><label>Estado Civil</label>
           <select id="f-estado-civil"><option value="">—</option>${(()=>{const ec=lead.estado_civil||'';const lb={solteiro:'Solteiro(a)',casado:'Casado(a)',divorciado:'Divorciado(a)',viuvo:'Viúvo(a)',uniao_estavel:'União Estável'};return['solteiro','casado','divorciado','viuvo','uniao_estavel'].map(v=>'<option value="'+v+'" '+(ec===v?'selected':'')+'>'+lb[v]+'</option>').join('');})()}</select>
         </div>
-        <div class="form-group"><label>Profissão *</label><input id="f-profissao" value="${lead.profissao||''}" placeholder="ex: Empresário"></div>
+        <div class="form-group"><label>Profissão</label><input id="f-profissao" value="${lead.profissao||''}" placeholder="ex: Empresário"></div>
         <div class="form-group"><label>Nome do Pai</label><input id="f-nome-pai" value="${lead.nome_pai||''}"></div>
         <div class="form-group"><label>Nome da Mãe</label><input id="f-nome-mae" value="${lead.nome_mae||''}"></div>
       </div>
@@ -1510,10 +1510,10 @@ async function openLeadModal(lead = {}, onSave = null) {
       <span id="end-status" style="font-size:11px;color:var(--text2)">${lead.id ? '(já salvo)' : ''}</span>
     </div>
     <div class="form-grid">
-      <div class="form-group span2"><label>Logradouro *</label><input id="f-endereco" value="${lead.endereco||''}" placeholder="Rua, Avenida, etc."></div>
-      <div class="form-group"><label>Número *</label><input id="f-numero" value="${lead.numero||''}"></div>
+      <div class="form-group span2"><label>Logradouro</label><input id="f-endereco" value="${lead.endereco||''}" placeholder="Rua, Avenida, etc."></div>
+      <div class="form-group"><label>Número</label><input id="f-numero" value="${lead.numero||''}"></div>
       <div class="form-group"><label>Complemento</label><input id="f-complemento" value="${lead.complemento||''}" placeholder="Apto, Bloco..."></div>
-      <div class="form-group"><label>Bairro *</label><input id="f-bairro" value="${lead.bairro||''}"></div>
+      <div class="form-group"><label>Bairro</label><input id="f-bairro" value="${lead.bairro||''}"></div>
       <div class="form-group"><label>CEP</label><input id="f-cep" value="${lead.cep||''}" placeholder="00000-000" onblur="buscarCepLead(this.value)"></div>
       <div class="form-group"><label>Cidade *</label><input id="f-cidade-end" value="${lead.cidade||''}"></div>
       <div class="form-group"><label>Estado (UF) *</label>
@@ -1584,12 +1584,7 @@ async function openLeadModal(lead = {}, onSave = null) {
     if (!v('f-emp'))           erros.push('Empreendimento de interesse');
     if (!isPjSave) {
       if (!v('f-cpf'))         erros.push('CPF');
-      if (!v('f-estado-civil'))erros.push('Estado Civil');
-      if (!v('f-profissao'))   erros.push('Profissão');
     }
-    if (!v('f-endereco'))      erros.push('Logradouro');
-    if (!v('f-numero'))        erros.push('Número');
-    if (!v('f-bairro'))        erros.push('Bairro');
     if (!v('f-cidade-end'))    erros.push('Cidade');
     if (!v('f-estado-uf'))     erros.push('Estado (UF)');
     if (erros.length) return toast(`Preencha os campos obrigatórios: ${erros.join(', ')}`, 'error');
