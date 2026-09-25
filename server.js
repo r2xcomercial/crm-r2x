@@ -6749,6 +6749,54 @@ app.post('/api/admin/restaurar', uploadBackup.single('backup'), (req, res) => {
   }
 });
 
+// ─── MIGRAÇÃO TIPO_CADASTRO: leads de corretor → pasta ────────────────────────
+// GET: preview dos registros que seriam afetados (sem alterar nada)
+app.get('/api/admin/migrar-leads-pasta', autenticar, soAdmin, (req, res) => {
+  try {
+    const afetados = db.prepare(`
+      SELECT l.id, l.nome, l.criado_em, l.status,
+             c.nome AS corretor_nome, e.nome AS emp_nome
+      FROM leads l
+      LEFT JOIN corretores c ON c.id = l.corretor_id
+      LEFT JOIN empreendimentos e ON e.id = l.empreendimento_id
+      WHERE l.corretor_id IS NOT NULL
+        AND l.tipo_cadastro = 'lead'
+        AND l.criado_por_perfil = 'admin'
+      ORDER BY e.nome, l.criado_em
+    `).all();
+    ok(res, { total: afetados.length, registros: afetados });
+  } catch (e) {
+    console.error('[migrar-leads-pasta GET]', e);
+    err(res, e.message);
+  }
+});
+
+// POST: executa a migração (faz backup automático antes)
+app.post('/api/admin/migrar-leads-pasta', autenticar, soAdmin, (req, res) => {
+  try {
+    // Backup antes de qualquer alteração
+    const dbPath = process.env.RAILWAY_VOLUME_MOUNT_PATH
+      ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'crm.db')
+      : path.join(__dirname, 'crm.db');
+    const bkpPath = dbPath.replace('.db', `-antes-migracao-pasta-${Date.now()}.db`);
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    try { fs.copyFileSync(dbPath, bkpPath); } catch(_) {}
+
+    const r = db.prepare(`
+      UPDATE leads
+      SET tipo_cadastro = 'pasta', criado_por_perfil = 'corretor'
+      WHERE corretor_id IS NOT NULL
+        AND tipo_cadastro = 'lead'
+        AND criado_por_perfil = 'admin'
+    `).run();
+    console.log(`[migrar-leads-pasta] ${r.changes} registros convertidos. Backup em ${bkpPath}`);
+    ok(res, { convertidos: r.changes, backup: bkpPath });
+  } catch (e) {
+    console.error('[migrar-leads-pasta POST]', e);
+    err(res, e.message);
+  }
+});
+
 // ─── PLUGGY OPEN FINANCE ──────────────────────────────────────────────────────
 
 const PLUGGY_BASE = 'https://api.pluggy.ai';
