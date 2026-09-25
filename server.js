@@ -2379,7 +2379,11 @@ app.get("/api/leads", (req, res) => {
 app.post("/api/leads", autenticar, (req, res) => {
   const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, status, origem, observacoes, aniversario, tipo, creci, imobiliaria, cpf, rg, estado_civil, profissao, nome_pai, nome_mae, endereco, numero, complemento, bairro, cep, estado, pessoa_juridica, cnpj, razao_social, nome_fantasia, inscricao_estadual, inscricao_municipal, representante_nome, representante_cpf, representante_rg, representante_cargo } = req.body;
   // Corretor só pode registrar leads em seu próprio nome
-  const corretor_id = req.usuario?.perfil === 'corretor' ? req.usuario.corretor_id : req.body.corretor_id;
+  const perfil = req.usuario?.perfil || 'admin';
+  const corretor_id = perfil === 'corretor' ? req.usuario.corretor_id : req.body.corretor_id;
+  // tipo_cadastro: 'pasta' se criado por corretor ou se admin/gestor enviou tipo_cadastro='pasta'; senão 'lead'
+  const tipo_cadastro = req.body.tipo_cadastro === 'pasta' || perfil === 'corretor' ? 'pasta' : 'lead';
+  const criado_por_perfil = perfil === 'corretor' ? 'corretor' : (origem === 'whatsapp' || origem === 'debora' ? 'debora' : 'admin');
   const MSG_DUP = 'Cliente já cadastrado, favor entrar em contato com a R2X.';
   if (telefone) {
     const telLimpo = telefone.replace(/\D/g, '');
@@ -2395,7 +2399,7 @@ app.post("/api/leads", autenticar, (req, res) => {
       if (dup) return err(res, MSG_DUP, 409);
     }
   }
-  const r = db.prepare(`INSERT INTO leads (nome,telefone,email,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,empreendimento_id,corretor_id,status,origem,observacoes,aniversario,tipo,creci,imobiliaria,cpf,rg,estado_civil,profissao,nome_pai,nome_mae,endereco,numero,complemento,bairro,cep,estado,pessoa_juridica,cnpj,razao_social,nome_fantasia,inscricao_estadual,inscricao_municipal,representante_nome,representante_cpf,representante_rg,representante_cargo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status || 'novo', origem || 'manual', observacoes, aniversario||null, tipo||null, creci||null, imobiliaria||null, cpf||null, rg||null, estado_civil||null, profissao||null, nome_pai||null, nome_mae||null, endereco||null, numero||null, complemento||null, bairro||null, cep||null, estado||null, pessoa_juridica?1:0, cnpj||null, razao_social||null, nome_fantasia||null, inscricao_estadual||null, inscricao_municipal||null, representante_nome||null, representante_cpf||null, representante_rg||null, representante_cargo||null);
+  const r = db.prepare(`INSERT INTO leads (nome,telefone,email,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,empreendimento_id,corretor_id,status,origem,observacoes,aniversario,tipo,creci,imobiliaria,cpf,rg,estado_civil,profissao,nome_pai,nome_mae,endereco,numero,complemento,bairro,cep,estado,pessoa_juridica,cnpj,razao_social,nome_fantasia,inscricao_estadual,inscricao_municipal,representante_nome,representante_cpf,representante_rg,representante_cargo,tipo_cadastro,criado_por_perfil) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, corretor_id, status || 'novo', origem || 'manual', observacoes, aniversario||null, tipo||null, creci||null, imobiliaria||null, cpf||null, rg||null, estado_civil||null, profissao||null, nome_pai||null, nome_mae||null, endereco||null, numero||null, complemento||null, bairro||null, cep||null, estado||null, pessoa_juridica?1:0, cnpj||null, razao_social||null, nome_fantasia||null, inscricao_estadual||null, inscricao_municipal||null, representante_nome||null, representante_cpf||null, representante_rg||null, representante_cargo||null, tipo_cadastro, criado_por_perfil);
   ok(res, { id: r.lastInsertRowid });
 });
 

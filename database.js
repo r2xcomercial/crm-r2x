@@ -229,6 +229,8 @@ const migrations = [
   "ALTER TABLE leads ADD COLUMN imobiliaria TEXT",
   "ALTER TABLE vendas ADD COLUMN clicksign_key TEXT",
   "ALTER TABLE vendas ADD COLUMN clicksign_status TEXT",
+  "ALTER TABLE leads ADD COLUMN tipo_cadastro TEXT DEFAULT 'lead'",
+  "ALTER TABLE leads ADD COLUMN criado_por_perfil TEXT DEFAULT 'admin'",
 ];
 for (const sql of migrations) {
   try { db.exec(sql); } catch (_) { /* coluna já existe */ }

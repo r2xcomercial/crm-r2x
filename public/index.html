@@ -1129,7 +1129,7 @@ function kpi(icon, label, value, sub) {
 
 let leadsData = [], corretoresData = [], empData = [];
 
-window._leadsFiltros = window._leadsFiltros || { status:'', corretor_id:'', empreendimento_id:'' };
+window._leadsFiltros = window._leadsFiltros || { status:'', corretor_id:'', empreendimento_id:'', tipo_cadastro:'' };
 
 async function renderLeads(filter = '') {
   const [lr, cr, er] = await Promise.all([get('/api/leads'), get('/api/corretores'), get('/api/empreendimentos')]);
@@ -1144,7 +1144,7 @@ async function renderLeads(filter = '') {
     (empData||[]).map(e => `<option value="${e.id}" ${fl.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('');
 
   const leads = _filtrarLeads(filter);
-  const temFiltro = fl.status || fl.corretor_id || fl.empreendimento_id;
+  const temFiltro = fl.status || fl.corretor_id || fl.empreendimento_id || fl.tipo_cadastro;
 
   document.getElementById('content').innerHTML = `
     <div style="background:var(--navy2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -1162,7 +1162,12 @@ async function renderLeads(filter = '') {
       </select>
       <select onchange="window._leadsFiltros.corretor_id=this.value;aplicarFiltrosLead()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${corOpts}</select>
       <select onchange="window._leadsFiltros.empreendimento_id=this.value;aplicarFiltrosLead()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${empOpts}</select>
-      ${temFiltro ? `<button onclick="window._leadsFiltros={status:'',corretor_id:'',empreendimento_id:''};renderLeads()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
+      <select onchange="window._leadsFiltros.tipo_cadastro=this.value;aplicarFiltrosLead()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">
+        <option value="" ${!fl.tipo_cadastro?'selected':''}>Lead + Pasta</option>
+        <option value="lead" ${fl.tipo_cadastro==='lead'?'selected':''}>🎯 Só Leads</option>
+        <option value="pasta" ${fl.tipo_cadastro==='pasta'?'selected':''}>📁 Só Pastas</option>
+      </select>
+      ${temFiltro ? `<button onclick="window._leadsFiltros={status:'',corretor_id:'',empreendimento_id:'',tipo_cadastro:''};renderLeads()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
       <div style="flex:1"></div>
       <button onclick="navigate('kanban')" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">📋 Kanban</button>
       <label style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">
@@ -1194,6 +1199,7 @@ function _filtrarLeads(textFilter = '') {
     if (fl.status && l.status !== fl.status && !(fl.status==='sem_venda' && l.status==='perdido')) return false;
     if (fl.corretor_id && String(l.corretor_id) !== String(fl.corretor_id)) return false;
     if (fl.empreendimento_id && String(l.empreendimento_id) !== String(fl.empreendimento_id)) return false;
+    if (fl.tipo_cadastro && (l.tipo_cadastro || 'lead') !== fl.tipo_cadastro) return false;
     return true;
   });
 }
@@ -1322,6 +1328,7 @@ function renderLeadRow(l, statusColors) {
     <td>
       <strong${nomeTitle}>${l.nome||'—'}</strong>
       ${isCorretorLead ? `<span style="display:inline-block;margin-left:5px;font-size:10px;font-weight:700;background:rgba(96,165,250,.15);color:#60a5fa;border:1px solid rgba(96,165,250,.3);border-radius:4px;padding:1px 5px">🏷️ CORRETOR</span>` : ''}
+      ${l.tipo_cadastro === 'pasta' ? `<span style="display:inline-block;margin-left:5px;font-size:10px;font-weight:700;background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.3);border-radius:4px;padding:1px 5px">📁 PASTA</span>` : `<span style="display:inline-block;margin-left:5px;font-size:10px;font-weight:700;background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.3);border-radius:4px;padding:1px 5px">🎯 LEAD</span>`}
       ${l.tipo==='investidor' ? `<span style="display:inline-block;margin-left:5px;font-size:10px;font-weight:700;background:rgba(167,139,250,.15);color:#a78bfa;border:1px solid rgba(167,139,250,.3);border-radius:4px;padding:1px 5px">💼 INVEST.</span>` : ''}
       ${esquecido ? ` <span title="${dias}d sem contato" style="color:var(--warning);font-size:11px">⚠️${dias}d</span>` : ''}
       ${isCorretorLead && l.imobiliaria ? `<div style="font-size:11px;color:var(--text2);margin-top:1px">🏢 ${l.imobiliaria}${l.creci?' · '+l.creci:''}</div>` : ''}
