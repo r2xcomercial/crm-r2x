@@ -1131,6 +1131,50 @@ let leadsData = [], corretoresData = [], empData = [];
 
 window._leadsFiltros = window._leadsFiltros || { status:'', corretor_id:'', empreendimento_id:'', tipo_cadastro:'' };
 
+function _renderFilaLeads(todos, corretores) {
+  const fila = (todos||[]).filter(l => (l.tipo_cadastro||'lead') === 'lead' && !l.corretor_id);
+  if (!fila.length) return '';
+  const corOpts = (corretores||[]).map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+  const rows = fila.map(l => `
+    <tr>
+      <td><strong>${l.nome||'—'}</strong><br><span style="font-size:11px;color:var(--text2)">${l.origem||''}</span></td>
+      <td><a href="https://wa.me/55${(l.telefone||'').replace(/\D/g,'')}" target="_blank" style="color:var(--accent);text-decoration:none;font-size:12px">📱 ${l.telefone||'—'}</a></td>
+      <td style="font-size:12px">${l.empreendimento_nome||l.empreendimento_interesse||'<span style="color:var(--text2)">—</span>'}</td>
+      <td>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="fila-cor-${l.id}" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;flex:1">
+            <option value="">Selecionar corretor...</option>
+            ${corOpts}
+          </select>
+          <button onclick="atribuirCorretorLead(${l.id})" style="padding:5px 10px;border-radius:6px;border:none;background:var(--accent);color:var(--navy);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Atribuir →</button>
+          <button onclick="editLead(${l.id})" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:12px;cursor:pointer" title="Ver detalhes">✏️</button>
+        </div>
+      </td>
+    </tr>`).join('');
+  return `
+    <div style="background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:13px;font-weight:700;color:#fbbf24">🎯 Fila de Leads sem Corretor</span>
+        <span style="background:rgba(251,191,36,.2);color:#fbbf24;border-radius:10px;font-size:11px;font-weight:700;padding:2px 8px">${fila.length}</span>
+        <span style="font-size:11px;color:var(--text2);margin-left:4px">Leads cadastrados pela Débora / admin aguardando atribuição</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="font-size:11px;color:var(--text2)"><th style="padding:4px 8px;text-align:left">Nome</th><th style="padding:4px 8px;text-align:left">Telefone</th><th style="padding:4px 8px;text-align:left">Empreendimento</th><th style="padding:4px 8px;text-align:left">Atribuir</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function atribuirCorretorLead(leadId) {
+  const sel = document.getElementById(`fila-cor-${leadId}`);
+  const corretorId = sel?.value;
+  if (!corretorId) return toast('Selecione um corretor', 'error');
+  const r = await put(`/api/leads/${leadId}`, { corretor_id: corretorId, status: 'com_corretor' });
+  if (!r.ok) return toast(r.error || 'Erro ao atribuir', 'error');
+  toast('✅ Corretor atribuído!');
+  renderLeads();
+}
+
 async function renderLeads(filter = '') {
   const [lr, cr, er] = await Promise.all([get('/api/leads'), get('/api/corretores'), get('/api/empreendimentos')]);
   leadsData = lr.data; corretoresData = cr.data; empData = er.data;
@@ -1176,6 +1220,7 @@ async function renderLeads(filter = '') {
       <button onclick="exportarLeads()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">📊 Excel</button>
       <button onclick="exportarLeadsPDF()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">🖨️ PDF</button>
     </div>
+    ${USUARIO.perfil === 'admin' ? _renderFilaLeads(leadsData, corretoresData) : ''}
     <div class="table-card">
       <div class="table-header"><div class="table-title">🎯 Leads (<span id="leads-count">${leads.length}</span>)</div></div>
       <table>
@@ -1427,6 +1472,13 @@ async function openLeadModal(lead = {}, onSave = null) {
         </select>
       </div>
       ${USUARIO.perfil==='corretor' ? `<input type="hidden" id="f-corretor-hidden" value="${USUARIO.corretor_id}">` : ''}
+      ${!lead.id && USUARIO.perfil !== 'corretor' ? `
+      <div class="form-group"><label>Tipo de cadastro</label>
+        <select id="f-tipo-cad" onchange="document.getElementById('f-tipo-cad').value==='pasta'?document.getElementById('bloco-corretor-pasta').style.display='block':document.getElementById('bloco-corretor-pasta').style.display='none'">
+          <option value="lead" ${(lead.tipo_cadastro||'lead')==='lead'?'selected':''}>🎯 Lead (fila de distribuição)</option>
+          <option value="pasta" ${lead.tipo_cadastro==='pasta'?'selected':''}>📁 Pasta (vincular a corretor já)</option>
+        </select>
+      </div>` : ''}
       <div class="form-group"><label>Empreendimento de interesse *</label>
         <select id="f-emp">
           <option value="">— Não definido —</option>
@@ -1585,15 +1637,18 @@ async function openLeadModal(lead = {}, onSave = null) {
     ` : ''}
   `, async () => {
     const isPjSave = document.getElementById('f-pessoa-juridica')?.value === '1';
+    const isCorretorSave = USUARIO.perfil === 'corretor';
     const erros = [];
-    if (!v('f-email'))         erros.push('E-mail');
-    if (!v('f-aniv'))          erros.push('Data de Nascimento');
-    if (!v('f-emp'))           erros.push('Empreendimento de interesse');
-    if (!isPjSave) {
-      if (!v('f-cpf'))         erros.push('CPF');
+    if (isCorretorSave) {
+      if (!v('f-email'))        erros.push('E-mail');
+      if (!v('f-aniv'))         erros.push('Data de Nascimento');
+      if (!v('f-emp'))          erros.push('Empreendimento de interesse');
+      if (!isPjSave) {
+        if (!v('f-cpf'))        erros.push('CPF');
+      }
+      if (!v('f-cidade-end'))   erros.push('Cidade');
+      if (!v('f-estado-uf'))    erros.push('Estado (UF)');
     }
-    if (!v('f-cidade-end'))    erros.push('Cidade');
-    if (!v('f-estado-uf'))     erros.push('Estado (UF)');
     if (erros.length) return toast(`Preencha os campos obrigatórios: ${erros.join(', ')}`, 'error');
     if (!isPjSave) {
       const cpfDigits = (v('f-cpf')||'').replace(/\D/g,'');
@@ -1627,9 +1682,10 @@ async function openLeadModal(lead = {}, onSave = null) {
       nome_fantasia: v('f-nome-fantasia')||null,
       inscricao_estadual: v('f-ie')||null, inscricao_municipal: v('f-im')||null,
       representante_nome: v('f-rep-nome')||null, representante_cpf: v('f-rep-cpf')||null,
-      representante_rg: v('f-rep-rg')||null, representante_cargo: v('f-rep-cargo')||null
+      representante_rg: v('f-rep-rg')||null, representante_cargo: v('f-rep-cargo')||null,
+      tipo_cadastro: v('f-tipo-cad') || (USUARIO.perfil === 'corretor' ? 'pasta' : 'lead')
     };
-    if (!lead.id && !isPjSave) {
+    if (!lead.id && !isPjSave && isCorretorSave) {
       if (!_leadDocCnh)        return toast('Envie a CNH ou RG do cliente (obrigatório).', 'error');
     }
     const r = lead.id ? await put(`/api/leads/${lead.id}`, body) : await post('/api/leads', body);
@@ -18153,10 +18209,69 @@ async function _renderEmpCorretorTab(el) {
                 ? `<a href="${link}" target="_blank" rel="noopener" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--navy);border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px">🏠 Ver Espelho</a>`
                 : `<button onclick="verEspelho(${e.id})" style="flex:1;padding:8px 12px;background:var(--accent);color:var(--navy);border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">🏠 Ver Espelho</button>`
               }
+              <button onclick="renderCorretorEmpKanban(${e.id},'${(e.nome||'').replace(/'/g,"\\'")}',this)" style="padding:8px 12px;background:rgba(52,211,153,.15);color:#34d399;border:1px solid rgba(52,211,153,.35);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">📊 Meu Funil</button>
             </div>
           </div>`;
       }).join('')}
     </div>`;
+}
+
+async function renderCorretorEmpKanban(empId, empNome, btn) {
+  const el = document.getElementById('cp-tab-content');
+  el.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text2)">Carregando funil...</div>`;
+
+  const r = await get(`/api/empreendimentos/${empId}/kanban`);
+  if (!r.ok) { el.innerHTML = `<div style="padding:40px;color:var(--danger)">❌ ${r.error}</div>`; return; }
+  const kb = r.data;
+  const fmt = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0}) : '—';
+
+  const COLS = [
+    { key: 'cadastros', label: '👥 Cadastros',  color: '#94a3b8' },
+    { key: 'proposta',  label: '📋 Proposta',   color: '#60a5fa' },
+    { key: 'aprovado',  label: '✅ Venda',       color: '#4ade80' },
+    { key: 'perdida',   label: '❌ Perdida',     color: '#f87171' },
+  ];
+
+  const renderCard = (item, col) => {
+    const isCad = col === 'cadastros';
+    const nome  = isCad ? item.nome : item.lead_nome;
+    const tel   = isCad ? item.telefone : item.lead_tel;
+    const valor = !isCad && item.valor ? `<span style="color:var(--success);font-size:11px">💰 ${fmt(item.valor)}</span>` : '';
+    const unid  = !isCad && item.lote ? `<span style="font-size:11px;color:var(--text2)">Lote ${item.lote}${item.quadra?' · Q'+item.quadra:''}</span>` : '';
+    const acoes = (col === 'cadastros')
+      ? `<button onclick="editLead(${item.id})" style="width:100%;margin-top:8px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:11px;cursor:pointer">✏️ Ver/Editar</button>`
+      : (col === 'proposta')
+        ? `<button onclick="abrirPropostaCorretor(${item.id},${empId})" style="width:100%;margin-top:8px;padding:5px 8px;border-radius:6px;border:none;background:rgba(96,165,250,.2);color:#60a5fa;font-size:11px;font-weight:700;cursor:pointer">📋 Ver Proposta</button>`
+        : '';
+    return `<div class="kanban-card" style="cursor:default">
+      <div class="kc-nome">${nome||'—'}</div>
+      ${tel ? `<div class="kc-tel"><a href="https://wa.me/55${(tel||'').replace(/\D/g,'')}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:none">📱 ${tel}</a></div>` : ''}
+      <div style="display:flex;flex-direction:column;gap:2px;margin-top:4px">${unid}${valor}</div>
+      ${acoes}
+    </div>`;
+  };
+
+  const colsHtml = COLS.map(col => {
+    const items = kb[col.key] || [];
+    const cards = items.map(i => renderCard(i, col.key)).join('') ||
+      `<div style="color:var(--text2);font-size:12px;text-align:center;padding:20px 0">Vazio</div>`;
+    return `<div class="kanban-col">
+      <div class="kanban-col-head" style="border-top:3px solid ${col.color}">
+        <span style="color:${col.color}">${col.label}</span>
+        <span style="background:${col.color}22;color:${col.color};padding:2px 8px;border-radius:10px;font-size:11px">${items.length}</span>
+      </div>
+      <div class="kanban-col-body">${cards}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+      <button onclick="_cpTab='empreendimentos';_renderCpTab()" style="background:none;border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12px">← Empreendimentos</button>
+      <span style="font-size:15px;font-weight:700;color:var(--text)">📊 Meu Funil — ${empNome}</span>
+      <button onclick="renderCorretorEmpKanban(${empId},'${(empNome||'').replace(/'/g,"\\'")}',null)" style="background:none;border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:12px;margin-left:auto">🔄</button>
+      <button onclick="openLeadModal({tipo_cadastro:'pasta',empreendimento_id:${empId}});_cpTab='empreendimentos'" style="background:var(--accent);color:var(--navy);border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:700">+ Nova Pasta</button>
+    </div>
+    <div class="kanban-board">${colsHtml}</div>`;
 }
 
 // ─── CORRETOR: FINANCEIRO ─────────────────────────────────────────────────────

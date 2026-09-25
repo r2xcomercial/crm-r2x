@@ -123,7 +123,7 @@ app.use((req, res, next) => {
     /^\/api\/leads\/\d+\/documentos$/.test(req.path) ||
     /^\/api\/leads\/documentos\/\d+\/arquivo$/.test(req.path);
   // Empreendimentos: apenas leitura de dados necessários para o espelho
-  const empSubPermitido = ['/unidades', '/mapa', '/espelho'].some(s => req.path.includes(s));
+  const empSubPermitido = ['/unidades', '/mapa', '/espelho', '/kanban'].some(s => req.path.includes(s));
   const empLeitura = req.method === 'GET' && (
     req.path === '/api/empreendimentos' ||
     /^\/api\/empreendimentos\/\d+$/.test(req.path) ||
@@ -3754,7 +3754,9 @@ app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
   const empId = parseInt(req.params.id);
   if (!empId) return err(res, 'ID inválido');
   const u = req.usuario;
-  if (u?.perfil !== 'admin') return err(res, 'Acesso restrito ao administrador', 403);
+  const perfilPermitido = ['admin','gestor','incorporador'].includes(u?.perfil);
+  const ehCorretor = u?.perfil === 'corretor' && u?.corretor_id;
+  if (!perfilPermitido && !ehCorretor) return err(res, 'Acesso negado', 403);
 
   // Colunas de vendas ativas
   const KANBAN_STATUS = ['reserva', 'proposta', 'aprovado', 'ativo'];
