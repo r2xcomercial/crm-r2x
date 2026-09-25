@@ -2442,8 +2442,9 @@ app.put("/api/leads/:id", (req, res) => {
   ok(res, {});
 });
 
-app.delete("/api/leads/:id", (req, res) => {
-  db.prepare("DELETE FROM leads WHERE id=?").run(req.params.id);
+app.delete("/api/leads/:id", autenticar, soAdmin, (req, res) => {
+  const r = db.prepare("DELETE FROM leads WHERE id=?").run(req.params.id);
+  if (!r.changes) return err(res, 'Lead não encontrado', 404);
   ok(res, {});
 });
 
