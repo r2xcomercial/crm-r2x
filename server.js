@@ -6754,7 +6754,9 @@ app.post('/api/admin/restaurar', uploadBackup.single('backup'), (req, res) => {
 app.get('/api/admin/migrar-leads-pasta', autenticar, soAdmin, (req, res) => {
   try {
     const afetados = db.prepare(`
-      SELECT l.id, l.nome, l.criado_em, l.status,
+      SELECT l.id, l.nome, l.telefone, l.email, l.cpf, l.aniversario,
+             l.empreendimento_id, l.empreendimento_interesse,
+             l.cidade, l.estado, l.criado_em, l.status, l.pessoa_juridica,
              c.nome AS corretor_nome, e.nome AS emp_nome
       FROM leads l
       LEFT JOIN corretores c ON c.id = l.corretor_id
@@ -6764,7 +6766,33 @@ app.get('/api/admin/migrar-leads-pasta', autenticar, soAdmin, (req, res) => {
         AND l.criado_por_perfil = 'admin'
       ORDER BY e.nome, l.criado_em
     `).all();
-    ok(res, { total: afetados.length, registros: afetados });
+
+    const registros = afetados.map(l => {
+      const faltando = [];
+      if (!l.email)                           faltando.push('email');
+      if (!l.aniversario)                     faltando.push('data_nascimento');
+      if (!l.empreendimento_id && !l.empreendimento_interesse) faltando.push('empreendimento');
+      if (!l.pessoa_juridica && !l.cpf)       faltando.push('cpf');
+      if (!l.cidade)                          faltando.push('cidade');
+      if (!l.estado)                          faltando.push('estado');
+      return {
+        id: l.id,
+        nome: l.nome,
+        corretor: l.corretor_nome,
+        empreendimento: l.emp_nome || l.empreendimento_interesse || '—',
+        status: l.status,
+        criado_em: l.criado_em,
+        campos_faltando: faltando.length ? faltando : 'completo',
+      };
+    });
+
+    const incompletos = registros.filter(r => Array.isArray(r.campos_faltando));
+    ok(res, {
+      total: registros.length,
+      completos: registros.length - incompletos.length,
+      incompletos: incompletos.length,
+      registros,
+    });
   } catch (e) {
     console.error('[migrar-leads-pasta GET]', e);
     err(res, e.message);
