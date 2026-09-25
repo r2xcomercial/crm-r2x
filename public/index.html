@@ -1707,7 +1707,16 @@ async function openLeadModal(lead = {}, onSave = null) {
     closeModal();
     if (onSave) { await onSave(leadId, body); }
     else { if (currentPage === 'kanban') renderKanban(); else renderLeads(); }
-  });
+  }, lead.id && USUARIO.perfil === 'admin' ? {
+    deleteAction: `async function() {
+      if (!confirm('Excluir o cliente "${(lead.nome||'cliente').replace(/'/g,"\\'")} permanentemente?\\n\\nEssa ação não pode ser desfeita.')) return;
+      const r = await del('/api/leads/${lead.id}');
+      if (!r.ok) return toast(r.error || 'Erro ao excluir', 'error');
+      toast('🗑️ Cliente excluído.');
+      closeModal();
+      if (currentPage === 'kanban') renderKanban(); else renderLeads();
+    }`
+  } : {});
   document.getElementById('modal').classList.add('modal-wide');
   _leadDocCnh = null; _leadDocResidencia = null;
   if (lead.id) { carregarTimeline(lead.id); carregarVisitas(lead.id); carregarCompradores(lead.id); carregarDocsLead(lead.id); }
@@ -13897,7 +13906,11 @@ function openModal(title, bodyHtml, onSave, options = {}) {
     foot.style.display = 'none';
   } else {
     foot.style.display = '';
+    const deleteBtn = options.deleteAction
+      ? `<button class="btn" onclick="(${options.deleteAction})()" style="margin-right:auto;background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.4);min-width:110px">🗑️ Excluir</button>`
+      : '';
     foot.innerHTML = `
+      ${deleteBtn}
       <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="modalSave()">${options.saveLabel || 'Salvar'}</button>
     `;
