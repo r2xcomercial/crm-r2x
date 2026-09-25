@@ -1147,6 +1147,7 @@ function _renderFilaLeads(todos, corretores) {
             ${corOpts}
           </select>
           <button onclick="atribuirCorretorLead(${l.id})" style="padding:5px 10px;border-radius:6px;border:none;background:var(--accent);color:var(--navy);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Atribuir →</button>
+          ${l.telefone ? `<button onclick="abrirDeboraParaLead('${l.telefone}')" style="padding:5px 8px;border-radius:6px;border:1px solid rgba(139,92,246,.4);background:rgba(139,92,246,.1);color:#a78bfa;font-size:12px;cursor:pointer" title="Ver conversa na Débora">🤖</button>` : ''}
           <button onclick="editLead(${l.id})" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:12px;cursor:pointer" title="Ver detalhes">✏️</button>
           <button onclick="excluirLeadFila(${l.id},'${(l.nome||'—').replace(/'/g,"\\'")}')" style="padding:5px 8px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#ef4444;font-size:12px;cursor:pointer" title="Excluir lead">🗑️</button>
         </div>
