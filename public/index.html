@@ -9841,6 +9841,7 @@ async function verEspelhoImagem(empId, emp, mapaData) {
         📐 Importar da Planta
         <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" style="display:none" onchange="analisarPlanta(this,${empId},'${(emp.nome||'').replace(/'/g,"\\'")}')">
       </label>
+      ${USUARIO.perfil === 'admin' ? `<button class="btn btn-secondary" onclick="renderEmpKanban(${empId})" style="font-size:12px;padding:6px 12px;color:#34d399;border-color:rgba(52,211,153,.4);font-weight:700" title="Funil de vendas Kanban">📊 Kanban</button>` : ''}
       <button class="btn btn-secondary" onclick="abrirGerenciarLancamento(${empId})" style="font-size:12px;padding:6px 12px;color:#fbbf24;border-color:rgba(251,191,36,.4)" title="Agendar e controlar o lançamento imobiliário">🚀 Lançamento</button>
       ` : ''}
     </div>
