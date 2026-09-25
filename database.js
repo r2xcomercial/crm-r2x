@@ -231,6 +231,9 @@ const migrations = [
   "ALTER TABLE vendas ADD COLUMN clicksign_status TEXT",
   "ALTER TABLE leads ADD COLUMN tipo_cadastro TEXT DEFAULT 'lead'",
   "ALTER TABLE leads ADD COLUMN criado_por_perfil TEXT DEFAULT 'admin'",
+  // Retroativo: leads criados por corretor (corretor_id preenchido) antes da feature de tipo_cadastro
+  // devem ser 'pasta', pois corretores cadastram clientes já vinculados a si mesmos
+  "UPDATE leads SET tipo_cadastro='pasta', criado_por_perfil='corretor' WHERE corretor_id IS NOT NULL AND tipo_cadastro='lead' AND criado_por_perfil='admin'",
 ];
 for (const sql of migrations) {
   try { db.exec(sql); } catch (_) { /* coluna já existe */ }
