@@ -3801,6 +3801,7 @@ app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
     FROM leads l
     LEFT JOIN corretores c ON c.id = l.corretor_id
     WHERE l.empreendimento_id = ?
+      AND l.tipo_cadastro = 'pasta'
       AND NOT EXISTS (
         SELECT 1 FROM vendas v
         WHERE v.lead_id = l.id AND v.empreendimento_id = ?

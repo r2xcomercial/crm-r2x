@@ -456,7 +456,8 @@
 
     <div class="nav-section">Comercial</div>
     <div class="nav-item" onclick="navigate('debora')"><span class="icon">🤖</span> Débora IA <span class="nav-badge" id="badge-debora" style="display:none"></span></div>
-    <div class="nav-item" onclick="navigate('leads')"><span class="icon">🎯</span> Clientes <span class="nav-badge" id="badge-leads">0</span></div>
+    <div class="nav-item" onclick="navigate('leads')"><span class="icon">🎯</span> Leads <span class="nav-badge" id="badge-leads">0</span></div>
+    <div class="nav-item" onclick="navigate('pastas')"><span class="icon">📁</span> Pastas</div>
     <div class="nav-item" onclick="navigate('kanban')"><span class="icon">📋</span> Kanban</div>
     <div class="nav-item" onclick="navigate('vendas')"><span class="icon">🏆</span> Vendas</div>
     <div class="nav-item" onclick="navigate('ranking')"><span class="icon">⭐</span> Ranking</div>
@@ -503,7 +504,8 @@
     <div class="nav-item" onclick="navigate('painel')"><span class="icon">🚀</span> Painel de Lançamento</div>
     <div class="nav-section">Comercial</div>
     <div class="nav-item" onclick="navigate('debora')"><span class="icon">🤖</span> Débora IA</div>
-    <div class="nav-item" onclick="navigate('leads')"><span class="icon">🎯</span> Clientes <span class="nav-badge" id="badge-leads-g">0</span></div>
+    <div class="nav-item" onclick="navigate('leads')"><span class="icon">🎯</span> Leads <span class="nav-badge" id="badge-leads-g">0</span></div>
+    <div class="nav-item" onclick="navigate('pastas')"><span class="icon">📁</span> Pastas</div>
     <div class="nav-item" onclick="navigate('kanban')"><span class="icon">📋</span> Kanban</div>
     <div class="nav-item" onclick="navigate('ranking')"><span class="icon">⭐</span> Ranking</div>
     <div class="nav-section">Cadastros</div>
@@ -648,6 +650,7 @@ async function renderPage(page) {
     switch(page) {
       case 'dashboard': await renderDashboard(); break;
       case 'leads': await renderLeads(); break;
+      case 'pastas': await renderPastas(); break;
       case 'kanban': await renderKanban(); break;
       case 'vendas': await renderVendas(); break;
       case 'clientes': await renderClientes(); break;
@@ -1171,9 +1174,10 @@ async function atribuirCorretorLead(leadId) {
   const sel = document.getElementById(`fila-cor-${leadId}`);
   const corretorId = sel?.value;
   if (!corretorId) return toast('Selecione um corretor', 'error');
-  const r = await put(`/api/leads/${leadId}`, { corretor_id: corretorId, status: 'com_corretor' });
+  // Mantém tipo_cadastro = 'lead' — só registra para qual corretor foi distribuído
+  const r = await put(`/api/leads/${leadId}`, { corretor_id: corretorId, status: 'com_corretor', tipo_cadastro: 'lead' });
   if (!r.ok) return toast(r.error || 'Erro ao atribuir', 'error');
-  toast('✅ Corretor atribuído!');
+  toast('✅ Lead distribuído ao corretor!');
   renderLeads();
 }
 
@@ -1188,7 +1192,11 @@ async function excluirLeadFila(leadId, nome) {
 async function renderLeads(filter = '') {
   const [lr, cr, er] = await Promise.all([get('/api/leads'), get('/api/corretores'), get('/api/empreendimentos')]);
   leadsData = lr.data; corretoresData = cr.data; empData = er.data;
-  { const _n = leadsData.filter(l => l.status==='novo').length; ['badge-leads','badge-leads-g'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = _n; }); }
+
+  // Badge: leads sem corretor atribuído (aguardando distribuição)
+  const _nFila = leadsData.filter(l => (l.tipo_cadastro||'lead') === 'lead' && !l.corretor_id).length;
+  ['badge-leads','badge-leads-g'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = _nFila; });
+
   const fl = window._leadsFiltros;
   const statusColors = { novo:'badge-accent', qualificado:'badge-blue', com_corretor:'badge-blue', visitou:'badge-purple', proposta:'badge-yellow', reserva:'badge-orange', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
 
@@ -1197,31 +1205,92 @@ async function renderLeads(filter = '') {
   const empOpts = `<option value="">Todos os empreendimentos</option>` +
     (empData||[]).map(e => `<option value="${e.id}" ${fl.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('');
 
-  const leads = _filtrarLeads(filter);
-  const temFiltro = fl.status || fl.corretor_id || fl.empreendimento_id || fl.tipo_cadastro;
+  // Força tipo_cadastro = 'lead' — pastas ficam em navigate('pastas')
+  const leads = leadsData.filter(l => {
+    if ((l.tipo_cadastro||'lead') !== 'lead') return false;
+    if (filter && !((l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter))) return false;
+    if (fl.status && l.status !== fl.status) return false;
+    if (fl.corretor_id && String(l.corretor_id) !== String(fl.corretor_id)) return false;
+    if (fl.empreendimento_id && String(l.empreendimento_id) !== String(fl.empreendimento_id)) return false;
+    return true;
+  });
+  const temFiltro = fl.status || fl.corretor_id || fl.empreendimento_id;
 
   document.getElementById('content').innerHTML = `
     <div style="background:var(--navy2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <span style="font-size:12px;color:var(--text2);font-weight:600;white-space:nowrap">🔍 Filtrar:</span>
-      <select onchange="window._leadsFiltros.status=this.value;aplicarFiltrosLead()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">
+      <select onchange="window._leadsFiltros.status=this.value;renderLeads()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">
+        <option value="" ${!fl.status?'selected':''}>Todos os status</option>
+        <option value="novo" ${fl.status==='novo'?'selected':''}>📥 Aguardando atribuição</option>
+        <option value="com_corretor" ${fl.status==='com_corretor'?'selected':''}>👤 Distribuído</option>
+        <option value="perdido" ${fl.status==='perdido'?'selected':''}>❌ Descartado</option>
+      </select>
+      <select onchange="window._leadsFiltros.corretor_id=this.value;renderLeads()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${corOpts}</select>
+      <select onchange="window._leadsFiltros.empreendimento_id=this.value;renderLeads()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${empOpts}</select>
+      ${temFiltro ? `<button onclick="window._leadsFiltros={status:'',corretor_id:'',empreendimento_id:''};renderLeads()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
+      <div style="flex:1"></div>
+      <button onclick="exportarLeads()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">📊 Excel</button>
+    </div>
+    ${USUARIO.perfil === 'admin' ? _renderFilaLeads(leadsData, corretoresData) : ''}
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">🎯 Leads distribuídos (<span id="leads-count">${leads.filter(l=>l.corretor_id).length}</span>)</div>
+        <div style="font-size:11px;color:var(--text2)">Leads da Débora IA já atribuídos a um corretor</div>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Nome</th><th>Telefone</th><th>Cidade</th>
+          <th>Status</th><th style="width:64px;text-align:center">Score</th>
+          <th>Corretor</th><th>Empreendimento</th><th>Origem</th><th></th>
+        </tr></thead>
+        <tbody id="leads-tbody">
+          ${leads.filter(l=>l.corretor_id).length ? leads.filter(l=>l.corretor_id).map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="9">Nenhum lead distribuído</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function renderPastas(filter = '') {
+  const [lr, cr, er] = await Promise.all([get('/api/leads'), get('/api/corretores'), get('/api/empreendimentos')]);
+  leadsData = lr.data; corretoresData = cr.data; empData = er.data;
+
+  const fl = window._leadsFiltros;
+  const statusColors = { novo:'badge-accent', qualificado:'badge-blue', com_corretor:'badge-blue', visitou:'badge-purple', proposta:'badge-yellow', reserva:'badge-orange', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
+
+  const corOpts = `<option value="">Todos os corretores</option>` +
+    (corretoresData||[]).map(c => `<option value="${c.id}" ${fl.corretor_id==c.id?'selected':''}>${c.nome}</option>`).join('');
+  const empOpts = `<option value="">Todos os empreendimentos</option>` +
+    (empData||[]).map(e => `<option value="${e.id}" ${fl.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('');
+
+  // Força tipo_cadastro = 'pasta'
+  const pastas = leadsData.filter(l => {
+    if ((l.tipo_cadastro||'lead') !== 'pasta') return false;
+    if (filter && !((l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter))) return false;
+    if (fl.status && l.status !== fl.status && !(fl.status==='sem_venda' && l.status==='perdido')) return false;
+    if (fl.corretor_id && String(l.corretor_id) !== String(fl.corretor_id)) return false;
+    if (fl.empreendimento_id && String(l.empreendimento_id) !== String(fl.empreendimento_id)) return false;
+    return true;
+  });
+  const temFiltro = fl.status || fl.corretor_id || fl.empreendimento_id;
+
+  document.getElementById('content').innerHTML = `
+    <div style="background:var(--navy2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:12px;color:var(--text2);font-weight:600;white-space:nowrap">🔍 Filtrar:</span>
+      <select onchange="window._leadsFiltros.status=this.value;renderPastas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">
         <option value="" ${!fl.status?'selected':''}>Todos os status</option>
         <option value="novo" ${fl.status==='novo'?'selected':''}>📥 Novo</option>
         <option value="qualificado" ${fl.status==='qualificado'?'selected':''}>✅ Qualificado</option>
-        <option value="com_corretor" ${fl.status==='com_corretor'?'selected':''}>👤 Distribuído</option>
+        <option value="com_corretor" ${fl.status==='com_corretor'?'selected':''}>👤 Com Corretor</option>
         <option value="visitou" ${fl.status==='visitou'?'selected':''}>🏠 Visitou</option>
         <option value="proposta" ${fl.status==='proposta'?'selected':''}>📋 Proposta</option>
         <option value="reserva" ${fl.status==='reserva'?'selected':''}>🔒 Reserva</option>
         <option value="vendido" ${fl.status==='vendido'?'selected':''}>🏆 Vendido</option>
         <option value="sem_venda" ${fl.status==='sem_venda'?'selected':''}>❌ Sem venda</option>
       </select>
-      <select onchange="window._leadsFiltros.corretor_id=this.value;aplicarFiltrosLead()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${corOpts}</select>
-      <select onchange="window._leadsFiltros.empreendimento_id=this.value;aplicarFiltrosLead()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${empOpts}</select>
-      <select onchange="window._leadsFiltros.tipo_cadastro=this.value;aplicarFiltrosLead()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">
-        <option value="" ${!fl.tipo_cadastro?'selected':''}>Lead + Pasta</option>
-        <option value="lead" ${fl.tipo_cadastro==='lead'?'selected':''}>🎯 Só Leads</option>
-        <option value="pasta" ${fl.tipo_cadastro==='pasta'?'selected':''}>📁 Só Pastas</option>
-      </select>
-      ${temFiltro ? `<button onclick="window._leadsFiltros={status:'',corretor_id:'',empreendimento_id:'',tipo_cadastro:''};renderLeads()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
+      <select onchange="window._leadsFiltros.corretor_id=this.value;renderPastas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${corOpts}</select>
+      <select onchange="window._leadsFiltros.empreendimento_id=this.value;renderPastas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${empOpts}</select>
+      ${temFiltro ? `<button onclick="window._leadsFiltros={status:'',corretor_id:'',empreendimento_id:''};renderPastas()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
       <div style="flex:1"></div>
       <button onclick="navigate('kanban')" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">📋 Kanban</button>
       <label style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">
@@ -1230,9 +1299,11 @@ async function renderLeads(filter = '') {
       <button onclick="exportarLeads()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">📊 Excel</button>
       <button onclick="exportarLeadsPDF()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">🖨️ PDF</button>
     </div>
-    ${USUARIO.perfil === 'admin' ? _renderFilaLeads(leadsData, corretoresData) : ''}
     <div class="table-card">
-      <div class="table-header"><div class="table-title">🎯 Leads (<span id="leads-count">${leads.length}</span>)</div></div>
+      <div class="table-header">
+        <div class="table-title">📁 Pastas (<span id="leads-count">${pastas.length}</span>)</div>
+        <div style="font-size:11px;color:var(--text2)">Clientes cadastrados por corretores / admin — entram no Kanban do empreendimento</div>
+      </div>
       <table>
         <thead><tr>
           <th>Nome</th><th>Telefone</th><th>Cidade</th>
@@ -1240,7 +1311,7 @@ async function renderLeads(filter = '') {
           <th>Corretor</th><th>Empreendimento</th><th>Origem</th><th></th>
         </tr></thead>
         <tbody id="leads-tbody">
-          ${leads.length ? leads.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="9">Nenhum cliente encontrado</td></tr>'}
+          ${pastas.length ? pastas.map(l => renderLeadRow(l, statusColors)).join('') : '<tr class="empty-row"><td colspan="9">Nenhuma pasta encontrada</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -13899,6 +13970,7 @@ function handleSearch(q) {
   const f = q.toLowerCase().trim();
   switch(currentPage) {
     case 'leads': renderLeads(f); break;
+    case 'pastas': renderPastas(f); break;
     case 'vendas': renderVendas(f); break;
     case 'clientes': renderClientes(f); break;
     case 'empreendimentos': renderEmpreendimentos(f); break;
@@ -13908,7 +13980,8 @@ function handleSearch(q) {
 
 function handleAdd() {
   switch(currentPage) {
-    case 'leads': openLeadModal(); break;
+    case 'leads': openLeadModal({ tipo_cadastro: 'lead' }); break;
+    case 'pastas': openLeadModal({ tipo_cadastro: 'pasta' }); break;
     case 'vendas': openVendaModal(); break;
     case 'clientes': openClienteModal(); break;
     case 'empreendimentos': openEmpModal(); break;
