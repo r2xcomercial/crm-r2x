@@ -10991,6 +10991,14 @@ async function renderEmpKanban(empId) {
 
     // Botões de ação por perfil e coluna
     let acoes = '';
+    if (isGestor && isCad) {
+      const nomeEsc = (nome||'—').replace(/'/g,"\\'");
+      acoes = `
+        <div style="display:flex;gap:4px;margin-top:8px" onclick="event.stopPropagation()">
+          <button onclick="empKbVirarLead(${item.id},'${nomeEsc}',${empId})" style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.1);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer" title="Remover do Kanban e devolver para Fila de Leads">↩️ Virar Lead</button>
+          <button onclick="empKbExcluirCad(${item.id},'${nomeEsc}',${empId})" style="padding:5px 8px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#ef4444;font-size:11px;cursor:pointer" title="Excluir cadastro permanentemente">🗑️</button>
+        </div>`;
+    }
     if (isGestor && !isCad) {
       if (col === 'proposta') {
         acoes = `
@@ -11048,6 +11056,22 @@ async function renderEmpKanban(empId) {
   }).join('');
 
   document.getElementById('content').innerHTML = funilHtml + `<div class="kanban-board">${colsHtml}</div>`;
+}
+
+// Ações nos cards de Cadastros do kanban de empreendimento
+async function empKbVirarLead(leadId, nome, empId) {
+  if (!confirm(`Converter "${nome}" de volta para Lead?\n\nEle sairá do Kanban e voltará para a Fila de Leads aguardando atribuição.`)) return;
+  const r = await put(`/api/leads/${leadId}`, { tipo_cadastro: 'lead', corretor_id: null, status: 'novo' });
+  if (!r.ok) return toast(r.error || 'Erro ao converter', 'error');
+  toast('↩️ Convertido para Lead!');
+  renderEmpKanban(empId);
+}
+async function empKbExcluirCad(leadId, nome, empId) {
+  if (!confirm(`Excluir "${nome}" permanentemente?\n\nEssa ação não pode ser desfeita.`)) return;
+  const r = await del(`/api/leads/${leadId}`);
+  if (!r.ok) return toast(r.error || 'Erro ao excluir', 'error');
+  toast('🗑️ Cadastro excluído.');
+  renderEmpKanban(empId);
 }
 
 // Drag-and-drop do kanban de empreendimento

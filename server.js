@@ -2421,7 +2421,7 @@ app.put("/api/leads/:id", (req, res) => {
   let novoScore = val('score', lead.score);
   if (novoStatus === 'vendido') novoScore = 100;
   else if (novoScore >= 100) novoScore = 90;
-  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,score=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,cpf=?,rg=?,estado_civil=?,profissao=?,nome_pai=?,nome_mae=?,endereco=?,numero=?,complemento=?,bairro=?,cep=?,estado=?,pessoa_juridica=?,cnpj=?,razao_social=?,nome_fantasia=?,inscricao_estadual=?,inscricao_municipal=?,representante_nome=?,representante_cpf=?,representante_rg=?,representante_cargo=?,motivo_perda=?,motivo_perda_outro=?,atribuido_em=?,origem=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(
+  db.prepare(`UPDATE leads SET nome=?,telefone=?,email=?,cidade=?,objetivo=?,faixa_investimento=?,prazo=?,empreendimento_interesse=?,empreendimento_id=?,corretor_id=?,status=?,score=?,observacoes=?,aniversario=?,tipo=?,creci=?,imobiliaria=?,cpf=?,rg=?,estado_civil=?,profissao=?,nome_pai=?,nome_mae=?,endereco=?,numero=?,complemento=?,bairro=?,cep=?,estado=?,pessoa_juridica=?,cnpj=?,razao_social=?,nome_fantasia=?,inscricao_estadual=?,inscricao_municipal=?,representante_nome=?,representante_cpf=?,representante_rg=?,representante_cargo=?,motivo_perda=?,motivo_perda_outro=?,atribuido_em=?,origem=?,tipo_cadastro=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`).run(
     val('nome', null), val('telefone', null), val('email', null), val('cidade', null),
     val('objetivo', null), val('faixa_investimento', null), val('prazo', null),
     'empreendimento_id' in b && b.empreendimento_id ? null : val('empreendimento_interesse', null), val('empreendimento_id', null),
@@ -2437,6 +2437,7 @@ app.put("/api/leads/:id", (req, res) => {
     val('representante_rg', null), val('representante_cargo', null),
     val('motivo_perda', null), val('motivo_perda_outro', null), atribuido_em,
     val('origem', lead.origem || 'manual'),
+    val('tipo_cadastro', lead.tipo_cadastro || 'lead'),
     req.params.id
   );
   ok(res, {});
