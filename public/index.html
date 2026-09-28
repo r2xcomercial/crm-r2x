@@ -2193,6 +2193,12 @@ async function editLead(id) {
   openLeadModal(lead);
 }
 
+async function editLeadCorretor(id) {
+  const r = await get(`/api/leads/${id}`);
+  if (!r.ok) { toast('Não foi possível carregar dados do cliente', 'error'); return; }
+  openLeadModal(r.data, async () => { renderCorretorPainel('clientes'); });
+}
+
 async function verClienteKanban(lead) {
   const row = (label, val) => val ? `<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;color:var(--text2);min-width:130px;flex-shrink:0">${label}</span><span style="font-size:13px;font-weight:600;color:var(--text)">${val}</span></div>` : '';
   const fmt_tel = t => t ? `<a href="https://wa.me/55${t.replace(/\D/g,'')}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${t}</a>` : '';
@@ -18831,7 +18837,7 @@ function _rowCorretorCliente(c) {
   const isLead = c.origem_tipo === 'lead';
   const vendaBadge = c.tem_venda ? `<span style="font-size:10px;padding:2px 6px;border-radius:8px;background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.3);color:#4ade80;white-space:nowrap">✅ Venda</span>` : '';
   const acoes = isLead
-    ? `<div style="display:flex;gap:4px;align-items:center">${vendaBadge}<span style="font-size:11px;color:var(--text2);padding:2px 7px;border-radius:10px;background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.25)">📋 Lead</span></div>`
+    ? `<div style="display:flex;gap:4px;align-items:center">${vendaBadge}<span style="font-size:11px;color:var(--text2);padding:2px 7px;border-radius:10px;background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.25)">📋 Lead</span><button class="btn-icon btn-edit" onclick="editLeadCorretor(${c.id})" title="Editar cadastro">✏️</button></div>`
     : `<div style="display:flex;gap:4px;align-items:center">${vendaBadge}<button class="btn-icon btn-edit" onclick="openCorretorClienteModal(${c.id})">✏️</button><button class="btn-icon btn-delete" onclick="deleteCorretorCliente(${c.id})">🗑️</button></div>`;
   return `<tr data-cc-id="${c.id}" data-cc-nome="${(c.nome||'').toLowerCase()}" data-cc-cidade="${(c.cidade||'').toLowerCase()}">
     <td><strong>${c.nome||'<span style="color:var(--text2);font-style:italic">Sem nome</span>'}</strong></td>

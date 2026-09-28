@@ -125,7 +125,9 @@ app.use((req, res, next) => {
     (req.path === '/api/leads' && req.method === 'POST') ||
     req.path === '/api/leads/extrair-documento' ||
     /^\/api\/leads\/\d+\/documentos$/.test(req.path) ||
-    /^\/api\/leads\/documentos\/\d+\/arquivo$/.test(req.path);
+    /^\/api\/leads\/documentos\/\d+\/arquivo$/.test(req.path) ||
+    (req.method === 'GET' && /^\/api\/leads\/\d+$/.test(req.path)) ||
+    (req.method === 'PUT' && /^\/api\/leads\/\d+$/.test(req.path));
   // Empreendimentos: apenas leitura de dados necessários para o espelho
   const empSubPermitido = ['/unidades', '/mapa', '/espelho', '/kanban'].some(s => req.path.includes(s));
   const empLeitura = req.method === 'GET' && (
@@ -2423,9 +2425,12 @@ app.post("/api/leads", autenticar, (req, res) => {
   ok(res, { id: r.lastInsertRowid });
 });
 
-app.put("/api/leads/:id", (req, res) => {
+app.put("/api/leads/:id", autenticar, (req, res) => {
   const lead = db.prepare('SELECT * FROM leads WHERE id=?').get(req.params.id);
   if (!lead) return err(res, "Lead não encontrado", 404);
+  // Corretor só pode editar leads atribuídos a si mesmo
+  if (req.usuario?.perfil === 'corretor' && lead.corretor_id !== req.usuario.corretor_id)
+    return err(res, 'Acesso negado', 403);
   const b = req.body;
   // Merge: usa valor do body se explicitamente enviado, senão mantém o valor atual
   const val = (key, fallback) => key in b ? b[key] : (lead[key] !== undefined ? lead[key] : fallback);
