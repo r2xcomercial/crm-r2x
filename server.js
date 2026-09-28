@@ -2376,6 +2376,22 @@ app.get("/api/leads", (req, res) => {
   ok(res, db.prepare(sql).all(...params));
 });
 
+app.get("/api/leads/:id", autenticar, (req, res) => {
+  const id = Number(req.params.id);
+  const lead = db.prepare(`
+    SELECT l.*, c.nome as corretor_nome, e.nome as empreendimento_nome
+    FROM leads l
+    LEFT JOIN corretores c ON c.id = l.corretor_id
+    LEFT JOIN empreendimentos e ON e.id = l.empreendimento_id
+    WHERE l.id=?
+  `).get(id);
+  if (!lead) return err(res, 'Lead não encontrado', 404);
+  // Corretor só vê seus próprios leads
+  if (req.usuario?.perfil === 'corretor' && lead.corretor_id !== req.usuario.corretor_id)
+    return err(res, 'Acesso negado', 403);
+  ok(res, lead);
+});
+
 app.post("/api/leads", autenticar, (req, res) => {
   const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, status, origem, observacoes, aniversario, tipo, creci, imobiliaria, cpf, rg, estado_civil, profissao, nome_pai, nome_mae, endereco, numero, complemento, bairro, cep, estado, pessoa_juridica, cnpj, razao_social, nome_fantasia, inscricao_estadual, inscricao_municipal, representante_nome, representante_cpf, representante_rg, representante_cargo } = req.body;
   // Corretor só pode registrar leads em seu próprio nome

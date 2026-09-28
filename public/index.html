@@ -2183,8 +2183,38 @@ async function copiarDadosLead(id) {
 }
 
 async function editLead(id) {
-  const lead = leadsData.find(l => l.id === id);
+  let lead = leadsData.find(l => l.id === id);
+  if (!lead) {
+    const r = await get(`/api/leads/${id}`);
+    if (!r.ok) { toast('Não foi possível carregar dados do cliente'); return; }
+    lead = r.data;
+  }
+  if (USUARIO.perfil === 'incorporador') { verClienteKanban(lead); return; }
   openLeadModal(lead);
+}
+
+function verClienteKanban(lead) {
+  const row = (label, val) => val ? `<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;color:var(--text2);min-width:130px;flex-shrink:0">${label}</span><span style="font-size:13px;font-weight:600;color:var(--text)">${val}</span></div>` : '';
+  const fmt_tel = t => t ? `<a href="https://wa.me/55${t.replace(/\D/g,'')}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${t}</a>` : '';
+  const origens = {whatsapp:'WhatsApp (Débora IA)',meta_ads:'Meta Ads',google:'Google',instagram:'Instagram orgânico',indicacao_corretor:'Indicação corretor',plantao:'Plantão',portal:'Portal',manual:'Manual'};
+  const aniv = lead.aniversario ? new Date(lead.aniversario+'T00:00:00').toLocaleDateString('pt-BR') : '';
+  openModal(`👤 ${lead.nome||'Cliente'}`, `
+    <div style="display:flex;flex-direction:column">
+      ${row('Telefone', fmt_tel(lead.telefone))}
+      ${row('Email', lead.email)}
+      ${row('Nascimento', aniv)}
+      ${row('CPF', lead.cpf)}
+      ${row('Cidade / Estado', [lead.cidade, lead.estado].filter(Boolean).join(' / '))}
+      ${row('Endereço', [lead.endereco, lead.numero, lead.bairro, lead.cep].filter(Boolean).join(', '))}
+      ${row('Estado Civil', lead.estado_civil)}
+      ${row('Profissão', lead.profissao)}
+      ${row('Corretor', lead.corretor_nome)}
+      ${row('Empreendimento', lead.empreendimento_nome)}
+      ${row('Origem', origens[lead.origem] || lead.origem)}
+      ${row('Faixa de Inv.', lead.faixa_investimento)}
+      ${row('Observações', lead.observacoes)}
+    </div>
+  `, null, {});
 }
 async function deleteLead(id) {
   if (!confirm('Excluir este lead?')) return;
@@ -11036,6 +11066,10 @@ async function renderEmpKanban(empId) {
   const r = await get(`/api/empreendimentos/${empId}/kanban`);
   if (!r.ok) { document.getElementById('content').innerHTML = `<div style="padding:40px;color:var(--danger)">❌ ${r.error}</div>`; return; }
   const kb = r.data;
+  // Incorporador: preenche nome do título a partir dos dados do kanban
+  if (!emp.nome && kb.empreendimento_nome) {
+    document.getElementById('page-title').textContent = `Kanban — ${kb.empreendimento_nome}`;
+  }
   const funil = kb.funil;
   const isGestor = ['admin','gestor'].includes(USUARIO.perfil);
   const fmt = v => v != null ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0}) : '—';
@@ -15239,6 +15273,7 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
               </div>
             </div>
             <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+              <button onclick="renderEmpKanban(${emp.id})" style="display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border-radius:50px;border:1.5px solid rgba(52,211,153,.5);color:#34d399;background:none;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">📊 Kanban</button>
               ${emp.espelho_slug ? `<a href="/espelho/${emp.espelho_slug}?token=${encodeURIComponent(TOKEN)}" target="_blank"
                 style="display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border-radius:50px;border:1.5px solid var(--accent);color:var(--accent);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap">
                 🏠 Ver Espelho
