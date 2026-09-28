@@ -2459,8 +2459,14 @@ app.put("/api/leads/:id", (req, res) => {
   ok(res, {});
 });
 
-app.delete("/api/leads/:id", autenticar, soAdmin, (req, res) => {
-  const r = db.prepare("DELETE FROM leads WHERE id=?").run(req.params.id);
+app.delete("/api/leads/:id", autenticar, (req, res) => {
+  const perfil = req.usuario?.perfil;
+  if (!['admin','gestor'].includes(perfil)) return err(res, 'Acesso restrito', 403);
+  const id = Number(req.params.id);
+  // Verifica se há venda associada (sem CASCADE) — bloqueia exclusão nesse caso
+  const venda = db.prepare("SELECT id FROM vendas WHERE lead_id=?").get(id);
+  if (venda) return err(res, 'Não é possível excluir: cliente possui venda registrada no Kanban. Remova a venda primeiro.', 409);
+  const r = db.prepare("DELETE FROM leads WHERE id=?").run(id);
   if (!r.changes) return err(res, 'Lead não encontrado', 404);
   ok(res, {});
 });
