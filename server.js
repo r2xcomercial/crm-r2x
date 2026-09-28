@@ -6828,6 +6828,57 @@ app.post('/api/admin/migrar-leads-pasta', autenticar, soAdmin, (req, res) => {
   }
 });
 
+// GET: diagnóstico — pastas que deveriam ser leads (origem digital / Débora)
+app.get('/api/admin/diagnostico-pastas-debora', autenticar, soAdmin, (req, res) => {
+  try {
+    const origens = ['whatsapp','debora','débora','debora ia','meta ads','instagram','facebook','tiktok','google','portal'];
+    const afetados = db.prepare(`
+      SELECT id, nome, telefone, origem, criado_por_perfil, status, corretor_id,
+             (SELECT nome FROM corretores WHERE id = leads.corretor_id) AS corretor_nome,
+             atualizado_em
+      FROM leads
+      WHERE tipo_cadastro = 'pasta'
+        AND (
+          criado_por_perfil = 'debora'
+          OR lower(origem) IN (${origens.map(() => '?').join(',')})
+        )
+      ORDER BY atualizado_em DESC
+    `).all(...origens);
+    ok(res, { total: afetados.length, registros: afetados });
+  } catch (e) {
+    console.error('[diagnostico-pastas-debora]', e);
+    err(res, e.message);
+  }
+});
+
+// POST: corrige pastas com origem digital — reverte para lead
+app.post('/api/admin/corrigir-pastas-debora', autenticar, soAdmin, (req, res) => {
+  try {
+    const dbPath = process.env.RAILWAY_VOLUME_MOUNT_PATH
+      ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'crm.db')
+      : path.join(__dirname, 'crm.db');
+    const bkpPath = dbPath.replace('.db', `-antes-correcao-pasta-debora-${Date.now()}.db`);
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    try { fs.copyFileSync(dbPath, bkpPath); } catch(_) {}
+
+    const origens = ['whatsapp','debora','débora','debora ia','meta ads','instagram','facebook','tiktok','google','portal'];
+    const r = db.prepare(`
+      UPDATE leads
+      SET tipo_cadastro = 'lead', criado_por_perfil = 'debora'
+      WHERE tipo_cadastro = 'pasta'
+        AND (
+          criado_por_perfil = 'debora'
+          OR lower(origem) IN (${origens.map(() => '?').join(',')})
+        )
+    `).run(...origens);
+    console.log(`[corrigir-pastas-debora] ${r.changes} registros revertidos para lead. Backup: ${bkpPath}`);
+    ok(res, { corrigidos: r.changes, backup: bkpPath });
+  } catch (e) {
+    console.error('[corrigir-pastas-debora POST]', e);
+    err(res, e.message);
+  }
+});
+
 // ─── PLUGGY OPEN FINANCE ──────────────────────────────────────────────────────
 
 const PLUGGY_BASE = 'https://api.pluggy.ai';
