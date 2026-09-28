@@ -2265,8 +2265,7 @@ async function importarLeads(input) {
 const KANBAN_COLS = [
   { status: 'novo',         label: '📥 Captado',          color: '#5B8AFF', badge: 'badge-accent', extra: [] },
   { status: 'qualificado',  label: '✅ Qualificado',       color: '#38BDF8', badge: 'badge-blue',   extra: [] },
-  { status: 'com_corretor', label: '👤 Distribuído',       color: '#60A5FA', badge: 'badge-blue',   extra: [] },
-  { status: 'visitou',      label: '🏠 Atend./Visita',     color: '#A78BFA', badge: 'badge-purple', extra: [] },
+  { status: 'com_corretor', label: '👤 Distribuído',       color: '#60A5FA', badge: 'badge-blue',   extra: ['visitou'] },
   { status: 'proposta',     label: '📋 Proposta',          color: '#FBBF24', badge: 'badge-yellow', extra: [] },
   { status: 'reserva',      label: '🔒 Reserva',           color: '#F97316', badge: 'badge-orange', extra: [] },
   { status: 'vendido',      label: '🏆 Venda',             color: '#22C55E', badge: 'badge-green',  extra: [] },
@@ -2276,7 +2275,7 @@ const KANBAN_COLS = [
 const KANBAN_NEXT = {
   novo:         ['qualificado', 'sem_venda'],
   qualificado:  ['com_corretor', 'sem_venda'],
-  com_corretor: ['visitou', 'sem_venda'],
+  com_corretor: ['proposta', 'sem_venda'],
   visitou:      ['proposta', 'sem_venda'],
   proposta:     ['reserva', 'sem_venda'],
   reserva:      ['vendido', 'sem_venda'],
