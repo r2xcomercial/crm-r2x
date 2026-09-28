@@ -1772,7 +1772,7 @@ async function openLeadModal(lead = {}, onSave = null) {
       inscricao_estadual: v('f-ie')||null, inscricao_municipal: v('f-im')||null,
       representante_nome: v('f-rep-nome')||null, representante_cpf: v('f-rep-cpf')||null,
       representante_rg: v('f-rep-rg')||null, representante_cargo: v('f-rep-cargo')||null,
-      tipo_cadastro: v('f-tipo-cad') || (USUARIO.perfil === 'corretor' ? 'pasta' : 'lead')
+      tipo_cadastro: v('f-tipo-cad') || (lead.id ? (lead.tipo_cadastro || 'lead') : (USUARIO.perfil === 'corretor' ? 'pasta' : 'lead'))
     };
     if (!lead.id && !isPjSave && isCorretorSave) {
       if (!_leadDocCnh)        return toast('Envie a CNH ou RG do cliente (obrigatório).', 'error');
