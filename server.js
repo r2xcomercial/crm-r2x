@@ -92,7 +92,9 @@ app.use((req, res, next) => {
       || req.path.startsWith('/api/incorporador/')
       || (req.method === 'GET' && req.path.startsWith('/api/espelho-publico/'))
       || (req.method === 'GET' && /^\/api\/empreendimentos\/\d+\/kanban$/.test(req.path))
-      || (req.method === 'GET' && /^\/api\/leads\/\d+$/.test(req.path));
+      || (req.method === 'GET' && /^\/api\/leads\/\d+$/.test(req.path))
+      || (req.method === 'GET' && /^\/api\/leads\/\d+\/documentos$/.test(req.path))
+      || (req.method === 'GET' && /^\/api\/leads\/documentos\/\d+\/arquivo$/.test(req.path));
     if (!permitido) return err(res, 'Acesso não autorizado', 403);
   }
   next();

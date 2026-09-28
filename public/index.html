@@ -2193,13 +2193,40 @@ async function editLead(id) {
   openLeadModal(lead);
 }
 
-function verClienteKanban(lead) {
+async function verClienteKanban(lead) {
   const row = (label, val) => val ? `<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)"><span style="font-size:12px;color:var(--text2);min-width:130px;flex-shrink:0">${label}</span><span style="font-size:13px;font-weight:600;color:var(--text)">${val}</span></div>` : '';
   const fmt_tel = t => t ? `<a href="https://wa.me/55${t.replace(/\D/g,'')}" target="_blank" style="color:var(--accent);text-decoration:none">📱 ${t}</a>` : '';
   const origens = {whatsapp:'WhatsApp (Débora IA)',meta_ads:'Meta Ads',google:'Google',instagram:'Instagram orgânico',indicacao_corretor:'Indicação corretor',plantao:'Plantão',portal:'Portal',manual:'Manual'};
   const aniv = lead.aniversario ? new Date(lead.aniversario+'T00:00:00').toLocaleDateString('pt-BR') : '';
+  const tiposDoc = { cnh:'🪪 CNH / RG', comprovante_residencia:'🏠 Comprovante de Residência', contrato:'📄 Contrato', outros:'📎 Outros' };
+
+  // Carrega documentos
+  let docsHtml = '<div style="color:var(--text2);font-size:12px;padding:8px 0">Carregando documentos...</div>';
+  const dr = await get(`/api/leads/${lead.id}/documentos`);
+  if (dr.ok && dr.data.length > 0) {
+    docsHtml = dr.data.map(d => {
+      const label = tiposDoc[d.tipo] || `📎 ${d.tipo||'Documento'}`;
+      const url = `${API}/api/leads/documentos/${d.id}/arquivo?token=${encodeURIComponent(TOKEN)}`;
+      const isPdf = (d.mime_type||'').includes('pdf');
+      const isImg = (d.mime_type||'').startsWith('image/');
+      return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;background:var(--navy3);border-radius:8px;margin-bottom:6px">
+        <span style="font-size:13px;font-weight:600">${label}</span>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          ${isPdf||isImg ? `<a href="${url}" target="_blank" style="font-size:11px;padding:4px 10px;border-radius:6px;background:rgba(96,165,250,.15);color:#60a5fa;text-decoration:none;border:1px solid rgba(96,165,250,.3)">👁️ Ver</a>` : ''}
+          <a href="${url}" download="${d.nome_original||'documento'}" style="font-size:11px;padding:4px 10px;border-radius:6px;background:rgba(52,211,153,.1);color:#34d399;text-decoration:none;border:1px solid rgba(52,211,153,.3)">⬇️ Baixar</a>
+        </div>
+      </div>`;
+    }).join('');
+  } else if (dr.ok) {
+    docsHtml = '<div style="color:var(--text2);font-size:12px;padding:8px 0">Nenhum documento enviado.</div>';
+  } else {
+    docsHtml = '<div style="color:var(--danger);font-size:12px;padding:8px 0">Erro ao carregar documentos.</div>';
+  }
+
+  const sec = title => `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);margin:16px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--border)">${title}</div>`;
   openModal(`👤 ${lead.nome||'Cliente'}`, `
     <div style="display:flex;flex-direction:column">
+      ${sec('📋 Dados do Cliente')}
       ${row('Telefone', fmt_tel(lead.telefone))}
       ${row('Email', lead.email)}
       ${row('Nascimento', aniv)}
@@ -2210,9 +2237,10 @@ function verClienteKanban(lead) {
       ${row('Profissão', lead.profissao)}
       ${row('Corretor', lead.corretor_nome)}
       ${row('Empreendimento', lead.empreendimento_nome)}
-      ${row('Origem', origens[lead.origem] || lead.origem)}
       ${row('Faixa de Inv.', lead.faixa_investimento)}
-      ${row('Observações', lead.observacoes)}
+      ${lead.observacoes ? row('Observações', lead.observacoes) : ''}
+      ${sec('📁 Documentos')}
+      ${docsHtml}
     </div>
   `, null, {});
 }
