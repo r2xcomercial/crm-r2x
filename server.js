@@ -6828,55 +6828,87 @@ app.post('/api/admin/migrar-leads-pasta', autenticar, soAdmin, (req, res) => {
   }
 });
 
-// GET: diagnóstico — pastas que deveriam ser leads (origem digital / Débora)
-app.get('/api/admin/diagnostico-pastas-debora', autenticar, soAdmin, (req, res) => {
+// GET: diagnóstico completo — pastas corrompidas pelo bug (criado por admin/debora, sem venda no kanban)
+app.get('/api/admin/diagnostico-pastas-corrompidas', autenticar, soAdmin, (req, res) => {
   try {
-    const origens = ['whatsapp','debora','débora','debora ia','meta ads','instagram','facebook','tiktok','google','portal'];
-    const afetados = db.prepare(`
-      SELECT id, nome, telefone, origem, criado_por_perfil, status, corretor_id,
-             (SELECT nome FROM corretores WHERE id = leads.corretor_id) AS corretor_nome,
-             atualizado_em
-      FROM leads
-      WHERE tipo_cadastro = 'pasta'
-        AND (
-          criado_por_perfil = 'debora'
-          OR lower(origem) IN (${origens.map(() => '?').join(',')})
+    // Corrompidas = tipo_cadastro='pasta' MAS criadas por admin ou debora E sem venda registrada
+    // (registros criados por corretor ou com venda legítima no kanban devem permanecer como pasta)
+    const corrompidas = db.prepare(`
+      SELECT l.id, l.nome, l.telefone, l.origem, l.criado_por_perfil, l.status,
+             l.corretor_id, c.nome AS corretor_nome,
+             l.empreendimento_id, e.nome AS emp_nome,
+             l.atualizado_em, l.criado_em
+      FROM leads l
+      LEFT JOIN corretores c ON c.id = l.corretor_id
+      LEFT JOIN empreendimentos e ON e.id = l.empreendimento_id
+      WHERE l.tipo_cadastro = 'pasta'
+        AND l.criado_por_perfil IN ('admin','debora')
+        AND NOT EXISTS (
+          SELECT 1 FROM vendas v WHERE v.lead_id = l.id
         )
-      ORDER BY atualizado_em DESC
-    `).all(...origens);
-    ok(res, { total: afetados.length, registros: afetados });
+      ORDER BY l.atualizado_em DESC
+    `).all();
+
+    const legit = db.prepare(`
+      SELECT count(*) as qtd FROM leads
+      WHERE tipo_cadastro = 'pasta'
+        AND criado_por_perfil = 'corretor'
+    `).get();
+
+    const comVenda = db.prepare(`
+      SELECT count(*) as qtd FROM leads
+      WHERE tipo_cadastro = 'pasta'
+        AND criado_por_perfil IN ('admin','debora')
+        AND EXISTS (SELECT 1 FROM vendas v WHERE v.lead_id = leads.id)
+    `).get();
+
+    ok(res, {
+      corrompidas: corrompidas.length,
+      pastas_legitimas_corretor: legit.qtd,
+      pastas_admin_com_venda: comVenda.qtd,
+      registros: corrompidas
+    });
   } catch (e) {
-    console.error('[diagnostico-pastas-debora]', e);
+    console.error('[diagnostico-pastas-corrompidas]', e);
     err(res, e.message);
   }
 });
 
-// POST: corrige pastas com origem digital — reverte para lead
-app.post('/api/admin/corrigir-pastas-debora', autenticar, soAdmin, (req, res) => {
+// POST: reverte pastas corrompidas para lead (criado por admin/debora, sem venda)
+app.post('/api/admin/corrigir-pastas-corrompidas', autenticar, soAdmin, (req, res) => {
   try {
     const dbPath = process.env.RAILWAY_VOLUME_MOUNT_PATH
       ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'crm.db')
       : path.join(__dirname, 'crm.db');
-    const bkpPath = dbPath.replace('.db', `-antes-correcao-pasta-debora-${Date.now()}.db`);
+    const bkpPath = dbPath.replace('.db', `-antes-correcao-corrompidas-${Date.now()}.db`);
     db.pragma('wal_checkpoint(TRUNCATE)');
-    try { fs.copyFileSync(dbPath, bkpPath); } catch(_) {}
+    try { fs.copyFileSync(dbPath, bkpPath); } catch (_) {}
 
-    const origens = ['whatsapp','debora','débora','debora ia','meta ads','instagram','facebook','tiktok','google','portal'];
     const r = db.prepare(`
       UPDATE leads
-      SET tipo_cadastro = 'lead', criado_por_perfil = 'debora'
+      SET tipo_cadastro = 'lead'
       WHERE tipo_cadastro = 'pasta'
-        AND (
-          criado_por_perfil = 'debora'
-          OR lower(origem) IN (${origens.map(() => '?').join(',')})
+        AND criado_por_perfil IN ('admin','debora')
+        AND NOT EXISTS (
+          SELECT 1 FROM vendas v WHERE v.lead_id = leads.id
         )
-    `).run(...origens);
-    console.log(`[corrigir-pastas-debora] ${r.changes} registros revertidos para lead. Backup: ${bkpPath}`);
+    `).run();
+    console.log(`[corrigir-pastas-corrompidas] ${r.changes} registros revertidos para lead. Backup: ${bkpPath}`);
     ok(res, { corrigidos: r.changes, backup: bkpPath });
   } catch (e) {
-    console.error('[corrigir-pastas-debora POST]', e);
+    console.error('[corrigir-pastas-corrompidas POST]', e);
     err(res, e.message);
   }
+});
+
+// GET: diagnóstico — pastas que deveriam ser leads (origem digital / Débora) [legado]
+app.get('/api/admin/diagnostico-pastas-debora', autenticar, soAdmin, (req, res) => {
+  res.redirect('/api/admin/diagnostico-pastas-corrompidas');
+});
+
+// POST: corrige pastas com origem digital — reverte para lead [legado, redireciona para novo]
+app.post('/api/admin/corrigir-pastas-debora', autenticar, soAdmin, (req, res) => {
+  res.redirect(307, '/api/admin/corrigir-pastas-corrompidas');
 });
 
 // ─── PLUGGY OPEN FINANCE ──────────────────────────────────────────────────────
