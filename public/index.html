@@ -1779,7 +1779,7 @@ async function openLeadModal(lead = {}, onSave = null) {
     }
     const r = lead.id ? await put(`/api/leads/${lead.id}`, body) : await post('/api/leads', body);
     if (!r.ok) return toast(r.error, 'error');
-    const leadId = lead.id || r.id;
+    const leadId = lead.id || r.data?.id;
     if (_leadDocCnh)        await _uploadDocLead(leadId, _leadDocCnh, 'cnh');
     if (_leadDocResidencia) await _uploadDocLead(leadId, _leadDocResidencia, 'comprovante_residencia');
     await salvarCompradores(leadId, lead.id ? true : false);
