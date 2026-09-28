@@ -2242,7 +2242,7 @@ async function verClienteKanban(lead) {
       ${sec('📁 Documentos')}
       ${docsHtml}
     </div>
-  `, null, {});
+  `, null, {hideFooter: true});
 }
 async function deleteLead(id) {
   if (!confirm('Excluir este lead?')) return;
