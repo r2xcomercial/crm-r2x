@@ -90,7 +90,9 @@ app.use((req, res, next) => {
   if (req.usuario?.perfil === 'incorporador') {
     const permitido = req.path.startsWith('/api/auth/')
       || req.path.startsWith('/api/incorporador/')
-      || (req.method === 'GET' && req.path.startsWith('/api/espelho-publico/'));
+      || (req.method === 'GET' && req.path.startsWith('/api/espelho-publico/'))
+      || (req.method === 'GET' && /^\/api\/empreendimentos\/\d+\/kanban$/.test(req.path))
+      || (req.method === 'GET' && /^\/api\/leads\/\d+$/.test(req.path));
     if (!permitido) return err(res, 'Acesso não autorizado', 403);
   }
   next();
