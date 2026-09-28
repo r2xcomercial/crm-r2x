@@ -3816,7 +3816,9 @@ app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
     cadastros = db.prepare(cadastrosQuery + ' ORDER BY l.criado_em DESC').all(empId, empId);
   }
 
+  const empInfo = db.prepare('SELECT nome FROM empreendimentos WHERE id=?').get(empId);
   ok(res, {
+    empreendimento_nome: empInfo?.nome || '',
     cadastros,
     proposta: byStatus.proposta,
     aprovado: byStatus.aprovado,
