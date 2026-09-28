@@ -1561,7 +1561,7 @@ async function openLeadModal(lead = {}, onSave = null) {
         </select>
       </div>
       ${USUARIO.perfil==='corretor' ? `<input type="hidden" id="f-corretor-hidden" value="${USUARIO.corretor_id}">` : ''}
-      ${!lead.id && USUARIO.perfil !== 'corretor' ? `
+      ${USUARIO.perfil !== 'corretor' ? `
       <div class="form-group"><label>Tipo de cadastro</label>
         <select id="f-tipo-cad" onchange="document.getElementById('f-tipo-cad').value==='pasta'?document.getElementById('bloco-corretor-pasta').style.display='block':document.getElementById('bloco-corretor-pasta').style.display='none'">
           <option value="lead" ${(lead.tipo_cadastro||'lead')==='lead'?'selected':''}>🎯 Lead (fila de distribuição)</option>
@@ -1772,7 +1772,7 @@ async function openLeadModal(lead = {}, onSave = null) {
       inscricao_estadual: v('f-ie')||null, inscricao_municipal: v('f-im')||null,
       representante_nome: v('f-rep-nome')||null, representante_cpf: v('f-rep-cpf')||null,
       representante_rg: v('f-rep-rg')||null, representante_cargo: v('f-rep-cargo')||null,
-      tipo_cadastro: v('f-tipo-cad') || (lead.id ? (lead.tipo_cadastro || 'lead') : (USUARIO.perfil === 'corretor' ? 'pasta' : 'lead'))
+      tipo_cadastro: v('f-tipo-cad') || (USUARIO.perfil === 'corretor' ? (lead.tipo_cadastro || 'pasta') : (lead.tipo_cadastro || 'lead'))
     };
     if (!lead.id && !isPjSave && isCorretorSave) {
       if (!_leadDocCnh)        return toast('Envie a CNH ou RG do cliente (obrigatório).', 'error');
