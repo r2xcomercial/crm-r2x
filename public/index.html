@@ -11086,6 +11086,13 @@ async function renderEmpKanban(empId) {
         acoes = `<div style="margin-top:8px" onclick="event.stopPropagation()">
           <button onclick="editVenda(${item.id})" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:11px;cursor:pointer">📄 Ver/Editar Venda</button>
         </div>`;
+      } else if (col === 'perdida') {
+        const nomeEsc = (nome||'—').replace(/'/g,"\\'");
+        acoes = `
+          <div style="display:flex;gap:4px;margin-top:8px" onclick="event.stopPropagation()">
+            <button onclick="empKbVirarLeadVenda(${item.id},'${nomeEsc}',${empId})" style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.1);color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer" title="Remove a venda e devolve o cliente para Fila de Leads">↩️ Virar Lead</button>
+            <button onclick="empKbExcluirVenda(${item.id},'${nomeEsc}',${empId})" style="padding:5px 8px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:#ef4444;font-size:11px;cursor:pointer" title="Excluir registro de venda perdida">🗑️</button>
+          </div>`;
       }
     }
     if (!isGestor && (col === 'reserva' || col === 'proposta')) {
@@ -11127,6 +11134,28 @@ async function renderEmpKanban(empId) {
   }).join('');
 
   document.getElementById('content').innerHTML = funilHtml + `<div class="kanban-board">${colsHtml}</div>`;
+}
+
+// Ações nos cards da coluna Perdida do kanban de empreendimento
+async function empKbVirarLeadVenda(vendaId, nome, empId) {
+  if (!confirm(`Remover a venda perdida de "${nome}" e devolver para Fila de Leads?\n\nO registro de venda será excluído e o cliente voltará para a fila de distribuição.`)) return;
+  // Busca o lead_id antes de excluir a venda
+  const vr = await get(`/api/vendas/${vendaId}`);
+  const leadId = vr.data?.lead_id;
+  const r = await del(`/api/vendas/${vendaId}`);
+  if (!r.ok) return toast(r.error || 'Erro ao remover venda', 'error');
+  if (leadId) {
+    await put(`/api/leads/${leadId}`, { tipo_cadastro: 'lead', corretor_id: null, status: 'novo' });
+  }
+  toast('↩️ Venda removida, cliente devolvido para fila de Leads.');
+  renderEmpKanban(empId);
+}
+async function empKbExcluirVenda(vendaId, nome, empId) {
+  if (!confirm(`Excluir o registro de venda perdida de "${nome}" permanentemente?\n\nEssa ação não pode ser desfeita.`)) return;
+  const r = await del(`/api/vendas/${vendaId}`);
+  if (!r.ok) return toast(r.error || 'Erro ao excluir', 'error');
+  toast('🗑️ Registro excluído.');
+  renderEmpKanban(empId);
 }
 
 // Ações nos cards de Cadastros do kanban de empreendimento
