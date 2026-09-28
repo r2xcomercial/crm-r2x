@@ -1132,7 +1132,7 @@ function kpi(icon, label, value, sub) {
 
 let leadsData = [], corretoresData = [], empData = [];
 
-window._leadsFiltros = window._leadsFiltros || { status:'', corretor_id:'', empreendimento_id:'', tipo_cadastro:'' };
+window._leadsFiltros = window._leadsFiltros || { status:'', corretor_id:'', empreendimento_id:'', tipo_cadastro:'', origem:'' };
 
 function _renderFilaLeads(todos, corretores) {
   const fila = (todos||[]).filter(l => (l.tipo_cadastro||'lead') === 'lead' && !l.corretor_id);
@@ -1263,16 +1263,23 @@ async function renderPastas(filter = '') {
   const empOpts = `<option value="">Todos os empreendimentos</option>` +
     (empData||[]).map(e => `<option value="${e.id}" ${fl.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('');
 
+  // Origens distintas presentes nas pastas (para o filtro dinâmico)
+  const todasPastasRaw = leadsData.filter(l => (l.tipo_cadastro||'lead') === 'pasta');
+  const origensDisponiveis = [...new Set(todasPastasRaw.map(l => l.origem).filter(Boolean))].sort();
+
   // Força tipo_cadastro = 'pasta'
-  const pastas = leadsData.filter(l => {
-    if ((l.tipo_cadastro||'lead') !== 'pasta') return false;
+  const pastas = todasPastasRaw.filter(l => {
     if (filter && !((l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter))) return false;
     if (fl.status && l.status !== fl.status && !(fl.status==='sem_venda' && l.status==='perdido')) return false;
     if (fl.corretor_id && String(l.corretor_id) !== String(fl.corretor_id)) return false;
     if (fl.empreendimento_id && String(l.empreendimento_id) !== String(fl.empreendimento_id)) return false;
+    if (fl.origem && (l.origem||'') !== fl.origem) return false;
     return true;
   });
-  const temFiltro = fl.status || fl.corretor_id || fl.empreendimento_id;
+  const temFiltro = fl.status || fl.corretor_id || fl.empreendimento_id || fl.origem;
+
+  const origemOpts = `<option value="" ${!fl.origem?'selected':''}>Todas as origens</option>` +
+    origensDisponiveis.map(o => `<option value="${o}" ${fl.origem===o?'selected':''}>${o}</option>`).join('');
 
   document.getElementById('content').innerHTML = `
     <div style="background:var(--navy2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -1290,7 +1297,8 @@ async function renderPastas(filter = '') {
       </select>
       <select onchange="window._leadsFiltros.corretor_id=this.value;renderPastas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${corOpts}</select>
       <select onchange="window._leadsFiltros.empreendimento_id=this.value;renderPastas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${empOpts}</select>
-      ${temFiltro ? `<button onclick="window._leadsFiltros={status:'',corretor_id:'',empreendimento_id:''};renderPastas()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
+      <select onchange="window._leadsFiltros.origem=this.value;renderPastas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${origemOpts}</select>
+      ${temFiltro ? `<button onclick="window._leadsFiltros={status:'',corretor_id:'',empreendimento_id:'',origem:''};renderPastas()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
       <div style="flex:1"></div>
       <button onclick="navigate('kanban')" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">📋 Kanban</button>
       <label style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">
