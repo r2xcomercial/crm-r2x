@@ -1201,6 +1201,7 @@ async function renderLeads(filter = '') {
   const statusColors = { novo:'badge-accent', qualificado:'badge-blue', com_corretor:'badge-blue', visitou:'badge-purple', proposta:'badge-yellow', reserva:'badge-orange', vendido:'badge-green', sem_venda:'badge-red', perdido:'badge-red' };
 
   const corOpts = `<option value="">Todos os corretores</option>` +
+    `<option value="sem" ${fl.corretor_id==='sem'?'selected':''}>— Sem corretor —</option>` +
     (corretoresData||[]).map(c => `<option value="${c.id}" ${fl.corretor_id==c.id?'selected':''}>${c.nome}</option>`).join('');
   const empOpts = `<option value="">Todos os empreendimentos</option>` +
     (empData||[]).map(e => `<option value="${e.id}" ${fl.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('');
@@ -1210,7 +1211,8 @@ async function renderLeads(filter = '') {
     if ((l.tipo_cadastro||'lead') !== 'lead') return false;
     if (filter && !((l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter))) return false;
     if (fl.status && l.status !== fl.status) return false;
-    if (fl.corretor_id && String(l.corretor_id) !== String(fl.corretor_id)) return false;
+    if (fl.corretor_id === 'sem') { if (l.corretor_id) return false; }
+    else if (fl.corretor_id && String(l.corretor_id) !== String(fl.corretor_id)) return false;
     if (fl.empreendimento_id && String(l.empreendimento_id) !== String(fl.empreendimento_id)) return false;
     return true;
   });
@@ -1231,7 +1233,7 @@ async function renderLeads(filter = '') {
       <div style="flex:1"></div>
       <button onclick="exportarLeads()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">📊 Excel</button>
     </div>
-    ${USUARIO.perfil === 'admin' ? _renderFilaLeads(leadsData, corretoresData) : ''}
+    ${['admin','gestor'].includes(USUARIO.perfil) ? _renderFilaLeads(leadsData, corretoresData) : ''}
     <div class="table-card">
       <div class="table-header">
         <div class="table-title">🎯 Leads distribuídos (<span id="leads-count">${leads.filter(l=>l.corretor_id).length}</span>)</div>
