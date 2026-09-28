@@ -1530,14 +1530,14 @@ async function openLeadModal(lead = {}, onSave = null) {
     <div class="form-grid">
       <div class="form-group"><label>Origem</label>
         <select id="f-origem">
+          ${USUARIO.perfil !== 'corretor' ? `<option value="whatsapp" ${lead.origem==='whatsapp'?'selected':''}>💬 WhatsApp (Débora IA)</option>` : ''}
           <option value="meta_ads" ${(lead.origem||'manual')==='meta_ads'?'selected':''}>📘 Meta Ads</option>
           <option value="google" ${lead.origem==='google'?'selected':''}>🔍 Google</option>
           <option value="instagram" ${lead.origem==='instagram'?'selected':''}>📸 Instagram orgânico</option>
-          <option value="whatsapp" ${lead.origem==='whatsapp'?'selected':''}>💬 WhatsApp</option>
           <option value="indicacao_corretor" ${lead.origem==='indicacao_corretor'?'selected':''}>🤝 Indicação corretor</option>
           <option value="plantao" ${lead.origem==='plantao'?'selected':''}>🏠 Plantão</option>
           <option value="portal" ${lead.origem==='portal'?'selected':''}>🌐 Portal</option>
-          <option value="manual" ${(!lead.origem||lead.origem==='manual'||lead.origem==='importado')?'selected':''}>✍️ Outro / Manual</option>
+          <option value="manual" ${(!lead.origem||lead.origem==='manual'||lead.origem==='importado'||lead.origem==='whatsapp'&&USUARIO.perfil==='corretor')?'selected':''}>✍️ Outro / Manual</option>
         </select>
       </div>
       <div class="form-group" ${USUARIO.perfil==='corretor' ? 'style="display:none"' : ''}><label>Status</label>
