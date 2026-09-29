@@ -1135,7 +1135,7 @@ let leadsData = [], corretoresData = [], empData = [];
 window._leadsFiltros = window._leadsFiltros || { status:'', corretor_id:'', empreendimento_id:'', tipo_cadastro:'', origem:'' };
 
 function _renderFilaLeads(todos, corretores) {
-  const fila = (todos||[]).filter(l => (l.tipo_cadastro||'lead') === 'lead' && !l.corretor_id);
+  const fila = (todos||[]).filter(l => (l.tipo_cadastro||'lead') === 'lead' && !l.corretor_id && (!l.status || l.status === 'novo'));
   if (!fila.length) return '';
   const corOpts = (corretores||[]).map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
   const rows = fila.map(l => `
@@ -1147,6 +1147,7 @@ function _renderFilaLeads(todos, corretores) {
         <div style="display:flex;gap:6px;align-items:center">
           <select id="fila-cor-${l.id}" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;flex:1">
             <option value="">Selecionar corretor...</option>
+            <option value="sem">— Sem corretor —</option>
             ${corOpts}
           </select>
           <button onclick="atribuirCorretorLead(${l.id})" style="padding:5px 10px;border-radius:6px;border:none;background:var(--accent);color:var(--navy);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Atribuir →</button>
@@ -1173,11 +1174,16 @@ function _renderFilaLeads(todos, corretores) {
 async function atribuirCorretorLead(leadId) {
   const sel = document.getElementById(`fila-cor-${leadId}`);
   const corretorId = sel?.value;
-  if (!corretorId) return toast('Selecione um corretor', 'error');
-  // Mantém tipo_cadastro = 'lead' — só registra para qual corretor foi distribuído
-  const r = await put(`/api/leads/${leadId}`, { corretor_id: corretorId, status: 'com_corretor', tipo_cadastro: 'lead' });
+  if (!corretorId) return toast('Selecione um corretor ou "Sem corretor"', 'error');
+  let payload;
+  if (corretorId === 'sem') {
+    payload = { status: 'qualificado', tipo_cadastro: 'lead' };
+  } else {
+    payload = { corretor_id: corretorId, status: 'com_corretor', tipo_cadastro: 'lead' };
+  }
+  const r = await put(`/api/leads/${leadId}`, payload);
   if (!r.ok) return toast(r.error || 'Erro ao atribuir', 'error');
-  toast('✅ Lead distribuído ao corretor!');
+  toast(corretorId === 'sem' ? '✅ Lead mantido sem corretor' : '✅ Lead distribuído ao corretor!');
   renderLeads();
 }
 
