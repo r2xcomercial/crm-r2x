@@ -18185,6 +18185,7 @@ async function renderCorretorPainel(tab) {
       ${kpi('💵', 'Volume Total', fmt(totalVendido), 'valor total das vendas')}
       ${kpi('⏳', 'Comissão a Receber', fmt(comPendente), 'comissões pendentes')}
       ${kpi('✅', 'Comissão Recebida', fmt(comPaga), 'comissões já pagas')}
+      ${kpi('👥', 'Meus Clientes', (clientes||[]).length, 'clientes cadastrados')}
     </div>
 
     <!-- Meta do mês -->
