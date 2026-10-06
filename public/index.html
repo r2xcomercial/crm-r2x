@@ -1135,7 +1135,7 @@ let leadsData = [], corretoresData = [], empData = [];
 window._leadsFiltros = window._leadsFiltros || { status:'', corretor_id:'', empreendimento_id:'', tipo_cadastro:'', origem:'' };
 
 function _renderFilaLeads(todos, corretores) {
-  const fila = (todos||[]).filter(l => (l.tipo_cadastro||'lead') === 'lead' && !l.corretor_id && (!l.status || l.status === 'novo'));
+  const fila = (todos||[]).filter(l => (l.tipo_cadastro||'lead') === 'lead' && !l.corretor_id && !['com_corretor','vendido','perdido','sem_venda'].includes(l.status));
   if (!fila.length) return '';
   const corOpts = (corretores||[]).map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
   const rows = fila.map(l => `
@@ -1215,7 +1215,7 @@ async function renderLeads(filter = '') {
   // Força tipo_cadastro = 'lead' — pastas ficam em navigate('pastas')
   const leads = leadsData.filter(l => {
     if ((l.tipo_cadastro||'lead') !== 'lead') return false;
-    if (filter && !((l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter))) return false;
+    if (filter && !(norm(l.nome).includes(filter) || (l.telefone||'').includes(filter))) return false;
     if (fl.status && l.status !== fl.status) return false;
     if (fl.corretor_id === 'sem') { if (l.corretor_id) return false; }
     else if (fl.corretor_id && String(l.corretor_id) !== String(fl.corretor_id)) return false;
@@ -1277,7 +1277,7 @@ async function renderPastas(filter = '') {
 
   // Força tipo_cadastro = 'pasta'
   const pastas = todasPastasRaw.filter(l => {
-    if (filter && !((l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter))) return false;
+    if (filter && !(norm(l.nome).includes(filter) || (l.telefone||'').includes(filter))) return false;
     if (fl.status && l.status !== fl.status && !(fl.status==='sem_venda' && l.status==='perdido')) return false;
     if (fl.corretor_id && String(l.corretor_id) !== String(fl.corretor_id)) return false;
     if (fl.empreendimento_id && String(l.empreendimento_id) !== String(fl.empreendimento_id)) return false;
@@ -1337,7 +1337,7 @@ async function renderPastas(filter = '') {
 function _filtrarLeads(textFilter = '') {
   const fl = window._leadsFiltros;
   return leadsData.filter(l => {
-    if (textFilter && !((l.nome||'').toLowerCase().includes(textFilter) || (l.telefone||'').includes(textFilter) || (l.cidade||'').toLowerCase().includes(textFilter))) return false;
+    if (textFilter && !(norm(l.nome).includes(textFilter) || (l.telefone||'').includes(textFilter) || norm(l.cidade).includes(textFilter))) return false;
     if (fl.status && l.status !== fl.status && !(fl.status==='sem_venda' && l.status==='perdido')) return false;
     if (fl.corretor_id && String(l.corretor_id) !== String(fl.corretor_id)) return false;
     if (fl.empreendimento_id && String(l.empreendimento_id) !== String(fl.empreendimento_id)) return false;
@@ -1509,6 +1509,7 @@ function renderLeadRow(l, statusColors) {
       <button class="btn-icon" title="Follow-up" onclick='openFollowupModal(${JSON.stringify({id:l.id,nome:l.nome})})'>📞</button>
       <button class="btn-icon" title="Proposta Comercial" onclick="abrirProposta(${l.id})" style="color:var(--accent2)">📋</button>
       ${isCorretorLead ? `<button class="btn-icon" title="Converter em Parceiro" onclick="converterLeadCorretor(${l.id},'${(l.nome||'').replace(/'/g,"\\'")}',event)" style="color:#60a5fa">🤝</button>` : ''}
+      ${USUARIO.perfil === 'corretor' && (l.tipo_cadastro||'lead') === 'lead' ? `<button class="btn-icon" title="Converter em Pasta" onclick="abrirConverterPastaModal(${l.id},'${(l.nome||'').replace(/'/g,"\\'")}',event)" style="color:#34d399;font-size:15px">📁</button>` : ''}
       <button class="btn-icon" title="Copiar dados do cliente" onclick="copiarDadosLead(${l.id})">📤</button>
       <button class="btn-icon btn-edit" onclick="editLead(${l.id})">✏️</button>
       <button class="btn-icon btn-delete" onclick="deleteLead(${l.id})">🗑️</button>
@@ -2270,6 +2271,153 @@ function toggleCamposCorretor(tipo) {
   el.style.display = tipo === 'corretor' ? 'contents' : 'none';
 }
 
+// ── Converter Lead em Pasta (botão rápido para corretores) ──────────────────
+let _cpDocCnh = null;
+let _cpDocResidencia = null;
+let _cpDocs = []; // docs extras
+
+async function abrirConverterPastaModal(leadId, nomeCliente, evt) {
+  if (evt) evt.stopPropagation();
+  _cpDocCnh = null; _cpDocResidencia = null; _cpDocs = [];
+
+  if (!empData.length) {
+    const er = await get('/api/empreendimentos');
+    if (er.ok) empData = er.data || [];
+  }
+  const empOpts = empData.map(e => `<option value="${e.id}">${e.nome}</option>`).join('');
+
+  openModal(`📁 Converter em Pasta — ${nomeCliente}`, `
+    <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Vincule este lead a um empreendimento e anexe os documentos do cliente para transformá-lo em pasta.</p>
+
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Empreendimento *</label>
+      <select id="cp-emp" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--navy2);color:var(--text1);font-size:13px">
+        <option value="">— Selecione o empreendimento —</option>
+        ${empOpts}
+      </select>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);margin-bottom:10px">📎 Documentos do Cliente</div>
+
+    <div id="cp-doc-cnh-box" style="margin-bottom:10px;padding:10px 14px;background:rgba(239,68,68,.05);border:1px dashed rgba(239,68,68,.4);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1">
+        <input type="file" accept="image/*,application/pdf" style="display:none" onchange="cpCarregarDoc(this,'identidade')">
+        <span id="cp-doc-btn-txt" style="font-size:13px;color:var(--accent);font-weight:600">📄 Carregar CNH / RG</span>
+      </label>
+      <span id="cp-doc-status" style="font-size:11px;color:var(--text2)"></span>
+    </div>
+
+    <div id="cp-doc-res-box" style="margin-bottom:10px;padding:10px 14px;background:var(--navy2);border:1px dashed var(--border);border-radius:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1">
+        <input type="file" accept="image/*,application/pdf" style="display:none" onchange="cpCarregarDoc(this,'endereco')">
+        <span id="cp-doc-res-txt" style="font-size:13px;color:var(--accent);font-weight:600">🏠 Carregar Comprovante de Residência</span>
+      </label>
+      <span id="cp-doc-res-status" style="font-size:11px;color:var(--text2)"></span>
+    </div>
+
+    <div id="cp-docs-extra" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px"></div>
+
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:18px;padding:8px 12px;border:1px dashed var(--border);border-radius:8px;color:var(--accent);font-size:13px">
+      <input type="file" accept="image/*,application/pdf" style="display:none" onchange="cpAdicionarDocExtra(this)">
+      ➕ Adicionar outro documento
+    </label>
+
+    <button onclick="confirmarConverterPasta(${leadId})" style="width:100%;padding:12px;background:var(--accent);color:var(--navy);border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">
+      📁 Confirmar — Converter em Pasta
+    </button>
+  `);
+}
+
+async function cpCarregarDoc(input, tipo) {
+  const file = input.files[0];
+  if (!file) return;
+  const btnId   = tipo === 'endereco' ? 'cp-doc-res-txt'    : 'cp-doc-btn-txt';
+  const statId  = tipo === 'endereco' ? 'cp-doc-res-status' : 'cp-doc-status';
+  const boxId   = tipo === 'endereco' ? 'cp-doc-res-box'    : 'cp-doc-cnh-box';
+  const btn     = document.getElementById(btnId);
+  const statusEl= document.getElementById(statId);
+  if (btn) btn.textContent = '⏳ Processando...';
+  if (statusEl) statusEl.textContent = '';
+  input.disabled = true;
+  try {
+    const fd = new FormData();
+    fd.append('arquivo', file);
+    fd.append('tipo', tipo);
+    const r = await fetch('/api/leads/extrair-documento', {
+      method: 'POST',
+      headers: { 'x-crm-token': localStorage.getItem('crm_token') || '' },
+      body: fd
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      if (statusEl) statusEl.textContent = '❌ ' + (d.error || 'Erro ao processar');
+      if (btn) btn.textContent = '📄 Tentar novamente';
+      input.disabled = false; return;
+    }
+    const count = Object.values(d.data || {}).filter(x => x).length;
+    if (statusEl) statusEl.textContent = `✅ ${count} campos extraídos`;
+    if (btn) btn.textContent = tipo === 'endereco' ? '✅ Comprovante carregado — enviar outro' : '✅ CNH/RG carregado — enviar outro';
+    const box = document.getElementById(boxId);
+    if (box) { box.style.background='rgba(34,197,94,.08)'; box.style.borderColor='rgba(34,197,94,.5)'; }
+    if (tipo === 'identidade') _cpDocCnh = file;
+    else _cpDocResidencia = file;
+  } catch(e) {
+    if (statusEl) statusEl.textContent = '❌ Erro de conexão';
+    if (btn) btn.textContent = '📄 Tentar novamente';
+  }
+  input.disabled = false;
+  input.value = '';
+}
+
+async function cpAdicionarDocExtra(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const tipo = prompt('Tipo do documento:\n1 = CNH / RG\n2 = Comprovante de Residência\n3 = Outro\n\nDigite 1, 2 ou 3:');
+  const mapa = { '1':'cnh', '2':'comprovante_residencia', '3':'outro' };
+  const tipoVal = mapa[tipo] || 'outro';
+  _cpDocs.push({ file, tipo: tipoVal });
+  const labels = { cnh:'CNH / RG', comprovante_residencia:'Comprovante de Residência', outro:'Outro' };
+  const el = document.getElementById('cp-docs-extra');
+  if (el) el.insertAdjacentHTML('beforeend', `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--navy2);border-radius:7px;border:1px solid var(--border);font-size:12px">
+      <span>📎</span><span style="flex:1">${file.name}</span>
+      <span style="color:var(--text2)">${labels[tipoVal]}</span>
+    </div>`);
+  toast(`Documento adicionado: ${labels[tipoVal]}`);
+  input.value = '';
+}
+
+async function confirmarConverterPasta(leadId) {
+  const empId = document.getElementById('cp-emp')?.value;
+  if (!empId) { toast('Selecione o empreendimento', 'error'); return; }
+
+  const btn = document.querySelector('[onclick^="confirmarConverterPasta"]');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Salvando...'; }
+
+  // 1. Converte tipo_cadastro para pasta
+  const r = await put(`/api/leads/${leadId}`, {
+    tipo_cadastro: 'pasta',
+    empreendimento_id: empId,
+    status: 'qualificado'
+  });
+  if (!r.ok) {
+    toast(r.error || 'Erro ao converter', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '📁 Confirmar — Converter em Pasta'; }
+    return;
+  }
+
+  // 2. Faz uploads dos documentos
+  const uploads = [];
+  if (_cpDocCnh)        uploads.push(_uploadDocLead(leadId, _cpDocCnh, 'cnh'));
+  if (_cpDocResidencia) uploads.push(_uploadDocLead(leadId, _cpDocResidencia, 'comprovante_residencia'));
+  for (const d of _cpDocs) uploads.push(_uploadDocLead(leadId, d.file, d.tipo));
+  if (uploads.length) await Promise.all(uploads);
+
+  closeModal();
+  toast('✅ Lead convertido em pasta com sucesso!');
+  renderLeads();
+}
+
 async function converterLeadCorretor(leadId, nome, evt) {
   if (evt) evt.stopPropagation();
   if (!confirm(`Converter "${nome}" em corretor parceiro?\n\nIsto vai criar um registro em Corretores com os dados deste lead.`)) return;
@@ -2330,7 +2478,7 @@ async function renderKanban(filter = '') {
   leadsData = lr.data; corretoresData = cr.data; empData = er.data;
   { const _n = leadsData.filter(l => l.status === 'novo').length || ''; ['badge-leads','badge-leads-g'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = _n; }); }
 
-  const leads = filter ? leadsData.filter(l => (l.nome||'').toLowerCase().includes(filter) || (l.telefone||'').includes(filter)) : leadsData;
+  const leads = filter ? leadsData.filter(l => norm(l.nome).includes(filter) || (l.telefone||'').includes(filter)) : leadsData;
 
   const colsHtml = KANBAN_COLS.map(col => {
     const allStatuses = [col.status, ...(col.extra||[])];
@@ -2776,7 +2924,7 @@ async function renderVendas(filter = '') {
   const [vr, cr, er, lr, clr] = await Promise.all([get('/api/vendas'), get('/api/corretores'), get('/api/empreendimentos'), get('/api/leads'), get('/api/clientes')]);
   currentData.vendas = vr.data; currentData.corretores = cr.data; currentData.emp = er.data; currentData.leads = lr.data; currentData.clientes = clr.data;
   let vendas = vr.data;
-  if (filter) vendas = vendas.filter(v => (v.lead_nome||'').toLowerCase().includes(filter) || (v.empreendimento_nome||'').toLowerCase().includes(filter) || (v.corretor_nome||'').toLowerCase().includes(filter));
+  if (filter) vendas = vendas.filter(v => norm(v.lead_nome).includes(filter) || norm(v.empreendimento_nome).includes(filter) || norm(v.corretor_nome).includes(filter));
 
   // Aplicar filtros persistentes
   const f = window._vendasFiltros;
@@ -3717,7 +3865,7 @@ async function renderClientes(filter = '') {
   const r = await get('/api/clientes');
   currentData.clientes = r.data;
   let rows = r.data;
-  if (filter) rows = rows.filter(c => c.razao_social.toLowerCase().includes(filter) || (c.cidade||'').toLowerCase().includes(filter));
+  if (filter) rows = rows.filter(c => norm(c.razao_social).includes(filter) || norm(c.cidade).includes(filter));
   const linkLoginIncorporador = `${window.location.origin}/login`;
   document.getElementById('content').innerHTML = `
     <div class="mini-card" style="margin-bottom:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
@@ -3913,7 +4061,7 @@ async function renderEmpreendimentos(filter = '') {
   currentData.emp = er.data; currentData.clientes = cr.data;
   // tem_mapa já vem no payload principal — sem chamadas extras por empreendimento
   let rows = er.data;
-  if (filter) rows = rows.filter(e => e.nome.toLowerCase().includes(filter) || (e.cidade||'').toLowerCase().includes(filter));
+  if (filter) rows = rows.filter(e => norm(e.nome).includes(filter) || norm(e.cidade).includes(filter));
 
   const statusBadge = { prospecto: 'badge-gray', planejamento: 'badge-blue', pre_lancamento: 'badge-yellow', lancamento: 'badge-accent', vendas: 'badge-green', encerrado: 'badge-red' };
 
@@ -6252,7 +6400,7 @@ async function renderCorretores(filter = '', cidadeFilter = '', imobFilter = '',
   const r = await get('/api/corretores');
   currentData.corretores = r.data;
   let rows = r.data;
-  if (filter) rows = rows.filter(c => c.nome.toLowerCase().includes(filter) || (c.imobiliaria||'').toLowerCase().includes(filter) || (c.cidade||'').toLowerCase().includes(filter));
+  if (filter) rows = rows.filter(c => norm(c.nome).includes(filter) || norm(c.imobiliaria).includes(filter) || norm(c.cidade).includes(filter));
   if (cidadeFilter) rows = rows.filter(c => normalizarCidade(c.cidade) === cidadeFilter);
   if (imobFilter)   rows = rows.filter(c => (c.imobiliaria||'').toLowerCase() === imobFilter.toLowerCase());
   if (sortByVendas) rows = [...rows].sort((a, b) => (b.total_vendas - a.total_vendas) || (b.vgv_vendido - a.vgv_vendido));
@@ -14078,8 +14226,9 @@ async function deleteMeta(id, mes, ano) {
 
 // ─── SEARCH ───────────────────────────────────────────────────────────────────
 
+function norm(s) { return (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); }
 function handleSearch(q) {
-  const f = q.toLowerCase().trim();
+  const f = norm(q).trim();
   switch(currentPage) {
     case 'leads': renderLeads(f); break;
     case 'pastas': renderPastas(f); break;
