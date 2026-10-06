@@ -1240,6 +1240,7 @@ async function renderLeads(filter = '') {
       <button onclick="exportarLeads()" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">📊 Excel</button>
     </div>
     ${['admin','gestor'].includes(USUARIO.perfil) ? _renderFilaLeads(leadsData, corretoresData) : ''}
+    <div id="painel-transferencias"></div>
     <div class="table-card">
       <div class="table-header">
         <div class="table-title">🎯 Leads distribuídos (<span id="leads-count">${leads.filter(l=>l.corretor_id).length}</span>)</div>
@@ -1257,6 +1258,13 @@ async function renderLeads(filter = '') {
       </table>
     </div>
   `;
+  // Painel de transferências pendentes (async, injetar após render)
+  if (['admin','gestor'].includes(USUARIO.perfil)) {
+    _renderTransferenciasPendentes().then(html => {
+      const el = document.getElementById('painel-transferencias');
+      if (el) el.innerHTML = html;
+    });
+  }
 }
 
 async function renderPastas(filter = '') {
@@ -2271,6 +2279,72 @@ function toggleCamposCorretor(tipo) {
   el.style.display = tipo === 'corretor' ? 'contents' : 'none';
 }
 
+// ── Solicitação de Transferência de Lead ─────────────────────────────────────
+async function solicitarTransferenciaLead(leadId, nomeCliente) {
+  if (!confirm(`Solicitar transferência do lead "${nomeCliente}" para você?\n\nUm gestor ou admin será notificado para aprovar ou negar.`)) return;
+  const r = await post(`/api/leads/${leadId}/solicitar-transferencia`, {});
+  if (!r.ok) return toast(r.error || 'Erro ao enviar solicitação', 'error');
+  toast('✅ Solicitação enviada! O gestor irá analisar e atribuir o lead a você.');
+  closeModal();
+}
+
+async function resolverTransferencia(interacaoId, leadId, acao, solicitanteCorretorId) {
+  const label = acao === 'transferir' ? 'Transferir lead para o solicitante?' : 'Negar solicitação e manter corretor atual?';
+  if (!confirm(label)) return;
+  const r = await post(`/api/admin/transferencias-pendentes/${interacaoId}/resolver`, {
+    lead_id: leadId, acao, corretor_id: solicitanteCorretorId || null
+  });
+  if (!r.ok) return toast(r.error || 'Erro ao resolver', 'error');
+  toast(acao === 'transferir' ? '✅ Lead transferido!' : '✅ Solicitação negada.');
+  renderDashboard();
+}
+
+async function _renderTransferenciasPendentes() {
+  if (!['admin','gestor'].includes(USUARIO.perfil)) return '';
+  const r = await get('/api/admin/transferencias-pendentes');
+  if (!r.ok || !r.data?.length) return '';
+  const rows = r.data.map(t => `
+    <tr>
+      <td>
+        <strong>${t.nome||'—'}</strong>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">${t.empreendimento_nome||'—'}</div>
+      </td>
+      <td><a href="https://wa.me/55${(t.telefone||'').replace(/\D/g,'')}" target="_blank" style="color:var(--accent);text-decoration:none;font-size:12px">📱 ${t.telefone||'—'}</a></td>
+      <td style="font-size:12px;color:var(--text2)">${t.corretor_nome||'<span style="color:var(--text2)">sem corretor</span>'}</td>
+      <td style="font-size:12px;font-weight:600;color:var(--accent)">${t.solicitante_nome||'—'}</td>
+      <td style="font-size:11px;color:var(--text2)">${t.solicitacao_em ? new Date(t.solicitacao_em.replace(' ','T')).toLocaleDateString('pt-BR') : '—'}</td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button onclick="resolverTransferencia(${t.interacao_id},${t.id},'transferir',${t.solicitante_corretor_id||'null'})"
+            style="padding:5px 10px;border-radius:6px;border:none;background:var(--accent);color:var(--navy);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">✅ Transferir</button>
+          <button onclick="resolverTransferencia(${t.interacao_id},${t.id},'negar',null)"
+            style="padding:5px 10px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.08);color:#ef4444;font-size:12px;cursor:pointer;white-space:nowrap">✕ Negar</button>
+          <button onclick="closeModal();setTimeout(()=>editLead(${t.id}),100)"
+            style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:12px;cursor:pointer" title="Ver lead">✏️</button>
+        </div>
+      </td>
+    </tr>`).join('');
+  return `
+    <div style="background:rgba(59,111,232,.06);border:1px solid rgba(59,111,232,.3);border-radius:10px;padding:14px 16px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:13px;font-weight:700;color:var(--accent)">🔄 Solicitações de Transferência</span>
+        <span style="background:rgba(59,111,232,.2);color:var(--accent);border-radius:10px;font-size:11px;font-weight:700;padding:2px 8px">${r.data.length}</span>
+        <span style="font-size:11px;color:var(--text2)">Corretores solicitando leads já atribuídos a outros</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="font-size:11px;color:var(--text2)">
+          <th style="padding:4px 8px;text-align:left">Cliente</th>
+          <th style="padding:4px 8px;text-align:left">Telefone</th>
+          <th style="padding:4px 8px;text-align:left">Corretor atual</th>
+          <th style="padding:4px 8px;text-align:left">Solicitante</th>
+          <th style="padding:4px 8px;text-align:left">Data</th>
+          <th style="padding:4px 8px;text-align:left">Ação</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
 // ── Converter Lead em Pasta (botão rápido para corretores) ──────────────────
 let _cpDocCnh = null;
 let _cpDocResidencia = null;
@@ -2667,7 +2741,9 @@ async function verificarDuplicidadeLead(tel) {
   const el = document.getElementById('aviso-dup-tel');
   if (!el) return;
   if (dup) {
-    el.innerHTML = `⚠️ Telefone já cadastrado: <b>${dup.nome||'Lead #'+dup.id}</b> (${dup.status}) — <a href="#" onclick="event.preventDefault();closeModal();setTimeout(()=>editLead(${dup.id}),100)" style="color:var(--accent)">ver lead</a>`;
+    const isOutroCorretor = USUARIO.perfil === 'corretor' && dup.corretor_id && String(dup.corretor_id) !== String(USUARIO.corretor_id);
+    el.innerHTML = `⚠️ Telefone já cadastrado: <b>${dup.nome||'Lead #'+dup.id}</b> (${dup.status}${dup.corretor_nome ? ' · '+dup.corretor_nome : ''}) — <a href="#" onclick="event.preventDefault();closeModal();setTimeout(()=>editLead(${dup.id}),100)" style="color:var(--accent)">ver lead</a>`
+      + (isOutroCorretor ? ` &nbsp;<button onclick="solicitarTransferenciaLead(${dup.id},'${(dup.nome||'').replace(/'/g,"\\'")}');event.stopPropagation()" style="padding:3px 10px;border-radius:5px;border:none;background:rgba(59,111,232,.2);color:var(--accent);font-size:11px;font-weight:700;cursor:pointer">🔄 Solicitar transferência</button>` : '');
     el.style.display = '';
   } else {
     el.style.display = 'none';
@@ -2748,7 +2824,9 @@ async function verificarDuplicidadeLeadRapido(tel) {
   const el = document.getElementById('aviso-dup-ql');
   if (!el) return;
   if (dup) {
-    el.innerHTML = `⚠️ Telefone já cadastrado: <b>${dup.nome||'Lead #'+dup.id}</b> (${dup.status}) — <a href="#" onclick="event.preventDefault();closeModal();setTimeout(()=>editLead(${dup.id}),100)" style="color:var(--accent)">ver lead existente</a>`;
+    const isOutroCorretor = USUARIO.perfil === 'corretor' && dup.corretor_id && String(dup.corretor_id) !== String(USUARIO.corretor_id);
+    el.innerHTML = `⚠️ Telefone já cadastrado: <b>${dup.nome||'Lead #'+dup.id}</b> (${dup.status}${dup.corretor_nome ? ' · '+dup.corretor_nome : ''}) — <a href="#" onclick="event.preventDefault();closeModal();setTimeout(()=>editLead(${dup.id}),100)" style="color:var(--accent)">ver lead existente</a>`
+      + (isOutroCorretor ? ` &nbsp;<button onclick="solicitarTransferenciaLead(${dup.id},'${(dup.nome||'').replace(/'/g,"\\'")}');event.stopPropagation()" style="padding:3px 10px;border-radius:5px;border:none;background:rgba(59,111,232,.2);color:var(--accent);font-size:11px;font-weight:700;cursor:pointer">🔄 Solicitar transferência</button>` : '');
     el.style.display = '';
   } else {
     el.style.display = 'none';

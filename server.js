@@ -2760,6 +2760,66 @@ app.delete('/api/interacoes/:id', (req, res) => {
   ok(res, {});
 });
 
+// ─── SOLICITAÇÕES DE TRANSFERÊNCIA ────────────────────────────────────────────
+
+app.post('/api/leads/:id/solicitar-transferencia', (req, res) => {
+  const leadId = parseInt(req.params.id);
+  const usuario = req.usuario;
+  const lead = db.prepare('SELECT id, nome, corretor_id FROM leads WHERE id=?').get(leadId);
+  if (!lead) return err(res, 'Lead não encontrado');
+  const corretorAtual = lead.corretor_id
+    ? (db.prepare('SELECT nome FROM corretores WHERE id=?').get(lead.corretor_id)||{}).nome || `Corretor #${lead.corretor_id}`
+    : 'sem corretor';
+  db.prepare('INSERT INTO interacoes(lead_id,tipo,descricao,usuario_nome) VALUES(?,?,?,?)')
+    .run(leadId, 'solicitacao_transferencia',
+      `Solicitação de transferência de ${usuario.nome} (ID corretor: ${usuario.corretor_id||usuario.id}). Lead atual com: ${corretorAtual}.`,
+      usuario.nome);
+  ok(res, {});
+});
+
+app.get('/api/admin/transferencias-pendentes', (req, res) => {
+  if (!['admin','gestor'].includes(req.usuario?.perfil)) return err(res, 'Sem permissão');
+  const rows = db.prepare(`
+    SELECT l.id, l.nome, l.telefone, l.empreendimento_id, l.corretor_id,
+           c.nome AS corretor_nome,
+           e.nome AS empreendimento_nome,
+           i.descricao AS solicitacao_descricao,
+           i.usuario_nome AS solicitante_nome,
+           i.criado_em AS solicitacao_em,
+           i.id AS interacao_id,
+           (SELECT cor2.id FROM corretores cor2
+            WHERE i.descricao LIKE '%ID corretor: ' || cor2.id || '%') AS solicitante_corretor_id
+    FROM interacoes i
+    JOIN leads l ON l.id = i.lead_id
+    LEFT JOIN corretores c ON c.id = l.corretor_id
+    LEFT JOIN empreendimentos e ON e.id = l.empreendimento_id
+    WHERE i.tipo = 'solicitacao_transferencia'
+      AND i.criado_em >= datetime('now', '-30 days', 'localtime')
+      AND NOT EXISTS (
+        SELECT 1 FROM interacoes i2
+        WHERE i2.lead_id = i.lead_id
+          AND i2.tipo = 'transferencia_resolvida'
+          AND i2.criado_em > i.criado_em
+      )
+    GROUP BY l.id
+    ORDER BY i.criado_em DESC
+  `).all();
+  ok(res, rows);
+});
+
+app.post('/api/admin/transferencias-pendentes/:interacaoId/resolver', (req, res) => {
+  if (!['admin','gestor'].includes(req.usuario?.perfil)) return err(res, 'Sem permissão');
+  const { lead_id, acao, corretor_id } = req.body;
+  if (acao === 'transferir' && corretor_id) {
+    db.prepare('UPDATE leads SET corretor_id=?, status=? WHERE id=?').run(corretor_id, 'com_corretor', lead_id);
+  }
+  db.prepare('INSERT INTO interacoes(lead_id,tipo,descricao,usuario_nome) VALUES(?,?,?,?)')
+    .run(lead_id, 'transferencia_resolvida',
+      acao === 'transferir' ? `Transferência aprovada por ${req.usuario.nome}.` : `Solicitação negada por ${req.usuario.nome}.`,
+      req.usuario.nome);
+  ok(res, {});
+});
+
 // ─── VISITAS ──────────────────────────────────────────────────────────────────
 
 app.get('/api/leads/:id/visitas', (req, res) => {
