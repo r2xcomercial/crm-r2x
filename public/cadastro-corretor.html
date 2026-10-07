@@ -107,7 +107,9 @@
 
     <div class="form-group" id="grp-imobiliaria" style="display:none">
       <label>Nome da imobiliária <span class="required">*</span></label>
-      <input id="imobiliaria" type="text" placeholder="Imobiliária XYZ Ltda">
+      <input id="imobiliaria" type="text" placeholder="Imobiliária XYZ Ltda" list="imob-sugestoes" autocomplete="off">
+      <datalist id="imob-sugestoes"></datalist>
+      <div class="hint">Selecione da lista ou digite um novo nome.</div>
     </div>
 
     <div class="section-title">Acesso ao Sistema</div>
@@ -170,8 +172,23 @@ function maskPhone(el) {
   el.value = v;
 }
 
+let _imobiliariasCarregadas = false;
 function onVinculo(radio) {
   document.getElementById('grp-imobiliaria').style.display = radio.value === 'imobiliaria' ? 'block' : 'none';
+  if (radio.value === 'imobiliaria' && !_imobiliariasCarregadas) {
+    _imobiliariasCarregadas = true;
+    fetch('/api/corretores/imobiliarias')
+      .then(r => r.json())
+      .then(res => {
+        const dl = document.getElementById('imob-sugestoes');
+        (res.data || res).forEach(nome => {
+          const opt = document.createElement('option');
+          opt.value = nome;
+          dl.appendChild(opt);
+        });
+      })
+      .catch(() => {});
+  }
 }
 
 function validarSenha() {

@@ -59,7 +59,7 @@ function _criarLoginCorretor(corretorId, nome, loginEmail) {
   }
 }
 
-const APIs_PUBLICAS = ["/api/corretores/publico", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/", "/api/pluggy/webhook"];
+const APIs_PUBLICAS = ["/api/corretores/publico", "/api/corretores/imobiliarias", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/", "/api/pluggy/webhook"];
 
 function autenticar(req, res, next) {
   if (!req.path.startsWith("/api/")) return next();
@@ -2272,15 +2272,39 @@ app.delete("/api/vagas/:id", (req, res) => {
 
 // ─── CORRETORES ───────────────────────────────────────────────────────────────
 
-app.get("/api/corretores", (req, res) => {
+app.get("/api/corretores/imobiliarias", (req, res) => {
   const rows = db.prepare(`
-    SELECT c.*, COUNT(v.id) as total_vendas, COALESCE(SUM(v.valor),0) as vgv_vendido,
-           u.id as usuario_id, u.email as usuario_email, u.ativo as usuario_ativo
-    FROM corretores c
-    LEFT JOIN vendas v ON v.corretor_id = c.id AND v.status='ativo'
-    LEFT JOIN usuarios u ON u.corretor_id = c.id
-    GROUP BY c.id ORDER BY vgv_vendido DESC
+    SELECT DISTINCT imobiliaria FROM corretores
+    WHERE imobiliaria IS NOT NULL AND TRIM(imobiliaria) != ''
+    ORDER BY imobiliaria COLLATE NOCASE
   `).all();
+  ok(res, rows.map(r => r.imobiliaria));
+});
+
+app.get("/api/corretores", (req, res) => {
+  const empId = req.query.empreendimento_id ? parseInt(req.query.empreendimento_id) : null;
+  let rows;
+  if (empId) {
+    rows = db.prepare(`
+      SELECT c.*, COUNT(DISTINCT v.id) as total_vendas, COALESCE(SUM(v.valor),0) as vgv_vendido,
+             u.id as usuario_id, u.email as usuario_email, u.ativo as usuario_ativo,
+             COUNT(DISTINCT l.id) as total_pastas
+      FROM corretores c
+      JOIN leads l ON l.corretor_id = c.id AND l.empreendimento_id = ? AND l.tipo_cadastro = 'pasta'
+      LEFT JOIN vendas v ON v.corretor_id = c.id AND v.status='ativo'
+      LEFT JOIN usuarios u ON u.corretor_id = c.id
+      GROUP BY c.id ORDER BY total_pastas DESC, c.nome
+    `).all(empId);
+  } else {
+    rows = db.prepare(`
+      SELECT c.*, COUNT(v.id) as total_vendas, COALESCE(SUM(v.valor),0) as vgv_vendido,
+             u.id as usuario_id, u.email as usuario_email, u.ativo as usuario_ativo
+      FROM corretores c
+      LEFT JOIN vendas v ON v.corretor_id = c.id AND v.status='ativo'
+      LEFT JOIN usuarios u ON u.corretor_id = c.id
+      GROUP BY c.id ORDER BY vgv_vendido DESC
+    `).all();
+  }
   ok(res, rows);
 });
 
