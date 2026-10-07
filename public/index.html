@@ -1132,7 +1132,7 @@ function kpi(icon, label, value, sub) {
 
 let leadsData = [], corretoresData = [], empData = [];
 
-window._leadsFiltros = window._leadsFiltros || { status:'', corretor_id:'', empreendimento_id:'', tipo_cadastro:'', origem:'' };
+window._leadsFiltros = window._leadsFiltros || { status:'', corretor_id:'', empreendimento_id:'', tipo_cadastro:'', origem:'', imobiliaria:'' };
 
 function _renderFilaLeads(todos, corretores) {
   const fila = (todos||[]).filter(l => (l.tipo_cadastro||'lead') === 'lead' && !l.corretor_id && !['com_corretor','vendido','perdido','sem_venda'].includes(l.status));
@@ -1279,9 +1279,16 @@ async function renderPastas(filter = '') {
   const empOpts = `<option value="">Todos os empreendimentos</option>` +
     (empData||[]).map(e => `<option value="${e.id}" ${fl.empreendimento_id==e.id?'selected':''}>${e.nome}</option>`).join('');
 
-  // Origens distintas presentes nas pastas (para o filtro dinâmico)
+  // Mapa corretor_id → imobiliária (para filtro)
+  const corretorImobMap = {};
+  (corretoresData||[]).forEach(c => { if (c.imobiliaria) corretorImobMap[c.id] = c.imobiliaria; });
+
+  // Origens e imobiliárias distintas presentes nas pastas (para os filtros dinâmicos)
   const todasPastasRaw = leadsData.filter(l => (l.tipo_cadastro||'lead') === 'pasta');
   const origensDisponiveis = [...new Set(todasPastasRaw.map(l => l.origem).filter(Boolean))].sort();
+  const imobsDisponiveis = [...new Set(
+    todasPastasRaw.map(l => l.corretor_id ? corretorImobMap[l.corretor_id] : null).filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
   // Força tipo_cadastro = 'pasta'
   const pastas = todasPastasRaw.filter(l => {
@@ -1290,12 +1297,15 @@ async function renderPastas(filter = '') {
     if (fl.corretor_id && String(l.corretor_id) !== String(fl.corretor_id)) return false;
     if (fl.empreendimento_id && String(l.empreendimento_id) !== String(fl.empreendimento_id)) return false;
     if (fl.origem && (l.origem||'') !== fl.origem) return false;
+    if (fl.imobiliaria && corretorImobMap[l.corretor_id] !== fl.imobiliaria) return false;
     return true;
   });
-  const temFiltro = fl.status || fl.corretor_id || fl.empreendimento_id || fl.origem;
+  const temFiltro = fl.status || fl.corretor_id || fl.empreendimento_id || fl.origem || fl.imobiliaria;
 
   const origemOpts = `<option value="" ${!fl.origem?'selected':''}>Todas as origens</option>` +
     origensDisponiveis.map(o => `<option value="${o}" ${fl.origem===o?'selected':''}>${o}</option>`).join('');
+  const imobOpts = `<option value="" ${!fl.imobiliaria?'selected':''}>Todas as imobiliárias</option>` +
+    imobsDisponiveis.map(i => `<option value="${i}" ${fl.imobiliaria===i?'selected':''}>${i}</option>`).join('');
 
   document.getElementById('content').innerHTML = `
     <div style="background:var(--navy2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -1314,7 +1324,8 @@ async function renderPastas(filter = '') {
       <select onchange="window._leadsFiltros.corretor_id=this.value;renderPastas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${corOpts}</select>
       <select onchange="window._leadsFiltros.empreendimento_id=this.value;renderPastas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${empOpts}</select>
       <select onchange="window._leadsFiltros.origem=this.value;renderPastas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${origemOpts}</select>
-      ${temFiltro ? `<button onclick="window._leadsFiltros={status:'',corretor_id:'',empreendimento_id:'',origem:''};renderPastas()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
+      <select onchange="window._leadsFiltros.imobiliaria=this.value;renderPastas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;width:auto">${imobOpts}</select>
+      ${temFiltro ? `<button onclick="window._leadsFiltros={status:'',corretor_id:'',empreendimento_id:'',origem:'',imobiliaria:''};renderPastas()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
       <div style="flex:1"></div>
       <button onclick="navigate('kanban')" style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer">📋 Kanban</button>
       <label style="font-size:12px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);cursor:pointer;white-space:nowrap">
