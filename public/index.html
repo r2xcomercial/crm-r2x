@@ -1789,7 +1789,7 @@ async function openLeadModal(lead = {}, onSave = null) {
       inscricao_estadual: v('f-ie')||null, inscricao_municipal: v('f-im')||null,
       representante_nome: v('f-rep-nome')||null, representante_cpf: v('f-rep-cpf')||null,
       representante_rg: v('f-rep-rg')||null, representante_cargo: v('f-rep-cargo')||null,
-      tipo_cadastro: v('f-tipo-cad') || (USUARIO.perfil === 'corretor' ? (lead.tipo_cadastro || 'pasta') : (lead.tipo_cadastro || 'lead'))
+      tipo_cadastro: USUARIO.perfil === 'corretor' ? 'pasta' : (v('f-tipo-cad') || lead.tipo_cadastro || 'lead')
     };
     if (!lead.id && !isPjSave && isCorretorSave) {
       if (!_leadDocCnh)        return toast('Envie a CNH ou RG do cliente (obrigatório).', 'error');
@@ -14319,7 +14319,7 @@ function handleSearch(q) {
 
 function handleAdd() {
   switch(currentPage) {
-    case 'leads': openLeadModal({ tipo_cadastro: 'lead' }); break;
+    case 'leads': openLeadModal({ tipo_cadastro: USUARIO.perfil === 'corretor' ? 'pasta' : 'lead' }); break;
     case 'pastas': openLeadModal({ tipo_cadastro: 'pasta' }); break;
     case 'vendas': openVendaModal(); break;
     case 'clientes': openClienteModal(); break;
