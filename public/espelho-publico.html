@@ -1179,6 +1179,7 @@ function _iniciarCountdownSim(prazo) {
 
 // ─── BANNER FLUTUANTE PIX PENDENTE ───────────────────────────────────────────
 const _bannerIntervals = new Map(); // unitId → intervalId
+const _bannersDismissed = new Set(); // unitIds que o usuário fechou nesta sessão
 
 function _atualizarPixBanner() {
   const container = document.getElementById('pix-banners-container');
@@ -1191,25 +1192,32 @@ function _atualizarPixBanner() {
   const _cidNum = parseInt(_corretorId) || 0;
   const _isCorretor = _corretorPerfil === 'corretor';
 
-  // Banners: toda pre-reserva sem comprovante
-  const minhasRes = (window._units || []).filter(u =>
-    u.status === 'pre_reserva' && !u.tem_comprovante && u.venda_id
-  );
+  // Banners: pré-reservas sem comprovante.
+  // Corretor vê APENAS as próprias; admin/gestor/incorporador veem todas.
+  const minhasRes = (window._units || []).filter(u => {
+    if (u.status !== 'pre_reserva' || u.tem_comprovante || !u.venda_id) return false;
+    if (_isCorretor && _cidNum && String(u.venda_corretor_id) !== String(_cidNum)) return false;
+    return true;
+  });
 
-  // Remove banners de unidades que já não precisam
+  // Remove banners de unidades que já não precisam (pré-reserva resolvida)
+  // e limpa dismiss para essas unidades (para que reapareçam se houver nova pré-reserva)
   const idsAtivos = new Set(minhasRes.map(u => u.id));
   for (const [uid, iv] of _bannerIntervals) {
     if (!idsAtivos.has(uid)) {
       clearInterval(iv);
       _bannerIntervals.delete(uid);
+      _bannersDismissed.delete(uid); // resetar dismiss quando item some
       const el = document.getElementById(`pix-banner-${uid}`);
       if (el) el.remove();
     }
   }
 
-  // Cria banner por unidade
+  // Cria banner por unidade (pula os que o usuário já fechou)
   for (const res of minhasRes) {
     const uid = res.id;
+    if (_bannersDismissed.has(uid)) continue;
+
     const locDesc = `Lote ${res.lote}${res.quadra ? ' · Q.' + res.quadra : ''}`;
     const clienteNome = res.venda_lead_nome || '';
     // Dono da reserva OU admin/gestor/incorporador podem enviar PIX
@@ -1232,6 +1240,7 @@ function _atualizarPixBanner() {
         <div class="pix-banner-row">
           <div class="pix-banner-clock" id="pix-clock-${uid}">--:--</div>
           ${acaoBotao}
+          <button onclick="_dispensarBanner(${uid})" style="background:none;border:none;color:#6b7280;font-size:16px;cursor:pointer;line-height:1;padding:0 0 0 6px;flex-shrink:0" title="Fechar">✕</button>
         </div>
       </div>`;
       container.appendChild(item);
@@ -1261,6 +1270,14 @@ function _limparTodosBanners() {
   _bannerIntervals.clear();
   const container = document.getElementById('pix-banners-container');
   if (container) container.innerHTML = '';
+}
+
+function _dispensarBanner(uid) {
+  _bannersDismissed.add(uid);
+  clearInterval(_bannerIntervals.get(uid));
+  _bannerIntervals.delete(uid);
+  const el = document.getElementById(`pix-banner-${uid}`);
+  if (el) el.remove();
 }
 
 function mostrarFormProposta(unitId) {
