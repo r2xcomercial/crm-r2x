@@ -914,6 +914,11 @@ function renderCorretorArea() {
         const url = new URL(location.href);
         url.searchParams.delete('token');
         history.replaceState(null, '', url.toString());
+        // Inicia o espelho agora que o token está pronto
+        // (o carregar() do fim do script já executou antes deste await completar)
+        renderCorretorArea();
+        carregar().then(() => { iniciarContador(); _iniciarSSE(); });
+        return;
       }
     } catch(_) {}
   }
