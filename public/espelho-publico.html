@@ -3083,6 +3083,10 @@ async function confirmarReserva() {
   } catch(e) {
     errEl.textContent = e.message;
     btn.disabled = false; btn.textContent = '🏠 Confirmar reserva';
+    // Se unidade foi reservada por outro corretor, atualiza o espelho imediatamente
+    if (e.message && (e.message.includes('reservada') || e.message.includes('disponível'))) {
+      carregar();
+    }
   }
 }
 
