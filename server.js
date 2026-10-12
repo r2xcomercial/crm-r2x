@@ -5426,7 +5426,6 @@ app.get('/api/espelho-publico/:slug/leads', (req, res) => {
   if (!emp) return err(res, 'Empreendimento não encontrado', 404);
   // Filtra pelo próprio corretor; admin sem corretor_id vê leads sem corretor atribuído
   const cid = sessao.corretor_id || null;
-  console.log('[debug leads] usuario_id=%s perfil=%s corretor_id=%s emp_id=%s', sessao.id, sessao.perfil, cid, emp.id);
   let leadsEmp;
   if (cid) {
     // Apenas clientes da pasta do corretor (tipo_cadastro='pasta') — não exibe leads distribuídos pelo admin
@@ -5440,7 +5439,6 @@ app.get('/api/espelho-publico/:slug/leads', (req, res) => {
       FROM leads WHERE empreendimento_id=? AND (corretor_id IS NULL OR corretor_id=0) AND tipo_cadastro='pasta' ORDER BY nome ASC
     `).all(emp.id);
   }
-  console.log('[debug leads] leadsEmp=%d', leadsEmp.length);
   // Clientes próprios cadastrados sem empreendimento (corretor_clientes) — só para quem tem corretor_id
   const proprios = cid ? db.prepare(`
     SELECT id, nome, cpf, telefone, email, 'pf' AS tipo_pessoa, 'proprio' AS _src
