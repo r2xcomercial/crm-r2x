@@ -3294,8 +3294,11 @@ app.get("/api/corretor/clientes", (req, res) => {
 
 app.post("/api/corretor/clientes", (req, res) => {
   const cid = guardaCorretor(req, res); if (!cid) return;
-  const { nome, cpf, telefone, email, cidade, estado, aniversario, observacoes } = req.body;
+  const { nome, cpf, telefone, email, cidade, estado, aniversario, observacoes, empreendimento_id } = req.body;
   if (!nome) return err(res, 'Nome obrigatório');
+  if (!empreendimento_id) return err(res, 'Empreendimento obrigatório');
+  const empId = parseInt(empreendimento_id);
+  if (!db.prepare("SELECT id FROM empreendimentos WHERE id=?").get(empId)) return err(res, 'Empreendimento não encontrado', 404);
   const MSG_DUP = 'Cliente já cadastrado, favor entrar em contato com a R2X.';
   if (telefone) {
     const telLimpo = telefone.replace(/\D/g, '');
@@ -3313,10 +3316,11 @@ app.post("/api/corretor/clientes", (req, res) => {
       if (dup) return err(res, MSG_DUP, 409);
     }
   }
+  // Insere diretamente em leads para entrar no kanban do empreendimento
   const r = db.prepare(`
-    INSERT INTO corretor_clientes (corretor_id, nome, cpf, telefone, email, cidade, estado, aniversario, observacoes)
-    VALUES (?,?,?,?,?,?,?,?,?)
-  `).run(cid, nome, cpf||null, telefone||null, email||null, cidade||null, estado||null, aniversario||null, observacoes||null);
+    INSERT INTO leads (corretor_id, empreendimento_id, nome, cpf, telefone, email, cidade, estado, aniversario, observacoes, status, origem)
+    VALUES (?,?,?,?,?,?,?,?,?,?,'novo','corretor_crm')
+  `).run(cid, empId, nome, cpf||null, telefone||null, email||null, cidade||null, estado||null, aniversario||null, observacoes||null);
   ok(res, { id: r.lastInsertRowid });
 });
 
@@ -3325,7 +3329,18 @@ app.put("/api/corretor/clientes/:id", (req, res) => {
   const id = parseInt(req.params.id);
   const row = db.prepare('SELECT * FROM corretor_clientes WHERE id=? AND corretor_id=?').get(id, cid);
   if (!row) return err(res, 'Não encontrado');
-  const { nome, cpf, telefone, email, cidade, estado, aniversario, observacoes } = req.body;
+  const { nome, cpf, telefone, email, cidade, estado, aniversario, observacoes, empreendimento_id } = req.body;
+  if (empreendimento_id) {
+    // Migra para leads e remove de corretor_clientes
+    const empId = parseInt(empreendimento_id);
+    if (!db.prepare("SELECT id FROM empreendimentos WHERE id=?").get(empId)) return err(res, 'Empreendimento não encontrado', 404);
+    const r = db.prepare(`
+      INSERT INTO leads (corretor_id, empreendimento_id, nome, cpf, telefone, email, cidade, estado, aniversario, observacoes, status, origem)
+      VALUES (?,?,?,?,?,?,?,?,?,?,'novo','corretor_crm')
+    `).run(cid, empId, nome||row.nome, cpf||null, telefone||null, email||null, cidade||null, estado||null, aniversario||null, observacoes||null);
+    db.prepare('DELETE FROM corretor_clientes WHERE id=? AND corretor_id=?').run(id, cid);
+    return ok(res, { id: r.lastInsertRowid, migrated: true });
+  }
   db.prepare(`
     UPDATE corretor_clientes SET nome=?, cpf=?, telefone=?, email=?, cidade=?, estado=?, aniversario=?, observacoes=?
     WHERE id=? AND corretor_id=?

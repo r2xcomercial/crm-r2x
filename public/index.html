@@ -19124,9 +19124,19 @@ async function openCorretorClienteModal(id) {
     const r = await get('/api/corretor/clientes');
     c = (r.data||[]).find(x => x.id === id) || {};
   }
+  const empR = await get('/api/corretor/empreendimentos');
+  const emps = empR.data || [];
+  const empOpts = emps.map(e => `<option value="${e.id}" ${c.empreendimento_id == e.id ? 'selected' : ''}>${e.nome}</option>`).join('');
+  const empLabel = id ? 'Empreendimento <small style="color:var(--text2)">(definir converte em pasta no kanban)</small>' : 'Empreendimento *';
   openModal(id ? 'Editar Cliente' : 'Novo Cliente', `
     <div class="form-grid">
       <div class="form-group span2"><label>Nome *</label><input id="cc-nome" value="${c.nome||''}" placeholder="Nome completo ou razão social"></div>
+      <div class="form-group span2"><label>${empLabel}</label>
+        <select id="cc-emp" style="width:100%;padding:10px 12px;background:var(--navy3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
+          <option value="">— Selecione o empreendimento —</option>
+          ${empOpts}
+        </select>
+      </div>
       <div class="form-group"><label>CPF / CNPJ</label><input id="cc-cpf" value="${c.cpf||''}" placeholder="000.000.000-00"></div>
       <div class="form-group"><label>Telefone / WhatsApp</label><input id="cc-tel" value="${c.telefone||''}" placeholder="(48) 99999-9999"></div>
       <div class="form-group span2"><label>Email</label><input id="cc-email" type="email" value="${c.email||''}" placeholder="email@exemplo.com"></div>
@@ -19137,16 +19147,18 @@ async function openCorretorClienteModal(id) {
     </div>
   `, async () => {
     const body = {
-      nome:       v('cc-nome'),
-      cpf:        v('cc-cpf'),
-      telefone:   v('cc-tel'),
-      email:      v('cc-email'),
-      cidade:     v('cc-cidade'),
-      estado:     v('cc-estado'),
-      aniversario: v('cc-aniv'),
-      observacoes: v('cc-obs'),
+      nome:             v('cc-nome'),
+      empreendimento_id: v('cc-emp') || null,
+      cpf:              v('cc-cpf'),
+      telefone:         v('cc-tel'),
+      email:            v('cc-email'),
+      cidade:           v('cc-cidade'),
+      estado:           v('cc-estado'),
+      aniversario:      v('cc-aniv'),
+      observacoes:      v('cc-obs'),
     };
     if (!body.nome) return toast('Nome é obrigatório', 'error');
+    if (!id && !body.empreendimento_id) return toast('Selecione um empreendimento', 'error');
     const res = id
       ? await put(`/api/corretor/clientes/${id}`, body)
       : await post('/api/corretor/clientes', body);
