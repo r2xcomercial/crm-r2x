@@ -1249,11 +1249,32 @@ function _atualizarPixBanner() {
     // Inicia countdown só uma vez por unidade
     if (!_bannerIntervals.has(uid) && res.comprovante_prazo_expira_em) {
       const prazoMs = _parsePrazoUTC(res.comprovante_prazo_expira_em).getTime();
+      const vendaId = res.venda_id;
       const tick = () => {
         const el = document.getElementById(`pix-clock-${uid}`);
         if (!el) { clearInterval(_bannerIntervals.get(uid)); _bannerIntervals.delete(uid); return; }
         const ms = prazoMs - Date.now();
-        if (ms <= 0) { el.textContent = '00:00'; el.style.color = '#f87171'; clearInterval(_bannerIntervals.get(uid)); _bannerIntervals.delete(uid); return; }
+        if (ms <= 0) {
+          clearInterval(_bannerIntervals.get(uid));
+          _bannerIntervals.delete(uid);
+          // Remove banner imediatamente e notifica servidor para liberar unidade
+          const bannerEl = document.getElementById(`pix-banner-${uid}`);
+          if (bannerEl) bannerEl.remove();
+          _bannersDismissed.add(uid);
+          // Marca unidade como disponível no estado local (o servidor confirmará via broadcast)
+          if (window._units) {
+            const u = window._units.find(x => x.id === uid);
+            if (u) u.status = 'disponivel';
+          }
+          if (vendaId && _corretorToken) {
+            fetch(`/api/espelho-publico/${window._espelhoSlug}/expirar-pix`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-crm-token': _corretorToken },
+              body: JSON.stringify({ venda_id: vendaId })
+            }).catch(() => {});
+          }
+          return;
+        }
         const mm = String(Math.floor(ms/60000)).padStart(2,'0');
         const ss = String(Math.floor((ms%60000)/1000)).padStart(2,'0');
         el.textContent = `${mm}:${ss}`;

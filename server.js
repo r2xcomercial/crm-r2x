@@ -5421,6 +5421,45 @@ app.get('/api/espelho-publico/:slug/leads', (req, res) => {
   ok(res, rows);
 });
 
+// POST /api/espelho-publico/:slug/expirar-pix — expira pré-reserva imediatamente quando timer chega a zero no cliente
+app.post('/api/espelho-publico/:slug/expirar-pix', (req, res) => {
+  const token = req.headers['x-crm-token'] || req.body?.token;
+  if (!token) return err(res, 'Não autorizado', 401);
+  let sessao;
+  try {
+    sessao = db.prepare(`SELECT u.id, u.perfil, u.corretor_id FROM sessoes s JOIN usuarios u ON u.id=s.usuario_id WHERE s.token=? AND s.expira_em > datetime('now') AND u.ativo=1`).get(token);
+  } catch(e) { return err(res, 'Erro de autenticação', 500); }
+  if (!sessao) return err(res, 'Sessão inválida ou expirada', 401);
+  const emp = db.prepare("SELECT id FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
+  if (!emp) return err(res, 'Empreendimento não encontrado', 404);
+  const { venda_id } = req.body;
+  if (!venda_id) return err(res, 'venda_id obrigatório');
+  const v = db.prepare(`
+    SELECT v.id, v.unidade_id, v.corretor_id, v.empreendimento_id, v.comprovante_pix, v.comprovante_prazo_expira_em
+    FROM vendas v WHERE v.id=? AND v.status='pre_reserva' AND v.empreendimento_id=?
+  `).get(parseInt(venda_id), emp.id);
+  if (!v) return ok(res, { msg: 'Venda não encontrada ou já processada' });
+  if (v.comprovante_pix) return ok(res, { msg: 'Comprovante já enviado' });
+  // Só expira se o prazo realmente passou (segurança)
+  if (v.comprovante_prazo_expira_em) {
+    const prazo = new Date(v.comprovante_prazo_expira_em.replace(' ', 'T') + 'Z');
+    if (prazo > new Date()) return ok(res, { msg: 'Prazo ainda não venceu' });
+  }
+  try {
+    db.transaction(() => {
+      db.prepare("UPDATE vendas SET status='perdida', observacoes=COALESCE(observacoes||' | ','')|| 'Cancelado: comprovante Pix não enviado no prazo', comprovante_prazo_expira_em=NULL WHERE id=?").run(v.id);
+      db.prepare("UPDATE leads SET status='lead' WHERE id=(SELECT lead_id FROM vendas WHERE id=?)").run(v.id);
+    })();
+    const temFila = _avancarFila(v.unidade_id);
+    if (!temFila) {
+      db.prepare("UPDATE unidades SET status='disponivel' WHERE id=? AND status='pre_reserva'").run(v.unidade_id);
+      _logUnidade(v.unidade_id, 'pre_reserva', 'disponivel', null, v.id, 'Pré-reserva cancelada via timer cliente: comprovante não enviado');
+    }
+    _broadcastRefresh(emp.id);
+    ok(res, { expirado: true });
+  } catch(e) { err(res, 'Erro ao expirar', 500); }
+});
+
 // Endpoint: corretor cadastra lead a partir do espelho público
 app.post('/api/espelho-lead', autenticar, (req, res) => {
   const u = req.usuario;
