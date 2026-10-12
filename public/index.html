@@ -18415,7 +18415,7 @@ async function renderCorretorPainel(tab) {
         <div style="font-size:20px;font-weight:700">Olá, ${corretor?.nome || USUARIO.nome}! 👋</div>
         <div style="font-size:13px;color:var(--text2);margin-top:4px">Sua central de gestão de vendas</div>
       </div>
-      <button onclick="openLeadModal({});_cpTab='clientes'" style="display:flex;align-items:center;gap:8px;padding:10px 18px;background:var(--accent);color:var(--navy);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;box-shadow:0 4px 14px rgba(250,204,21,.3)">
+      <button onclick="openLeadModal({tipo_cadastro:'pasta'});_cpTab='clientes'" style="display:flex;align-items:center;gap:8px;padding:10px 18px;background:var(--accent);color:var(--navy);border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;box-shadow:0 4px 14px rgba(250,204,21,.3)">
         <span style="font-size:18px">➕</span> Cadastrar Cliente
       </button>
     </div>
@@ -18579,13 +18579,13 @@ async function _renderCpTab() {
               <option value="sim">✅ Com venda</option>
               <option value="nao">⏳ Sem venda</option>
             </select>
-            <button class="btn btn-primary" onclick="openCorretorClienteModal()" style="font-size:13px;padding:7px 14px;white-space:nowrap">+ Novo Cliente</button>
+            <button class="btn btn-primary" onclick="openLeadModal({tipo_cadastro:'pasta'})" style="font-size:13px;padding:7px 14px;white-space:nowrap">+ Cadastrar Cliente</button>
           </div>
         </div>
         <table id="cc-tabela">
           <thead><tr><th>Nome</th><th>CPF</th><th>Telefone</th><th>Email</th><th>Cidade</th><th>Empreendimento</th><th>Aniversário</th><th></th></tr></thead>
           <tbody id="cc-tbody">
-            ${clientes.length ? clientes.map(c => _rowCorretorCliente(c)).join('') : '<tr class="empty-row"><td colspan="8">Nenhum cliente cadastrado<br><small>Clique em "+ Novo Cliente" para começar</small></td></tr>'}
+            ${clientes.length ? clientes.map(c => _rowCorretorCliente(c)).join('') : '<tr class="empty-row"><td colspan="8">Nenhum cliente cadastrado<br><small>Use o botão "+ Cadastrar Cliente" no topo do painel</small></td></tr>'}
           </tbody>
         </table>
       </div>`;

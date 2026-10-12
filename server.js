@@ -5429,14 +5429,15 @@ app.get('/api/espelho-publico/:slug/leads', (req, res) => {
   console.log('[debug leads] usuario_id=%s perfil=%s corretor_id=%s emp_id=%s', sessao.id, sessao.perfil, cid, emp.id);
   let leadsEmp;
   if (cid) {
+    // Apenas clientes da pasta do corretor (tipo_cadastro='pasta') — não exibe leads distribuídos pelo admin
     leadsEmp = db.prepare(`
       SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa, 'lead' AS _src
-      FROM leads WHERE corretor_id=? ORDER BY nome ASC
+      FROM leads WHERE corretor_id=? AND tipo_cadastro='pasta' ORDER BY nome ASC
     `).all(cid);
   } else {
     leadsEmp = db.prepare(`
       SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa, 'lead' AS _src
-      FROM leads WHERE empreendimento_id=? AND (corretor_id IS NULL OR corretor_id=0) ORDER BY nome ASC
+      FROM leads WHERE empreendimento_id=? AND (corretor_id IS NULL OR corretor_id=0) AND tipo_cadastro='pasta' ORDER BY nome ASC
     `).all(emp.id);
   }
   console.log('[debug leads] leadsEmp=%d', leadsEmp.length);
