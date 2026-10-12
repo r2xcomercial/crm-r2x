@@ -3428,7 +3428,8 @@ app.get("/api/vendas/:id/unidades", autenticar, (req, res) => {
 // ─── RESERVA RÁPIDA ──────────────────────────────────────────────────────────
 app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
   const u = req.usuario;
-  const { empreendimento_id, unidade_id, lead_id, lead_nome, lead_telefone, corretor_id, condicao_proposta, from_espelho } = req.body;
+  const { empreendimento_id, unidade_id, lead_nome, lead_telefone, corretor_id, condicao_proposta, from_espelho } = req.body;
+  let lead_id = req.body.lead_id;
   if (!empreendimento_id || !unidade_id) return err(res, "Empreendimento e unidade obrigatórios");
 
   // Bloqueia corretor sem acesso ao empreendimento
@@ -3438,8 +3439,19 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
   // Corretor deve obrigatoriamente fornecer lead_id
   if (u?.perfil === 'corretor') {
     if (!lead_id) return err(res, "Selecione um lead cadastrado antes de reservar a unidade");
-    const leadCheck = db.prepare("SELECT id, corretor_id FROM leads WHERE id=?").get(parseInt(lead_id));
-    if (!leadCheck) return err(res, "Lead não encontrado");
+    let leadCheck = db.prepare("SELECT id, corretor_id FROM leads WHERE id=?").get(parseInt(lead_id));
+    if (!leadCheck) {
+      // Pode ser um cliente de corretor_clientes — migra automaticamente para leads
+      const proprio = db.prepare("SELECT * FROM corretor_clientes WHERE id=? AND corretor_id=?").get(parseInt(lead_id), u.corretor_id);
+      if (!proprio) return err(res, "Lead não encontrado");
+      const migrado = db.prepare(`
+        INSERT INTO leads (corretor_id, empreendimento_id, nome, cpf, telefone, email, cidade, estado, aniversario, observacoes, status, origem, tipo_cadastro)
+        VALUES (?,?,?,?,?,?,?,?,?,?,'novo','corretor_crm','pasta')
+      `).run(u.corretor_id, parseInt(empreendimento_id), proprio.nome, proprio.cpf||null, proprio.telefone||null, proprio.email||null, proprio.cidade||null, proprio.estado||null, proprio.aniversario||null, proprio.observacoes||null);
+      db.prepare("DELETE FROM corretor_clientes WHERE id=?").run(proprio.id);
+      lead_id = migrado.lastInsertRowid;
+      leadCheck = { id: migrado.lastInsertRowid, corretor_id: u.corretor_id };
+    }
     if (leadCheck.corretor_id && u.corretor_id && leadCheck.corretor_id !== u.corretor_id)
       return err(res, "Este lead não pertence ao seu cadastro");
   }
@@ -5412,12 +5424,27 @@ app.get('/api/espelho-publico/:slug/leads', (req, res) => {
   if (!sessao) return err(res, 'Sessão inválida ou expirada', 401);
   const emp = db.prepare("SELECT id FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
   if (!emp) return err(res, 'Empreendimento não encontrado', 404);
-  const sel = `SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa FROM leads`;
   let rows;
   if (['admin','gestor','incorporador'].includes(sessao.perfil)) {
-    rows = db.prepare(`${sel} WHERE empreendimento_id=? ORDER BY nome ASC`).all(emp.id);
+    rows = db.prepare(`
+      SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa, 'lead' AS _src
+      FROM leads WHERE empreendimento_id=? ORDER BY nome ASC
+    `).all(emp.id);
   } else {
-    rows = db.prepare(`${sel} WHERE empreendimento_id=? AND corretor_id=? ORDER BY nome ASC`).all(emp.id, sessao.corretor_id);
+    // Leads do corretor para este empreendimento
+    const leadsEmp = db.prepare(`
+      SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa, 'lead' AS _src
+      FROM leads WHERE empreendimento_id=? AND corretor_id=? ORDER BY nome ASC
+    `).all(emp.id, sessao.corretor_id);
+    // Clientes próprios cadastrados sem empreendimento (corretor_clientes)
+    const proprios = db.prepare(`
+      SELECT id, nome, cpf, telefone, email, 'pf' AS tipo_pessoa, 'proprio' AS _src
+      FROM corretor_clientes WHERE corretor_id=? ORDER BY nome ASC
+    `).all(sessao.corretor_id);
+    // Unifica, evitando duplicatas por CPF
+    const cpfsSeen = new Set(leadsEmp.filter(l => l.cpf).map(l => l.cpf));
+    const propriosFiltrados = proprios.filter(p => !p.cpf || !cpfsSeen.has(p.cpf));
+    rows = [...leadsEmp, ...propriosFiltrados].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
   }
   ok(res, rows);
 });
