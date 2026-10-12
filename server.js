@@ -3318,8 +3318,8 @@ app.post("/api/corretor/clientes", (req, res) => {
   }
   // Insere diretamente em leads para entrar no kanban do empreendimento
   const r = db.prepare(`
-    INSERT INTO leads (corretor_id, empreendimento_id, nome, cpf, telefone, email, cidade, estado, aniversario, observacoes, status, origem)
-    VALUES (?,?,?,?,?,?,?,?,?,?,'novo','corretor_crm')
+    INSERT INTO leads (corretor_id, empreendimento_id, nome, cpf, telefone, email, cidade, estado, aniversario, observacoes, status, origem, tipo_cadastro)
+    VALUES (?,?,?,?,?,?,?,?,?,?,'novo','corretor_crm','pasta')
   `).run(cid, empId, nome, cpf||null, telefone||null, email||null, cidade||null, estado||null, aniversario||null, observacoes||null);
   ok(res, { id: r.lastInsertRowid });
 });
@@ -3335,8 +3335,8 @@ app.put("/api/corretor/clientes/:id", (req, res) => {
     const empId = parseInt(empreendimento_id);
     if (!db.prepare("SELECT id FROM empreendimentos WHERE id=?").get(empId)) return err(res, 'Empreendimento não encontrado', 404);
     const r = db.prepare(`
-      INSERT INTO leads (corretor_id, empreendimento_id, nome, cpf, telefone, email, cidade, estado, aniversario, observacoes, status, origem)
-      VALUES (?,?,?,?,?,?,?,?,?,?,'novo','corretor_crm')
+      INSERT INTO leads (corretor_id, empreendimento_id, nome, cpf, telefone, email, cidade, estado, aniversario, observacoes, status, origem, tipo_cadastro)
+      VALUES (?,?,?,?,?,?,?,?,?,?,'novo','corretor_crm','pasta')
     `).run(cid, empId, nome||row.nome, cpf||null, telefone||null, email||null, cidade||null, estado||null, aniversario||null, observacoes||null);
     db.prepare('DELETE FROM corretor_clientes WHERE id=? AND corretor_id=?').run(id, cid);
     return ok(res, { id: r.lastInsertRowid, migrated: true });
@@ -9737,6 +9737,9 @@ try { db.exec(`CREATE TABLE IF NOT EXISTS corretor_empreendimento_acesso (
 )`); } catch(_) {}
 try { db.exec(`ALTER TABLE corretor_empreendimento_acesso ADD COLUMN pode_ver_tabela INTEGER NOT NULL DEFAULT 1`); } catch(_) {}
 try { db.exec(`ALTER TABLE corretor_empreendimento_acesso ADD COLUMN pode_reservar INTEGER NOT NULL DEFAULT 1`); } catch(_) {}
+
+// Corrige leads migrados de corretor_clientes que ficaram sem tipo_cadastro='pasta'
+try { db.prepare(`UPDATE leads SET tipo_cadastro='pasta' WHERE origem='corretor_crm' AND (tipo_cadastro IS NULL OR tipo_cadastro != 'pasta')`).run(); } catch(_) {}
 
 // Empreendimentos acessíveis pelo corretor logado (com permissões granulares)
 app.get('/api/corretor/empreendimentos', autenticar, (req, res) => {
