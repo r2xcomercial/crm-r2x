@@ -5426,9 +5426,9 @@ app.get('/api/espelho-publico/:slug/leads', (req, res) => {
   if (!emp) return err(res, 'Empreendimento não encontrado', 404);
   // Filtra pelo próprio corretor; admin sem corretor_id vê leads sem corretor atribuído
   const cid = sessao.corretor_id || null;
+  console.log('[debug leads] usuario_id=%s perfil=%s corretor_id=%s emp_id=%s', sessao.id, sessao.perfil, cid, emp.id);
   let leadsEmp;
   if (cid) {
-    // Todos os leads do corretor — sem filtrar por empreendimento para não excluir nenhum cliente válido
     leadsEmp = db.prepare(`
       SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa, 'lead' AS _src
       FROM leads WHERE corretor_id=? ORDER BY nome ASC
@@ -5439,6 +5439,7 @@ app.get('/api/espelho-publico/:slug/leads', (req, res) => {
       FROM leads WHERE empreendimento_id=? AND (corretor_id IS NULL OR corretor_id=0) ORDER BY nome ASC
     `).all(emp.id);
   }
+  console.log('[debug leads] leadsEmp=%d', leadsEmp.length);
   // Clientes próprios cadastrados sem empreendimento (corretor_clientes) — só para quem tem corretor_id
   const proprios = cid ? db.prepare(`
     SELECT id, nome, cpf, telefone, email, 'pf' AS tipo_pessoa, 'proprio' AS _src
@@ -5448,6 +5449,7 @@ app.get('/api/espelho-publico/:slug/leads', (req, res) => {
   const cpfsSeen = new Set(leadsEmp.filter(l => l.cpf).map(l => l.cpf));
   const propriosFiltrados = proprios.filter(p => !p.cpf || !cpfsSeen.has(p.cpf));
   const rows = [...leadsEmp, ...propriosFiltrados].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+  console.log('[debug leads] total=%d', rows.length);
   ok(res, rows);
 });
 
