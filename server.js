@@ -5424,14 +5424,15 @@ app.get('/api/espelho-publico/:slug/leads', (req, res) => {
   if (!sessao) return err(res, 'Sessão inválida ou expirada', 401);
   const emp = db.prepare("SELECT id FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
   if (!emp) return err(res, 'Empreendimento não encontrado', 404);
-  // Sempre filtra pelo próprio corretor — admin sem corretor_id vê leads sem corretor atribuído
+  // Filtra pelo próprio corretor; admin sem corretor_id vê leads sem corretor atribuído
   const cid = sessao.corretor_id || null;
   let leadsEmp;
   if (cid) {
+    // Inclui leads vinculados a este empreendimento OU sem empreendimento definido
     leadsEmp = db.prepare(`
       SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa, 'lead' AS _src
-      FROM leads WHERE empreendimento_id=? AND corretor_id=? ORDER BY nome ASC
-    `).all(emp.id, cid);
+      FROM leads WHERE corretor_id=? AND (empreendimento_id=? OR empreendimento_id IS NULL OR empreendimento_id=0) ORDER BY nome ASC
+    `).all(cid, emp.id);
   } else {
     leadsEmp = db.prepare(`
       SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa, 'lead' AS _src
