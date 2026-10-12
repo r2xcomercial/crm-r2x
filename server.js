@@ -5424,28 +5424,29 @@ app.get('/api/espelho-publico/:slug/leads', (req, res) => {
   if (!sessao) return err(res, 'Sessão inválida ou expirada', 401);
   const emp = db.prepare("SELECT id FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
   if (!emp) return err(res, 'Empreendimento não encontrado', 404);
-  let rows;
-  if (['admin','gestor','incorporador'].includes(sessao.perfil)) {
-    rows = db.prepare(`
-      SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa, 'lead' AS _src
-      FROM leads WHERE empreendimento_id=? ORDER BY nome ASC
-    `).all(emp.id);
-  } else {
-    // Leads do corretor para este empreendimento
-    const leadsEmp = db.prepare(`
+  // Sempre filtra pelo próprio corretor — admin sem corretor_id vê leads sem corretor atribuído
+  const cid = sessao.corretor_id || null;
+  let leadsEmp;
+  if (cid) {
+    leadsEmp = db.prepare(`
       SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa, 'lead' AS _src
       FROM leads WHERE empreendimento_id=? AND corretor_id=? ORDER BY nome ASC
-    `).all(emp.id, sessao.corretor_id);
-    // Clientes próprios cadastrados sem empreendimento (corretor_clientes)
-    const proprios = db.prepare(`
-      SELECT id, nome, cpf, telefone, email, 'pf' AS tipo_pessoa, 'proprio' AS _src
-      FROM corretor_clientes WHERE corretor_id=? ORDER BY nome ASC
-    `).all(sessao.corretor_id);
-    // Unifica, evitando duplicatas por CPF
-    const cpfsSeen = new Set(leadsEmp.filter(l => l.cpf).map(l => l.cpf));
-    const propriosFiltrados = proprios.filter(p => !p.cpf || !cpfsSeen.has(p.cpf));
-    rows = [...leadsEmp, ...propriosFiltrados].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    `).all(emp.id, cid);
+  } else {
+    leadsEmp = db.prepare(`
+      SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa, 'lead' AS _src
+      FROM leads WHERE empreendimento_id=? AND (corretor_id IS NULL OR corretor_id=0) ORDER BY nome ASC
+    `).all(emp.id);
   }
+  // Clientes próprios cadastrados sem empreendimento (corretor_clientes) — só para quem tem corretor_id
+  const proprios = cid ? db.prepare(`
+    SELECT id, nome, cpf, telefone, email, 'pf' AS tipo_pessoa, 'proprio' AS _src
+    FROM corretor_clientes WHERE corretor_id=? ORDER BY nome ASC
+  `).all(cid) : [];
+  // Unifica evitando duplicatas por CPF
+  const cpfsSeen = new Set(leadsEmp.filter(l => l.cpf).map(l => l.cpf));
+  const propriosFiltrados = proprios.filter(p => !p.cpf || !cpfsSeen.has(p.cpf));
+  const rows = [...leadsEmp, ...propriosFiltrados].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
   ok(res, rows);
 });
 
