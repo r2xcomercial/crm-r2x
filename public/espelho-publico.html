@@ -778,7 +778,7 @@
 <div id="pix-banners-container"></div>
 
 <!-- Botão flutuante: cadastrar cliente (só aparece quando corretor logado) -->
-<button id="fab-lead" onclick="abrirCadastrarLead(null)" title="Cadastrar cliente" style="display:none">
+<button id="fab-lead" onclick="abrirCadastrarLeadCRM()" title="Cadastrar cliente" style="display:none">
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="12" y1="14" x2="12" y2="20"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
   <span>Cadastrar cliente</span>
 </button>
@@ -2541,6 +2541,16 @@ async function _epBuscarCep(tipo, el) {
     const set = (id, val) => { const f = document.getElementById(`ep-${tipo}-${id}`); if(f && !f.value) f.value = val||''; };
     set('end', r.logradouro); set('bairro', r.bairro); set('cidade', r.localidade); set('estado', r.uf);
   } catch(_) {}
+}
+
+// ── Cadastrar cliente — abre CRM principal com formulário completo ─────────────
+function abrirCadastrarLeadCRM() {
+  const base = window.location.origin;
+  const empId = window._empId || '';
+  const url = base + '/?action=novo-lead' + (empId ? '&emp_id=' + empId : '');
+  const w = screen.availWidth, h = screen.availHeight;
+  const win = window.open(url, '_blank', `noopener,noreferrer,width=${w},height=${h},top=0,left=0`);
+  if (!win) window.open(url, '_blank');
 }
 
 // ── Cadastrar cliente (lead) ──────────────────────────────────────────────────

@@ -19417,6 +19417,20 @@ if (!TOKEN) { window.location.href = '/login'; }
   iniciarNotificacoes();
   renderPage(initPage);
 
+  // Deep-link vindo do espelho: ?action=novo-lead&emp_id=X
+  (function() {
+    const dp = new URLSearchParams(window.location.search);
+    const action = dp.get('action');
+    if (action === 'novo-lead') {
+      const empId = parseInt(dp.get('emp_id')) || null;
+      const url = new URL(location.href);
+      url.searchParams.delete('action');
+      url.searchParams.delete('emp_id');
+      history.replaceState(null, '', url.toString());
+      setTimeout(() => openLeadModal({ tipo_cadastro: 'pasta', empreendimento_id: empId }), 600);
+    }
+  })();
+
   // Verificação em background — corrige perfil desatualizado no localStorage
   get('/api/auth/me').then(me => {
     if (!me || !me.ok || !me.data) return;
