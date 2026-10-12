@@ -1287,6 +1287,8 @@ function _atualizarPixBanner() {
             const u = window._units.find(x => x.id === uid);
             if (u) u.status = 'disponivel';
           }
+          // Re-renderiza imediatamente o mapa neste cliente (sem jitter)
+          carregar().then(() => iniciarContador());
           if (vendaId && _corretorToken) {
             fetch(`/api/espelho-publico/${window._espelhoSlug}/expirar-pix`, {
               method: 'POST',
@@ -2784,7 +2786,7 @@ function _iniciarSSE() {
   src.onmessage = (e) => {
     try {
       const d = JSON.parse(e.data);
-      if (d.tipo === 'refresh') { clearInterval(timer); setTimeout(() => carregar().then(iniciarContador), Math.random() * 2000); }
+      if (d.tipo === 'refresh') { clearInterval(timer); setTimeout(() => carregar().then(iniciarContador), Math.random() * 500); }
     } catch(_) {}
   };
   src.onerror = () => {
