@@ -2763,7 +2763,7 @@ function _iniciarSSE() {
   src.onmessage = (e) => {
     try {
       const d = JSON.parse(e.data);
-      if (d.tipo === 'refresh') { clearInterval(timer); carregar().then(iniciarContador); }
+      if (d.tipo === 'refresh') { clearInterval(timer); setTimeout(() => carregar().then(iniciarContador), Math.random() * 2000); }
     } catch(_) {}
   };
   src.onerror = () => {

@@ -5289,6 +5289,7 @@ app.get('/api/espelho-publico/:slug', (req, res) => {
       (SELECT v2.corretor_id FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as venda_corretor_id,
       (SELECT CASE WHEN v2.comprovante_pix IS NOT NULL THEN 1 ELSE 0 END FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as tem_comprovante,
       (SELECT v2.comprovante_prazo_expira_em FROM vendas v2 WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as comprovante_prazo_expira_em,
+      (SELECT l.nome FROM vendas v2 JOIN leads l ON l.id=v2.lead_id WHERE v2.unidade_id=u.id AND v2.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as venda_lead_nome,
       (SELECT COUNT(*) FROM reserva_fila rf WHERE rf.unidade_id=u.id AND rf.status IN ('aguardando','notificado')) as fila_qtd
     FROM unidades u WHERE u.empreendimento_id=? ORDER BY CAST(u.quadra AS REAL), CAST(REPLACE(u.lote,'-',' ') AS REAL), u.lote
   `).all(emp.id);
@@ -5308,7 +5309,7 @@ app.get('/api/espelho-publico/:slug', (req, res) => {
   const token = req.headers['x-crm-token'];
   if (token) {
     try {
-      const usuario = db.prepare("SELECT id, perfil, corretor_id FROM usuarios WHERE token=? AND ativo=1").get(token);
+      const usuario = db.prepare("SELECT u.id, u.perfil, u.corretor_id FROM sessoes s JOIN usuarios u ON u.id=s.usuario_id WHERE s.token=? AND s.expira_em > datetime('now') AND u.ativo=1").get(token);
       if (usuario && usuario.corretor_id && usuario.perfil === 'corretor') {
         // Bloqueia acesso se o empreendimento não está liberado para este corretor
         if (!corretorTemAcesso(usuario, emp.id)) {
