@@ -5428,11 +5428,11 @@ app.get('/api/espelho-publico/:slug/leads', (req, res) => {
   const cid = sessao.corretor_id || null;
   let leadsEmp;
   if (cid) {
-    // Inclui leads vinculados a este empreendimento OU sem empreendimento definido
+    // Todos os leads do corretor — sem filtrar por empreendimento para não excluir nenhum cliente válido
     leadsEmp = db.prepare(`
       SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa, 'lead' AS _src
-      FROM leads WHERE corretor_id=? AND (empreendimento_id=? OR empreendimento_id IS NULL OR empreendimento_id=0) ORDER BY nome ASC
-    `).all(cid, emp.id);
+      FROM leads WHERE corretor_id=? ORDER BY nome ASC
+    `).all(cid);
   } else {
     leadsEmp = db.prepare(`
       SELECT id, nome, cpf, telefone, email, CASE WHEN pessoa_juridica=1 THEN 'pj' ELSE 'pf' END AS tipo_pessoa, 'lead' AS _src
