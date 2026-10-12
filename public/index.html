@@ -18700,7 +18700,7 @@ async function renderCorretorEmpKanban(empId, empNome, btn) {
 
   const COLS = [
     { key: 'cadastros', label: '👥 Cadastros',  color: '#94a3b8' },
-    { key: 'proposta',  label: '📋 Proposta',   color: '#60a5fa' },
+    { key: 'proposta',  label: '📋 Proposta/Reserva', color: '#60a5fa' },
     { key: 'aprovado',  label: '✅ Venda',       color: '#4ade80' },
     { key: 'perdida',   label: '❌ Perdida',     color: '#f87171' },
   ];
@@ -18711,6 +18711,7 @@ async function renderCorretorEmpKanban(empId, empNome, btn) {
     const tel   = isCad ? item.telefone : item.lead_tel;
     const valor = !isCad && item.valor ? `<span style="color:var(--success);font-size:11px">💰 ${fmt(item.valor)}</span>` : '';
     const unid  = !isCad && item.lote ? `<span style="font-size:11px;color:var(--text2)">Lote ${item.lote}${item.quadra?' · Q'+item.quadra:''}</span>` : '';
+    const preResBadge = !isCad && item.status === 'pre_reserva' ? `<span style="font-size:10px;background:rgba(234,179,8,.2);color:#eab308;border:1px solid rgba(234,179,8,.4);border-radius:99px;padding:1px 7px;font-weight:700">⏱ Pré-reserva</span>` : '';
     const acoes = (col === 'cadastros')
       ? `<button onclick="editLead(${item.id})" style="width:100%;margin-top:8px;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:11px;cursor:pointer">✏️ Ver/Editar</button>`
       : (col === 'proposta')
@@ -18719,7 +18720,7 @@ async function renderCorretorEmpKanban(empId, empNome, btn) {
     return `<div class="kanban-card" style="cursor:default">
       <div class="kc-nome">${nome||'—'}</div>
       ${tel ? `<div class="kc-tel"><a href="https://wa.me/55${(tel||'').replace(/\D/g,'')}" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent);text-decoration:none">📱 ${tel}</a></div>` : ''}
-      <div style="display:flex;flex-direction:column;gap:2px;margin-top:4px">${unid}${valor}</div>
+      <div style="display:flex;flex-direction:column;gap:2px;margin-top:4px">${preResBadge}${unid}${valor}</div>
       ${acoes}
     </div>`;
   };

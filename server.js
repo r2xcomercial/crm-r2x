@@ -3916,7 +3916,7 @@ app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
     LEFT JOIN unidades u ON u.id = v.unidade_id
     LEFT JOIN corretores c ON c.id = v.corretor_id
     WHERE v.empreendimento_id = ?
-      AND v.status IN ('reserva','proposta','aprovado','ativo','perdida')
+      AND v.status IN ('pre_reserva','reserva','proposta','aprovado','ativo','perdida')
   `;
   let allVendas;
   if (u?.perfil === 'corretor' && u?.corretor_id) {
@@ -3926,10 +3926,10 @@ app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
     allVendas = db.prepare(vendasBase + ' ORDER BY v.criado_em DESC').all(empId);
   }
 
-  // reserva e proposta → mesma coluna "proposta"
+  // pre_reserva, reserva e proposta → mesma coluna "proposta"
   const byStatus = { proposta: [], aprovado: [], ativo: [], perdida: [] };
   allVendas.forEach(v => {
-    const col = v.status === 'reserva' ? byStatus.proposta : byStatus[v.status];
+    const col = (v.status === 'reserva' || v.status === 'pre_reserva') ? byStatus.proposta : byStatus[v.status];
     if (col) {
       col.push({ ...v, condicao_proposta: v.condicao_proposta ? JSON.parse(v.condicao_proposta) : null });
     }
