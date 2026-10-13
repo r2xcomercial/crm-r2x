@@ -4476,7 +4476,11 @@ app.get("/api/vendas/ranking", (req, res) => {
   if (empreendimento_id) { sql += " AND v.empreendimento_id=?"; params.push(empreendimento_id); }
   if (periodo === 'mes') { sql += " AND (v.data_venda IS NULL OR strftime('%Y-%m',v.data_venda)=strftime('%Y-%m','now'))"; }
   sql += " GROUP BY v.corretor_id ORDER BY vgv DESC LIMIT 20";
-  ok(res, db.prepare(sql).all(...params));
+  const total = db.prepare("SELECT COUNT(*) as n, GROUP_CONCAT(DISTINCT status) as statuses FROM vendas").get();
+  console.log('[ranking] vendas total:', total.n, 'statuses:', total.statuses);
+  const rows = db.prepare(sql).all(...params);
+  console.log('[ranking] rows:', rows.length);
+  ok(res, rows);
 });
 
 // ─── FINANCEIRO ENTRADAS ──────────────────────────────────────────────────────
