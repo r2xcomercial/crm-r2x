@@ -5294,7 +5294,7 @@ app.put('/api/empreendimentos/:id/espelho-slug', autenticar, (req, res) => {
 
 // API pública — retorna dados do espelho sem autenticação
 app.get('/api/espelho-publico/:slug', (req, res) => {
-  const emp = db.prepare("SELECT id, nome, cidade, estado, tipo, espelho_params, espelho_marker_size, maps_url, drive_url, social_url, condicao_pagamento_padrao, COALESCE(config_ver_tabela,1) AS config_ver_tabela, COALESCE(config_reservar,1) AS config_reservar, COALESCE(modo_reserva,'pre_reserva_pix') AS modo_reserva FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
+  const emp = db.prepare("SELECT id, nome, cidade, estado, tipo, espelho_params, espelho_marker_size, maps_url, drive_url, social_url, logo_base64, condicao_pagamento_padrao, COALESCE(config_ver_tabela,1) AS config_ver_tabela, COALESCE(config_reservar,1) AS config_reservar, COALESCE(modo_reserva,'pre_reserva_pix') AS modo_reserva FROM empreendimentos WHERE espelho_slug=?").get(req.params.slug);
   if (!emp) return res.status(404).json({ ok: false, error: 'Espelho não encontrado' });
   const mapa = db.prepare("SELECT svg_data FROM mapas WHERE empreendimento_id=?").get(emp.id);
   const units = db.prepare(`

@@ -1560,6 +1560,14 @@ async function carregar() {
     _driveUrl   = driveUrl || null;
     _socialUrl  = socialUrl || null;
 
+    // Logo do empreendimento no cabeçalho
+    if (emp.logo_base64) {
+      const logoDiv = document.querySelector('header .logo');
+      if (logoDiv) {
+        logoDiv.innerHTML = `<img src="${emp.logo_base64}" alt="${emp.nome}" style="max-height:38px;max-width:160px;object-fit:contain;filter:brightness(0) invert(1)">`;
+      }
+    }
+
     // Info bar
     document.title = `Espelho — ${emp.nome}`;
     document.getElementById('emp-nome').textContent = emp.nome;
