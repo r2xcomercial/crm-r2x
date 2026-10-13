@@ -59,7 +59,7 @@ function _criarLoginCorretor(corretorId, nome, loginEmail) {
   }
 }
 
-const APIs_PUBLICAS = ["/api/corretores/publico", "/api/corretores/imobiliarias", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/", "/api/pluggy/webhook"];
+const APIs_PUBLICAS = ["/api/corretores/publico", "/api/corretores/imobiliarias", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/", "/api/pluggy/webhook", "/api/setup-germania-r2x9k3m"];
 
 function autenticar(req, res, next) {
   if (!req.path.startsWith("/api/")) return next();
@@ -6892,6 +6892,39 @@ app.post('/api/empreendimentos/:id/unidades/importar-lote', (req, res) => {
   db.prepare('UPDATE empreendimentos SET num_unidades=?, vgv_estimado=? WHERE id=?').run(stats.total, stats.vgv, empId);
 
   ok(res, { importadas, total: stats.total });
+});
+
+// ─── SETUP TEMPORÁRIO GERMANIA ────────────────────────────────────────────────
+app.post('/api/setup-germania-r2x9k3m', (req, res) => {
+  const { secret, logo_base64, config_reservar, config_ver_tabela, config_visivel, unidades, condicoes_padrao, maps_url, social_url } = req.body;
+  if (secret !== 'R2X_GERMANIA_2024') return res.status(403).json({ ok: false, error: 'Não autorizado' });
+  const empId = 19;
+  const updates = [];
+  const params = [];
+  if (logo_base64 !== undefined) { updates.push('logo_base64=?'); params.push(logo_base64); }
+  if (config_reservar !== undefined) { updates.push('config_reservar=?'); params.push(config_reservar ? 1 : 0); }
+  if (config_ver_tabela !== undefined) { updates.push('config_ver_tabela=?'); params.push(config_ver_tabela ? 1 : 0); }
+  if (config_visivel !== undefined) { updates.push('config_visivel=?'); params.push(config_visivel ? 1 : 0); }
+  if (maps_url !== undefined) { updates.push('maps_url=?'); params.push(maps_url); }
+  if (social_url !== undefined) { updates.push('social_url=?'); params.push(social_url); }
+  if (condicoes_padrao !== undefined) { updates.push('condicao_pagamento_padrao=?'); params.push(JSON.stringify(condicoes_padrao)); }
+  if (updates.length) { params.push(empId); db.prepare(`UPDATE empreendimentos SET ${updates.join(',')} WHERE id=?`).run(...params); }
+  let importadas = 0;
+  if (Array.isArray(unidades) && unidades.length) {
+    const insert = db.prepare(`INSERT INTO unidades (empreendimento_id,quadra,lote,area_m2,preco,status) VALUES (?,?,?,?,?,'disponivel')`);
+    db.transaction(() => {
+      for (const u of unidades) {
+        if (!u.lote) continue;
+        const existe = db.prepare('SELECT id FROM unidades WHERE empreendimento_id=? AND lote=? AND (quadra=? OR (quadra IS NULL AND ? IS NULL))').get(empId, String(u.lote), u.quadra||null, u.quadra||null);
+        if (existe) continue;
+        insert.run(empId, u.quadra||null, String(u.lote), u.area_m2||null, u.preco||null);
+        importadas++;
+      }
+    })();
+    const stats = db.prepare('SELECT COUNT(*) as total, COALESCE(SUM(preco),0) as vgv FROM unidades WHERE empreendimento_id=?').get(empId);
+    db.prepare('UPDATE empreendimentos SET num_unidades=?, vgv_estimado=? WHERE id=?').run(stats.total, stats.vgv, empId);
+  }
+  ok(res, { ok: true, updates: updates.length, importadas });
 });
 
 // ─── WEBHOOK — CAPTURA DE LEADS DE PORTAIS ────────────────────────────────────
