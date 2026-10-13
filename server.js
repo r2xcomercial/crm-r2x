@@ -4468,14 +4468,14 @@ app.delete("/api/vendas/:id", (req, res) => {
 app.get("/api/vendas/ranking", (req, res) => {
   const { empreendimento_id, periodo } = req.query;
   let sql = `
-    SELECT c.nome, c.imobiliaria, COUNT(v.id) as vendas, COALESCE(SUM(v.valor),0) as vgv
-    FROM vendas v JOIN corretores c ON c.id=v.corretor_id
+    SELECT COALESCE(c.nome, 'Sem corretor') as nome, c.imobiliaria, COUNT(v.id) as vendas, COALESCE(SUM(v.valor),0) as vgv
+    FROM vendas v LEFT JOIN corretores c ON c.id=v.corretor_id
     WHERE v.status IN ('pre_reserva','reserva','proposta','aprovado','ativo')
   `;
   const params = [];
   if (empreendimento_id) { sql += " AND v.empreendimento_id=?"; params.push(empreendimento_id); }
-  if (periodo === 'mes') { sql += " AND strftime('%Y-%m',v.data_venda)=strftime('%Y-%m','now')"; }
-  sql += " GROUP BY c.id ORDER BY vgv DESC LIMIT 20";
+  if (periodo === 'mes') { sql += " AND (v.data_venda IS NULL OR strftime('%Y-%m',v.data_venda)=strftime('%Y-%m','now'))"; }
+  sql += " GROUP BY v.corretor_id ORDER BY vgv DESC LIMIT 20";
   ok(res, db.prepare(sql).all(...params));
 });
 
