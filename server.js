@@ -6440,7 +6440,9 @@ app.get('/api/incorporador/painel', (req, res) => {
       (SELECT COUNT(*) FROM unidades WHERE empreendimento_id=e.id AND status='reservado') as unidades_reservadas,
       (SELECT COUNT(*) FROM unidades WHERE empreendimento_id=e.id AND status='disponivel') as unidades_disponiveis,
       (SELECT COALESCE(SUM(valor),0) FROM vendas WHERE empreendimento_id=e.id AND status='ativo') as vgv_vendido,
-      (SELECT COUNT(*) FROM vendas WHERE empreendimento_id=e.id AND status='ativo') as total_vendas
+      (SELECT COUNT(*) FROM vendas WHERE empreendimento_id=e.id AND status='ativo') as total_vendas,
+      (SELECT COUNT(*) FROM vendas WHERE empreendimento_id=e.id AND status='ativo'
+        AND strftime('%Y-%m', data_venda) = strftime('%Y-%m', 'now')) as vendas_mes_atual
     FROM empreendimentos e
     WHERE e.cliente_id=?
     ORDER BY e.criado_em DESC

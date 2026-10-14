@@ -15797,13 +15797,18 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
       </div>
       ${empreendimentos.length === 0 ? `<div style="text-align:center;padding:60px;color:var(--text2)">Nenhum empreendimento cadastrado.</div>` : ''}
       ${empreendimentos.map(emp => {
-        const total   = emp.num_unidades || emp.total_unidades || 0;
-        const vend    = emp.unidades_vendidas  || 0;
-        const res     = emp.unidades_reservadas|| 0;
-        const disp    = emp.unidades_disponiveis||0;
-        const vso     = total > 0 ? ((vend+res)/total*100).toFixed(1) : 0;
-        const vendPct = total > 0 ? (vend/total*100) : 0;
-        const resPct  = total > 0 ? (res /total*100) : 0;
+        const total    = emp.num_unidades || emp.total_unidades || 0;
+        const vend     = emp.unidades_vendidas  || 0;
+        const res      = emp.unidades_reservadas|| 0;
+        const disp     = emp.unidades_disponiveis||0;
+        const vsoNum   = total > 0 ? (vend+res)/total*100 : 0;
+        const vso      = vsoNum.toFixed(1);
+        const vsoMesNum = total > 0 ? (emp.vendas_mes_atual||0)/total*100 : 0;
+        const vsoMes   = vsoMesNum.toFixed(1);
+        const vendPct  = total > 0 ? (vend/total*100) : 0;
+        const resPct   = total > 0 ? (res /total*100) : 0;
+        const vsoCor   = v => v >= 35 ? '#4ade80' : v >= 20 ? '#facc15' : v >= 8 ? '#fb923c' : '#f87171';
+        const vsoLabel = v => v >= 35 ? '● Excelente' : v >= 20 ? '● Bom' : v >= 8 ? '● Atenção' : '● Crítico';
         return `
         <div class="table-card" style="margin-bottom:16px;overflow:hidden">
           <!-- Cabeçalho do card -->
@@ -15843,8 +15848,14 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
               <div style="font-weight:800;font-size:22px;color:var(--success);font-variant-numeric:tabular-nums">${disp}</div>
             </div>
             <div style="text-align:center">
-              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">VSO</div>
-              <div style="font-weight:800;font-size:22px;font-variant-numeric:tabular-nums">${vso}%</div>
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">VSO Global</div>
+              <div style="font-weight:800;font-size:22px;font-variant-numeric:tabular-nums;color:${vsoCor(vsoNum)}">${vso}%</div>
+              <div style="font-size:10px;font-weight:600;color:${vsoCor(vsoNum)};margin-top:1px">${vsoLabel(vsoNum)}</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">VSO Mensal</div>
+              <div style="font-weight:800;font-size:22px;font-variant-numeric:tabular-nums;color:${vsoCor(vsoMesNum)}">${vsoMes}%</div>
+              <div style="font-size:10px;font-weight:600;color:${vsoCor(vsoMesNum)};margin-top:1px">${vsoLabel(vsoMesNum)}</div>
             </div>
             <div style="text-align:center">
               <div style="font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">VGV Vend.</div>
