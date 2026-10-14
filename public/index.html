@@ -15762,6 +15762,11 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
   content.dataset.incLoaded = '1';
   const { cliente, empreendimentos, ranking, kpis } = r.data;
   const el = document.getElementById('content');
+  // Helpers de leads/pastas/vendas agregados
+  const todosLeads  = empreendimentos.flatMap(e => (e.leads||[]).map(l => ({...l, empreendimento_nome: e.nome})));
+  const totalLeadsGlobal  = empreendimentos.reduce((s,e)=>s+(e.totalLeads||0),0);
+  const totalPastasGlobal = empreendimentos.reduce((s,e)=>s+(e.totalPastas||0),0);
+  const totalVendasGlobal = empreendimentos.reduce((s,e)=>s+(e.unidades_vendidas||0),0);
 
   const SL = { prospecto:'Prospecto', planejamento:'Planejamento', pre_lancamento:'Pré-lançamento', lancamento:'Lançamento', vendas:'Em Vendas', encerrado:'Encerrado' };
   const SB = { prospecto:'badge-gray', planejamento:'badge-gray', pre_lancamento:'badge-yellow', lancamento:'badge-accent', vendas:'badge-green', encerrado:'badge-red' };
@@ -15929,6 +15934,124 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
           </table>
         </div>` : `<div style="padding:40px;text-align:center;color:var(--text2)">Sem dados de vendas.</div>`}
       </div>`,
+
+    leads: (() => {
+      const fmt2 = v => v != null && v > 0 ? fmt(v) : '—';
+      const pct  = (a, b) => b > 0 ? (a/b*100).toFixed(1)+'%' : '—';
+      const cac  = (inv, n) => (inv > 0 && n > 0) ? fmt(inv/n) : '—';
+
+      const funilGlobal = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;margin-bottom:24px">
+          ${kpiCard('📥','Leads', totalLeadsGlobal, 'total captados', '#818cf8')}
+          ${kpiCard('📂','Pastas', totalPastasGlobal, pct(totalPastasGlobal, totalLeadsGlobal)+' de conversão', '#f59e0b')}
+          ${kpiCard('🔑','Vendas', totalVendasGlobal, pct(totalVendasGlobal, totalPastasGlobal)+' de conversão', 'var(--success)')}
+        </div>`;
+
+      const empCards = empreendimentos.map(emp => {
+        const nLeads  = emp.totalLeads  || 0;
+        const nPastas = emp.totalPastas || 0;
+        const nVendas = emp.unidades_vendidas || 0;
+        const trafego  = emp.inv_trafego_pago   || 0;
+        const mktTotal = emp.inv_marketing_total || 0;
+
+        const funil = `
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+            ${[
+              ['📥','Leads',nLeads,'#818cf8'],
+              ['📂','Pastas',nPastas,'#f59e0b'],
+              ['🔑','Vendas',nVendas,'var(--success)']
+            ].map(([icon,lbl,val,cor],i,arr)=>`
+              <div style="flex:1;min-width:90px;background:var(--navy3);border-radius:10px;padding:12px;border-top:2px solid ${cor};text-align:center">
+                <div style="font-size:10px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px">${icon} ${lbl}</div>
+                <div style="font-size:22px;font-weight:900;font-variant-numeric:tabular-nums">${val}</div>
+                ${i>0?`<div style="font-size:10px;color:var(--text2)">${pct(val,arr[i-1][2])} do anterior</div>`:''}
+              </div>`).join('')}
+          </div>`;
+
+        const investTable = `
+          <div style="background:var(--navy3);border-radius:10px;padding:16px;margin-bottom:12px">
+            <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">💸 Investimento em Marketing</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+              <div>
+                <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">Tráfego pago (Meta/Google/etc)</label>
+                <input type="text" id="inv-trafego-${emp.id}"
+                  value="${trafego > 0 ? trafego.toFixed(2).replace('.',',') : ''}"
+                  placeholder="R$ 0,00"
+                  oninput="this.dataset.dirty='1'"
+                  style="width:100%;padding:8px 10px;background:var(--navy2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">Total marketing (agência, outdoor, etc)</label>
+                <input type="text" id="inv-mktotal-${emp.id}"
+                  value="${mktTotal > 0 ? mktTotal.toFixed(2).replace('.',',') : ''}"
+                  placeholder="R$ 0,00"
+                  oninput="this.dataset.dirty='1'"
+                  style="width:100%;padding:8px 10px;background:var(--navy2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;box-sizing:border-box">
+              </div>
+            </div>
+            <button onclick="incSalvarInvestimento(${emp.id})"
+              style="padding:8px 18px;border-radius:7px;border:none;background:var(--accent);color:var(--navy);font-size:12px;font-weight:700;cursor:pointer">
+              💾 Salvar investimento
+            </button>
+          </div>`;
+
+        const cacCard = (label, traf, mkt) => `
+          <div style="display:flex;flex-direction:column;gap:3px;background:var(--navy2);border-radius:8px;padding:10px 12px;min-width:110px;flex:1">
+            <div style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.4px">${label}</div>
+            ${traf !== '—' ? `<div style="font-size:13px;font-weight:700;color:#818cf8">🎯 ${traf} <span style="font-size:9px;font-weight:400">tráfego</span></div>` : ''}
+            ${mkt  !== '—' ? `<div style="font-size:13px;font-weight:700;color:#f59e0b">📊 ${mkt} <span style="font-size:9px;font-weight:400">total</span></div>` : (traf==='—'?`<div style="font-size:11px;color:var(--text2)">Informe o investimento</div>`:'')}
+          </div>`;
+
+        const cacSection = `
+          <div style="background:var(--navy3);border-radius:10px;padding:16px">
+            <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">📐 CAC — Custo de Aquisição</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              ${cacCard('CAC / Lead',   cac(trafego,nLeads),   cac(mktTotal,nLeads))}
+              ${cacCard('CAC / Pasta',  cac(trafego,nPastas),  cac(mktTotal,nPastas))}
+              ${cacCard('CAC / Venda',  cac(trafego,nVendas),  cac(mktTotal,nVendas))}
+            </div>
+          </div>`;
+
+        return `<div style="background:var(--navy2);border-radius:14px;padding:20px;margin-bottom:16px">
+          <div style="font-size:15px;font-weight:800;margin-bottom:16px">${emp.nome}</div>
+          ${funil}${investTable}${cacSection}
+        </div>`;
+      }).join('');
+
+      // Lista de todos os leads
+      const leadsList = todosLeads.length ? `
+        <div class="table-card" style="margin-top:24px">
+          <div class="table-header"><div class="table-title">📋 Todos os Leads (${todosLeads.length})</div></div>
+          <div style="overflow-x:auto">
+            <table style="min-width:560px">
+              <thead><tr>
+                <th>Nome</th><th>Telefone</th><th>Tipo</th><th>Status</th>
+                <th>Empreendimento</th><th>Corretor</th><th>Criado em</th>
+              </tr></thead>
+              <tbody>
+                ${todosLeads.map(l => {
+                  const tipoBadge = l.tipo_cadastro === 'pasta'
+                    ? '<span class="badge badge-yellow">📂 Pasta</span>'
+                    : '<span class="badge badge-gray">📥 Lead</span>';
+                  const stMap = {novo:'Novo', com_corretor:'Com corretor', vendido:'Vendido', perdido:'Perdido'};
+                  const stCls = {novo:'badge-gray', com_corretor:'badge-accent', vendido:'badge-green', perdido:'badge-red'};
+                  return `<tr>
+                    <td style="font-weight:600">${l.nome||'—'}</td>
+                    <td style="color:var(--text2);font-size:12px">${l.telefone||'—'}</td>
+                    <td>${tipoBadge}</td>
+                    <td><span class="badge ${stCls[l.status]||'badge-gray'}">${stMap[l.status]||l.status||'—'}</span></td>
+                    <td style="color:var(--text2);font-size:12px">${l.empreendimento_nome||'—'}</td>
+                    <td style="color:var(--text2);font-size:12px">${l.corretor_nome||'—'}</td>
+                    <td style="color:var(--text2);font-size:12px;white-space:nowrap">${fmtDate(l.criado_em)}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>` : `<div style="padding:40px;text-align:center;color:var(--text2)">Nenhum lead cadastrado ainda.</div>`;
+
+      return funilGlobal + empCards + leadsList;
+    })(),
 
     comissoes: `
       <!-- Comissão dos Corretores -->
@@ -16098,6 +16221,7 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
     <!-- ── ABAS ── -->
     <div style="display:flex;gap:8px;margin-bottom:24px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch">
       ${tabBtn('empreendimentos','🏗️','Empreendimentos')}
+      ${tabBtn('leads','📥','Leads & CAC')}
       ${tabBtn('vendas','📋','Vendas')}
       ${tabBtn('ranking','🥇','Ranking')}
       ${tabBtn('comissoes','💰','Comissões')}
@@ -16106,6 +16230,17 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
     <!-- ── CONTEÚDO ── -->
     ${tabContent[aba] || ''}
   `;
+}
+
+async function incSalvarInvestimento(empId) {
+  const parseBR = s => parseFloat((s||'').replace(/\./g,'').replace(',','.')) || 0;
+  const trafego  = parseBR(document.getElementById(`inv-trafego-${empId}`)?.value);
+  const mktotal  = parseBR(document.getElementById(`inv-mktotal-${empId}`)?.value);
+  const r = await api('PUT', `/api/incorporador/empreendimentos/${empId}/investimento`, { inv_trafego_pago: trafego, inv_marketing_total: mktotal });
+  if (!r.ok) return toast('Erro ao salvar: ' + r.error, true);
+  toast('✅ Investimento salvo');
+  delete document.getElementById('content').dataset.incLoaded;
+  renderIncorporadorPainel('leads');
 }
 
 function incMarcarComissaoPaga(vendaId, totalComissao, valorJaPago) {

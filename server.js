@@ -96,7 +96,8 @@ app.use((req, res, next) => {
       || (req.method === 'GET' && /^\/api\/empreendimentos\/\d+\/kanban$/.test(req.path))
       || (req.method === 'GET' && /^\/api\/leads\/\d+$/.test(req.path))
       || (req.method === 'GET' && /^\/api\/leads\/\d+\/documentos$/.test(req.path))
-      || (req.method === 'GET' && /^\/api\/leads\/documentos\/\d+\/arquivo$/.test(req.path));
+      || (req.method === 'GET' && /^\/api\/leads\/documentos\/\d+\/arquivo$/.test(req.path))
+      || (req.method === 'PUT' && /^\/api\/incorporador\/empreendimentos\/\d+\/investimento$/.test(req.path));
     if (!permitido) return err(res, 'Acesso não autorizado', 403);
   }
   next();
@@ -5281,6 +5282,9 @@ try { db.exec("ALTER TABLE empreendimentos ADD COLUMN maps_url TEXT"); } catch(_
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN drive_url TEXT"); } catch(_) {}
 // Migration: link de rede social do empreendimento ou incorporador
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN social_url TEXT"); } catch(_) {}
+// Migration: investimento em tráfego pago e marketing total por empreendimento
+try { db.exec("ALTER TABLE empreendimentos ADD COLUMN inv_trafego_pago REAL DEFAULT 0"); } catch(_) {}
+try { db.exec("ALTER TABLE empreendimentos ADD COLUMN inv_marketing_total REAL DEFAULT 0"); } catch(_) {}
 
 // ─── ESPELHO DE VENDAS PÚBLICO ───────────────────────────────────────────────
 
@@ -6477,7 +6481,21 @@ app.get('/api/incorporador/painel', (req, res) => {
       ORDER BY ordem
     `).all(emp.id);
 
-    return { ...emp, vendas, checklist };
+    // Leads e pastas do empreendimento
+    const totalLeads  = db.prepare("SELECT COUNT(*) as n FROM leads WHERE empreendimento_id=? AND tipo_cadastro='lead'").get(emp.id)?.n || 0;
+    const totalPastas = db.prepare("SELECT COUNT(*) as n FROM leads WHERE empreendimento_id=? AND tipo_cadastro='pasta'").get(emp.id)?.n || 0;
+    const leadsLista  = db.prepare(`
+      SELECT l.id, l.nome, l.telefone, l.email, l.status, l.origem, l.tipo_cadastro,
+             l.criado_em, l.atualizado_em,
+             c.nome as corretor_nome
+      FROM leads l
+      LEFT JOIN corretores c ON c.id = l.corretor_id
+      WHERE l.empreendimento_id=?
+      ORDER BY l.criado_em DESC
+      LIMIT 200
+    `).all(emp.id);
+
+    return { ...emp, vendas, checklist, totalLeads, totalPastas, leads: leadsLista };
   });
 
   // Ranking de corretores (todas as vendas dos empreendimentos do incorporador)
@@ -6537,6 +6555,20 @@ app.put('/api/incorporador/vendas/:id/comissao-corretor', (req, res) => {
   db.prepare(`UPDATE vendas SET comissao_corretor_status=?, comissao_corretor_data_pagamento=?,
               comissao_corretor_valor_pago=? WHERE id=?`)
     .run(statusFinal, data_pagamento || null, valorPago || null, vendaId);
+  ok(res, {});
+});
+
+// Incorporador salva investimento em tráfego/marketing por empreendimento
+app.put('/api/incorporador/empreendimentos/:id/investimento', (req, res) => {
+  const clienteId = guardaIncorporador(req, res);
+  if (!clienteId) return;
+  const empId = parseInt(req.params.id);
+  const emp = db.prepare('SELECT id FROM empreendimentos WHERE id=? AND cliente_id=?').get(empId, clienteId);
+  if (!emp) return err(res, 'Empreendimento não encontrado ou sem permissão', 403);
+  const trafego  = parseFloat(req.body.inv_trafego_pago)    ?? null;
+  const marketing = parseFloat(req.body.inv_marketing_total) ?? null;
+  db.prepare('UPDATE empreendimentos SET inv_trafego_pago=COALESCE(?,inv_trafego_pago), inv_marketing_total=COALESCE(?,inv_marketing_total) WHERE id=?')
+    .run(isNaN(trafego) ? null : trafego, isNaN(marketing) ? null : marketing, empId);
   ok(res, {});
 });
 
