@@ -12367,6 +12367,13 @@ function abrirExportarTabela(empId) {
         <label>Observações (uma por linha)</label>
         <textarea id="et-obs" rows="3" style="resize:vertical">${v('obs', obsDefault).replace(/</g,'&lt;')}</textarea>
       </div>
+
+      <div class="form-group span2" style="border-top:1px solid var(--border);padding-top:12px;margin-top:2px">
+        <button type="button" onclick="gerarTabelaExcel(${empId})"
+          style="width:100%;padding:10px;background:rgba(34,197,94,.12);color:#4ade80;border:1px solid rgba(74,222,128,.4);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">
+          📊 Exportar para Excel (.xlsx)
+        </button>
+      </div>
     </div>
   `, async () => {
     const eTipoV = document.querySelector('input[name="et-entrada-tipo"]:checked')?.value || 'pct';
@@ -12708,6 +12715,136 @@ ${obsLines.length ? `<div class="obs-box">
   if (!w) { toast('Permita pop-ups para gerar a tabela', 'error'); return; }
   w.document.write(html);
   w.document.close();
+}
+
+async function gerarTabelaExcel(empId) {
+  // Coleta os mesmos params do form
+  const eTipoV = document.querySelector('input[name="et-entrada-tipo"]:checked')?.value || 'pct';
+  const condRows = [...document.querySelectorAll('#et-condicoes .et-cond-row')];
+  const condicoes = condRows.map(row => {
+    const ins = row.querySelectorAll('input');
+    return { label: ins[0].value.trim(), nParc: parseInt(ins[1].value)||60, juros: parseFloat(ins[2].value)||0 };
+  }).filter(c => c.nParc > 0);
+  const params = {
+    nome:          document.getElementById('et-nome')?.value?.trim() || '',
+    data:          document.getElementById('et-data')?.value?.trim() || '',
+    titulo:        document.getElementById('et-titulo')?.value?.trim() || '',
+    entrada_tipo:  eTipoV,
+    entrada_pct:   parseFloat(document.getElementById('et-entrada-pct')?.value || 0) / 100,
+    entrada_valor: parseFloat(document.getElementById('et-entrada-valor')?.value || 0) || 0,
+    entrada_parc:  parseInt(document.getElementById('et-entrada-parc')?.value || 1) || 1,
+    nRef:          parseInt(document.getElementById('et-nreforcos')?.value || 0),
+    pRef:          parseFloat(document.getElementById('et-preforco')?.value || 0) / 100,
+    condicoes:     condicoes.length ? condicoes : [{label:'60x sem juros', nParc:60, juros:0}],
+    filtro:        document.getElementById('et-filtro')?.value || 'todos',
+    obs:           document.getElementById('et-obs')?.value?.trim() || '',
+  };
+
+  // Carrega SheetJS se necessário
+  if (!window.XLSX) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  const emp = (currentData.emp||[]).find(e => e.id === empId) || {};
+  const r = await get(`/api/empreendimentos/${empId}/unidades`);
+  const isLoteamento = (emp.tipo || 'loteamento') !== 'predio';
+
+  const unidades = (r.data || []).sort((a, b) => {
+    const qa = String(a.quadra||''), qb = String(b.quadra||'');
+    const na = parseFloat(qa), nb = parseFloat(qb);
+    const qcmp = (!isNaN(na) && !isNaN(nb)) ? na - nb : qa.localeCompare(qb, 'pt-BR', {numeric:true, sensitivity:'base'});
+    if (qcmp !== 0) return qcmp;
+    const la = parseFloat(String(a.lote||'').replace(/\D/g,'')||'0');
+    const lb = parseFloat(String(b.lote||'').replace(/\D/g,'')||'0');
+    return (!isNaN(la) && !isNaN(lb)) ? la - lb : String(a.lote||'').localeCompare(String(b.lote||''), 'pt-BR', {numeric:true});
+  });
+
+  const lista = params.filtro === 'disponivel' ? unidades.filter(u => u.status === 'disponivel') : unidades;
+  const entFixo = params.entrada_tipo === 'valor';
+  const entParcN = params.entrada_parc || 1;
+  const condicoes2 = params.condicoes;
+  const nRef = params.nRef || 0;
+
+  const calcPMT = (saldo, nParc, juros) => {
+    if (saldo <= 0 || nParc <= 0) return 0;
+    if (!juros) return saldo / nParc;
+    const i = juros / 100;
+    return saldo * (i * Math.pow(1+i, nParc)) / (Math.pow(1+i, nParc) - 1);
+  };
+
+  const statusLabel = { disponivel:'Disponível', pre_reserva:'Pré-reserva', reservado:'Reservado', vendido:'Vendido', entregue:'Entregue', indisponivel:'Indisponível' };
+
+  // Cabeçalho
+  const entHd = entFixo
+    ? (entParcN > 1 ? `Entrada R$ ${(params.entrada_valor||0).toLocaleString('pt-BR')} (${entParcN}x)` : `Entrada R$ ${(params.entrada_valor||0).toLocaleString('pt-BR')}`)
+    : (entParcN > 1 ? `Entrada ${((params.entrada_pct||0)*100).toFixed(0)}% (${entParcN}x)` : `Entrada ${((params.entrada_pct||0)*100).toFixed(0)}%`);
+  const refHd = nRef > 0 ? `Balões (${nRef}x · ${((params.pRef||0)*100).toFixed(0)}% do valor)` : null;
+
+  const headers = isLoteamento
+    ? ['Quadra','Lote','Área (m²)','Valor (R$)', entHd, ...(refHd?[refHd]:[]), ...condicoes2.map(c => `${c.label||c.nParc+'x'} (R$/mês)`), 'Status']
+    : ['Andar','Unidade','Tipologia','Área (m²)','Valor (R$)', entHd, ...(refHd?[refHd]:[]), ...condicoes2.map(c => `${c.label||c.nParc+'x'} (R$/mês)`), 'Status'];
+
+  const dataRows = lista.map(u => {
+    const P = u.preco;
+    const q = u.quadra != null ? String(u.quadra) : '';
+    const lote = String(u.lote || '');
+    const fo = parseFloat(q);
+    const andarLabel = fo === 0 ? 'Térreo' : !isNaN(fo) ? `${fo}º andar` : q;
+
+    let entV = 0, totalRef = 0, saldo = 0;
+    const condVals = [];
+    if (P) {
+      entV = entFixo ? (params.entrada_valor || 0) : P * (params.entrada_pct || 0);
+      totalRef = P * (params.pRef || 0);
+      const refVal = nRef > 0 ? totalRef / nRef : 0;
+      saldo = P - entV - totalRef;
+      condicoes2.forEach(c => condVals.push(Math.round(calcPMT(saldo, c.nParc, c.juros) * 100) / 100));
+      const row = isLoteamento
+        ? [q, lote, u.area_m2 || '', P, Math.round(entV * 100)/100, ...(nRef>0?[Math.round(totalRef/nRef*100)/100]:[]), ...condVals, statusLabel[u.status]||u.status]
+        : [andarLabel, lote, u.tipologia||'', u.area_m2||'', P, Math.round(entV*100)/100, ...(nRef>0?[Math.round(totalRef/nRef*100)/100]:[]), ...condVals, statusLabel[u.status]||u.status];
+      return row;
+    }
+    condicoes2.forEach(() => condVals.push(''));
+    const row = isLoteamento
+      ? [q, lote, u.area_m2||'', '', '', ...(nRef>0?['']:[]), ...condVals, statusLabel[u.status]||u.status]
+      : [andarLabel, lote, u.tipologia||'', u.area_m2||'', '', '', ...(nRef>0?['']:[]), ...condVals, statusLabel[u.status]||u.status];
+    return row;
+  });
+
+  const wsData = [
+    [`${params.nome} — ${params.titulo || 'Tabela de Vendas'}`],
+    [`Atualizado em: ${params.data}`],
+    [],
+    headers,
+    ...dataRows,
+    [],
+    ...(params.obs ? params.obs.split('\n').filter(Boolean).map(l => [l]) : []),
+  ];
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Larguras das colunas
+  const colWidths = headers.map((h, i) => {
+    if (i === 0) return { wch: 10 };
+    if (i === 1) return { wch: 8 };
+    if (h.includes('Valor') || h.includes('Entrada') || h.includes('Balão') || h.includes('x')) return { wch: 18 };
+    if (h === 'Status') return { wch: 14 };
+    return { wch: 12 };
+  });
+  ws['!cols'] = colWidths;
+
+  // Mescla o título na primeira linha
+  ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:headers.length-1} }];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Tabela de Vendas');
+  XLSX.writeFile(wb, `Tabela_${(params.nome||'vendas').replace(/\s+/g,'_')}_${params.data||'hoje'}.xlsx`);
+  toast('✅ Excel gerado!');
 }
 
 async function abrirUnidade(unidadeId, empId) {
