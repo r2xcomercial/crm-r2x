@@ -2426,6 +2426,8 @@ app.post("/api/leads", autenticar, (req, res) => {
   const { nome, telefone, email, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empreendimento_id, status, origem, observacoes, aniversario, tipo, creci, imobiliaria, cpf, rg, estado_civil, profissao, nome_pai, nome_mae, endereco, numero, complemento, bairro, cep, estado, pessoa_juridica, cnpj, razao_social, nome_fantasia, inscricao_estadual, inscricao_municipal, representante_nome, representante_cpf, representante_rg, representante_cargo } = req.body;
   // Corretor só pode registrar leads em seu próprio nome
   const perfil = req.usuario?.perfil || 'admin';
+  if (perfil === 'corretor' && !req.usuario.corretor_id)
+    return err(res, 'Conta de corretor não vinculada. Contate o administrador.', 403);
   const corretor_id = perfil === 'corretor' ? req.usuario.corretor_id : req.body.corretor_id;
   // tipo_cadastro: 'pasta' se criado por corretor ou se admin/gestor enviou tipo_cadastro='pasta'; senão 'lead'
   const tipo_cadastro = req.body.tipo_cadastro === 'pasta' || perfil === 'corretor' ? 'pasta' : 'lead';
@@ -4476,10 +4478,7 @@ app.get("/api/vendas/ranking", (req, res) => {
   if (empreendimento_id) { sql += " AND v.empreendimento_id=?"; params.push(empreendimento_id); }
   if (periodo === 'mes') { sql += " AND (v.data_venda IS NULL OR strftime('%Y-%m',v.data_venda)=strftime('%Y-%m','now'))"; }
   sql += " GROUP BY v.corretor_id ORDER BY vgv DESC LIMIT 20";
-  const total = db.prepare("SELECT COUNT(*) as n, GROUP_CONCAT(DISTINCT status) as statuses FROM vendas").get();
-  console.log('[ranking] vendas total:', total.n, 'statuses:', total.statuses);
   const rows = db.prepare(sql).all(...params);
-  console.log('[ranking] rows:', rows.length);
   ok(res, rows);
 });
 
