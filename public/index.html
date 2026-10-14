@@ -15947,18 +15947,31 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
       </div>`,
 
     leads: (() => {
-      const fmt2 = v => v != null && v > 0 ? fmt(v) : '—';
-      const pct  = (a, b) => b > 0 ? (a/b*100).toFixed(1)+'%' : '—';
-      const cac  = (inv, n) => (inv > 0 && n > 0) ? fmt(inv/n) : '—';
+      const pct = (a, b) => b > 0 ? (a/b*100).toFixed(1)+'%' : '—';
+      const cacVal = (inv, n) => inv > 0 && n > 0 ? fmt(inv/n) : (inv === 0 ? '<span style="color:var(--text2);font-size:11px">Informe o valor</span>' : '—');
 
+      // ── Funil global ───────────────────────────────────────────────
       const funilGlobal = `
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;margin-bottom:24px">
           ${kpiCard('📥','Leads', totalLeadsGlobal, 'total captados', '#818cf8')}
-          ${kpiCard('📂','Pastas', totalPastasGlobal, pct(totalPastasGlobal, totalLeadsGlobal)+' de conversão', '#f59e0b')}
-          ${kpiCard('🔑','Vendas', totalVendasGlobal, pct(totalVendasGlobal, totalPastasGlobal)+' de conversão', 'var(--success)')}
+          ${kpiCard('📂','Pastas', totalPastasGlobal, pct(totalPastasGlobal,totalLeadsGlobal)+' de conversão', '#f59e0b')}
+          ${kpiCard('🔑','Vendas', totalVendasGlobal, pct(totalVendasGlobal,totalPastasGlobal)+' de conversão', 'var(--success)')}
         </div>`;
 
-      const empCards = empreendimentos.map(emp => {
+      // ── Seletor de empreendimento (pills) + funil + CAC ───────────
+      const empPills = empreendimentos.length > 1 ? `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+          ${empreendimentos.map((e,i)=>`
+            <button onclick="incSelecionarEmp(${e.id})"
+              id="emp-pill-${e.id}"
+              style="padding:7px 14px;border-radius:50px;border:1.5px solid ${i===0?'var(--accent)':'var(--border)'};
+                     background:${i===0?'rgba(0,196,180,.1)':'transparent'};
+                     color:${i===0?'var(--accent)':'var(--text2)'};font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s">
+              ${e.nome}
+            </button>`).join('')}
+        </div>` : '';
+
+      const empSections = empreendimentos.map((emp, ei) => {
         const nLeads  = emp.totalLeads  || 0;
         const nPastas = emp.totalPastas || 0;
         const nVendas = emp.unidades_vendidas || 0;
@@ -15966,12 +15979,8 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
         const mktTotal = emp.inv_marketing_total || 0;
 
         const funil = `
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-            ${[
-              ['📥','Leads',nLeads,'#818cf8'],
-              ['📂','Pastas',nPastas,'#f59e0b'],
-              ['🔑','Vendas',nVendas,'var(--success)']
-            ].map(([icon,lbl,val,cor],i,arr)=>`
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+            ${[['📥','Leads',nLeads,'#818cf8'],['📂','Pastas',nPastas,'#f59e0b'],['🔑','Vendas',nVendas,'var(--success)']].map(([icon,lbl,val,cor],i,arr)=>`
               <div style="flex:1;min-width:90px;background:var(--navy3);border-radius:10px;padding:12px;border-top:2px solid ${cor};text-align:center">
                 <div style="font-size:10px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px">${icon} ${lbl}</div>
                 <div style="font-size:22px;font-weight:900;font-variant-numeric:tabular-nums">${val}</div>
@@ -15979,56 +15988,35 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
               </div>`).join('')}
           </div>`;
 
-        const cacVal = (inv, n) => inv > 0 && n > 0 ? fmt(inv/n) : (inv === 0 ? '<span style="color:var(--text2);font-size:11px">Informe o valor</span>' : '—');
-
         const cacTable = `
           <div style="background:var(--navy3);border-radius:10px;overflow:hidden">
             <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)">
               <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px">💸 Investimento &amp; CAC</div>
-              <button onclick="incSalvarInvestimento(${emp.id})"
-                style="padding:5px 14px;border-radius:6px;border:none;background:var(--accent);color:var(--navy);font-size:11px;font-weight:700;cursor:pointer">
-                💾 Salvar
-              </button>
+              <button onclick="incSalvarInvestimento(${emp.id})" style="padding:5px 14px;border-radius:6px;border:none;background:var(--accent);color:var(--navy);font-size:11px;font-weight:700;cursor:pointer">💾 Salvar</button>
             </div>
             <div style="overflow-x:auto">
               <table style="min-width:480px;width:100%">
-                <thead>
-                  <tr style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2)">
-                    <th style="text-align:left;padding:10px 16px;font-weight:700">Tipo</th>
-                    <th style="text-align:right;padding:10px 12px;font-weight:700">Investido</th>
-                    <th style="text-align:right;padding:10px 12px;font-weight:700">CAC / Lead</th>
-                    <th style="text-align:right;padding:10px 12px;font-weight:700">CAC / Pasta</th>
-                    <th style="text-align:right;padding:10px 12px;font-weight:700">CAC / Venda</th>
-                  </tr>
-                </thead>
+                <thead><tr style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text2)">
+                  <th style="text-align:left;padding:10px 16px;font-weight:700">Tipo</th>
+                  <th style="text-align:right;padding:10px 12px;font-weight:700">Investido</th>
+                  <th style="text-align:right;padding:10px 12px;font-weight:700">CAC / Lead</th>
+                  <th style="text-align:right;padding:10px 12px;font-weight:700">CAC / Pasta</th>
+                  <th style="text-align:right;padding:10px 12px;font-weight:700">CAC / Venda</th>
+                </tr></thead>
                 <tbody>
                   <tr style="border-top:1px solid var(--border)">
-                    <td style="padding:10px 16px">
-                      <div style="font-size:12px;font-weight:700;color:#818cf8">🎯 CAC Tráfego</div>
-                      <div style="font-size:10px;color:var(--text2)">Meta Ads, Google Ads, etc</div>
-                    </td>
+                    <td style="padding:10px 16px"><div style="font-size:12px;font-weight:700;color:#818cf8">🎯 CAC Tráfego</div><div style="font-size:10px;color:var(--text2)">Meta Ads, Google Ads, etc</div></td>
                     <td style="padding:10px 12px;text-align:right">
-                      <input type="text" id="inv-trafego-${emp.id}"
-                        value="${trafego > 0 ? trafego.toFixed(2).replace('.',',') : ''}"
-                        placeholder="0,00"
-                        oninput="this.dataset.dirty='1'"
-                        style="width:110px;padding:6px 8px;background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;text-align:right">
+                      <input type="text" id="inv-trafego-${emp.id}" value="${trafego>0?trafego.toFixed(2).replace('.',','):''}" placeholder="0,00" oninput="this.dataset.dirty='1'" style="width:110px;padding:6px 8px;background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;text-align:right">
                     </td>
                     <td style="padding:10px 12px;text-align:right;font-weight:700;color:#818cf8;font-size:13px">${cacVal(trafego,nLeads)}</td>
                     <td style="padding:10px 12px;text-align:right;font-weight:700;color:#818cf8;font-size:13px">${cacVal(trafego,nPastas)}</td>
                     <td style="padding:10px 12px;text-align:right;font-weight:700;color:#818cf8;font-size:13px">${cacVal(trafego,nVendas)}</td>
                   </tr>
                   <tr style="border-top:1px solid var(--border)">
-                    <td style="padding:10px 16px">
-                      <div style="font-size:12px;font-weight:700;color:#f59e0b">📊 CAC Geral</div>
-                      <div style="font-size:10px;color:var(--text2)">Agência, outdoor, patrocínios, tráfego…</div>
-                    </td>
+                    <td style="padding:10px 16px"><div style="font-size:12px;font-weight:700;color:#f59e0b">📊 CAC Geral</div><div style="font-size:10px;color:var(--text2)">Agência, outdoor, patrocínios, tráfego…</div></td>
                     <td style="padding:10px 12px;text-align:right">
-                      <input type="text" id="inv-mktotal-${emp.id}"
-                        value="${mktTotal > 0 ? mktTotal.toFixed(2).replace('.',',') : ''}"
-                        placeholder="0,00"
-                        oninput="this.dataset.dirty='1'"
-                        style="width:110px;padding:6px 8px;background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;text-align:right">
+                      <input type="text" id="inv-mktotal-${emp.id}" value="${mktTotal>0?mktTotal.toFixed(2).replace('.',','):''}" placeholder="0,00" oninput="this.dataset.dirty='1'" style="width:110px;padding:6px 8px;background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;text-align:right">
                     </td>
                     <td style="padding:10px 12px;text-align:right;font-weight:700;color:#f59e0b;font-size:13px">${cacVal(mktTotal,nLeads)}</td>
                     <td style="padding:10px 12px;text-align:right;font-weight:700;color:#f59e0b;font-size:13px">${cacVal(mktTotal,nPastas)}</td>
@@ -16039,45 +16027,86 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
             </div>
           </div>`;
 
-        return `<div style="background:var(--navy2);border-radius:14px;padding:20px;margin-bottom:16px">
-          <div style="font-size:15px;font-weight:800;margin-bottom:16px">${emp.nome}</div>
+        return `<div id="inc-emp-section-${emp.id}" style="background:var(--navy2);border-radius:14px;padding:20px;margin-bottom:16px;${ei>0&&empreendimentos.length>1?'display:none':''}">
+          ${empreendimentos.length>1?`<div style="font-size:14px;font-weight:800;color:var(--accent);margin-bottom:14px">🏗️ ${emp.nome}</div>`:''}
           ${funil}${cacTable}
         </div>`;
       }).join('');
 
-      // Lista de todos os leads
-      const leadsList = todosLeads.length ? `
-        <div class="table-card" style="margin-top:24px">
-          <div class="table-header"><div class="table-title">📋 Todos os Leads (${todosLeads.length})</div></div>
-          <div style="overflow-x:auto">
-            <table style="min-width:560px">
-              <thead><tr>
-                <th>Nome</th><th>Telefone</th><th>Tipo</th><th>Status</th>
-                <th>Empreendimento</th><th>Corretor</th><th>Criado em</th>
-              </tr></thead>
-              <tbody>
-                ${todosLeads.map(l => {
-                  const tipoBadge = l.tipo_cadastro === 'pasta'
-                    ? '<span class="badge badge-yellow">📂 Pasta</span>'
-                    : '<span class="badge badge-gray">📥 Lead</span>';
-                  const stMap = {novo:'Novo', com_corretor:'Com corretor', vendido:'Vendido', perdido:'Perdido'};
-                  const stCls = {novo:'badge-gray', com_corretor:'badge-accent', vendido:'badge-green', perdido:'badge-red'};
-                  return `<tr>
-                    <td style="font-weight:600">${l.nome||'—'}</td>
-                    <td style="color:var(--text2);font-size:12px">${l.telefone||'—'}</td>
-                    <td>${tipoBadge}</td>
-                    <td><span class="badge ${stCls[l.status]||'badge-gray'}">${stMap[l.status]||l.status||'—'}</span></td>
-                    <td style="color:var(--text2);font-size:12px">${l.empreendimento_nome||'—'}</td>
-                    <td style="color:var(--text2);font-size:12px">${l.corretor_nome||'—'}</td>
-                    <td style="color:var(--text2);font-size:12px;white-space:nowrap">${fmtDate(l.criado_em)}</td>
-                  </tr>`;
-                }).join('')}
-              </tbody>
-            </table>
-          </div>
-        </div>` : `<div style="padding:40px;text-align:center;color:var(--text2)">Nenhum lead cadastrado ainda.</div>`;
+      // ── Filtros e lista de leads ────────────────────────────────────
+      const uniqVals = (arr, key) => [...new Set(arr.map(x=>x[key]).filter(Boolean))].sort();
+      const corretores   = uniqVals(todosLeads, 'corretor_nome');
+      const imobiliarias = uniqVals(todosLeads, 'imobiliaria');
+      const cidades      = uniqVals(todosLeads, 'cidade');
+      const empNomes     = empreendimentos.map(e=>({id:e.id,nome:e.nome}));
 
-      return funilGlobal + empCards + leadsList;
+      const selStyle = `padding:7px 10px;background:var(--navy3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;cursor:pointer`;
+      const filtros = `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+          <select id="f-tipo" onchange="incFiltrarLeads()" style="${selStyle}">
+            <option value="">Todos os tipos</option>
+            <option value="lead">📥 Lead</option>
+            <option value="pasta">📂 Pasta</option>
+          </select>
+          <select id="f-emp" onchange="incFiltrarLeads()" style="${selStyle}">
+            <option value="">Todos os empreendimentos</option>
+            ${empNomes.map(e=>`<option value="${e.id}">${e.nome}</option>`).join('')}
+          </select>
+          <select id="f-corretor" onchange="incFiltrarLeads()" style="${selStyle}">
+            <option value="">Todos os corretores</option>
+            ${corretores.map(c=>`<option value="${c}">${c}</option>`).join('')}
+          </select>
+          <select id="f-imob" onchange="incFiltrarLeads()" style="${selStyle}">
+            <option value="">Todas as imobiliárias</option>
+            ${imobiliarias.map(i=>`<option value="${i}">${i}</option>`).join('')}
+          </select>
+          <select id="f-cidade" onchange="incFiltrarLeads()" style="${selStyle}">
+            <option value="">Todas as cidades</option>
+            ${cidades.map(c=>`<option value="${c}">${c}</option>`).join('')}
+          </select>
+          <input id="f-busca" type="search" placeholder="🔍 Buscar nome ou telefone…" oninput="incFiltrarLeads()"
+            style="padding:7px 10px;background:var(--navy3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;flex:1;min-width:160px">
+          <button onclick="incExportarLeads()" style="padding:7px 14px;border-radius:7px;border:1px solid rgba(74,222,128,.4);background:rgba(34,197,94,.1);color:#4ade80;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">
+            📊 Exportar Excel
+          </button>
+        </div>
+        <div id="inc-leads-count" style="font-size:11px;color:var(--text2);margin-bottom:8px"></div>
+        <div style="overflow-x:auto">
+          <table id="inc-leads-table" style="min-width:640px;width:100%">
+            <thead><tr>
+              <th style="text-align:left">Nome</th>
+              <th>Tipo</th>
+              <th>Status</th>
+              <th>Empreendimento</th>
+              <th>Corretor / Imobiliária</th>
+              <th>Cidade</th>
+              <th style="text-align:right">Cadastrado</th>
+            </tr></thead>
+            <tbody id="inc-leads-tbody"></tbody>
+          </table>
+        </div>`;
+
+      const leadsSection = `
+        <div class="table-card" style="margin-top:20px">
+          <div class="table-header" style="flex-wrap:wrap;gap:8px">
+            <div class="table-title">📋 Leads &amp; Pastas</div>
+          </div>
+          <div style="padding:16px 20px">
+            ${filtros}
+          </div>
+        </div>`;
+
+      // Serializa dados para uso client-side
+      const leadsJson = JSON.stringify(todosLeads.map(l=>({...l, empreendimento_nome: empreendimentos.find(e=>e.leads?.find(x=>x.id===l.id))?.nome || l.empreendimento_nome || ''})));
+
+      return `${funilGlobal}${empPills}${empSections}${leadsSection}
+        <script>
+        (function(){
+          window.__incLeads = ${leadsJson};
+          window.__incEmps  = ${JSON.stringify(empreendimentos.map(e=>({id:e.id,nome:e.nome})))};
+          incFiltrarLeads();
+        })();
+        <\/script>`;
     })(),
 
     comissoes: `
@@ -16268,6 +16297,141 @@ async function incSalvarInvestimento(empId) {
   toast('✅ Investimento salvo');
   delete document.getElementById('content').dataset.incLoaded;
   renderIncorporadorPainel('leads');
+}
+
+function incSelecionarEmp(empId) {
+  document.querySelectorAll('[id^="inc-emp-section-"]').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('[id^="emp-pill-"]').forEach(btn => {
+    btn.style.border = '1.5px solid var(--border)';
+    btn.style.background = 'transparent';
+    btn.style.color = 'var(--text2)';
+  });
+  const sec = document.getElementById('inc-emp-section-' + empId);
+  if (sec) sec.style.display = '';
+  const pill = document.getElementById('emp-pill-' + empId);
+  if (pill) {
+    pill.style.border = '1.5px solid var(--accent)';
+    pill.style.background = 'rgba(0,196,180,.1)';
+    pill.style.color = 'var(--accent)';
+  }
+}
+
+function incFiltrarLeads() {
+  const leads = window.__incLeads || [];
+  const emps  = window.__incEmps  || [];
+  const tipo    = document.getElementById('f-tipo')?.value    || '';
+  const empId   = document.getElementById('f-emp')?.value     || '';
+  const corretor= document.getElementById('f-corretor')?.value|| '';
+  const imob    = document.getElementById('f-imob')?.value    || '';
+  const cidade  = document.getElementById('f-cidade')?.value  || '';
+  const busca   = (document.getElementById('f-busca')?.value  || '').toLowerCase();
+
+  const filtered = leads.filter(l => {
+    if (tipo     && l.tipo_cadastro !== tipo) return false;
+    if (empId    && String(l.empreendimento_id) !== empId) return false;
+    if (corretor && l.corretor_nome !== corretor) return false;
+    if (imob     && (l.imobiliaria||'') !== imob) return false;
+    if (cidade   && (l.cidade||'') !== cidade) return false;
+    if (busca    && !(l.nome||'').toLowerCase().includes(busca) && !(l.telefone||'').includes(busca)) return false;
+    return true;
+  });
+
+  window.__incLeadsFiltrados = filtered;
+
+  const count = document.getElementById('inc-leads-count');
+  if (count) count.textContent = `${filtered.length} ${filtered.length === 1 ? 'registro' : 'registros'} encontrado${filtered.length === 1 ? '' : 's'}`;
+
+  const tbody = document.getElementById('inc-leads-tbody');
+  if (!tbody) return;
+
+  const stMap = {novo:'Novo', com_corretor:'Com corretor', vendido:'Vendido', perdido:'Perdido'};
+  const stCls = {novo:'badge-gray', com_corretor:'badge-accent', vendido:'badge-green', perdido:'badge-red'};
+
+  tbody.innerHTML = filtered.length ? filtered.map(l => {
+    const empNome = emps.find(e => e.id === l.empreendimento_id)?.nome || l.empreendimento_nome || '—';
+    const tipoBadge = l.tipo_cadastro === 'pasta'
+      ? '<span class="badge badge-yellow">📂 Pasta</span>'
+      : '<span class="badge badge-gray">📥 Lead</span>';
+    return `<tr style="cursor:pointer" onclick="incAbrirFicha(${l.id})">
+      <td style="font-weight:600">${l.nome||'—'}</td>
+      <td>${tipoBadge}</td>
+      <td><span class="badge ${stCls[l.status]||'badge-gray'}">${stMap[l.status]||l.status||'—'}</span></td>
+      <td style="color:var(--text2);font-size:12px">${empNome}</td>
+      <td style="color:var(--text2);font-size:12px">${l.corretor_nome||'—'}${l.imobiliaria ? '<br><span style="font-size:11px;color:var(--text2)">'+l.imobiliaria+'</span>' : ''}</td>
+      <td style="color:var(--text2);font-size:12px">${l.cidade||'—'}</td>
+      <td style="color:var(--text2);font-size:12px;text-align:right;white-space:nowrap">${fmtDate(l.criado_em)}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text2)">Nenhum registro encontrado para os filtros selecionados.</td></tr>`;
+}
+
+function incAbrirFicha(leadId) {
+  const leads = window.__incLeads || [];
+  const emps  = window.__incEmps  || [];
+  const l = leads.find(x => x.id === leadId);
+  if (!l) return;
+  const empNome = emps.find(e => e.id === l.empreendimento_id)?.nome || l.empreendimento_nome || '—';
+  const linha = (label, val) => val ? `<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)"><div style="min-width:120px;color:var(--text2);font-size:12px">${label}</div><div style="font-size:13px;font-weight:500">${val}</div></div>` : '';
+  const tipoBadge = l.tipo_cadastro === 'pasta' ? '<span class="badge badge-yellow">📂 Pasta</span>' : '<span class="badge badge-gray">📥 Lead</span>';
+  const stMap = {novo:'Novo', com_corretor:'Com corretor', vendido:'Vendido', perdido:'Perdido'};
+  const stCls = {novo:'badge-gray', com_corretor:'badge-accent', vendido:'badge-green', perdido:'badge-red'};
+  openModal(`👤 ${l.nome||'Sem nome'}`, `
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      ${tipoBadge}
+      <span class="badge ${stCls[l.status]||'badge-gray'}">${stMap[l.status]||l.status||'—'}</span>
+    </div>
+    <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Dados Pessoais</div>
+    ${linha('Nome', l.nome)}
+    ${linha('CPF', l.cpf)}
+    ${linha('RG', l.rg)}
+    ${linha('Telefone', l.telefone)}
+    ${linha('E-mail', l.email)}
+    ${linha('Estado Civil', l.estado_civil)}
+    ${linha('Profissão', l.profissao)}
+    ${l.pessoa_juridica ? linha('CNPJ', l.cnpj) + linha('Razão Social', l.razao_social) : ''}
+    <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px">Endereço</div>
+    ${linha('Endereço', l.endereco ? l.endereco + (l.numero ? ', '+l.numero : '') + (l.complemento ? ' '+l.complemento : '') : null)}
+    ${linha('Bairro', l.bairro)}
+    ${linha('Cidade / UF', l.cidade ? l.cidade + (l.estado ? ' / '+l.estado : '') : null)}
+    ${linha('CEP', l.cep)}
+    <div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px">Atendimento</div>
+    ${linha('Empreendimento', empNome)}
+    ${linha('Corretor', l.corretor_nome)}
+    ${linha('Imobiliária', l.imobiliaria)}
+    ${linha('Origem', l.origem)}
+    ${l.motivo_perda ? linha('Motivo Perda', l.motivo_perda) : ''}
+    ${l.observacoes ? `<div style="font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px">Observações</div><div style="font-size:13px;padding:10px;background:var(--navy3);border-radius:8px;white-space:pre-wrap">${l.observacoes}</div>` : ''}
+    <div style="font-size:11px;color:var(--text2);margin-top:14px">Cadastrado em ${fmtDate(l.criado_em)}${l.atualizado_em && l.atualizado_em !== l.criado_em ? ' · Atualizado em '+fmtDate(l.atualizado_em) : ''}</div>
+  `);
+}
+
+function incExportarLeads() {
+  const leads  = window.__incLeadsFiltrados || window.__incLeads || [];
+  const emps   = window.__incEmps || [];
+  if (!leads.length) return toast('Nenhum lead para exportar.', true);
+  if (typeof XLSX === 'undefined') return toast('Biblioteca XLSX não carregada.', true);
+
+  const stMap = {novo:'Novo', com_corretor:'Com corretor', vendido:'Vendido', perdido:'Perdido'};
+  const rows = leads.map(l => ({
+    'Nome':          l.nome || '',
+    'Tipo':          l.tipo_cadastro === 'pasta' ? 'Pasta' : 'Lead',
+    'Status':        stMap[l.status] || l.status || '',
+    'Empreendimento': emps.find(e=>e.id===l.empreendimento_id)?.nome || l.empreendimento_nome || '',
+    'Telefone':      l.telefone || '',
+    'E-mail':        l.email || '',
+    'CPF':           l.cpf || '',
+    'Cidade':        l.cidade || '',
+    'Estado':        l.estado || '',
+    'Corretor':      l.corretor_nome || '',
+    'Imobiliária':   l.imobiliaria || '',
+    'Origem':        l.origem || '',
+    'Observações':   l.observacoes || '',
+    'Cadastrado em': fmtDate(l.criado_em),
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Leads');
+  XLSX.writeFile(wb, `leads_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('✅ Excel exportado!');
 }
 
 function incMarcarComissaoPaga(vendaId, totalComissao, valorJaPago) {

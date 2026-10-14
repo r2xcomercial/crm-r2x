@@ -6488,13 +6488,16 @@ app.get('/api/incorporador/painel', (req, res) => {
     const totalPastas = db.prepare("SELECT COUNT(*) as n FROM leads WHERE empreendimento_id=? AND tipo_cadastro='pasta'").get(emp.id)?.n || 0;
     const leadsLista  = db.prepare(`
       SELECT l.id, l.nome, l.telefone, l.email, l.status, l.origem, l.tipo_cadastro,
-             l.criado_em, l.atualizado_em,
-             c.nome as corretor_nome
+             l.empreendimento_id, l.cidade, l.estado, l.criado_em, l.atualizado_em,
+             l.cpf, l.rg, l.estado_civil, l.profissao, l.endereco, l.numero,
+             l.complemento, l.bairro, l.cep, l.pessoa_juridica, l.cnpj, l.razao_social,
+             l.observacoes, l.motivo_perda,
+             c.nome as corretor_nome, COALESCE(c.imobiliaria, l.imobiliaria) as imobiliaria
       FROM leads l
       LEFT JOIN corretores c ON c.id = l.corretor_id
       WHERE l.empreendimento_id=?
       ORDER BY l.criado_em DESC
-      LIMIT 200
+      LIMIT 500
     `).all(emp.id);
 
     return { ...emp, vendas, checklist, totalLeads, totalPastas, leads: leadsLista };
