@@ -3600,6 +3600,27 @@ app.post('/api/vendas/:id/comprovante', autenticar, upload.single('arquivo'), (r
   ok(res, { ok: true, novoStatus: venda.status === 'pre_reserva' ? 'reserva' : venda.status });
 });
 
+// DELETE /api/pre-reserva/:vendaId — corretor cancela própria pré-reserva (ou admin/gestor cancela qualquer uma)
+app.delete('/api/pre-reserva/:vendaId', autenticar, (req, res) => {
+  const u = req.usuario;
+  const vendaId = parseInt(req.params.vendaId);
+  const venda = db.prepare("SELECT id, corretor_id, unidade_id, lead_id, empreendimento_id, status FROM vendas WHERE id=?").get(vendaId);
+  if (!venda) return err(res, 'Venda não encontrada', 404);
+  if (venda.status !== 'pre_reserva') return err(res, 'Apenas pré-reservas podem ser canceladas aqui', 400);
+  const isAdmin = ['admin','gestor'].includes(u?.perfil);
+  const isOwner = u?.corretor_id && venda.corretor_id === u.corretor_id;
+  if (!isAdmin && !isOwner) return err(res, 'Sem permissão para cancelar esta pré-reserva', 403);
+  db.transaction(() => {
+    db.prepare("UPDATE unidades SET status='disponivel', fila_prioridade_ate=NULL, fila_prioridade_corretor_id=NULL WHERE id=?").run(venda.unidade_id);
+    db.prepare("UPDATE vendas SET status='cancelado' WHERE id=?").run(vendaId);
+    if (venda.lead_id) db.prepare("UPDATE leads SET status='novo' WHERE id=? AND status='pre_reserva'").run(venda.lead_id);
+    try { db.prepare("DELETE FROM reserva_fila WHERE unidade_id=?").run(venda.unidade_id); } catch(_) {}
+  })();
+  _logUnidade(venda.unidade_id, 'pre_reserva', 'disponivel', u, vendaId, 'Pré-reserva cancelada pelo corretor');
+  _broadcastRefresh(venda.empreendimento_id);
+  ok(res, { ok: true });
+});
+
 // GET /api/vendas/:id/comprovante — baixar/visualizar o comprovante
 app.get('/api/vendas/:id/comprovante', autenticar, (req, res) => {
   const u = req.usuario;

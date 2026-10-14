@@ -1071,6 +1071,11 @@ function abrirSimulacao(unitId) {
     (u.venda_corretor_id === _cidNum || ['admin','gestor','incorporador'].includes(_corretorPerfil)))
     ? `<button class="btn-sim btn-reservar-principal" style="background:linear-gradient(135deg,#f97316,#ea580c)" onclick="fecharSimulacao();abrirAnexarPix(${u.venda_id},${unitId})">📎 Anexar comprovante PIX</button>`
     : '';
+  // Botão cancelar pré-reserva — só para o dono da reserva ou admin/gestor
+  const cancelarPreResBtn = (u.status === 'pre_reserva' && _corretorToken && u.venda_id &&
+    (u.venda_corretor_id === _cidNum || ['admin','gestor'].includes(_corretorPerfil)))
+    ? `<button class="btn-sim" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4);color:#f87171;width:100%;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer" onclick="cancelarPreReserva(${u.venda_id})">❌ Cancelar pré-reserva</button>`
+    : '';
   // Botão para outro corretor entrar na fila
   const filaBtn = (u.status === 'pre_reserva' && _corretorToken && (_corretorPerfil==='corretor') && u.venda_corretor_id !== _cidNum)
     ? `<button class="btn-sim" style="background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.4);color:#a5b4fc;width:100%;padding:11px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer" onclick="fecharSimulacao();abrirFila(${unitId})">🔔 Entrar na fila de espera${u.fila_qtd > 0 ? ' ('+u.fila_qtd+' na fila)' : ''}</button>`
@@ -1088,7 +1093,7 @@ function abrirSimulacao(unitId) {
   const showSimulacao = !hidePreco && p && preco;
 
   // Rodapé unificado
-  const extraBtns = `${anexarPixBtn ? `<div style="padding:6px 16px 0">${anexarPixBtn}</div>` : ''}${filaBtn ? `<div style="padding:6px 16px 0">${filaBtn}</div>` : ''}`;
+  const extraBtns = `${anexarPixBtn ? `<div style="padding:6px 16px 0">${anexarPixBtn}</div>` : ''}${cancelarPreResBtn ? `<div style="padding:6px 16px 0">${cancelarPreResBtn}</div>` : ''}${filaBtn ? `<div style="padding:6px 16px 0">${filaBtn}</div>` : ''}`;
   const footerContent = showSimulacao
     ? `${reservarBtn ? `<div style="padding:10px 16px 4px">${reservarBtn}</div>` : ''}
       ${extraBtns}
@@ -3174,6 +3179,18 @@ let _filaLeadId = null;
 let _filaClientesCache = [];
 
 let _filaFocusIdx = -1;
+
+async function cancelarPreReserva(vendaId) {
+  if (!confirm('Deseja cancelar esta pré-reserva? A unidade voltará a ficar disponível.')) return;
+  fecharSimulacao();
+  const r = await fetch(`/api/pre-reserva/${vendaId}`, {
+    method: 'DELETE',
+    headers: { 'x-crm-token': _corretorToken }
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { alert(d.erro || 'Erro ao cancelar pré-reserva.'); return; }
+  await carregar();
+}
 
 async function abrirFila(unitId) {
   _filaUnitId = unitId;
