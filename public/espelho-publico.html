@@ -896,8 +896,8 @@ function renderCorretorArea() {
 // Prioridade: ?token= na URL (CRM já logado) > localStorage
 (async () => {
   const urlToken = new URLSearchParams(location.search).get('token');
-  if (urlToken && !_corretorToken) {
-    // Valida o token via /api/auth/me e preenche a sessão do espelho
+  if (urlToken) {
+    // URL token tem prioridade absoluta — valida mesmo que já haja token no localStorage
     try {
       const r = await fetch('/api/auth/me', { headers: { 'x-crm-token': urlToken } });
       const d = await r.json();
@@ -914,8 +914,6 @@ function renderCorretorArea() {
         const url = new URL(location.href);
         url.searchParams.delete('token');
         history.replaceState(null, '', url.toString());
-        // Inicia o espelho agora que o token está pronto
-        // (o carregar() do fim do script já executou antes deste await completar)
         renderCorretorArea();
         carregar().then(() => { iniciarContador(); _iniciarSSE(); });
         return;
