@@ -7225,6 +7225,29 @@ app.post('/api/admin/corrigir-pastas-debora', autenticar, soAdmin, (req, res) =>
   res.redirect(307, '/api/admin/corrigir-pastas-corrompidas');
 });
 
+// Diagnóstico: leads por empreendimento (útil para auditar leads sem empreendimento_id ou com id errado)
+app.get('/api/admin/diagnostico-leads-emp', autenticar, soAdmin, (req, res) => {
+  const empNome = req.query.nome || '';
+
+  // Empreendimentos cujo nome contém o filtro
+  const emps = db.prepare("SELECT id, nome, cliente_id FROM empreendimentos WHERE nome LIKE ?").all(`%${empNome}%`);
+
+  const resultado = emps.map(e => {
+    const total      = db.prepare("SELECT COUNT(*) as n FROM leads WHERE empreendimento_id=?").get(e.id).n;
+    const semEmp     = db.prepare("SELECT COUNT(*) as n FROM leads WHERE empreendimento_id IS NULL").get().n;
+    const porStatus  = db.prepare("SELECT status, COUNT(*) as n FROM leads WHERE empreendimento_id=? GROUP BY status").all(e.id);
+    const porTipo    = db.prepare("SELECT tipo_cadastro, COUNT(*) as n FROM leads WHERE empreendimento_id=? GROUP BY tipo_cadastro").all(e.id);
+    const porOrigem  = db.prepare("SELECT origem, COUNT(*) as n FROM leads WHERE empreendimento_id=? GROUP BY origem ORDER BY n DESC LIMIT 10").all(e.id);
+    return { empreendimento_id: e.id, nome: e.nome, cliente_id: e.cliente_id, total_leads: total, por_status: porStatus, por_tipo: porTipo, por_origem: porOrigem };
+  });
+
+  // Leads sem empreendimento vinculado (empreendimento_id null)
+  const semEmpTotal = db.prepare("SELECT COUNT(*) as n FROM leads WHERE empreendimento_id IS NULL").get().n;
+  const semEmpAmostra = db.prepare("SELECT id, nome, telefone, origem, criado_em FROM leads WHERE empreendimento_id IS NULL ORDER BY criado_em DESC LIMIT 20").all();
+
+  ok(res, { empreendimentos: resultado, leads_sem_empreendimento: { total: semEmpTotal, amostra: semEmpAmostra } });
+});
+
 // ─── PLUGGY OPEN FINANCE ──────────────────────────────────────────────────────
 
 const PLUGGY_BASE = 'https://api.pluggy.ai';
