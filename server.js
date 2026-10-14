@@ -10016,7 +10016,10 @@ app.delete('/api/lancamentos/:id', autenticar, (req, res) => {
 app.post('/api/lancamentos/:id/abrir', autenticar, (req, res) => {
   const u = req.usuario;
   if (!u || !['admin','gestor'].includes(u.perfil)) return err(res, 'Acesso restrito', 403);
+  const lanc = db.prepare("SELECT * FROM lancamentos WHERE id=?").get(req.params.id);
+  if (!lanc) return err(res, 'Não encontrado', 404);
   db.prepare("UPDATE lancamentos SET status='ativo', data_hora_inicio=? WHERE id=?").run(new Date().toISOString(), req.params.id);
+  db.prepare("UPDATE empreendimentos SET config_reservar=1, config_ver_tabela=1 WHERE id=?").run(lanc.empreendimento_id);
   ok(res, {});
 });
 
