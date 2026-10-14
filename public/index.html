@@ -4981,7 +4981,7 @@ function openEmpModal(e = {}) {
           <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:3px">📋 Fichas de Reserva</div>
           <div style="font-size:12px;color:var(--text2)">Lista todos os lotes reservados com dados do cliente, corretor e documentos. Exporta como PDF (Ctrl+P).</div>
         </div>
-        <button type="button" onclick="window.open('/fichas/${e.id}','_blank')" style="padding:9px 18px;border-radius:7px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">Abrir fichas →</button>
+        <button type="button" onclick="window.open('/fichas/${e.id}?token='+encodeURIComponent(TOKEN),'_blank')" style="padding:9px 18px;border-radius:7px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">Abrir fichas →</button>
       </div>
 
       <!-- Seção Dados para Contrato de Venda -->
@@ -10327,7 +10327,7 @@ async function verEspelhoImagem(empId, emp, mapaData) {
         <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" style="display:none" onchange="analisarPlanta(this,${empId},'${(emp.nome||'').replace(/'/g,"\\'")}')">
       </label>
       ${USUARIO.perfil === 'admin' ? `<button class="btn btn-secondary" onclick="renderEmpKanban(${empId})" style="font-size:12px;padding:6px 12px;color:#34d399;border-color:rgba(52,211,153,.4);font-weight:700" title="Funil de vendas Kanban">📊 Kanban</button>` : ''}
-      ${USUARIO.perfil === 'admin' ? `<button class="btn btn-secondary" onclick="window.open('/fichas/${empId}','_blank')" style="font-size:12px;padding:6px 12px;color:#a78bfa;border-color:rgba(167,139,250,.4);font-weight:700" title="Fichas de reserva por lote (PDF)">📋 Fichas</button>` : ''}
+      ${USUARIO.perfil === 'admin' ? `<button class="btn btn-secondary" onclick="window.open('/fichas/'+empId+'?token='+encodeURIComponent(TOKEN),'_blank')" style="font-size:12px;padding:6px 12px;color:#a78bfa;border-color:rgba(167,139,250,.4);font-weight:700" title="Fichas de reserva por lote (PDF)">📋 Fichas</button>` : ''}
       <button class="btn btn-secondary" onclick="abrirGerenciarLancamento(${empId})" style="font-size:12px;padding:6px 12px;color:#fbbf24;border-color:rgba(251,191,36,.4)" title="Agendar e controlar o lançamento imobiliário">🚀 Lançamento</button>
       ` : ''}
     </div>
@@ -11037,7 +11037,7 @@ async function verEspelho(empId) {
       <select id="espelho-filtro" onchange="filtrarEspelho()" style="font-size:12px;padding:6px 10px;background:var(--navy3);border:1px solid var(--border);color:var(--text);border-radius:6px">${filtros}</select>
       <button class="btn btn-secondary" onclick="verEspelho(${empId})" style="font-size:12px;padding:6px 12px">🔄</button>
       ${USUARIO.perfil === 'admin' ? `<button class="btn btn-secondary" onclick="renderEmpKanban(${empId})" style="font-size:12px;padding:6px 12px;color:#34d399;border-color:rgba(52,211,153,.4);font-weight:700" title="Funil de vendas Kanban">📊 Kanban</button>` : ''}
-      ${USUARIO.perfil === 'admin' ? `<button class="btn btn-secondary" onclick="window.open('/fichas/${empId}','_blank')" style="font-size:12px;padding:6px 12px;color:#a78bfa;border-color:rgba(167,139,250,.4);font-weight:700" title="Fichas de reserva por lote (PDF)">📋 Fichas</button>` : ''}
+      ${USUARIO.perfil === 'admin' ? `<button class="btn btn-secondary" onclick="window.open('/fichas/'+empId+'?token='+encodeURIComponent(TOKEN),'_blank')" style="font-size:12px;padding:6px 12px;color:#a78bfa;border-color:rgba(167,139,250,.4);font-weight:700" title="Fichas de reserva por lote (PDF)">📋 Fichas</button>` : ''}
       <button class="btn btn-secondary" onclick="verUnidades(${empId})" style="font-size:12px;padding:6px 12px">📋 Lista</button>
       <button class="btn btn-secondary" onclick="abrirReajusteTabela(${empId})" style="font-size:12px;padding:6px 12px;color:#60a5fa;border-color:rgba(96,165,250,.4)" title="Reajustar preços da tabela de unidades">📈 Reajustar</button>
       <button class="btn btn-secondary" onclick="abrirExportarTabela(${empId})" style="font-size:12px;padding:6px 12px;color:#4ade80;border-color:rgba(74,222,128,.4)" title="Gerar tabela de vendas com simulação de pagamento">📄 Exportar Tabela</button>

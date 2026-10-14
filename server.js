@@ -62,7 +62,9 @@ function _criarLoginCorretor(corretorId, nome, loginEmail) {
 const APIs_PUBLICAS = ["/api/corretores/publico", "/api/corretores/imobiliarias", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/", "/api/pluggy/webhook", "/api/setup-germania-r2x9k3m"];
 
 function autenticar(req, res, next) {
-  if (!req.path.startsWith("/api/")) return next();
+  // Rotas de fichas (não /api/) também precisam de auth via query token
+  const precisaAuth = req.path.startsWith('/fichas/') || req.path.startsWith('/ficha/');
+  if (!req.path.startsWith("/api/") && !precisaAuth) return next();
   if (APIs_PUBLICAS.some(p => req.path.startsWith(p))) return next();
   const token = req.headers["x-crm-token"] || req.query.token;
   if (!token) return res.status(401).json({ ok: false, error: "Não autorizado" });
@@ -121,6 +123,7 @@ app.use((req, res, next) => {
     req.path.startsWith('/api/lancamento/')      ||   // status do lançamento para espelho
     req.path === '/api/server-time'              ||
     req.path === '/api/vendas/reserva-rapida'   ||
+    req.path.match(/^\/api\/pre-reserva\/\d+$/) ||          // cancelar própria pré-reserva
     req.path.match(/^\/api\/vendas\/\d+\/comprovante$/) ||  // upload/visualizar comprovante PIX
     (req.path === '/api/leads' && req.method === 'POST') ||
     req.path === '/api/leads/extrair-documento' ||
