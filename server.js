@@ -3949,7 +3949,7 @@ app.get('/api/empreendimentos/:id/kanban', autenticar, (req, res) => {
       AND NOT EXISTS (
         SELECT 1 FROM vendas v
         WHERE v.lead_id = l.id AND v.empreendimento_id = ?
-          AND v.status NOT IN ('distrato','cancelado')
+          AND v.status NOT IN ('distrato','cancelado','perdida')
       )
   `;
   let cadastros;
