@@ -2879,6 +2879,21 @@ app.post("/api/leads/whatsapp", (req, res) => {
     ? JSON.stringify(historico.slice(-30))
     : null;
 
+  // Resolve empreendimento_id a partir do interesse (texto livre da Débora)
+  let empId = null;
+  if (empreendimento_interesse) {
+    const empMatch = db.prepare("SELECT id FROM empreendimentos WHERE nome LIKE ? ORDER BY id LIMIT 1")
+      .get(`%${empreendimento_interesse.substring(0, 20)}%`);
+    if (!empMatch && empreendimento_interesse.length > 5) {
+      // Tenta com os primeiros 6 chars (pega "Germân" de "Germânia Loteamento", etc.)
+      const empMatch2 = db.prepare("SELECT id FROM empreendimentos WHERE nome LIKE ? ORDER BY id LIMIT 1")
+        .get(`%${empreendimento_interesse.substring(0, 6)}%`);
+      empId = empMatch2?.id || null;
+    } else {
+      empId = empMatch?.id || null;
+    }
+  }
+
   const existente = db.prepare("SELECT id, status FROM leads WHERE telefone=?").get(telefone);
   if (existente) {
     let novoStatus = existente.status;
@@ -2888,18 +2903,20 @@ app.post("/api/leads/whatsapp", (req, res) => {
       nome=COALESCE(?,nome), email=COALESCE(?,email), cidade=COALESCE(?,cidade), objetivo=COALESCE(?,objetivo),
       faixa_investimento=COALESCE(?,faixa_investimento), prazo=COALESCE(?,prazo),
       empreendimento_interesse=COALESCE(?,empreendimento_interesse),
+      empreendimento_id=COALESCE(empreendimento_id,?),
       tipo=COALESCE(?,tipo), score=COALESCE(?,score), resumo=COALESCE(?,resumo),
       conversa_whatsapp=COALESCE(?,conversa_whatsapp),
       status=?, atualizado_em=CURRENT_TIMESTAMP WHERE id=?`)
       .run(nome||null, email||null, cidade||null, objetivo||null, faixa_investimento||null, prazo||null,
-           empreendimento_interesse||null, tipo||null, scoreAjustado||null, resumo||null,
+           empreendimento_interesse||null, empId,
+           tipo||null, scoreAjustado||null, resumo||null,
            conversa_whatsapp, novoStatus, existente.id);
     return ok(res, { id: existente.id, atualizado: true });
   }
   const r = db.prepare(`INSERT INTO leads
-    (nome,email,telefone,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,tipo,score,resumo,conversa_whatsapp,status,origem)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'novo','whatsapp')`)
-    .run(nome, email||null, telefone, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, tipo||null, score||0, resumo||null, conversa_whatsapp);
+    (nome,email,telefone,cidade,objetivo,faixa_investimento,prazo,empreendimento_interesse,empreendimento_id,tipo,score,resumo,conversa_whatsapp,status,origem)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'novo','whatsapp')`)
+    .run(nome, email||null, telefone, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empId, tipo||null, score||0, resumo||null, conversa_whatsapp);
   ok(res, { id: r.lastInsertRowid, criado: true });
 });
 
