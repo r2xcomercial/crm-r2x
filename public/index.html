@@ -16096,17 +16096,7 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
           </div>
         </div>`;
 
-      // Serializa dados para uso client-side
-      const leadsJson = JSON.stringify(todosLeads.map(l=>({...l, empreendimento_nome: empreendimentos.find(e=>e.leads?.find(x=>x.id===l.id))?.nome || l.empreendimento_nome || ''})));
-
-      return `${funilGlobal}${empPills}${empSections}${leadsSection}
-        <script>
-        (function(){
-          window.__incLeads = ${leadsJson};
-          window.__incEmps  = ${JSON.stringify(empreendimentos.map(e=>({id:e.id,nome:e.nome})))};
-          incFiltrarLeads();
-        })();
-        <\/script>`;
+      return `${funilGlobal}${empPills}${empSections}${leadsSection}`;
     })(),
 
     comissoes: `
@@ -16286,6 +16276,12 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
     <!-- ── CONTEÚDO ── -->
     ${tabContent[aba] || ''}
   `;
+
+  if (aba === 'leads') {
+    window.__incLeads = todosLeads.map(l => ({...l, empreendimento_nome: empreendimentos.find(e => e.id === l.empreendimento_id)?.nome || l.empreendimento_nome || ''}));
+    window.__incEmps  = empreendimentos.map(e => ({id: e.id, nome: e.nome}));
+    incFiltrarLeads();
+  }
 }
 
 async function incSalvarInvestimento(empId) {
