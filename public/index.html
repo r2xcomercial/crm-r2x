@@ -5615,6 +5615,7 @@ async function openReservaRapida(preEmpId, preUnidadeId) {
   _rrEmpId = preEmpId; _rrUnidadeId = preUnidadeId; _rrLeadSel = null;
   _rrTipo = 'pf';
   window._rrCorretorId = null;
+  window._rrModo = 'reserva_direta';
   const overlay = document.getElementById('rr-overlay');
   if (!overlay) return;
   overlay.style.display = 'flex';
@@ -5646,8 +5647,22 @@ async function openReservaRapida(preEmpId, preUnidadeId) {
       const crR = await get('/api/corretores');
       const corretores = crR.data || [];
       rrAdminArea.style.display = 'block';
+      window._rrModo = 'reserva_direta';
       rrAdminArea.innerHTML = `
-        <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div>
+            <label style="font-size:11px;color:var(--text2);font-weight:600;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:5px">Tipo de Reserva</label>
+            <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+              <button id="rr-modo-direta" onclick="window._rrModo='reserva_direta';document.getElementById('rr-modo-direta').style.background='rgba(245,158,11,.25)';document.getElementById('rr-modo-direta').style.color='#fbbf24';document.getElementById('rr-modo-pre').style.background='transparent';document.getElementById('rr-modo-pre').style.color='var(--text2)';document.getElementById('rr-btn-confirmar').textContent='🟡 Confirmar Reserva'"
+                style="flex:1;padding:8px;background:rgba(245,158,11,.25);color:#fbbf24;border:none;cursor:pointer;font-size:12px;font-weight:700">
+                🟡 Reserva Direta
+              </button>
+              <button id="rr-modo-pre" onclick="window._rrModo='pre_reserva';document.getElementById('rr-modo-pre').style.background='rgba(249,115,22,.2)';document.getElementById('rr-modo-pre').style.color='#fb923c';document.getElementById('rr-modo-direta').style.background='transparent';document.getElementById('rr-modo-direta').style.color='var(--text2)';document.getElementById('rr-btn-confirmar').textContent='🟠 Confirmar Pré-reserva'"
+                style="flex:1;padding:8px;background:transparent;color:var(--text2);border:none;border-left:1px solid var(--border);cursor:pointer;font-size:12px;font-weight:700">
+                🟠 Pré-reserva
+              </button>
+            </div>
+          </div>
           <div>
             <label style="font-size:11px;color:var(--text2);font-weight:600;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:5px">Corretor (opcional)</label>
             <select id="rr-corretor-sel" onchange="window._rrCorretorId=this.value||null"
@@ -5867,6 +5882,7 @@ async function confirmarReservaRapida() {
       unidade_id: _rrUnidadeId,
       lead_id: _rrLeadSel?.id || null,
       corretor_id: window._rrCorretorId || null,
+      modo: window._rrModo || 'reserva_direta',
     };
     const r = await post('/api/vendas/reserva-rapida', payload);
     if (!r.ok) {
@@ -5887,7 +5903,7 @@ async function confirmarReservaRapida() {
       setTimeout(() => abrirUploadComprovante(r.data.venda_id, _rrLeadSel.nome), 400);
     } else {
       const nomeCliente = _rrLeadSel?.nome || 'sem cliente';
-      toast(`✅ Reserva confirmada — ${nomeCliente}!`);
+      toast(`✅ ${novoStatus === 'pre_reserva' ? 'Pré-reserva' : 'Reserva'} confirmada — ${nomeCliente}!`);
     }
   } catch(e) {
     st.style.display='block'; st.style.background='rgba(239,68,68,.15)'; st.style.color='var(--danger)';
