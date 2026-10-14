@@ -9941,6 +9941,7 @@ function _syncLanc(lanc) {
   const now = new Date().toISOString();
   if (lanc.status === 'agendado' && now >= lanc.data_hora_inicio) {
     db.prepare("UPDATE lancamentos SET status='ativo' WHERE id=?").run(lanc.id);
+    db.prepare("UPDATE empreendimentos SET config_reservar=1, config_ver_tabela=1 WHERE id=?").run(lanc.empreendimento_id);
     lanc = { ...lanc, status: 'ativo' };
   }
   if (lanc.status === 'ativo' && lanc.data_hora_fim && now >= lanc.data_hora_fim) {
