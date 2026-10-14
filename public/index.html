@@ -11347,13 +11347,13 @@ async function abrirGerenciarLancamento(empId) {
       <div style="font-size:13px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">${lanc && ['agendado','ativo'].includes(lanc.status) ? '✏️ Editar Agendamento' : '➕ Novo Agendamento'}</div>
       <div class="form-grid">
         <div class="form-group span2"><label>Nome do lançamento (opcional)</label>
-          <input id="lanc-nome" value="${lanc?.nome||''}" placeholder="ex: Lançamento Germânia — Etapa 1">
+          <input id="lanc-nome" value="${pode_editar && lanc ? lanc.nome||'' : ''}" placeholder="ex: Lançamento Germânia — Etapa 1">
         </div>
         <div class="form-group"><label>Data e hora de início *</label>
-          <input id="lanc-inicio" type="datetime-local" value="${toLocal(lanc?.data_hora_inicio)}">
+          <input id="lanc-inicio" type="datetime-local" value="${pode_editar && lanc ? toLocal(lanc.data_hora_inicio) : ''}">
         </div>
         <div class="form-group"><label>Data e hora de encerramento (opcional)</label>
-          <input id="lanc-fim" type="datetime-local" value="${toLocal(lanc?.data_hora_fim)}">
+          <input id="lanc-fim" type="datetime-local" value="${pode_editar && lanc ? toLocal(lanc.data_hora_fim) : ''}">
         </div>
       </div>
       <button onclick="_lancSalvar(${empId}${lanc && ['agendado','ativo'].includes(lanc.status) ? ','+lanc.id : ''})"
