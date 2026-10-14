@@ -7241,11 +7241,49 @@ app.get('/api/admin/diagnostico-leads-emp', autenticar, soAdmin, (req, res) => {
     return { empreendimento_id: e.id, nome: e.nome, cliente_id: e.cliente_id, total_leads: total, por_status: porStatus, por_tipo: porTipo, por_origem: porOrigem };
   });
 
-  // Leads sem empreendimento vinculado (empreendimento_id null)
+  // Leads sem empreendimento_id — agrupados por empreendimento_interesse
   const semEmpTotal = db.prepare("SELECT COUNT(*) as n FROM leads WHERE empreendimento_id IS NULL").get().n;
-  const semEmpAmostra = db.prepare("SELECT id, nome, telefone, origem, criado_em FROM leads WHERE empreendimento_id IS NULL ORDER BY criado_em DESC LIMIT 20").all();
+  const semEmpPorInteresse = db.prepare(`
+    SELECT COALESCE(empreendimento_interesse,'(sem interesse)') as interesse, COUNT(*) as n
+    FROM leads WHERE empreendimento_id IS NULL
+    GROUP BY empreendimento_interesse ORDER BY n DESC LIMIT 30
+  `).all();
+  const semEmpAmostra = db.prepare("SELECT id, nome, telefone, origem, empreendimento_interesse, criado_em FROM leads WHERE empreendimento_id IS NULL ORDER BY criado_em DESC LIMIT 20").all();
 
-  ok(res, { empreendimentos: resultado, leads_sem_empreendimento: { total: semEmpTotal, amostra: semEmpAmostra } });
+  // Total geral de leads
+  const totalGeral = db.prepare("SELECT COUNT(*) as n FROM leads").get().n;
+
+  ok(res, { total_leads_banco: totalGeral, empreendimentos: resultado, leads_sem_empreendimento: { total: semEmpTotal, por_interesse: semEmpPorInteresse, amostra: semEmpAmostra } });
+});
+
+// Correção: vincula leads sem empreendimento_id usando empreendimento_interesse como correspondência
+// POST /api/admin/corrigir-leads-sem-emp
+// Body: { regras: [{ interesse: "Germania", empreendimento_id: 19 }, ...], dry_run: true }
+app.post('/api/admin/corrigir-leads-sem-emp', autenticar, soAdmin, (req, res) => {
+  const { regras, dry_run } = req.body;
+  if (!Array.isArray(regras) || !regras.length) return err(res, 'Forneça regras: [{interesse, empreendimento_id}]');
+
+  const resultados = regras.map(({ interesse, empreendimento_id }) => {
+    if (!interesse || !empreendimento_id) return { interesse, erro: 'interesse e empreendimento_id obrigatórios' };
+    const emp = db.prepare("SELECT id, nome FROM empreendimentos WHERE id=?").get(parseInt(empreendimento_id));
+    if (!emp) return { interesse, erro: `Empreendimento ${empreendimento_id} não encontrado` };
+
+    const afetados = db.prepare(`
+      SELECT COUNT(*) as n FROM leads
+      WHERE empreendimento_id IS NULL AND empreendimento_interesse LIKE ?
+    `).get(`%${interesse}%`).n;
+
+    if (!dry_run) {
+      db.prepare(`
+        UPDATE leads SET empreendimento_id=?
+        WHERE empreendimento_id IS NULL AND empreendimento_interesse LIKE ?
+      `).run(emp.id, `%${interesse}%`);
+    }
+
+    return { interesse, empreendimento_id: emp.id, empreendimento_nome: emp.nome, leads_afetados: afetados, dry_run: !!dry_run };
+  });
+
+  ok(res, { correcoes: resultados });
 });
 
 // ─── PLUGGY OPEN FINANCE ──────────────────────────────────────────────────────
