@@ -5451,7 +5451,6 @@ app.get('/api/espelho-publico/:slug/leads', (req, res) => {
   const cpfsSeen = new Set(leadsEmp.filter(l => l.cpf).map(l => l.cpf));
   const propriosFiltrados = proprios.filter(p => !p.cpf || !cpfsSeen.has(p.cpf));
   const rows = [...leadsEmp, ...propriosFiltrados].sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
-  console.log('[debug leads] total=%d', rows.length);
   ok(res, rows);
 });
 
