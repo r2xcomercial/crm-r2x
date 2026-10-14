@@ -609,6 +609,8 @@ function navigate(page) {
   if (currentPage === 'debora' && page !== 'debora') {
     pararPollingDebora();
   }
+  // Fecha SSE do mapa admin ao navegar para outra seção
+  if (_mapaSSE) { _mapaSSE.close(); _mapaSSE = null; }
   currentPage = page;
   closeSidebar();
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -10234,6 +10236,7 @@ let _modoPosiconar = false;
 let _unitAtiva    = null; // id da unidade a ser posicionada
 let _mapaZoomLevel   = 1;    // nível de zoom atual do mapa
 let _mapaMarkerSize  = 20;   // tamanho base das bolinhas (px a 100% zoom)
+let _mapaSSE         = null; // EventSource para auto-refresh do mapa admin
 
 async function verEspelhoImagem(empId, emp, mapaData) {
   const { imagem, units } = mapaData;
@@ -10251,6 +10254,24 @@ async function verEspelhoImagem(empId, emp, mapaData) {
     _mapaUnits[u.id] = u;
     if (u.mapa_x != null) _posicoes[u.id] = { x: u.mapa_x, y: u.mapa_y };
   });
+
+  // SSE: auto-refresh do mapa quando chega nova pré-reserva/reserva
+  if (_mapaSSE) { _mapaSSE.close(); _mapaSSE = null; }
+  const _sseUrl = `/api/empreendimentos/${empId}/eventos`;
+  const _sseSource = new EventSource(_sseUrl);
+  _mapaSSE = _sseSource;
+  _sseSource.onmessage = async (ev) => {
+    try {
+      const d = JSON.parse(ev.data);
+      if (d.tipo === 'refresh') {
+        const fr = await get(`/api/empreendimentos/${empId}/mapa`);
+        if (fr.ok && fr.data?.units) {
+          fr.data.units.forEach(u => { _mapaUnits[u.id] = u; });
+          renderMarkers();
+        }
+      }
+    } catch(_) {}
+  };
 
   const cnt = { disponivel:0, reservado:0, vendido:0, indisponivel:0 };
   units.forEach(u => { cnt[u.status] = (cnt[u.status]||0)+1; });
@@ -10579,11 +10600,12 @@ function renderMarkers() {
 
   const statusColors = {
     disponivel:   'rgba(34,197,94,.7)',
+    pre_reserva:  'rgba(234,179,8,.85)',
     reservado:    'rgba(245,158,11,.8)',
     vendido:      'rgba(239,68,68,.85)',
     indisponivel: 'rgba(100,116,139,.6)',
   };
-  const borderColors = { disponivel:'#22c55e', reservado:'#f59e0b', vendido:'#ef4444', indisponivel:'#64748b' };
+  const borderColors = { disponivel:'#22c55e', pre_reserva:'#eab308', reservado:'#f59e0b', vendido:'#ef4444', indisponivel:'#64748b' };
 
   const sz = Math.round(Math.max(6, Math.min(120, _mapaMarkerSize * _mapaZoomLevel)));
   const fs = Math.round(Math.max(4, Math.min(28,  (_mapaMarkerSize * 0.42) * _mapaZoomLevel)));

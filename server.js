@@ -5402,6 +5402,20 @@ app.get('/api/espelho-publico/:slug/eventos', (req, res) => {
   req.on('close', () => { clearInterval(keepAlive); sseClients.get(emp.id)?.delete(res); });
 });
 
+// SSE para o painel admin — autenticado, usa empId direto
+app.get('/api/empreendimentos/:id/eventos', autenticar, (req, res) => {
+  const empId = parseInt(req.params.id);
+  if (!empId) return res.status(400).end();
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  if (!sseClients.has(empId)) sseClients.set(empId, new Set());
+  sseClients.get(empId).add(res);
+  const keepAlive = setInterval(() => { try { res.write(': ping\n\n'); } catch(_) {} }, 25000);
+  req.on('close', () => { clearInterval(keepAlive); sseClients.get(empId)?.delete(res); });
+});
+
 // Diagnóstico público: verifica se o slug existe (sem expor dados sensíveis)
 app.get('/api/espelho-publico/:slug/ping', (req, res) => {
   try {
