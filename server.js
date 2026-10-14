@@ -9999,8 +9999,8 @@ app.get('/api/server-time', (req, res) => ok(res, { iso: new Date().toISOString(
 // GET /api/lancamento/:empId — status atual para o espelho (corretor e admin)
 app.get('/api/lancamento/:empId', autenticar, (req, res) => {
   const empId = parseInt(req.params.empId);
-  // Busca o mais recente (qualquer status) para mostrar o histórico
-  let lanc = db.prepare("SELECT * FROM lancamentos WHERE empreendimento_id=? ORDER BY data_hora_inicio DESC LIMIT 1").get(empId);
+  // Busca o mais recente por id (novo agendamento sempre sobrepõe encerrado)
+  let lanc = db.prepare("SELECT * FROM lancamentos WHERE empreendimento_id=? ORDER BY id DESC LIMIT 1").get(empId);
   if (!lanc) return ok(res, null);
   lanc = _syncLanc(lanc);
   ok(res, { ...lanc, server_time: new Date().toISOString() });
@@ -10034,10 +10034,16 @@ app.put('/api/lancamentos/:id', autenticar, (req, res) => {
   const id = parseInt(req.params.id);
   const lanc = db.prepare("SELECT * FROM lancamentos WHERE id=?").get(id);
   if (!lanc) return err(res, 'Não encontrado', 404);
-  if (['encerrado','cancelado'].includes(lanc.status)) return err(res, 'Lançamento não pode ser editado no status atual');
+  if (lanc.status === 'cancelado') return err(res, 'Lançamento cancelado não pode ser editado');
   const { nome, data_hora_inicio, data_hora_fim } = req.body;
-  db.prepare("UPDATE lancamentos SET nome=COALESCE(?,nome), data_hora_inicio=COALESCE(?,data_hora_inicio), data_hora_fim=? WHERE id=?")
-    .run(nome||null, data_hora_inicio||null, data_hora_fim||null, id);
+  // Se estava encerrado e recebe nova data de início futura, volta para agendado
+  let novoStatus = lanc.status;
+  if (lanc.status === 'encerrado' && data_hora_inicio) {
+    const now = new Date().toISOString();
+    novoStatus = data_hora_inicio > now ? 'agendado' : 'ativo';
+  }
+  db.prepare("UPDATE lancamentos SET nome=COALESCE(?,nome), data_hora_inicio=COALESCE(?,data_hora_inicio), data_hora_fim=?, status=? WHERE id=?")
+    .run(nome||null, data_hora_inicio||null, data_hora_fim||null, novoStatus, id);
   ok(res, {});
 });
 

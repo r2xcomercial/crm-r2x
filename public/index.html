@@ -11328,7 +11328,7 @@ async function abrirGerenciarLancamento(empId) {
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
-  const pode_editar = !lanc || ['agendado','ativo'].includes(lanc.status);
+  const pode_editar = !lanc || ['agendado','ativo','encerrado'].includes(lanc.status);
 
   openModal(`🚀 Lançamento — ${emp.nome}`, `
     ${lanc && lanc.status !== 'cancelado' ? `
@@ -11344,18 +11344,18 @@ async function abrirGerenciarLancamento(empId) {
     </div>` : ''}
 
     <div style="background:var(--navy2);border-radius:10px;padding:16px;margin-bottom:4px">
-      <div style="font-size:13px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">${lanc && ['agendado','ativo'].includes(lanc.status) ? '✏️ Editar Agendamento' : '➕ Novo Agendamento'}</div>
+      <div style="font-size:13px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">${lanc && ['agendado','ativo'].includes(lanc.status) ? '✏️ Editar Agendamento' : lanc?.status === 'encerrado' ? '🔄 Reagendar Lançamento' : '➕ Novo Agendamento'}</div>
       <div class="form-grid">
         <div class="form-group span2"><label>Nome do lançamento (opcional)</label>
-          <input id="lanc-nome" value="${pode_editar && lanc ? lanc.nome||'' : ''}" placeholder="ex: Lançamento Germânia — Etapa 1">
+          <input id="lanc-nome" value="${lanc ? lanc.nome||'' : ''}" placeholder="ex: Lançamento Germânia — Etapa 1">
         </div>
         <div class="form-group span2"><label>Data e hora de início *</label>
-          <input id="lanc-inicio" type="datetime-local" value="${pode_editar && lanc ? toLocal(lanc.data_hora_inicio) : ''}">
+          <input id="lanc-inicio" type="datetime-local" value="${lanc?.status === 'encerrado' ? toLocal(lanc.data_hora_inicio) : (pode_editar && lanc ? toLocal(lanc.data_hora_inicio) : '')}">
         </div>
       </div>
-      <button onclick="_lancSalvar(${empId}${lanc && ['agendado','ativo'].includes(lanc.status) ? ','+lanc.id : ''})"
+      <button onclick="_lancSalvar(${empId}${lanc && ['agendado','ativo','encerrado'].includes(lanc.status) ? ','+lanc.id : ''})"
         style="margin-top:8px;width:100%;padding:10px;background:var(--accent);color:var(--navy);border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px">
-        ${lanc && ['agendado','ativo'].includes(lanc.status) ? '💾 Salvar Alterações' : '📅 Agendar Lançamento'}
+        ${lanc && ['agendado','ativo'].includes(lanc.status) ? '💾 Salvar Alterações' : lanc?.status === 'encerrado' ? '🔄 Reagendar' : '📅 Agendar Lançamento'}
       </button>
       <p style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.5">
         Enquanto houver um lançamento agendado ou ativo, as reservas pelo espelho ficam bloqueadas até o horário de início e liberadas automaticamente. Se não houver lançamento cadastrado, as reservas funcionam normalmente.
