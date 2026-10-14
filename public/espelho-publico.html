@@ -959,6 +959,7 @@ function calcPMT(saldo, nParc, juros) {
 function abrirSimulacao(unitId) {
   const u = (window._units || []).find(x => x.id === unitId);
   if (!u) return;
+  window._simUnitAberta = unitId;
 
   if (u.status === 'indisponivel') {
     const loc = `Lote ${u.lote}${u.quadra ? ' · Quadra ' + u.quadra : ''}`;
@@ -1168,6 +1169,7 @@ function abrirSimulacao(unitId) {
 
 function fecharSimulacao() {
   clearInterval(window._simCountdownInterval);
+  window._simUnitAberta = null;
   document.getElementById('sim-overlay')?.remove();
   // Se o modal de reserva está aberto, re-renderiza as condições com os parâmetros atualizados
   const modalReservar = document.getElementById('modal-reservar');
@@ -1635,6 +1637,19 @@ async function carregar() {
     };
     units.sort(sortNum);
     window._units = units;
+    // Avisa corretor se o lote que ele está vendo no modal acabou de ser tomado
+    if (window._simUnitAberta) {
+      const uAberta = units.find(x => x.id === window._simUnitAberta);
+      if (uAberta && uAberta.status !== 'disponivel') {
+        fecharSimulacao();
+        const loc = `Lote ${uAberta.lote}${uAberta.quadra ? ' · Quadra ' + uAberta.quadra : ''}`;
+        const aviso = document.createElement('div');
+        aviso.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;background:#7f1d1d;color:#fca5a5;border:1px solid rgba(239,68,68,.5);border-radius:10px;padding:14px 20px;font-size:14px;font-weight:700;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.5);max-width:90vw';
+        aviso.textContent = `⚠️ ${loc} acabou de ser reservado por outro corretor.`;
+        document.body.appendChild(aviso);
+        setTimeout(() => aviso.remove(), 5000);
+      }
+    }
     _atualizarPixBanner();
     const comPosicao = units.filter(u => u.mapa_x != null && u.mapa_y != null);
     const html = [];
