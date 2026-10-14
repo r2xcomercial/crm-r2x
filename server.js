@@ -10199,6 +10199,258 @@ app.put('/api/carteira/parcela/:id', autenticar, (req, res) => {
   ok(res, { ok: true });
 });
 
+// ─── FICHAS DE RESERVA (HTML printável → PDF) ────────────────────────────────
+
+function _fichaHtml(rows, empNome, titulo, baseUrl) {
+  const fmt = v => v != null ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v) : '—';
+  const d = (v) => v ? new Date(v).toLocaleDateString('pt-BR') : '—';
+  const s = (v) => v || '—';
+  const statusLabel = { pre_reserva: 'Pré-reserva', reserva: 'Reserva', proposta: 'Proposta', aprovado: 'Aprovado', ativo: 'Ativo' };
+
+  const fichas = rows.map((r, i) => {
+    const docs = r._docs || [];
+    const docsHtml = docs.length ? `
+      <div class="secao">
+        <div class="secao-titulo">Documentos Anexados</div>
+        <div class="docs-grid">${docs.map(doc => {
+          const isImg = doc.mime_type && doc.mime_type.startsWith('image/');
+          if (isImg && doc.dados) {
+            const b64 = Buffer.from(doc.dados).toString('base64');
+            return `<div class="doc-item"><img src="data:${doc.mime_type};base64,${b64}" style="max-width:100%;max-height:280px;border-radius:4px;border:1px solid #ddd"/><div class="doc-label">${s(doc.tipo)} — ${s(doc.nome_original)}</div></div>`;
+          }
+          return `<div class="doc-item doc-file"><div class="doc-icon">📄</div><div class="doc-label">${s(doc.tipo)}<br><span style="color:#555;font-size:11px">${s(doc.nome_original)}</span></div><a href="${baseUrl}/api/leads/${r.lead_id}/documentos/${doc.id}/download" target="_blank" style="font-size:11px;color:#1a56db">Baixar</a></div>`;
+        }).join('')}</div>
+      </div>` : '';
+
+    const cond = (() => { try { const c = JSON.parse(r.condicao_proposta || '{}'); return c.descricao || c.nome || null; } catch(_) { return r.condicao_proposta || null; } })();
+
+    return `<div class="ficha${i > 0 ? ' quebra' : ''}">
+      <div class="ficha-header">
+        <div>
+          <div class="emp-nome">${s(empNome)}</div>
+          <div class="ficha-titulo">Ficha de Reserva</div>
+        </div>
+        <div class="ficha-meta">
+          <div><b>Lote:</b> ${r.quadra ? `Quadra ${r.quadra} — ` : ''}Lote ${s(r.lote)}</div>
+          <div><b>Área:</b> ${r.area_m2 ? `${r.area_m2} m²` : '—'}</div>
+          <div><b>Status:</b> ${statusLabel[r.status] || s(r.status)}</div>
+          <div><b>Data:</b> ${d(r.data_venda)}</div>
+          <div style="margin-top:4px"><b>Valor:</b> ${fmt(r.valor_total || r.valor)}</div>
+          ${cond ? `<div><b>Condição:</b> ${cond}</div>` : ''}
+        </div>
+      </div>
+
+      <div class="secao">
+        <div class="secao-titulo">Dados do Cliente</div>
+        <div class="grid2">
+          <div><b>Nome:</b> ${s(r.lead_nome)}</div>
+          <div><b>CPF:</b> ${s(r.cpf)}</div>
+          <div><b>RG:</b> ${s(r.rg)}</div>
+          <div><b>Estado Civil:</b> ${s(r.estado_civil)}</div>
+          <div><b>Profissão:</b> ${s(r.profissao)}</div>
+          <div><b>Telefone:</b> ${s(r.telefone)}</div>
+          <div><b>E-mail:</b> ${s(r.email)}</div>
+          <div><b>Aniversário:</b> ${d(r.aniversario)}</div>
+        </div>
+        ${r.endereco ? `<div style="margin-top:8px"><b>Endereço:</b> ${[r.endereco, r.numero, r.complemento, r.bairro, r.cidade_lead, r.estado_lead, r.cep].filter(Boolean).join(', ')}</div>` : ''}
+        ${r.nome_pai ? `<div><b>Nome do Pai:</b> ${r.nome_pai}</div>` : ''}
+        ${r.nome_mae ? `<div><b>Nome da Mãe:</b> ${r.nome_mae}</div>` : ''}
+        ${r.pessoa_juridica ? `<div style="margin-top:8px"><b>CNPJ:</b> ${s(r.cnpj)} — ${s(r.razao_social)}</div>` : ''}
+      </div>
+
+      <div class="secao">
+        <div class="secao-titulo">Corretor Responsável</div>
+        <div class="grid2">
+          <div><b>Nome:</b> ${s(r.cor_nome)}</div>
+          <div><b>CRECI:</b> ${s(r.creci)}</div>
+          <div><b>Telefone:</b> ${s(r.cor_tel)}</div>
+          <div><b>Imobiliária:</b> ${s(r.imobiliaria)}</div>
+        </div>
+      </div>
+
+      ${r.observacoes ? `<div class="secao"><div class="secao-titulo">Observações</div><div>${r.observacoes}</div></div>` : ''}
+      ${docsHtml}
+
+      <div class="rodape">Emitido em ${new Date().toLocaleString('pt-BR')} — R2X Aceleradora de Vendas</div>
+    </div>`;
+  }).join('\n');
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>${titulo}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #f0f2f5; }
+  .page-wrap { max-width: 900px; margin: 0 auto; padding: 24px; }
+  .toolbar { background: #1e3a5f; color: #fff; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; border-radius: 10px; margin-bottom: 24px; }
+  .toolbar h1 { font-size: 16px; font-weight: 700; }
+  .toolbar-btns { display: flex; gap: 10px; }
+  .btn { padding: 8px 18px; border-radius: 7px; border: none; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .btn-primary { background: #2563eb; color: #fff; }
+  .btn-sec { background: rgba(255,255,255,.15); color: #fff; }
+  .ficha { background: #fff; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 28px 32px; margin-bottom: 24px; }
+  .ficha-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1e3a5f; padding-bottom: 14px; margin-bottom: 18px; }
+  .emp-nome { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 1px; }
+  .ficha-titulo { font-size: 22px; font-weight: 900; color: #1e3a5f; margin-top: 2px; }
+  .ficha-meta { text-align: right; font-size: 12px; line-height: 1.7; }
+  .secao { margin-bottom: 16px; }
+  .secao-titulo { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #1e3a5f; border-bottom: 1px solid #dde; padding-bottom: 4px; margin-bottom: 10px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px; line-height: 1.7; }
+  .docs-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+  .doc-item { display: flex; flex-direction: column; gap: 4px; max-width: 260px; }
+  .doc-file { background: #f8f9fa; border: 1px solid #dde; border-radius: 6px; padding: 10px; align-items: center; text-align: center; }
+  .doc-icon { font-size: 28px; }
+  .doc-label { font-size: 11px; color: #333; }
+  .rodape { margin-top: 20px; font-size: 10px; color: #999; text-align: center; border-top: 1px solid #eee; padding-top: 10px; }
+  @media print {
+    body { background: #fff; }
+    .toolbar { display: none !important; }
+    .page-wrap { padding: 0; max-width: 100%; }
+    .ficha { box-shadow: none; border-radius: 0; margin-bottom: 0; padding: 20px 24px; border: none; }
+    .quebra { page-break-before: always; }
+    a { color: #1a1a1a; text-decoration: none; }
+  }
+</style>
+</head><body>
+<div class="page-wrap">
+  <div class="toolbar">
+    <h1>📋 ${titulo}</h1>
+    <div class="toolbar-btns">
+      <button class="btn btn-sec" onclick="window.close()">✕ Fechar</button>
+      <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+    </div>
+  </div>
+  ${fichas || '<div class="ficha"><p>Nenhuma reserva encontrada.</p></div>'}
+</div>
+</body></html>`;
+}
+
+// GET /fichas/:empId — lista de reservas com links por lote (admin)
+app.get('/fichas/:empId', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor'].includes(u.perfil)) return res.status(403).send('Acesso restrito');
+  const empId = parseInt(req.params.empId);
+  const emp = db.prepare("SELECT nome FROM empreendimentos WHERE id=?").get(empId);
+  if (!emp) return res.status(404).send('Empreendimento não encontrado');
+
+  const reservas = db.prepare(`
+    SELECT v.id as venda_id, v.status, v.data_venda, v.valor, v.valor_total,
+      u.quadra, u.lote, u.area_m2,
+      l.nome as lead_nome, l.id as lead_id, l.cpf, l.telefone,
+      c.nome as cor_nome, c.creci
+    FROM vendas v
+    JOIN unidades u ON u.id = v.unidade_id
+    LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN corretores c ON c.id = v.corretor_id
+    WHERE v.empreendimento_id = ?
+      AND v.status NOT IN ('distrato','cancelado','perdida')
+    ORDER BY u.quadra ASC, CAST(u.lote AS INTEGER) ASC
+  `).all(empId);
+
+  const statusLabel = { pre_reserva: 'Pré-reserva', reserva: 'Reserva', proposta: 'Proposta', aprovado: 'Aprovado', ativo: 'Ativo' };
+  const fmt = v => v != null ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v) : '—';
+  const base = `${req.protocol}://${req.get('host')}`;
+
+  const linhas = reservas.map(r => `
+    <tr>
+      <td>${r.quadra ? `Q${r.quadra} — ` : ''}L${r.lote}</td>
+      <td>${r.area_m2 ? r.area_m2 + ' m²' : '—'}</td>
+      <td>${r.lead_nome || '—'}</td>
+      <td>${r.cor_nome || '—'} ${r.creci ? `(${r.creci})` : ''}</td>
+      <td>${statusLabel[r.status] || r.status}</td>
+      <td>${fmt(r.valor_total || r.valor)}</td>
+      <td><a href="/ficha/venda/${r.venda_id}" target="_blank" style="color:#2563eb;font-weight:700;text-decoration:none">Abrir ficha →</a></td>
+    </tr>`).join('');
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Fichas — ${emp.nome}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 13px; background: #f0f2f5; color: #1a1a1a; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 24px; }
+  .header { background: #1e3a5f; color: #fff; padding: 16px 24px; border-radius: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+  .header h1 { font-size: 18px; font-weight: 900; }
+  .btn { padding: 9px 20px; border-radius: 7px; border: none; font-size: 13px; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-block; }
+  .btn-primary { background: #2563eb; color: #fff; }
+  table { width: 100%; background: #fff; border-radius: 10px; border-collapse: collapse; box-shadow: 0 2px 10px rgba(0,0,0,.07); overflow: hidden; }
+  th { background: #1e3a5f; color: #fff; padding: 11px 14px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  td { padding: 11px 14px; border-bottom: 1px solid #eee; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f5f7ff; }
+  .empty { text-align: center; padding: 40px; color: #888; }
+</style>
+</head><body>
+<div class="wrap">
+  <div class="header">
+    <h1>📋 Fichas de Reserva — ${emp.nome}</h1>
+    <div style="display:flex;gap:10px;align-items:center">
+      <span style="opacity:.7;font-size:12px">${reservas.length} lote(s) reservado(s)</span>
+      <a href="/fichas/${empId}/todas" target="_blank" class="btn btn-primary">🖨️ Exportar todas as fichas (PDF)</a>
+    </div>
+  </div>
+  ${reservas.length ? `<table>
+    <thead><tr><th>Lote</th><th>Área</th><th>Cliente</th><th>Corretor</th><th>Status</th><th>Valor</th><th>Ação</th></tr></thead>
+    <tbody>${linhas}</tbody>
+  </table>` : '<div class="empty">Nenhuma reserva encontrada.</div>'}
+</div></body></html>`);
+});
+
+// GET /ficha/venda/:vendaId — ficha individual (admin)
+app.get('/ficha/venda/:vendaId', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor'].includes(u.perfil)) return res.status(403).send('Acesso restrito');
+  const row = db.prepare(`
+    SELECT v.id as venda_id, v.lead_id, v.status, v.data_venda, v.valor, v.valor_total, v.condicao_proposta, v.observacoes,
+      u.quadra, u.lote, u.area_m2,
+      e.nome as emp_nome,
+      l.nome as lead_nome, l.cpf, l.rg, l.estado_civil, l.profissao, l.telefone, l.email, l.aniversario,
+      l.endereco, l.numero, l.complemento, l.bairro, l.cidade as cidade_lead, l.estado as estado_lead, l.cep,
+      l.nome_pai, l.nome_mae, l.pessoa_juridica, l.cnpj, l.razao_social,
+      c.nome as cor_nome, c.creci, c.telefone as cor_tel, c.imobiliaria
+    FROM vendas v
+    JOIN unidades u ON u.id = v.unidade_id
+    JOIN empreendimentos e ON e.id = v.empreendimento_id
+    LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN corretores c ON c.id = v.corretor_id
+    WHERE v.id = ?
+  `).get(parseInt(req.params.vendaId));
+  if (!row) return res.status(404).send('Reserva não encontrada');
+  if (row.lead_id) row._docs = db.prepare("SELECT id, tipo, nome_original, mime_type, dados FROM documentos_lead WHERE lead_id=? ORDER BY criado_em ASC").all(row.lead_id);
+  else row._docs = [];
+  const base = `${req.protocol}://${req.get('host')}`;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(_fichaHtml([row], row.emp_nome, `Ficha — ${row.quadra ? `Q${row.quadra} ` : ''}L${row.lote} | ${row.lead_nome || 'Sem cliente'}`, base));
+});
+
+// GET /fichas/:empId/todas — todas as fichas em uma página (admin, para impressão em lote)
+app.get('/fichas/:empId/todas', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor'].includes(u.perfil)) return res.status(403).send('Acesso restrito');
+  const empId = parseInt(req.params.empId);
+  const emp = db.prepare("SELECT nome FROM empreendimentos WHERE id=?").get(empId);
+  if (!emp) return res.status(404).send('Empreendimento não encontrado');
+  const rows = db.prepare(`
+    SELECT v.id as venda_id, v.lead_id, v.status, v.data_venda, v.valor, v.valor_total, v.condicao_proposta, v.observacoes,
+      u.quadra, u.lote, u.area_m2,
+      l.nome as lead_nome, l.cpf, l.rg, l.estado_civil, l.profissao, l.telefone, l.email, l.aniversario,
+      l.endereco, l.numero, l.complemento, l.bairro, l.cidade as cidade_lead, l.estado as estado_lead, l.cep,
+      l.nome_pai, l.nome_mae, l.pessoa_juridica, l.cnpj, l.razao_social,
+      c.nome as cor_nome, c.creci, c.telefone as cor_tel, c.imobiliaria
+    FROM vendas v
+    JOIN unidades u ON u.id = v.unidade_id
+    LEFT JOIN leads l ON l.id = v.lead_id
+    LEFT JOIN corretores c ON c.id = v.corretor_id
+    WHERE v.empreendimento_id = ?
+      AND v.status NOT IN ('distrato','cancelado','perdida')
+    ORDER BY u.quadra ASC, CAST(u.lote AS INTEGER) ASC
+  `).all(empId);
+  rows.forEach(r => {
+    r._docs = r.lead_id ? db.prepare("SELECT id, tipo, nome_original, mime_type, dados FROM documentos_lead WHERE lead_id=? ORDER BY criado_em ASC").all(r.lead_id) : [];
+  });
+  const base = `${req.protocol}://${req.get('host')}`;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(_fichaHtml(rows, emp.nome, `Fichas de Reserva — ${emp.nome}`, base));
+});
+
 app.listen(PORT, () => {
   console.log(`CRM R2X rodando em http://localhost:${PORT}`);
   try {
