@@ -1143,7 +1143,6 @@ window._leadsFiltros = window._leadsFiltros || { status:'', corretor_id:'', empr
 function _renderFilaLeads(todos, corretores) {
   const fila = (todos||[]).filter(l => (l.tipo_cadastro||'lead') === 'lead' && !l.corretor_id && !['com_corretor','vendido','perdido','sem_venda'].includes(l.status));
   if (!fila.length) return '';
-  const corOpts = (corretores||[]).map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
   const rows = fila.map(l => `
     <tr>
       <td><strong>${l.nome||'—'}</strong><br><span style="font-size:11px;color:var(--text2)">${l.origem||''}</span></td>
@@ -1151,11 +1150,14 @@ function _renderFilaLeads(todos, corretores) {
       <td style="font-size:12px">${l.empreendimento_nome||l.empreendimento_interesse||'<span style="color:var(--text2)">—</span>'}</td>
       <td>
         <div style="display:flex;gap:6px;align-items:center">
-          <select id="fila-cor-${l.id}" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;flex:1">
-            <option value="">Selecionar corretor...</option>
-            <option value="sem">— Sem corretor —</option>
-            ${corOpts}
-          </select>
+          <div style="position:relative;flex:1;min-width:180px">
+            <input type="text" id="fila-cor-input-${l.id}" placeholder="Buscar corretor..." autocomplete="off"
+              oninput="filtraCorretoresFila(${l.id})" onfocus="filtraCorretoresFila(${l.id})"
+              onblur="setTimeout(()=>{ const d=document.getElementById('fila-cor-dd-${l.id}'); if(d)d.style.display='none'; },200)"
+              style="width:100%;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;box-sizing:border-box">
+            <input type="hidden" id="fila-cor-${l.id}" value="">
+            <div id="fila-cor-dd-${l.id}" style="display:none;position:absolute;z-index:200;background:var(--navy2);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;width:100%;top:calc(100% + 2px);left:0;box-shadow:0 4px 16px rgba(0,0,0,.4)"></div>
+          </div>
           <button onclick="atribuirCorretorLead(${l.id})" style="padding:5px 10px;border-radius:6px;border:none;background:var(--accent);color:var(--navy);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">Atribuir →</button>
           ${l.telefone ? `<button onclick="abrirDeboraParaLead('${l.telefone}')" style="padding:5px 8px;border-radius:6px;border:1px solid rgba(139,92,246,.4);background:rgba(139,92,246,.1);color:#a78bfa;font-size:12px;cursor:pointer" title="Ver conversa na Débora">🤖</button>` : ''}
           <button onclick="editLead(${l.id})" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text2);font-size:12px;cursor:pointer" title="Ver detalhes">✏️</button>
@@ -1191,6 +1193,31 @@ async function atribuirCorretorLead(leadId) {
   if (!r.ok) return toast(r.error || 'Erro ao atribuir', 'error');
   toast(corretorId === 'sem' ? '✅ Lead mantido sem corretor' : '✅ Lead distribuído ao corretor!');
   renderLeads();
+}
+
+function filtraCorretoresFila(leadId) {
+  const inp = document.getElementById(`fila-cor-input-${leadId}`);
+  const dd  = document.getElementById(`fila-cor-dd-${leadId}`);
+  if (!inp || !dd) return;
+  const q = (inp.value || '').toLowerCase().trim();
+  const todos = [{ id: 'sem', nome: '— Sem corretor —' }, ...(corretoresData || [])];
+  const filtrados = q ? todos.filter(c => c.nome.toLowerCase().includes(q)) : todos;
+  dd.innerHTML = filtrados.map(c => `
+    <div onmousedown="selecionarCorretorFila(${leadId},'${c.id}','${c.nome.replace(/'/g,"\\'")}')"
+      style="padding:7px 10px;cursor:pointer;font-size:12px;color:var(--text)"
+      onmouseover="this.style.background='var(--navy3)'" onmouseout="this.style.background=''">
+      ${c.nome}
+    </div>`).join('') || '<div style="padding:8px 10px;font-size:12px;color:var(--text2)">Nenhum resultado</div>';
+  dd.style.display = 'block';
+}
+
+function selecionarCorretorFila(leadId, id, nome) {
+  const inp = document.getElementById(`fila-cor-input-${leadId}`);
+  const hid = document.getElementById(`fila-cor-${leadId}`);
+  const dd  = document.getElementById(`fila-cor-dd-${leadId}`);
+  if (inp) inp.value = nome;
+  if (hid) hid.value = id;
+  if (dd)  dd.style.display = 'none';
 }
 
 async function excluirLeadFila(leadId, nome) {
