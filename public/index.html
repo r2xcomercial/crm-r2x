@@ -25380,8 +25380,9 @@ async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) 
 
   const card = document.getElementById('modal-body');
   if (card) {
+    document.getElementById('edit-reserva-form')?.remove();
     card.insertAdjacentHTML('beforeend', html);
-    // Fecha dropdown ao clicar fora
+    setTimeout(() => document.getElementById('edit-reserva-form')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
     document.addEventListener('click', function _erClickOut(e) {
       if (!document.getElementById('edit-reserva-form')?.contains(e.target)) {
         ['er-lead-lista','er-cor-lista'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display='none'; });
