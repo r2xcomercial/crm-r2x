@@ -25377,20 +25377,38 @@ async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) 
         <input type="hidden" id="er-cor-id" value="${corretorIdAtual||''}">
       </div>
 
-      ${window._erCondicoes && window._erCondicoes.length ? `<div style="margin-bottom:14px">
+      <div style="margin-bottom:14px">
         <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px">💳 Condição de Pagamento</label>
         <select id="er-condicao-idx"
           style="width:100%;box-sizing:border-box;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:9px 10px;appearance:none;-webkit-appearance:none">
           <option value="">— Sem condição definida —</option>
-          ${window._erCondicoes.map((cp, idx) => {
+          ${(window._erCondicoes||[]).map((cp, idx) => {
             const label = cp.nome || cp.descricao || (cp.parcelas && cp.parcelas.length ? `${cp.parcelas.length} parcela(s)` : `Condição ${idx+1}`);
             const cpStr = JSON.stringify(cp);
             const isAtual = cpAtual && JSON.stringify(cpAtual) === cpStr;
             return `<option value="${idx}" ${isAtual?'selected':''}>${label}</option>`;
           }).join('')}
+          <option value="custom" ${cpAtual && cpAtual.nome === 'Personalizada' ? 'selected' : ''}>✏️ Condição personalizada...</option>
         </select>
         <div id="er-condicao-preview" style="font-size:11px;color:var(--text2);margin-top:5px;min-height:14px"></div>
-      </div>` : ''}
+
+        <div id="er-cond-custom" style="display:none;margin-top:10px;padding:12px;background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.25);border-radius:8px">
+          <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Itens da negociação</div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 50px 1.2fr auto;gap:4px;margin-bottom:4px;padding:0 2px">
+            <span style="font-size:10px;color:var(--text2)">Tipo</span>
+            <span style="font-size:10px;color:var(--text2)">Valor (R$)</span>
+            <span style="font-size:10px;color:var(--text2)">Qtd</span>
+            <span style="font-size:10px;color:var(--text2)">Forma Pgto</span>
+            <span></span>
+          </div>
+          <div id="er-cond-linhas" style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px"></div>
+          <button type="button" onclick="erAddLinhaCond()"
+            style="font-size:12px;padding:5px 12px;border-radius:7px;border:1px dashed var(--border);background:var(--navy2);color:var(--text);cursor:pointer;width:100%;margin-bottom:8px">
+            + Adicionar linha
+          </button>
+          <div id="er-cond-total" style="font-size:13px;font-weight:700;color:var(--accent);text-align:right">Total: R$ 0,00</div>
+        </div>
+      </div>
 
       <div style="margin-bottom:14px">
         <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px">🤝 Valor Negociado <span style="color:#fbbf24;font-size:10px">(apenas admin vê — sobrescreve o valor da condição)</span></label>
@@ -25444,9 +25462,11 @@ async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) 
     if (selCp) {
       const updatePreview = () => {
         const prev = document.getElementById('er-condicao-preview');
-        if (!prev) return;
+        const customDiv = document.getElementById('er-cond-custom');
         const idx = selCp.value;
-        if (idx === '') { prev.textContent = ''; return; }
+        if (customDiv) customDiv.style.display = idx === 'custom' ? 'block' : 'none';
+        if (!prev) return;
+        if (idx === '' || idx === 'custom') { prev.textContent = ''; return; }
         const cp = (window._erCondicoes||[])[parseInt(idx)];
         if (!cp) { prev.textContent = ''; return; }
         const partes = [];
@@ -25456,6 +25476,12 @@ async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) 
       };
       selCp.addEventListener('change', updatePreview);
       updatePreview();
+      // Se já há condição personalizada salva, pré-popular o builder
+      if (cpAtual && cpAtual.nome === 'Personalizada' && Array.isArray(cpAtual.parcelas)) {
+        cpAtual.parcelas.forEach(p => erAddLinhaCond(p.titulo||'', p.valor||'', p.qtd||1, p.forma_pagamento||'PIX'));
+      } else if (selCp.value === 'custom') {
+        erAddLinhaCond();
+      }
     }
     // Carregar documentos do cliente
     if (vendaAtual.lead_id) erCarregarDocs(vendaAtual.lead_id);
@@ -25522,6 +25548,46 @@ function erLimpar(tipo) {
   document.getElementById(`er-${tipo}-lista`).style.display = 'none';
 }
 
+function erAddLinhaCond(titulo='Entrada', valor='', qtd=1, forma='PIX') {
+  const linhas = document.getElementById('er-cond-linhas');
+  if (!linhas) return;
+  const inp = (tag,attrs,inner='') => { const e=document.createElement(tag); Object.assign(e,attrs); e.style.cssText='width:100%;box-sizing:border-box;background:var(--navy2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:5px 6px'; if(inner)e.innerHTML=inner; return e; };
+  const row = document.createElement('div');
+  row.style.cssText = 'display:grid;grid-template-columns:2fr 1fr 50px 1.2fr auto;gap:4px;align-items:center';
+
+  const tipos = ['Permuta','Entrada','Entrada Parcelada','Parcelas','Balão','Saldo nas Chaves'];
+  const formas = ['PIX','Boleto','Transferência','Cheque','Permuta','Financiamento','Outro'];
+
+  const selTipo = inp('select',{onchange:()=>erAtualizarTotalCond()}, tipos.map(t=>`<option${t===titulo?' selected':''}>${t}</option>`).join(''));
+  const inpVal  = inp('input', {type:'number',placeholder:'R$',min:'0',step:'0.01',value:valor, oninput:()=>erAtualizarTotalCond()});
+  const inpQtd  = inp('input', {type:'number',placeholder:'Qtd',min:'1',value:qtd, oninput:()=>erAtualizarTotalCond()});
+  const selForma= inp('select',{onchange:()=>erAtualizarTotalCond()}, formas.map(f=>`<option${f===forma?' selected':''}>${f}</option>`).join(''));
+  const btnDel  = document.createElement('button');
+  btnDel.type='button'; btnDel.textContent='✕';
+  btnDel.style.cssText='background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:2px 4px;flex-shrink:0';
+  btnDel.onclick = () => { row.remove(); erAtualizarTotalCond(); };
+
+  row.append(selTipo, inpVal, inpQtd, selForma, btnDel);
+  linhas.appendChild(row);
+  erAtualizarTotalCond();
+}
+
+function erAtualizarTotalCond() {
+  const linhas = document.getElementById('er-cond-linhas');
+  const totalDiv = document.getElementById('er-cond-total');
+  if (!linhas || !totalDiv) return;
+  let total = 0;
+  [...linhas.children].forEach(row => {
+    const inps = row.querySelectorAll('input[type=number]');
+    const v = parseFloat(inps[0]?.value||0)||0;
+    const q = parseInt(inps[1]?.value||1)||1;
+    total += v * q;
+  });
+  totalDiv.textContent = 'Total: ' + total.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+  const vn = document.getElementById('er-valor-negociado');
+  if (vn) vn.value = total.toFixed(2);
+}
+
 async function erCarregarDocs(leadId) {
   const el = document.getElementById('er-docs-list');
   if (!el) return;
@@ -25578,7 +25644,19 @@ async function salvarEdicaoReserva(vendaId, empId) {
   const selCp = document.getElementById('er-condicao-idx');
   if (selCp) {
     const idx = selCp.value;
-    body.condicao_proposta = idx !== '' ? ((window._erCondicoes||[])[parseInt(idx)] || null) : null;
+    if (idx === 'custom') {
+      const linhas = document.getElementById('er-cond-linhas');
+      const items = [...(linhas?.children || [])].map(row => {
+        const sels = row.querySelectorAll('select');
+        const inps = row.querySelectorAll('input[type=number]');
+        return { titulo: sels[0]?.value||'Parcela', tipo_valor:'R$', valor: parseFloat(inps[0]?.value||0)||0, qtd: parseInt(inps[1]?.value||1)||1, forma_pagamento: sels[1]?.value||'PIX' };
+      });
+      const totalCp = items.reduce((s,i) => s + i.valor * i.qtd, 0);
+      body.condicao_proposta = { nome: 'Personalizada', valor_total: totalCp, parcelas: items };
+      if (!body.valor_negociado) body.valor_negociado = totalCp;
+    } else {
+      body.condicao_proposta = idx !== '' ? ((window._erCondicoes||[])[parseInt(idx)] || null) : null;
+    }
   }
   const valorNeg = document.getElementById('er-valor-negociado')?.value;
   if (valorNeg && valorNeg.trim() !== '') body.valor_negociado = parseFloat(valorNeg);
