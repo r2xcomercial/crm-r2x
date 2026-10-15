@@ -25392,6 +25392,15 @@ async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) 
         <div id="er-condicao-preview" style="font-size:11px;color:var(--text2);margin-top:5px;min-height:14px"></div>
       </div>` : ''}
 
+      <div style="margin-bottom:14px">
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px">🤝 Valor Negociado <span style="color:#fbbf24;font-size:10px">(apenas admin vê — sobrescreve o valor da condição)</span></label>
+        <input id="er-valor-negociado" type="number" step="0.01" min="0"
+          value="${vendaAtual.valor_total || vendaAtual.valor || ''}"
+          placeholder="Deixe em branco para usar o valor da condição"
+          style="width:100%;box-sizing:border-box;background:var(--navy2);border:1px solid rgba(251,191,36,.4);border-radius:8px;color:var(--text);font-size:13px;padding:9px 10px">
+        <div style="font-size:10px;color:var(--text2);margin-top:3px">Valor atual: R$ ${Number(vendaAtual.valor_total || vendaAtual.valor || 0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+      </div>
+
       ${vendaAtual.lead_id ? `<div style="margin-bottom:14px">
         <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px">📎 Documentos do Cliente</label>
         <div id="er-docs-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px">
@@ -25571,6 +25580,8 @@ async function salvarEdicaoReserva(vendaId, empId) {
     const idx = selCp.value;
     body.condicao_proposta = idx !== '' ? ((window._erCondicoes||[])[parseInt(idx)] || null) : null;
   }
+  const valorNeg = document.getElementById('er-valor-negociado')?.value;
+  if (valorNeg && valorNeg.trim() !== '') body.valor_negociado = parseFloat(valorNeg);
 
   const r = await fetch(`/api/admin/vendas/${vendaId}/editar-reserva`, {
     method: 'PATCH',
