@@ -10711,6 +10711,7 @@ app.get('/ficha/venda/:vendaId', autenticar, (req, res) => {
   if (!u || !['admin','gestor','incorporador'].includes(u.perfil)) return res.status(403).send('Acesso restrito');
   const row = db.prepare(`
     SELECT v.id as venda_id, v.lead_id, v.status, v.data_venda, v.valor, v.valor_total, v.condicao_proposta, v.observacoes,
+      v.comprovante_pix, v.comprovante_pix_nome, v.comprovante_pix_tipo,
       u.quadra, u.lote, u.area_m2,
       e.nome as emp_nome,
       l.nome as lead_nome, l.cpf, l.rg, l.estado_civil, l.profissao, l.telefone, l.email, l.aniversario,
@@ -10730,6 +10731,7 @@ app.get('/ficha/venda/:vendaId', autenticar, (req, res) => {
   if (!row) return res.status(404).send('Reserva não encontrada');
   if (row.lead_id) row._docs = db.prepare("SELECT id, tipo, nome_original, mime_type, dados FROM documentos_lead WHERE lead_id=? ORDER BY criado_em ASC").all(row.lead_id);
   else row._docs = [];
+  if (row.comprovante_pix) row._docs.push({ tipo: 'Comprovante Pix', nome_original: row.comprovante_pix_nome || 'comprovante_pix', mime_type: row.comprovante_pix_tipo || 'image/jpeg', dados: row.comprovante_pix });
   const base = `${req.protocol}://${req.get('host')}`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -10747,6 +10749,7 @@ app.get('/fichas/:empId/todas', autenticar, (req, res) => {
   if (!emp) return res.status(404).send('Empreendimento não encontrado');
   const rows = db.prepare(`
     SELECT v.id as venda_id, v.lead_id, v.status, v.data_venda, v.valor, v.valor_total, v.condicao_proposta, v.observacoes,
+      v.comprovante_pix, v.comprovante_pix_nome, v.comprovante_pix_tipo,
       u.quadra, u.lote, u.area_m2,
       l.nome as lead_nome, l.cpf, l.rg, l.estado_civil, l.profissao, l.telefone, l.email, l.aniversario,
       l.endereco, l.numero, l.complemento, l.bairro, l.cidade as cidade_lead, l.estado as estado_lead, l.cep,
@@ -10765,6 +10768,7 @@ app.get('/fichas/:empId/todas', autenticar, (req, res) => {
   `).all(empId);
   rows.forEach(r => {
     r._docs = r.lead_id ? db.prepare("SELECT id, tipo, nome_original, mime_type, dados FROM documentos_lead WHERE lead_id=? ORDER BY criado_em ASC").all(r.lead_id) : [];
+    if (r.comprovante_pix) r._docs.push({ tipo: 'Comprovante Pix', nome_original: r.comprovante_pix_nome || 'comprovante_pix', mime_type: r.comprovante_pix_tipo || 'image/jpeg', dados: r.comprovante_pix });
   });
   const base = `${req.protocol}://${req.get('host')}`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
