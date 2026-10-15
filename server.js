@@ -10695,7 +10695,7 @@ app.get('/fichas/:empId', autenticar, (req, res) => {
     <h1>📋 Fichas de Reserva — ${emp.nome}</h1>
     <div style="display:flex;gap:10px;align-items:center">
       <span style="opacity:.7;font-size:12px">${reservas.length} lote(s) reservado(s)</span>
-      <a href="/fichas/${empId}/todas?token=${tk}" target="_blank" class="btn btn-primary">🖨️ Exportar todas as fichas (PDF)</a>
+      <a href="#" onclick="this.href='/fichas/${empId}/todas?token=${tk}&_='+Date.now();return true;" target="_blank" class="btn btn-primary">🖨️ Exportar todas as fichas (PDF)</a>
     </div>
   </div>
   ${reservas.length ? `<table>
@@ -10766,7 +10766,9 @@ app.get('/fichas/:empId/todas', autenticar, (req, res) => {
   });
   const base = `${req.protocol}://${req.get('host')}`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.send(_fichaHtml(rows, emp.nome, `Fichas de Reserva — ${emp.nome}`, base, req.query.token));
 });
 
