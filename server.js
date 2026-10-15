@@ -10631,20 +10631,11 @@ function _fichaHtml(rows, empNome, titulo, baseUrl, token) {
     <h1>📋 ${titulo}</h1>
     <div class="toolbar-btns">
       <button class="btn btn-sec" onclick="window.close()">✕ Fechar</button>
-      <button class="btn btn-primary" id="btn-print" disabled style="opacity:.6;cursor:not-allowed" onclick="window.print()">⏳ Carregando...</button>
+      <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
     </div>
   </div>
   ${fichas || '<div class="ficha"><p>Nenhuma reserva encontrada.</p></div>'}
 </div>
-<script>
-  window.addEventListener('load', function() {
-    var btn = document.getElementById('btn-print');
-    btn.disabled = false;
-    btn.style.opacity = '1';
-    btn.style.cursor = 'pointer';
-    btn.textContent = '🖨️ Imprimir / Salvar PDF';
-  });
-</script>
 </body></html>`;
 }
 
