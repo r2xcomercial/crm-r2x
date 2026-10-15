@@ -10436,7 +10436,7 @@ function _fichaHtml(rows, empNome, titulo, baseUrl, token) {
             return `<div class="doc-item"><img src="${dataUri}" style="max-width:100%;max-height:280px;border-radius:4px;border:1px solid #ddd"/><div class="doc-label">${s(doc.tipo)} — ${nome} <a href="${dataUri}" download="${nome}" style="font-size:10px;color:#1a56db;margin-left:4px">⬇ baixar</a></div></div>`;
           }
           if (mime === 'application/pdf') {
-            return `<div class="doc-item doc-file"><embed src="${dataUri}" type="application/pdf" style="width:100%;height:260px;border-radius:4px;border:1px solid #ddd"/><div class="doc-label">${s(doc.tipo)} — <a href="${dataUri}" download="${nome}" style="color:#1a56db;font-size:11px">⬇ ${nome}</a></div><div class="doc-print-link">📄 ${s(doc.tipo)}: ${nome} (PDF anexado)</div></div>`;
+            return `<div class="doc-item doc-file"><div class="doc-icon" style="font-size:36px">📄</div><div class="doc-label">${s(doc.tipo)}<br><span style="color:#555;font-size:11px">${nome}</span></div><a href="${dataUri}" download="${nome}" style="font-size:12px;color:#1a56db;font-weight:600">⬇ Baixar PDF</a></div>`;
           }
           return `<div class="doc-item doc-file"><div class="doc-icon">📄</div><div class="doc-label">${s(doc.tipo)}<br><span style="color:#555;font-size:11px">${nome}</span></div><a href="${dataUri}" download="${nome}" style="font-size:11px;color:#1a56db">⬇ Baixar</a></div>`;
         }).join('')
