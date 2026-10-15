@@ -25415,7 +25415,8 @@ function erAutoComplete(tipo, q) {
     const display = tipo === 'lead'
       ? i.nome + (i.cpf?' — '+i.cpf:'')
       : i.nome + (i.imobiliaria?' / '+i.imobiliaria:'');
-    return `<div onclick="erSelecionar('${tipo}',${i.id},${JSON.stringify(display)})"
+    const safeDisplay = JSON.stringify(display).replace(/"/g, '&quot;');
+    return `<div onclick="erSelecionar('${tipo}',${i.id},${safeDisplay})"
       style="padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid rgba(255,255,255,.05)"
       onmouseenter="this.style.background='var(--navy3)'" onmouseleave="this.style.background=''">${label}</div>`;
   }).join('');
