@@ -1028,11 +1028,11 @@ app.get("/api/empreendimentos/:id/unidades", (req, res) => {
   const rows = db.prepare(`
     SELECT u.*,
       (SELECT COUNT(*) FROM vagas_garagem vg WHERE vg.unidade_id = u.id) as num_vagas,
-      (SELECT v.id FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as venda_id,
-      (SELECT v.corretor_id FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as venda_corretor_id,
+      (SELECT v.id FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva','proposta','ativo') LIMIT 1) as venda_id,
+      (SELECT v.corretor_id FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva','proposta','ativo') LIMIT 1) as venda_corretor_id,
       (SELECT CASE WHEN v.comprovante_pix IS NOT NULL THEN 1 ELSE 0 END FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as tem_comprovante,
       (SELECT v.comprovante_prazo_expira_em FROM vendas v WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as comprovante_prazo_expira_em,
-      (SELECT l.nome FROM vendas v LEFT JOIN leads l ON l.id=v.lead_id WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva','proposta') LIMIT 1) as venda_lead_nome,
+      (SELECT l.nome FROM vendas v LEFT JOIN leads l ON l.id=v.lead_id WHERE v.unidade_id=u.id AND v.status IN ('pre_reserva','reserva','proposta','ativo') LIMIT 1) as venda_lead_nome,
       (SELECT COUNT(*) FROM reserva_fila rf WHERE rf.unidade_id=u.id AND rf.status IN ('aguardando','notificado')) as fila_qtd,
       u.fila_prioridade_ate,
       u.fila_prioridade_corretor_id
@@ -10442,6 +10442,40 @@ function _fichaHtml(rows, empNome, titulo, baseUrl) {
         </div>
       </div>
 
+      ${r.pessoa_juridica ? `
+      <div class="secao">
+        <div class="secao-titulo">Dados da Pessoa Jurídica</div>
+        <div class="grid2">
+          <div><b>Razão Social:</b> ${s(r.razao_social)}</div>
+          <div><b>CNPJ:</b> ${s(r.cnpj)}</div>
+          <div><b>Insc. Estadual:</b> ${s(r.inscricao_estadual)}</div>
+          <div><b>Insc. Municipal:</b> ${s(r.inscricao_municipal)}</div>
+        </div>
+        ${(r.representante_nome || r.representante_cpf || r.representante_rg || r.representante_cargo) ? `
+        <div style="margin-top:10px;padding-top:8px;border-top:1px solid #eee">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#555;margin-bottom:6px">Representante Legal</div>
+          <div class="grid2">
+            <div><b>Nome:</b> ${s(r.representante_nome)}</div>
+            <div><b>CPF:</b> ${s(r.representante_cpf)}</div>
+            <div><b>RG:</b> ${s(r.representante_rg)}</div>
+            <div><b>Cargo:</b> ${s(r.representante_cargo)}</div>
+          </div>
+        </div>` : ''}
+      </div>
+      <div class="secao">
+        <div class="secao-titulo">Dados do Contato / Sócio</div>
+        <div class="grid2">
+          <div><b>Nome:</b> ${s(r.lead_nome)}</div>
+          <div><b>CPF:</b> ${s(r.cpf)}</div>
+          <div><b>RG:</b> ${s(r.rg)}</div>
+          <div><b>Estado Civil:</b> ${s(r.estado_civil)}</div>
+          <div><b>Profissão:</b> ${s(r.profissao)}</div>
+          <div><b>Telefone:</b> ${s(r.telefone)}</div>
+          <div><b>E-mail:</b> ${s(r.email)}</div>
+          <div><b>Aniversário:</b> ${d(r.aniversario)}</div>
+        </div>
+        ${r.endereco ? `<div style="margin-top:8px"><b>Endereço:</b> ${[r.endereco, r.numero, r.complemento, r.bairro, r.cidade_lead, r.estado_lead, r.cep].filter(Boolean).join(', ')}</div>` : ''}
+      </div>` : `
       <div class="secao">
         <div class="secao-titulo">Dados do Cliente</div>
         <div class="grid2">
@@ -10457,8 +10491,7 @@ function _fichaHtml(rows, empNome, titulo, baseUrl) {
         ${r.endereco ? `<div style="margin-top:8px"><b>Endereço:</b> ${[r.endereco, r.numero, r.complemento, r.bairro, r.cidade_lead, r.estado_lead, r.cep].filter(Boolean).join(', ')}</div>` : ''}
         ${r.nome_pai ? `<div><b>Nome do Pai:</b> ${r.nome_pai}</div>` : ''}
         ${r.nome_mae ? `<div><b>Nome da Mãe:</b> ${r.nome_mae}</div>` : ''}
-        ${r.pessoa_juridica ? `<div style="margin-top:8px"><b>CNPJ:</b> ${s(r.cnpj)} — ${s(r.razao_social)}</div>` : ''}
-      </div>
+      </div>`}
 
       <div class="secao">
         <div class="secao-titulo">Condições de Pagamento</div>
@@ -10612,6 +10645,8 @@ app.get('/ficha/venda/:vendaId', autenticar, (req, res) => {
       l.nome as lead_nome, l.cpf, l.rg, l.estado_civil, l.profissao, l.telefone, l.email, l.aniversario,
       l.endereco, l.numero, l.complemento, l.bairro, l.cidade as cidade_lead, l.estado as estado_lead, l.cep,
       l.nome_pai, l.nome_mae, l.pessoa_juridica, l.cnpj, l.razao_social,
+      l.inscricao_estadual, l.inscricao_municipal,
+      l.representante_nome, l.representante_cpf, l.representante_rg, l.representante_cargo,
       c.nome as cor_nome, c.creci, c.telefone as cor_tel, c.imobiliaria
     FROM vendas v
     JOIN unidades u ON u.id = v.unidade_id
@@ -10641,6 +10676,8 @@ app.get('/fichas/:empId/todas', autenticar, (req, res) => {
       l.nome as lead_nome, l.cpf, l.rg, l.estado_civil, l.profissao, l.telefone, l.email, l.aniversario,
       l.endereco, l.numero, l.complemento, l.bairro, l.cidade as cidade_lead, l.estado as estado_lead, l.cep,
       l.nome_pai, l.nome_mae, l.pessoa_juridica, l.cnpj, l.razao_social,
+      l.inscricao_estadual, l.inscricao_municipal,
+      l.representante_nome, l.representante_cpf, l.representante_rg, l.representante_cargo,
       c.nome as cor_nome, c.creci, c.telefone as cor_tel, c.imobiliaria
     FROM vendas v
     JOIN unidades u ON u.id = v.unidade_id

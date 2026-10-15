@@ -1093,6 +1093,10 @@ function abrirSimulacao(unitId) {
 
   // Rodapé unificado
   const extraBtns = `${anexarPixBtn ? `<div style="padding:6px 16px 0">${anexarPixBtn}</div>` : ''}${cancelarPreResBtn ? `<div style="padding:6px 16px 0">${cancelarPreResBtn}</div>` : ''}${filaBtn ? `<div style="padding:6px 16px 0">${filaBtn}</div>` : ''}`;
+  const fichaBtn = (u.venda_id && ['admin','gestor','incorporador'].includes(_corretorPerfil))
+    ? `<button class="btn-sim" style="flex:1;background:rgba(94,234,212,.12);border:1px solid rgba(94,234,212,.3);color:#5eead4;font-size:12px;font-weight:700;cursor:pointer"
+        onclick="window.open('/ficha/venda/${u.venda_id}?token='+encodeURIComponent(_corretorToken||''),'_blank')">📋 Ficha Completa (PDF)</button>`
+    : '';
   const footerContent = showSimulacao
     ? `${reservarBtn ? `<div style="padding:10px 16px 4px">${reservarBtn}</div>` : ''}
       ${extraBtns}
@@ -1100,6 +1104,7 @@ function abrirSimulacao(unitId) {
       <div class="sim-foot" style="border-top:1px solid #0E1E68">
         <button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button>
         <button class="btn-sim primary" onclick="gerarPDFSimulacao(${unitId})">📄 Baixar proposta</button>
+        ${fichaBtn}
         ${propostaBtn}
       </div>
       <div class="sim-aviso">* Simulação sujeita a alterações. Consulte a equipe da R2X.</div>
@@ -1108,7 +1113,10 @@ function abrirSimulacao(unitId) {
     : `${reservarBtn ? `<div style="padding:10px 16px 4px">${reservarBtn}</div>` : ''}
       ${extraBtns}
       ${reservaBloqueadaMsg}
-      <div class="sim-foot"><button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button></div></div>`;
+      <div class="sim-foot">
+        <button class="btn-sim secondary" onclick="fecharSimulacao()">Fechar</button>
+        ${fichaBtn}
+      </div></div>`;
 
   const modalHtml = `<div class="sim-overlay" id="sim-overlay" onclick="if(event.target===this)fecharSimulacao()">
     <div class="sim-modal">
