@@ -3480,9 +3480,9 @@ app.post("/api/vendas/reserva-rapida", autenticar, (req, res) => {
   }
   // Admin/gestor: lead é opcional — pode reservar sem cliente
 
-  // Verificar janela do lançamento (se houver lançamento configurado para este empreendimento)
+  // Verificar janela do lançamento (admin e gestor passam sem restrição)
   const lancAtivo = _getLancAtivo(empreendimento_id);
-  if (lancAtivo) {
+  if (lancAtivo && !['admin','gestor'].includes(u?.perfil)) {
     if (lancAtivo.status === 'agendado') {
       const msLeft = Math.max(0, new Date(lancAtivo.data_hora_inicio) - Date.now());
       const h = Math.floor(msLeft / 3600000);
