@@ -25332,69 +25332,111 @@ async function enviarComprovanteUpload() {
 }
 
 async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) {
-  // Carrega leads e corretores em paralelo
-  const [leadsR, corretoresR] = await Promise.all([
-    get('/api/leads'),
-    get('/api/corretores'),
-  ]);
-  const leads = leadsR.data || [];
-  const corretores = corretoresR.data || [];
+  const [leadsR, corretoresR] = await Promise.all([get('/api/leads'), get('/api/corretores')]);
+  window._erLeads = leadsR.data || [];
+  window._erCorretores = corretoresR.data || [];
 
-  const optLeads = `<option value="">— Sem cliente —</option>` +
-    leads.map(l => `<option value="${l.id}" ${l.id === leadIdAtual ? 'selected' : ''}>${l.nome}${l.cpf ? ' — '+l.cpf : ''}</option>`).join('');
-  const optCorretores = `<option value="">— Sem corretor —</option>` +
-    corretores.map(c => `<option value="${c.id}" ${c.id === corretorIdAtual ? 'selected' : ''}>${c.nome}${c.imobiliaria ? ' / '+c.imobiliaria : ''}</option>`).join('');
+  const leadAtual = window._erLeads.find(l => l.id === leadIdAtual);
+  const corAtual  = window._erCorretores.find(c => c.id === corretorIdAtual);
 
   const html = `
     <div style="margin-top:14px;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:14px 16px" id="edit-reserva-form">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#fbbf24;margin-bottom:12px">✏️ Editar Reserva</div>
-      <div style="margin-bottom:10px">
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">👤 Cliente</label>
-        <input id="er-lead-busca" type="text" placeholder="Buscar cliente pelo nome ou CPF..." autocomplete="off"
-          style="width:100%;background:var(--navy3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;padding:8px 10px;box-sizing:border-box;margin-bottom:4px"
-          oninput="erFiltrarLeads(this.value)">
-        <select id="er-lead-id" style="width:100%;background:var(--navy3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;padding:8px 10px;box-sizing:border-box">
-          ${optLeads}
-        </select>
-      </div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#fbbf24;margin-bottom:14px">✏️ Editar Reserva</div>
+
       <div style="margin-bottom:12px">
-        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px">🏷️ Corretor</label>
-        <select id="er-corretor-id" style="width:100%;background:var(--navy3);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;padding:8px 10px;box-sizing:border-box">
-          ${optCorretores}
-        </select>
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px">👤 Cliente</label>
+        <div style="position:relative">
+          <input id="er-lead-input" type="text" placeholder="Digite nome ou CPF..." autocomplete="off"
+            value="${leadAtual ? leadAtual.nome + (leadAtual.cpf ? ' — '+leadAtual.cpf : '') : ''}"
+            style="width:100%;box-sizing:border-box;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:9px 32px 9px 10px"
+            oninput="erAutoComplete('lead',this.value)" onfocus="erAutoComplete('lead',this.value)">
+          <button onclick="erLimpar('lead')" title="Limpar" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text2);cursor:pointer;font-size:14px;padding:2px">✕</button>
+          <div id="er-lead-lista" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--navy2);border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
+        </div>
+        <input type="hidden" id="er-lead-id" value="${leadIdAtual||''}">
       </div>
+
+      <div style="margin-bottom:14px">
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px">🏷️ Corretor</label>
+        <div style="position:relative">
+          <input id="er-cor-input" type="text" placeholder="Digite nome ou imobiliária..." autocomplete="off"
+            value="${corAtual ? corAtual.nome + (corAtual.imobiliaria ? ' / '+corAtual.imobiliaria : '') : ''}"
+            style="width:100%;box-sizing:border-box;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:9px 32px 9px 10px"
+            oninput="erAutoComplete('cor',this.value)" onfocus="erAutoComplete('cor',this.value)">
+          <button onclick="erLimpar('cor')" title="Limpar" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text2);cursor:pointer;font-size:14px;padding:2px">✕</button>
+          <div id="er-cor-lista" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--navy2);border:1px solid var(--border);border-radius:8px;max-height:200px;overflow-y:auto;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
+        </div>
+        <input type="hidden" id="er-cor-id" value="${corretorIdAtual||''}">
+      </div>
+
       <div style="display:flex;gap:8px">
         <button onclick="document.getElementById('edit-reserva-form').remove()"
-          style="flex:1;padding:8px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;font-weight:600">Cancelar</button>
+          style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;cursor:pointer;font-weight:600">Cancelar</button>
         <button onclick="salvarEdicaoReserva(${vendaId},${empId})"
-          style="flex:1;padding:8px;border-radius:7px;border:none;background:#fbbf24;color:#1a1a1a;font-size:12px;cursor:pointer;font-weight:700">💾 Salvar</button>
+          style="flex:2;padding:9px;border-radius:8px;border:none;background:#fbbf24;color:#1a1a1a;font-size:13px;cursor:pointer;font-weight:700">💾 Salvar alterações</button>
       </div>
-      <div id="er-msg" style="font-size:12px;margin-top:6px;min-height:16px"></div>
+      <div id="er-msg" style="font-size:12px;margin-top:8px;min-height:16px"></div>
     </div>`;
 
-  // Guarda lista de leads para filtro
-  window._erLeads = leads;
-  window._erOptLeads = optLeads;
-
   const card = document.getElementById('modal-body');
-  if (card) card.insertAdjacentHTML('beforeend', html);
+  if (card) {
+    card.insertAdjacentHTML('beforeend', html);
+    // Fecha dropdown ao clicar fora
+    document.addEventListener('click', function _erClickOut(e) {
+      if (!document.getElementById('edit-reserva-form')?.contains(e.target)) {
+        ['er-lead-lista','er-cor-lista'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display='none'; });
+        document.removeEventListener('click', _erClickOut);
+      }
+    });
+  }
 }
 
-function erFiltrarLeads(q) {
-  const sel = document.getElementById('er-lead-id');
-  if (!sel) return;
-  const leads = window._erLeads || [];
-  const lq = q.toLowerCase();
-  const filtrados = q.length < 2 ? leads : leads.filter(l =>
-    (l.nome||'').toLowerCase().includes(lq) || (l.cpf||'').includes(lq)
-  );
-  sel.innerHTML = `<option value="">— Sem cliente —</option>` +
-    filtrados.map(l => `<option value="${l.id}">${l.nome}${l.cpf ? ' — '+l.cpf : ''}</option>`).join('');
+function erAutoComplete(tipo, q) {
+  const lista = document.getElementById(`er-${tipo}-lista`);
+  if (!lista) return;
+  const items = tipo === 'lead' ? (window._erLeads||[]) : (window._erCorretores||[]);
+  const lq = q.trim().toLowerCase();
+  const filtrados = lq.length < 1 ? items.slice(0,20) : items.filter(i => {
+    const texto = tipo === 'lead'
+      ? ((i.nome||'') + ' ' + (i.cpf||'')).toLowerCase()
+      : ((i.nome||'') + ' ' + (i.imobiliaria||'')).toLowerCase();
+    return texto.includes(lq);
+  }).slice(0, 30);
+
+  const semOpcao = `<div onclick="erSelecionar('${tipo}',null,'— Sem ${tipo==='lead'?'cliente':'corretor'} —')"
+    style="padding:9px 12px;cursor:pointer;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border)"
+    onmouseenter="this.style.background='var(--navy3)'" onmouseleave="this.style.background=''">✕ Sem ${tipo==='lead'?'cliente':'corretor'}</div>`;
+
+  lista.innerHTML = semOpcao + filtrados.map(i => {
+    const label = tipo === 'lead'
+      ? `<b>${i.nome}</b>${i.cpf?`<span style="color:var(--text2);font-size:11px"> — ${i.cpf}</span>`:''}`
+      : `<b>${i.nome}</b>${i.imobiliaria?`<span style="color:var(--text2);font-size:11px"> / ${i.imobiliaria}</span>`:''}`;
+    const display = tipo === 'lead'
+      ? i.nome + (i.cpf?' — '+i.cpf:'')
+      : i.nome + (i.imobiliaria?' / '+i.imobiliaria:'');
+    return `<div onclick="erSelecionar('${tipo}',${i.id},${JSON.stringify(display)})"
+      style="padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid rgba(255,255,255,.05)"
+      onmouseenter="this.style.background='var(--navy3)'" onmouseleave="this.style.background=''">${label}</div>`;
+  }).join('');
+
+  lista.style.display = filtrados.length || true ? 'block' : 'none';
+}
+
+function erSelecionar(tipo, id, display) {
+  document.getElementById(`er-${tipo}-id`).value = id || '';
+  document.getElementById(`er-${tipo}-input`).value = id ? display : '';
+  document.getElementById(`er-${tipo}-lista`).style.display = 'none';
+}
+
+function erLimpar(tipo) {
+  document.getElementById(`er-${tipo}-id`).value = '';
+  document.getElementById(`er-${tipo}-input`).value = '';
+  document.getElementById(`er-${tipo}-lista`).style.display = 'none';
 }
 
 async function salvarEdicaoReserva(vendaId, empId) {
   const leadId = document.getElementById('er-lead-id')?.value || null;
-  const corretorId = document.getElementById('er-corretor-id')?.value || null;
+  const corretorId = document.getElementById('er-cor-id')?.value || null;
   const msg = document.getElementById('er-msg');
   if (msg) msg.textContent = 'Salvando...';
   const r = await fetch(`/api/admin/vendas/${vendaId}/editar-reserva`, {
