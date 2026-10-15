@@ -10424,14 +10424,8 @@ function _fichaHtml(rows, empNome, titulo, baseUrl, token) {
   const fichas = rows.map((r, i) => {
     const docs = r._docs || [];
     const tkParam = token ? `?token=${encodeURIComponent(token)}` : '';
-    const zipUrl = r.venda_id ? `${baseUrl}/fichas/documentos-zip/${r.venda_id}${tkParam}` : null;
-    const docsHtml = docs.length ? `
-      <div class="secao">
-        <div class="secao-titulo" style="display:flex;align-items:center;justify-content:space-between">
-          <span>Documentos Anexados</span>
-          ${zipUrl ? `<a href="${zipUrl}" download style="font-size:11px;font-weight:700;color:#1a56db;text-decoration:none;background:#e8f0fe;border:1px solid #c5d6f8;border-radius:6px;padding:4px 10px;white-space:nowrap">📥 Baixar todos (ZIP)</a>` : ''}
-        </div>
-        <div class="docs-grid">${docs.map(doc => {
+    const zipUrl = docs.length > 0 && r.venda_id ? `${baseUrl}/fichas/documentos-zip/${r.venda_id}${tkParam}` : null;
+    const docsConteudo = docs.length ? docs.map(doc => {
           if (!doc.dados) return `<div class="doc-item doc-file"><div class="doc-icon">📄</div><div class="doc-label">${s(doc.tipo)}<br><span style="color:#999;font-size:11px">${s(doc.nome_original)}</span></div><span style="font-size:11px;color:#999">Indisponível</span></div>`;
           const buf = Buffer.isBuffer(doc.dados) ? doc.dados : Buffer.from(doc.dados, 'base64');
           const b64 = buf.toString('base64');
@@ -10445,8 +10439,18 @@ function _fichaHtml(rows, empNome, titulo, baseUrl, token) {
             return `<div class="doc-item doc-file"><embed src="${dataUri}" type="application/pdf" style="width:100%;height:260px;border-radius:4px;border:1px solid #ddd"/><div class="doc-label">${s(doc.tipo)} — <a href="${dataUri}" download="${nome}" style="color:#1a56db;font-size:11px">⬇ ${nome}</a></div><div class="doc-print-link">📄 ${s(doc.tipo)}: ${nome} (PDF anexado)</div></div>`;
           }
           return `<div class="doc-item doc-file"><div class="doc-icon">📄</div><div class="doc-label">${s(doc.tipo)}<br><span style="color:#555;font-size:11px">${nome}</span></div><a href="${dataUri}" download="${nome}" style="font-size:11px;color:#1a56db">⬇ Baixar</a></div>`;
-        }).join('')}</div>
-      </div>` : '';
+        }).join('')
+      : (r.lead_id
+          ? `<p style="font-size:12px;color:#888;margin:0">Nenhum documento enviado para este cliente.</p>`
+          : `<p style="font-size:12px;color:#c0392b;margin:0">⚠️ Nenhum cliente vinculado a esta reserva — vincule um cliente via <b>Editar Reserva</b> para os documentos aparecerem.</p>`);
+    const docsHtml = `
+      <div class="secao">
+        <div class="secao-titulo" style="display:flex;align-items:center;justify-content:space-between">
+          <span>Documentos Anexados</span>
+          ${zipUrl ? `<a href="#" onclick="this.href='${baseUrl}/fichas/documentos-zip/${r.venda_id}${tkParam}&_='+Date.now();return true;" style="font-size:11px;font-weight:700;color:#1a56db;text-decoration:none;background:#e8f0fe;border:1px solid #c5d6f8;border-radius:6px;padding:4px 10px;white-space:nowrap">📥 Baixar todos (ZIP)</a>` : ''}
+        </div>
+        <div class="docs-grid">${docsConteudo}</div>
+      </div>`;
 
     // Condicao de pagamento — parseia JSON completo com parcelas
     let condObj = null;
