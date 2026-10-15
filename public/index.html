@@ -13179,7 +13179,7 @@ async function abrirUnidade(unidadeId, empId) {
           </div>
         </div>
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
-          ${reservaInfo.lead_id && ['admin','gestor'].includes(USUARIO.perfil) ? `<button onclick="closeModal();openLeadModal({id:${reservaInfo.lead_id}})"
+          ${reservaInfo.lead_id && ['admin','gestor'].includes(USUARIO.perfil) ? `<button onclick="editLead(${reservaInfo.lead_id})"
             style="flex:1;min-width:140px;padding:7px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;font-weight:600">
             📂 Ficha do cliente</button>` : ''}
           ${reservaInfo.id ? `<button onclick="window.open('/ficha/venda/${reservaInfo.id}?token='+encodeURIComponent(TOKEN),'_blank')"
@@ -25391,6 +25391,24 @@ async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) 
         <div id="er-condicao-preview" style="font-size:11px;color:var(--text2);margin-top:5px;min-height:14px"></div>
       </div>` : ''}
 
+      ${vendaAtual.lead_id ? `<div style="margin-bottom:14px">
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px">📎 Documentos do Cliente</label>
+        <div id="er-docs-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px">
+          <span style="font-size:11px;color:var(--text2)">Carregando...</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="er-doc-tipo" style="flex:1;background:var(--navy2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;padding:6px 8px">
+            <option value="cnh">CNH / RG</option>
+            <option value="comprovante_residencia">Comprovante de Residência</option>
+            <option value="outro">Outro</option>
+          </select>
+          <label style="flex:1;padding:6px 10px;border-radius:7px;border:1px dashed var(--border);background:var(--navy2);color:var(--text2);font-size:12px;cursor:pointer;text-align:center;white-space:nowrap">
+            📤 Anexar
+            <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style="display:none" onchange="erUploadDoc(${vendaAtual.lead_id},this)">
+          </label>
+        </div>
+      </div>` : ''}
+
       <div style="display:flex;gap:8px">
         <button onclick="document.getElementById('edit-reserva-form').remove()"
           style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;cursor:pointer;font-weight:600">Cancelar</button>
@@ -25429,6 +25447,8 @@ async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) 
       selCp.addEventListener('change', updatePreview);
       updatePreview();
     }
+    // Carregar documentos do cliente
+    if (vendaAtual.lead_id) erCarregarDocs(vendaAtual.lead_id);
   }
 }
 
@@ -25490,6 +25510,49 @@ function erLimpar(tipo) {
   document.getElementById(`er-${tipo}-id`).value = '';
   document.getElementById(`er-${tipo}-input`).value = '';
   document.getElementById(`er-${tipo}-lista`).style.display = 'none';
+}
+
+async function erCarregarDocs(leadId) {
+  const el = document.getElementById('er-docs-list');
+  if (!el) return;
+  const r = await get(`/api/leads/${leadId}/documentos`);
+  if (!r.ok) { el.innerHTML = '<span style="font-size:11px;color:var(--danger)">Erro ao carregar documentos</span>'; return; }
+  const docs = r.data || [];
+  const labels = { cnh: 'CNH / RG', comprovante_residencia: 'Comp. Residência', outro: 'Outro' };
+  if (!docs.length) {
+    el.innerHTML = '<span style="font-size:11px;color:var(--text2)">Nenhum documento anexado.</span>';
+    return;
+  }
+  el.innerHTML = docs.map(d => `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--navy2);border-radius:7px;border:1px solid var(--border)">
+      <span style="font-size:16px">${(d.mime_type||'').includes('pdf') ? '📄' : '🖼️'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:700;color:var(--text)">${labels[d.tipo]||d.tipo}</div>
+        <div style="font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.nome_original||'arquivo'}</div>
+      </div>
+      <a href="/api/leads/documentos/${d.id}/arquivo?token=${encodeURIComponent(TOKEN)}" target="_blank"
+        style="font-size:11px;color:var(--accent);text-decoration:none;white-space:nowrap">👁 Ver</a>
+      <button onclick="erExcluirDoc(${d.id},${leadId})"
+        style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#f87171;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;white-space:nowrap">🗑 Excluir</button>
+    </div>`).join('');
+}
+
+async function erExcluirDoc(docId, leadId) {
+  if (!confirm('Excluir este documento?')) return;
+  const r = await fetch(`/api/leads/documentos/${docId}`, { method: 'DELETE', headers: { 'x-crm-token': TOKEN } });
+  if (r.ok) { toast('Documento excluído'); erCarregarDocs(leadId); }
+  else { const j = await r.json().catch(()=>({})); toast(j.error || 'Erro ao excluir', 'error'); }
+}
+
+async function erUploadDoc(leadId, input) {
+  const file = input.files[0];
+  if (!file) return;
+  const tipo = document.getElementById('er-doc-tipo')?.value || 'outro';
+  toast('Enviando documento...', 'info');
+  await _uploadDocLead(leadId, file, tipo);
+  await erCarregarDocs(leadId);
+  toast('Documento salvo!');
+  input.value = '';
 }
 
 async function salvarEdicaoReserva(vendaId, empId) {

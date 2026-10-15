@@ -3751,6 +3751,13 @@ app.get('/api/leads/documentos/:docId/arquivo', autenticar, (req, res) => {
   }
 });
 
+app.delete('/api/leads/documentos/:docId', autenticar, soAdmin, (req, res) => {
+  const doc = db.prepare(`SELECT id FROM documentos_lead WHERE id=?`).get(parseInt(req.params.docId));
+  if (!doc) return err(res, 'Documento não encontrado', 404);
+  db.prepare(`DELETE FROM documentos_lead WHERE id=?`).run(parseInt(req.params.docId));
+  ok(res, { ok: true });
+});
+
 // ─── JOB: cancela pré-reservas expiradas + avança fila de prioridade ──────────
 function _avancarFila(unidadeId) {
   const proximo = db.prepare(
