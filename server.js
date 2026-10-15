@@ -10393,9 +10393,14 @@ function _fichaHtml(rows, empNome, titulo, baseUrl, token) {
 
   const fichas = rows.map((r, i) => {
     const docs = r._docs || [];
+    const tkParam = token ? `?token=${encodeURIComponent(token)}` : '';
+    const zipUrl = r.venda_id ? `${baseUrl}/fichas/documentos-zip/${r.venda_id}${tkParam}` : null;
     const docsHtml = docs.length ? `
       <div class="secao">
-        <div class="secao-titulo">Documentos Anexados</div>
+        <div class="secao-titulo" style="display:flex;align-items:center;justify-content:space-between">
+          <span>Documentos Anexados</span>
+          ${zipUrl ? `<a href="${zipUrl}" download style="font-size:11px;font-weight:700;color:#1a56db;text-decoration:none;background:#e8f0fe;border:1px solid #c5d6f8;border-radius:6px;padding:4px 10px;white-space:nowrap">📥 Baixar todos (ZIP)</a>` : ''}
+        </div>
         <div class="docs-grid">${docs.map(doc => {
           if (!doc.dados) return `<div class="doc-item doc-file"><div class="doc-icon">📄</div><div class="doc-label">${s(doc.tipo)}<br><span style="color:#999;font-size:11px">${s(doc.nome_original)}</span></div><span style="font-size:11px;color:#999">Indisponível</span></div>`;
           const buf = Buffer.isBuffer(doc.dados) ? doc.dados : Buffer.from(doc.dados, 'base64');
@@ -10404,7 +10409,7 @@ function _fichaHtml(rows, empNome, titulo, baseUrl, token) {
           const dataUri = `data:${mime};base64,${b64}`;
           const nome = s(doc.nome_original);
           if (mime.startsWith('image/')) {
-            return `<div class="doc-item"><img src="${dataUri}" style="max-width:100%;max-height:280px;border-radius:4px;border:1px solid #ddd"/><div class="doc-label">${s(doc.tipo)} — ${nome}</div></div>`;
+            return `<div class="doc-item"><img src="${dataUri}" style="max-width:100%;max-height:280px;border-radius:4px;border:1px solid #ddd"/><div class="doc-label">${s(doc.tipo)} — ${nome} <a href="${dataUri}" download="${nome}" style="font-size:10px;color:#1a56db;margin-left:4px">⬇ baixar</a></div></div>`;
           }
           if (mime === 'application/pdf') {
             return `<div class="doc-item doc-file"><embed src="${dataUri}" type="application/pdf" style="width:100%;height:260px;border-radius:4px;border:1px solid #ddd"/><div class="doc-label">${s(doc.tipo)} — <a href="${dataUri}" download="${nome}" style="color:#1a56db;font-size:11px">⬇ ${nome}</a></div></div>`;
@@ -10722,6 +10727,48 @@ app.get('/fichas/:empId/todas', autenticar, (req, res) => {
   const base = `${req.protocol}://${req.get('host')}`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.send(_fichaHtml(rows, emp.nome, `Fichas de Reserva — ${emp.nome}`, base, req.query.token));
+});
+
+// GET /fichas/documentos-zip/:vendaId — baixa ZIP com todos os documentos do lead
+app.get('/fichas/documentos-zip/:vendaId', autenticar, (req, res) => {
+  const u = req.usuario;
+  if (!u || !['admin','gestor','incorporador'].includes(u.perfil)) return res.status(403).send('Acesso restrito');
+  const vendaId = parseInt(req.params.vendaId);
+  const row = db.prepare(`
+    SELECT v.lead_id, u.quadra, u.lote, l.nome as lead_nome
+    FROM vendas v
+    JOIN unidades u ON u.id = v.unidade_id
+    LEFT JOIN leads l ON l.id = v.lead_id
+    WHERE v.id = ?
+  `).get(vendaId);
+  if (!row) return res.status(404).send('Reserva não encontrada');
+  if (!row.lead_id) return res.status(400).send('Sem cliente vinculado');
+  const docs = db.prepare("SELECT tipo, nome_original, mime_type, dados FROM documentos_lead WHERE lead_id=? ORDER BY criado_em ASC").all(row.lead_id);
+  if (!docs.length) return res.status(404).send('Nenhum documento encontrado');
+  const PizZip = require('pizzip');
+  const zip = new PizZip();
+  const usedNames = {};
+  docs.forEach(doc => {
+    if (!doc.dados) return;
+    const buf = Buffer.isBuffer(doc.dados) ? doc.dados : Buffer.from(doc.dados, 'base64');
+    const tipo = (doc.tipo || 'documento').replace(/[/\\:*?"<>|]/g, '_');
+    const nomOrig = doc.nome_original || `${tipo}.bin`;
+    let fname = `${tipo}_${nomOrig}`.replace(/[/\\:*?"<>|]/g, '_');
+    if (usedNames[fname]) {
+      const ext = fname.lastIndexOf('.') > 0 ? fname.slice(fname.lastIndexOf('.')) : '';
+      const base2 = fname.slice(0, fname.lastIndexOf('.') > 0 ? fname.lastIndexOf('.') : fname.length);
+      usedNames[fname]++;
+      fname = `${base2}_${usedNames[fname]}${ext}`;
+    } else { usedNames[fname] = 1; }
+    zip.file(fname, buf);
+  });
+  const content = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+  const nomeLead = (row.lead_nome || 'cliente').replace(/[^\w\sÀ-ÿ]/g, '').replace(/\s+/g, '_');
+  const loteRef = `${row.quadra ? 'Q' + row.quadra + '_' : ''}L${row.lote}`;
+  const zipName = `Documentos_${loteRef}_${nomeLead}.zip`;
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
+  res.send(content);
 });
 
 app.listen(PORT, () => {
