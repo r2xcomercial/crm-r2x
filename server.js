@@ -10666,7 +10666,7 @@ app.get('/fichas/:empId', autenticar, (req, res) => {
       <td>${r.cor_nome || '—'} ${r.creci ? `(${r.creci})` : ''}</td>
       <td>${statusLabel[r.status] || r.status}</td>
       <td>${fmt(r.valor_total || r.valor)}</td>
-      <td><a href="/ficha/venda/${r.venda_id}?token=${tk}" target="_blank" style="color:#2563eb;font-weight:700;text-decoration:none">📋 Abrir ficha →</a></td>
+      <td><a href="#" onclick="this.href='/ficha/venda/${r.venda_id}?token=${tk}&_='+Date.now();return true;" target="_blank" style="color:#2563eb;font-weight:700;text-decoration:none">📋 Abrir ficha →</a></td>
     </tr>`).join('');
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -10732,7 +10732,9 @@ app.get('/ficha/venda/:vendaId', autenticar, (req, res) => {
   else row._docs = [];
   const base = `${req.protocol}://${req.get('host')}`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.send(_fichaHtml([row], row.emp_nome, `Ficha — ${row.quadra ? `Q${row.quadra} ` : ''}L${row.lote} | ${row.lead_nome || 'Sem cliente'}`, base, req.query.token));
 });
 

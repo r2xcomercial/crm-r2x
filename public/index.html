@@ -13182,7 +13182,7 @@ async function abrirUnidade(unidadeId, empId) {
           ${reservaInfo.lead_id && ['admin','gestor'].includes(USUARIO.perfil) ? `<button onclick="editLead(${reservaInfo.lead_id})"
             style="flex:1;min-width:140px;padding:7px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;font-weight:600">
             📂 Ficha do cliente</button>` : ''}
-          ${reservaInfo.id ? `<button onclick="window.open('/ficha/venda/${reservaInfo.id}?token='+encodeURIComponent(TOKEN),'_blank')"
+          ${reservaInfo.id ? `<button onclick="window.open('/ficha/venda/${reservaInfo.id}?token='+encodeURIComponent(TOKEN)+'&_='+Date.now(),'_blank')"
             style="flex:1;min-width:140px;padding:7px;border-radius:7px;border:none;background:var(--accent);color:var(--navy);font-size:12px;cursor:pointer;font-weight:700">
             📋 Ficha Completa (PDF)</button>` : ''}
           ${USUARIO.perfil === 'admin' && reservaInfo.id ? `<button onclick="abrirEdicaoReserva(${reservaInfo.id},${reservaInfo.lead_id||'null'},${reservaInfo.corretor_id||'null'},${empId})"
