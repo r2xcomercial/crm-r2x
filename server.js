@@ -10363,7 +10363,7 @@ app.put('/api/carteira/parcela/:id', autenticar, (req, res) => {
 
 // ─── FICHAS DE RESERVA (HTML printável → PDF) ────────────────────────────────
 
-function _fichaHtml(rows, empNome, titulo, baseUrl) {
+function _fichaHtml(rows, empNome, titulo, baseUrl, token) {
   const fmt = v => v != null ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v) : '—';
   const d = (v) => v ? new Date(v).toLocaleDateString('pt-BR') : '—';
   const s = (v) => v || '—';
@@ -10380,7 +10380,8 @@ function _fichaHtml(rows, empNome, titulo, baseUrl) {
             const b64 = Buffer.from(doc.dados).toString('base64');
             return `<div class="doc-item"><img src="data:${doc.mime_type};base64,${b64}" style="max-width:100%;max-height:280px;border-radius:4px;border:1px solid #ddd"/><div class="doc-label">${s(doc.tipo)} — ${s(doc.nome_original)}</div></div>`;
           }
-          return `<div class="doc-item doc-file"><div class="doc-icon">📄</div><div class="doc-label">${s(doc.tipo)}<br><span style="color:#555;font-size:11px">${s(doc.nome_original)}</span></div><a href="${baseUrl}/api/leads/${r.lead_id}/documentos/${doc.id}/download" target="_blank" style="font-size:11px;color:#1a56db">Baixar</a></div>`;
+          const tkParam = token ? `?token=${encodeURIComponent(token)}` : '';
+          return `<div class="doc-item doc-file"><div class="doc-icon">📄</div><div class="doc-label">${s(doc.tipo)}<br><span style="color:#555;font-size:11px">${s(doc.nome_original)}</span></div><a href="${baseUrl}/api/leads/documentos/${doc.id}/arquivo${tkParam}" target="_blank" style="font-size:11px;color:#1a56db">Baixar</a></div>`;
         }).join('')}</div>
       </div>` : '';
 
@@ -10660,7 +10661,7 @@ app.get('/ficha/venda/:vendaId', autenticar, (req, res) => {
   else row._docs = [];
   const base = `${req.protocol}://${req.get('host')}`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(_fichaHtml([row], row.emp_nome, `Ficha — ${row.quadra ? `Q${row.quadra} ` : ''}L${row.lote} | ${row.lead_nome || 'Sem cliente'}`, base));
+  res.send(_fichaHtml([row], row.emp_nome, `Ficha — ${row.quadra ? `Q${row.quadra} ` : ''}L${row.lote} | ${row.lead_nome || 'Sem cliente'}`, base, req.query.token));
 });
 
 // GET /fichas/:empId/todas — todas as fichas em uma página (admin/incorporador, para impressão em lote)
@@ -10692,7 +10693,7 @@ app.get('/fichas/:empId/todas', autenticar, (req, res) => {
   });
   const base = `${req.protocol}://${req.get('host')}`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(_fichaHtml(rows, emp.nome, `Fichas de Reserva — ${emp.nome}`, base));
+  res.send(_fichaHtml(rows, emp.nome, `Fichas de Reserva — ${emp.nome}`, base, req.query.token));
 });
 
 app.listen(PORT, () => {
