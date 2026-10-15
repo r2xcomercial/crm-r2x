@@ -3644,6 +3644,28 @@ app.delete('/api/pre-reserva/:vendaId', autenticar, (req, res) => {
   ok(res, { ok: true });
 });
 
+// PATCH /api/admin/vendas/:id/editar-reserva — altera cliente e/ou corretor sem cancelar (só admin)
+app.patch('/api/admin/vendas/:id/editar-reserva', autenticar, soAdmin, (req, res) => {
+  const vendaId = parseInt(req.params.id);
+  const { lead_id, corretor_id } = req.body;
+  const venda = db.prepare("SELECT id, lead_id, corretor_id, unidade_id, empreendimento_id, status FROM vendas WHERE id=?").get(vendaId);
+  if (!venda) return err(res, 'Venda não encontrada', 404);
+  if (!['pre_reserva','reserva','proposta','ativo'].includes(venda.status)) return err(res, 'Esta venda não pode ser editada', 400);
+
+  const novoLead = lead_id != null ? parseInt(lead_id) || null : venda.lead_id;
+  const novoCorretor = corretor_id != null ? parseInt(corretor_id) || null : venda.corretor_id;
+
+  // Valida lead se informado
+  if (novoLead && !db.prepare("SELECT id FROM leads WHERE id=?").get(novoLead)) return err(res, 'Cliente não encontrado', 404);
+  // Valida corretor se informado
+  if (novoCorretor && !db.prepare("SELECT id FROM corretores WHERE id=?").get(novoCorretor)) return err(res, 'Corretor não encontrado', 404);
+
+  db.prepare("UPDATE vendas SET lead_id=?, corretor_id=? WHERE id=?").run(novoLead, novoCorretor, vendaId);
+  _logUnidade(venda.unidade_id, venda.status, venda.status, req.usuario, vendaId, `Admin editou reserva: lead_id=${novoLead}, corretor_id=${novoCorretor}`);
+  _broadcastRefresh(venda.empreendimento_id);
+  ok(res, { ok: true });
+});
+
 // GET /api/vendas/:id/comprovante — baixar/visualizar o comprovante
 app.get('/api/vendas/:id/comprovante', autenticar, (req, res) => {
   const u = req.usuario;
