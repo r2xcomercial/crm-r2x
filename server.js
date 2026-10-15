@@ -3644,11 +3644,11 @@ app.delete('/api/pre-reserva/:vendaId', autenticar, (req, res) => {
   ok(res, { ok: true });
 });
 
-// PATCH /api/admin/vendas/:id/editar-reserva — altera cliente e/ou corretor sem cancelar (só admin)
+// PATCH /api/admin/vendas/:id/editar-reserva — altera cliente, corretor e/ou condição de pagamento sem cancelar (só admin)
 app.patch('/api/admin/vendas/:id/editar-reserva', autenticar, soAdmin, (req, res) => {
   const vendaId = parseInt(req.params.id);
-  const { lead_id, corretor_id } = req.body;
-  const venda = db.prepare("SELECT id, lead_id, corretor_id, unidade_id, empreendimento_id, status FROM vendas WHERE id=?").get(vendaId);
+  const { lead_id, corretor_id, condicao_proposta } = req.body;
+  const venda = db.prepare("SELECT id, lead_id, corretor_id, unidade_id, empreendimento_id, status, valor FROM vendas WHERE id=?").get(vendaId);
   if (!venda) return err(res, 'Venda não encontrada', 404);
   if (!['pre_reserva','reserva','proposta','ativo'].includes(venda.status)) return err(res, 'Esta venda não pode ser editada', 400);
 
@@ -3660,8 +3660,31 @@ app.patch('/api/admin/vendas/:id/editar-reserva', autenticar, soAdmin, (req, res
   // Valida corretor se informado
   if (novoCorretor && !db.prepare("SELECT id FROM corretores WHERE id=?").get(novoCorretor)) return err(res, 'Corretor não encontrado', 404);
 
-  db.prepare("UPDATE vendas SET lead_id=?, corretor_id=? WHERE id=?").run(novoLead, novoCorretor, vendaId);
-  _logUnidade(venda.unidade_id, venda.status, venda.status, req.usuario, vendaId, `Admin editou reserva: lead_id=${novoLead}, corretor_id=${novoCorretor}`);
+  let cpJson = undefined;
+  let novoValorTotal = undefined;
+  let novoStatus = venda.status;
+
+  if (condicao_proposta !== undefined) {
+    if (condicao_proposta === null) {
+      cpJson = null;
+      // sem condição → volta para reserva/pre_reserva se estava como proposta
+      if (venda.status === 'proposta') novoStatus = 'reserva';
+    } else {
+      cpJson = JSON.stringify(condicao_proposta);
+      novoValorTotal = condicao_proposta.valor_total || venda.valor;
+      // com condição → promove para proposta se era reserva/pre_reserva
+      if (['pre_reserva','reserva'].includes(venda.status)) novoStatus = 'proposta';
+    }
+  }
+
+  const updates = ["lead_id=?", "corretor_id=?", "status=?"];
+  const params = [novoLead, novoCorretor, novoStatus];
+  if (cpJson !== undefined) { updates.push("condicao_proposta=?"); params.push(cpJson); }
+  if (novoValorTotal !== undefined) { updates.push("valor_total=?"); params.push(novoValorTotal); }
+  params.push(vendaId);
+
+  db.prepare(`UPDATE vendas SET ${updates.join(',')} WHERE id=?`).run(...params);
+  _logUnidade(venda.unidade_id, venda.status, novoStatus, req.usuario, vendaId, `Admin editou reserva: lead_id=${novoLead}, corretor_id=${novoCorretor}, condicao=${cpJson ? 'definida' : 'removida'}`);
   _broadcastRefresh(venda.empreendimento_id);
   ok(res, { ok: true });
 });

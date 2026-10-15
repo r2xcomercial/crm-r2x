@@ -25332,9 +25332,16 @@ async function enviarComprovanteUpload() {
 }
 
 async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) {
-  const [leadsR, corretoresR] = await Promise.all([get('/api/leads'), get('/api/corretores')]);
+  const [leadsR, corretoresR, condicoesR, vendaR] = await Promise.all([
+    get('/api/leads'), get('/api/corretores'),
+    get(`/api/empreendimentos/${empId}/condicao-padrao`),
+    get(`/api/vendas/${vendaId}`)
+  ]);
   window._erLeads = leadsR.data || [];
   window._erCorretores = corretoresR.data || [];
+  window._erCondicoes = Array.isArray(condicoesR.data) ? condicoesR.data : [];
+  const vendaAtual = vendaR.data || {};
+  const cpAtual = vendaAtual.condicao_proposta;
 
   const leadAtual = window._erLeads.find(l => l.id === leadIdAtual);
   const corAtual  = window._erCorretores.find(c => c.id === corretorIdAtual);
@@ -25369,6 +25376,21 @@ async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) 
         <input type="hidden" id="er-cor-id" value="${corretorIdAtual||''}">
       </div>
 
+      ${window._erCondicoes && window._erCondicoes.length ? `<div style="margin-bottom:14px">
+        <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px">💳 Condição de Pagamento</label>
+        <select id="er-condicao-idx"
+          style="width:100%;box-sizing:border-box;background:var(--navy2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:9px 10px;appearance:none;-webkit-appearance:none">
+          <option value="">— Sem condição definida —</option>
+          ${window._erCondicoes.map((cp, idx) => {
+            const label = cp.nome || cp.descricao || (cp.parcelas && cp.parcelas.length ? `${cp.parcelas.length} parcela(s)` : `Condição ${idx+1}`);
+            const cpStr = JSON.stringify(cp);
+            const isAtual = cpAtual && JSON.stringify(cpAtual) === cpStr;
+            return `<option value="${idx}" ${isAtual?'selected':''}>${label}</option>`;
+          }).join('')}
+        </select>
+        <div id="er-condicao-preview" style="font-size:11px;color:var(--text2);margin-top:5px;min-height:14px"></div>
+      </div>` : ''}
+
       <div style="display:flex;gap:8px">
         <button onclick="document.getElementById('edit-reserva-form').remove()"
           style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;cursor:pointer;font-weight:600">Cancelar</button>
@@ -25389,6 +25411,24 @@ async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) 
         document.removeEventListener('click', _erClickOut);
       }
     });
+    // Preview da condição selecionada
+    const selCp = document.getElementById('er-condicao-idx');
+    if (selCp) {
+      const updatePreview = () => {
+        const prev = document.getElementById('er-condicao-preview');
+        if (!prev) return;
+        const idx = selCp.value;
+        if (idx === '') { prev.textContent = ''; return; }
+        const cp = (window._erCondicoes||[])[parseInt(idx)];
+        if (!cp) { prev.textContent = ''; return; }
+        const partes = [];
+        if (cp.valor_total) partes.push(`Total: R$ ${Number(cp.valor_total).toLocaleString('pt-BR',{minimumFractionDigits:2})}`);
+        if (cp.parcelas && cp.parcelas.length) partes.push(`${cp.parcelas.length} parcela(s)`);
+        prev.textContent = partes.join(' · ');
+      };
+      selCp.addEventListener('change', updatePreview);
+      updatePreview();
+    }
   }
 }
 
@@ -25457,10 +25497,21 @@ async function salvarEdicaoReserva(vendaId, empId) {
   const corretorId = document.getElementById('er-cor-id')?.value || null;
   const msg = document.getElementById('er-msg');
   if (msg) msg.textContent = 'Salvando...';
+
+  const body = {
+    lead_id: leadId ? parseInt(leadId) : null,
+    corretor_id: corretorId ? parseInt(corretorId) : null,
+  };
+  const selCp = document.getElementById('er-condicao-idx');
+  if (selCp) {
+    const idx = selCp.value;
+    body.condicao_proposta = idx !== '' ? ((window._erCondicoes||[])[parseInt(idx)] || null) : null;
+  }
+
   const r = await fetch(`/api/admin/vendas/${vendaId}/editar-reserva`, {
     method: 'PATCH',
     headers: { 'x-crm-token': TOKEN, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lead_id: leadId ? parseInt(leadId) : null, corretor_id: corretorId ? parseInt(corretorId) : null }),
+    body: JSON.stringify(body),
   });
   const j = await r.json().catch(() => ({}));
   if (r.ok) {
