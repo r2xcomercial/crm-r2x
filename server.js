@@ -10555,7 +10555,7 @@ app.get('/fichas/:empId', autenticar, (req, res) => {
 
   const statusLabel = { pre_reserva: 'Pré-reserva', reserva: 'Reserva', proposta: 'Proposta', aprovado: 'Aprovado', ativo: 'Ativo' };
   const fmt = v => v != null ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v) : '—';
-  const base = `${req.protocol}://${req.get('host')}`;
+  const tk = encodeURIComponent(req.query.token || '');
 
   const linhas = reservas.map(r => `
     <tr>
@@ -10565,7 +10565,7 @@ app.get('/fichas/:empId', autenticar, (req, res) => {
       <td>${r.cor_nome || '—'} ${r.creci ? `(${r.creci})` : ''}</td>
       <td>${statusLabel[r.status] || r.status}</td>
       <td>${fmt(r.valor_total || r.valor)}</td>
-      <td><a href="/ficha/venda/${r.venda_id}" target="_blank" style="color:#2563eb;font-weight:700;text-decoration:none">Abrir ficha →</a></td>
+      <td><a href="/ficha/venda/${r.venda_id}?token=${tk}" target="_blank" style="color:#2563eb;font-weight:700;text-decoration:none">📋 Abrir ficha →</a></td>
     </tr>`).join('');
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -10591,7 +10591,7 @@ app.get('/fichas/:empId', autenticar, (req, res) => {
     <h1>📋 Fichas de Reserva — ${emp.nome}</h1>
     <div style="display:flex;gap:10px;align-items:center">
       <span style="opacity:.7;font-size:12px">${reservas.length} lote(s) reservado(s)</span>
-      <a href="/fichas/${empId}/todas" target="_blank" class="btn btn-primary">🖨️ Exportar todas as fichas (PDF)</a>
+      <a href="/fichas/${empId}/todas?token=${tk}" target="_blank" class="btn btn-primary">🖨️ Exportar todas as fichas (PDF)</a>
     </div>
   </div>
   ${reservas.length ? `<table>
