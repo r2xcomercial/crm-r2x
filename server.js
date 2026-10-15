@@ -10397,13 +10397,19 @@ function _fichaHtml(rows, empNome, titulo, baseUrl, token) {
       <div class="secao">
         <div class="secao-titulo">Documentos Anexados</div>
         <div class="docs-grid">${docs.map(doc => {
-          const isImg = doc.mime_type && doc.mime_type.startsWith('image/');
-          if (isImg && doc.dados) {
-            const b64 = Buffer.from(doc.dados).toString('base64');
-            return `<div class="doc-item"><img src="data:${doc.mime_type};base64,${b64}" style="max-width:100%;max-height:280px;border-radius:4px;border:1px solid #ddd"/><div class="doc-label">${s(doc.tipo)} — ${s(doc.nome_original)}</div></div>`;
+          if (!doc.dados) return `<div class="doc-item doc-file"><div class="doc-icon">📄</div><div class="doc-label">${s(doc.tipo)}<br><span style="color:#999;font-size:11px">${s(doc.nome_original)}</span></div><span style="font-size:11px;color:#999">Indisponível</span></div>`;
+          const buf = Buffer.isBuffer(doc.dados) ? doc.dados : Buffer.from(doc.dados, 'base64');
+          const b64 = buf.toString('base64');
+          const mime = doc.mime_type || 'application/octet-stream';
+          const dataUri = `data:${mime};base64,${b64}`;
+          const nome = s(doc.nome_original);
+          if (mime.startsWith('image/')) {
+            return `<div class="doc-item"><img src="${dataUri}" style="max-width:100%;max-height:280px;border-radius:4px;border:1px solid #ddd"/><div class="doc-label">${s(doc.tipo)} — ${nome}</div></div>`;
           }
-          const tkParam = token ? `?token=${encodeURIComponent(token)}` : '';
-          return `<div class="doc-item doc-file"><div class="doc-icon">📄</div><div class="doc-label">${s(doc.tipo)}<br><span style="color:#555;font-size:11px">${s(doc.nome_original)}</span></div><a href="${baseUrl}/api/leads/documentos/${doc.id}/arquivo${tkParam}" target="_blank" style="font-size:11px;color:#1a56db">Baixar</a></div>`;
+          if (mime === 'application/pdf') {
+            return `<div class="doc-item doc-file"><embed src="${dataUri}" type="application/pdf" style="width:100%;height:260px;border-radius:4px;border:1px solid #ddd"/><div class="doc-label">${s(doc.tipo)} — <a href="${dataUri}" download="${nome}" style="color:#1a56db;font-size:11px">⬇ ${nome}</a></div></div>`;
+          }
+          return `<div class="doc-item doc-file"><div class="doc-icon">📄</div><div class="doc-label">${s(doc.tipo)}<br><span style="color:#555;font-size:11px">${nome}</span></div><a href="${dataUri}" download="${nome}" style="font-size:11px;color:#1a56db">⬇ Baixar</a></div>`;
         }).join('')}</div>
       </div>` : '';
 
