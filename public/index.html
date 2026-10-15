@@ -25449,7 +25449,7 @@ async function salvarEdicaoReserva(vendaId, empId) {
   const j = await r.json().catch(() => ({}));
   if (r.ok) {
     if (msg) { msg.style.color = '#4ade80'; msg.textContent = '✅ Salvo com sucesso!'; }
-    setTimeout(() => { closeModal(); if (typeof renderEspelho === 'function') renderEspelho(empId); }, 1000);
+    setTimeout(() => { closeModal(); if (typeof verEspelho === 'function') verEspelho(empId); }, 1000);
   } else {
     if (msg) { msg.style.color = '#f87171'; msg.textContent = '❌ ' + (j.error || 'Erro ao salvar'); }
   }
