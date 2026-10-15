@@ -15905,8 +15905,8 @@ async function renderIncorporadorPainel(aba = 'empreendimentos') {
       return `
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;margin-bottom:20px">
         ${kpiCard('🔴','Vendas', vendasAtivas.length, `VGV: ${fmt(vendasAtivas.reduce((s,v)=>s+(v.valor||0),0))}`, 'var(--success)')}
-        ${kpiCard('🟡','Reservas', vendasReserva.length, `${vendasReserva.filter(v=>v.status==='reserva').length} confirmadas`, 'var(--warning)')}
-        ${kpiCard('📊','Total Negócios', todasVendas.length, 'pré-reservas + reservas + vendas', 'var(--accent)')}
+        ${kpiCard('🟡','Reservas', vendasReserva.length, `VGV: ${fmt(vendasReserva.reduce((s,v)=>s+(v.valor||0),0))}`, 'var(--warning)')}
+        ${kpiCard('📊','Total Negócios', todasVendas.length, `VGV: ${fmt(todasVendas.reduce((s,v)=>s+(v.valor||0),0))}`, 'var(--accent)')}
       </div>
       <div class="table-card">
         <div class="table-header">
