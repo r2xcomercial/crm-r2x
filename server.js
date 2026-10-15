@@ -10444,7 +10444,7 @@ function _fichaHtml(rows, empNome, titulo, baseUrl, token) {
           ? `<p style="font-size:12px;color:#888;margin:0">Nenhum documento enviado para este cliente.</p>`
           : `<p style="font-size:12px;color:#c0392b;margin:0">⚠️ Nenhum cliente vinculado a esta reserva — vincule um cliente via <b>Editar Reserva</b> para os documentos aparecerem.</p>`);
     const docsHtml = `
-      <div class="secao">
+      <div class="secao secao-docs">
         <div class="secao-titulo" style="display:flex;align-items:center;justify-content:space-between">
           <span>Documentos Anexados</span>
           ${zipUrl ? `<a href="#" onclick="this.href='${baseUrl}/fichas/documentos-zip/${r.venda_id}${tkParam}&_='+Date.now();return true;" style="font-size:11px;font-weight:700;color:#1a56db;text-decoration:none;background:#e8f0fe;border:1px solid #c5d6f8;border-radius:6px;padding:4px 10px;white-space:nowrap">📥 Baixar todos (ZIP)</a>` : ''}
@@ -10620,10 +10620,9 @@ function _fichaHtml(rows, empNome, titulo, baseUrl, token) {
     .ficha { box-shadow: none; border-radius: 0; margin-bottom: 0; padding: 20px 24px; border: none; }
     .quebra { page-break-before: always; }
     a { color: #1a1a1a; text-decoration: none; }
-    embed { display: none !important; }
-    .doc-print-link { display: flex !important; }
+    .secao-docs { display: none !important; }
   }
-  .doc-print-link { display: none; align-items: center; gap: 6px; padding: 6px 10px; background: #f0f4fa; border: 1px solid #c5d6f8; border-radius: 6px; font-size: 11px; color: #1a56db; margin-top: 4px; }
+  .doc-print-link { display: none; }
 </style>
 </head><body>
 <div class="page-wrap">
