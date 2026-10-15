@@ -2116,7 +2116,7 @@ app.get("/api/unidades/:id/vagas", (req, res) => {
 
 app.get("/api/unidades/:id/reserva", autenticar, (req, res) => {
   const u = req.usuario;
-  if (!u || !['admin','gestor'].includes(u?.perfil)) return err(res, 'Acesso restrito', 403);
+  if (!u || !['admin','gestor','incorporador'].includes(u?.perfil)) return err(res, 'Acesso restrito', 403);
   const row = db.prepare(`
     SELECT v.id, v.status, v.criado_em, v.condicao_proposta,
            l.id AS lead_id, l.nome AS lead_nome, l.telefone AS lead_telefone, l.cpf AS lead_cpf,
@@ -6468,12 +6468,12 @@ app.get('/api/incorporador/painel', (req, res) => {
   // Detalhes por empreendimento
   const detalhes = empreendimentos.map(emp => {
     const vendas = db.prepare(`
-      SELECT v.id, v.data_venda, v.imovel, v.valor,
+      SELECT v.id, v.status, v.lead_id, v.unidade_id, v.empreendimento_id, v.data_venda, v.imovel, v.valor,
              v.comissao_corretor_pct, v.comissao_corretor_valor, v.comissao_corretor_status,
              v.comissao_corretor_data_pagamento, v.comissao_corretor_valor_pago,
              v.percentual_r2x, v.comissao_r2x,
+             l.nome as lead_nome,
              c.nome as corretor_nome, c.imobiliaria,
-             -- Status de recebimento da comissão R2X a partir de financeiro_entradas
              (SELECT CASE
                 WHEN COUNT(fe.id) = 0 THEN 'pendente'
                 WHEN SUM(CASE WHEN fe.status='recebido' THEN 1 ELSE 0 END) = COUNT(fe.id) THEN 'recebido'
@@ -6489,7 +6489,8 @@ app.get('/api/incorporador/painel', (req, res) => {
              ) as comissao_r2x_data_recebimento
       FROM vendas v
       LEFT JOIN corretores c ON c.id = v.corretor_id
-      WHERE v.empreendimento_id=? AND v.status='ativo'
+      LEFT JOIN leads l ON l.id = v.lead_id
+      WHERE v.empreendimento_id=? AND v.status IN ('pre_reserva','reserva','proposta','ativo')
       ORDER BY v.data_venda DESC
     `).all(emp.id);
 
