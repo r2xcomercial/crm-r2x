@@ -10534,12 +10534,16 @@ function _fichaHtml(rows, empNome, titulo, baseUrl, token) {
 
       <div class="secao">
         <div class="secao-titulo">Corretor Responsável</div>
-        <div class="grid2">
+        ${r.cor_nome ? `<div class="grid2">
           <div><b>Nome:</b> ${s(r.cor_nome)}</div>
           <div><b>CRECI:</b> ${s(r.creci)}</div>
           <div><b>Telefone:</b> ${s(r.cor_tel)}</div>
           <div><b>Imobiliária:</b> ${s(r.imobiliaria)}</div>
-        </div>
+          ${r.cor_cpf ? `<div><b>CPF:</b> ${s(r.cor_cpf)}</div>` : ''}
+          ${r.cor_email ? `<div><b>E-mail:</b> ${s(r.cor_email)}</div>` : ''}
+          ${r.cor_cidade ? `<div><b>Cidade/UF:</b> ${s(r.cor_cidade)}${r.cor_estado ? ' / '+r.cor_estado : ''}</div>` : ''}
+          ${r.cor_aniversario ? `<div><b>Aniversário:</b> ${d(r.cor_aniversario)}</div>` : ''}
+        </div>` : '<div style="color:#888;font-size:12px">Sem corretor vinculado</div>'}
       </div>
 
       ${r.observacoes ? `<div class="secao"><div class="secao-titulo">Observações</div><div>${r.observacoes}</div></div>` : ''}
@@ -10636,6 +10640,7 @@ app.get('/fichas/:empId', autenticar, (req, res) => {
     </tr>`).join('');
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
   res.send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Fichas — ${emp.nome}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -10681,7 +10686,8 @@ app.get('/ficha/venda/:vendaId', autenticar, (req, res) => {
       l.nome_pai, l.nome_mae, l.pessoa_juridica, l.cnpj, l.razao_social,
       l.inscricao_estadual, l.inscricao_municipal,
       l.representante_nome, l.representante_cpf, l.representante_rg, l.representante_cargo,
-      c.nome as cor_nome, c.creci, c.telefone as cor_tel, c.imobiliaria
+      c.nome as cor_nome, c.creci, c.telefone as cor_tel, c.imobiliaria,
+      c.cpf as cor_cpf, c.email as cor_email, c.cidade as cor_cidade, c.estado as cor_estado, c.aniversario as cor_aniversario
     FROM vendas v
     JOIN unidades u ON u.id = v.unidade_id
     JOIN empreendimentos e ON e.id = v.empreendimento_id
@@ -10694,6 +10700,7 @@ app.get('/ficha/venda/:vendaId', autenticar, (req, res) => {
   else row._docs = [];
   const base = `${req.protocol}://${req.get('host')}`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
   res.send(_fichaHtml([row], row.emp_nome, `Ficha — ${row.quadra ? `Q${row.quadra} ` : ''}L${row.lote} | ${row.lead_nome || 'Sem cliente'}`, base, req.query.token));
 });
 
@@ -10712,7 +10719,8 @@ app.get('/fichas/:empId/todas', autenticar, (req, res) => {
       l.nome_pai, l.nome_mae, l.pessoa_juridica, l.cnpj, l.razao_social,
       l.inscricao_estadual, l.inscricao_municipal,
       l.representante_nome, l.representante_cpf, l.representante_rg, l.representante_cargo,
-      c.nome as cor_nome, c.creci, c.telefone as cor_tel, c.imobiliaria
+      c.nome as cor_nome, c.creci, c.telefone as cor_tel, c.imobiliaria,
+      c.cpf as cor_cpf, c.email as cor_email, c.cidade as cor_cidade, c.estado as cor_estado, c.aniversario as cor_aniversario
     FROM vendas v
     JOIN unidades u ON u.id = v.unidade_id
     LEFT JOIN leads l ON l.id = v.lead_id
@@ -10726,6 +10734,7 @@ app.get('/fichas/:empId/todas', autenticar, (req, res) => {
   });
   const base = `${req.protocol}://${req.get('host')}`;
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
   res.send(_fichaHtml(rows, emp.nome, `Fichas de Reserva — ${emp.nome}`, base, req.query.token));
 });
 

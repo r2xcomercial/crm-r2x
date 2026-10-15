@@ -25404,24 +25404,40 @@ function erAutoComplete(tipo, q) {
     return texto.includes(lq);
   }).slice(0, 30);
 
-  const semOpcao = `<div onclick="erSelecionar('${tipo}',null,'— Sem ${tipo==='lead'?'cliente':'corretor'} —')"
-    style="padding:9px 12px;cursor:pointer;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border)"
-    onmouseenter="this.style.background='var(--navy3)'" onmouseleave="this.style.background=''">✕ Sem ${tipo==='lead'?'cliente':'corretor'}</div>`;
+  window[`_erFiltrados_${tipo}`] = filtrados;
 
-  lista.innerHTML = semOpcao + filtrados.map(i => {
+  const semOpcao = document.createElement('div');
+  semOpcao.style.cssText = 'padding:9px 12px;cursor:pointer;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border)';
+  semOpcao.textContent = `✕ Sem ${tipo==='lead'?'cliente':'corretor'}`;
+  semOpcao.addEventListener('mouseenter', () => semOpcao.style.background = 'var(--navy3)');
+  semOpcao.addEventListener('mouseleave', () => semOpcao.style.background = '');
+  semOpcao.addEventListener('mousedown', e => { e.preventDefault(); erSelecionar(tipo, null, ''); });
+
+  lista.innerHTML = '';
+  lista.appendChild(semOpcao);
+
+  filtrados.forEach((i, idx) => {
     const label = tipo === 'lead'
       ? `<b>${i.nome}</b>${i.cpf?`<span style="color:var(--text2);font-size:11px"> — ${i.cpf}</span>`:''}`
       : `<b>${i.nome}</b>${i.imobiliaria?`<span style="color:var(--text2);font-size:11px"> / ${i.imobiliaria}</span>`:''}`;
-    const display = tipo === 'lead'
-      ? i.nome + (i.cpf?' — '+i.cpf:'')
-      : i.nome + (i.imobiliaria?' / '+i.imobiliaria:'');
-    const safeDisplay = JSON.stringify(display).replace(/"/g, '&quot;');
-    return `<div onclick="erSelecionar('${tipo}',${i.id},${safeDisplay})"
-      style="padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid rgba(255,255,255,.05)"
-      onmouseenter="this.style.background='var(--navy3)'" onmouseleave="this.style.background=''">${label}</div>`;
-  }).join('');
+    const el = document.createElement('div');
+    el.innerHTML = label;
+    el.style.cssText = 'padding:9px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid rgba(255,255,255,.05)';
+    el.addEventListener('mouseenter', () => el.style.background = 'var(--navy3)');
+    el.addEventListener('mouseleave', () => el.style.background = '');
+    el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const item = window[`_erFiltrados_${tipo}`][idx];
+      if (!item) return;
+      const display = tipo === 'lead'
+        ? item.nome + (item.cpf?' — '+item.cpf:'')
+        : item.nome + (item.imobiliaria?' / '+item.imobiliaria:'');
+      erSelecionar(tipo, item.id, display);
+    });
+    lista.appendChild(el);
+  });
 
-  lista.style.display = filtrados.length || true ? 'block' : 'none';
+  lista.style.display = 'block';
 }
 
 function erSelecionar(tipo, id, display) {
