@@ -13178,9 +13178,14 @@ async function abrirUnidade(unidadeId, empId) {
               style="font-size:11px;color:var(--accent);display:block;margin-top:2px">📱 ${fmtPhone(reservaInfo.corretor_telefone)}</a>` : ''}
           </div>
         </div>
-        ${reservaInfo.lead_id ? `<button onclick="closeModal();openLeadModal({id:${reservaInfo.lead_id}})"
-          style="margin-top:10px;width:100%;padding:7px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;font-weight:600">
-          📂 Abrir ficha do cliente</button>` : ''}
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          ${reservaInfo.lead_id && ['admin','gestor'].includes(USUARIO.perfil) ? `<button onclick="closeModal();openLeadModal({id:${reservaInfo.lead_id}})"
+            style="flex:1;min-width:140px;padding:7px;border-radius:7px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;font-weight:600">
+            📂 Ficha do cliente</button>` : ''}
+          ${reservaInfo.id ? `<button onclick="window.open('/ficha/venda/${reservaInfo.id}?token='+encodeURIComponent(TOKEN),'_blank')"
+            style="flex:1;min-width:140px;padding:7px;border-radius:7px;border:none;background:var(--accent);color:var(--navy);font-size:12px;cursor:pointer;font-weight:700">
+            📋 Ficha Completa (PDF)</button>` : ''}
+        </div>
         ${!isPre && u.status === 'reservado' ? (() => {
           if (u.tem_comprovante) {
             return `<div style="margin-top:10px;display:flex;gap:8px;align-items:center;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.25);border-radius:8px;padding:8px 12px">

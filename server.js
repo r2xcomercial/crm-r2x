@@ -10384,7 +10384,48 @@ function _fichaHtml(rows, empNome, titulo, baseUrl) {
         }).join('')}</div>
       </div>` : '';
 
-    const cond = (() => { try { const c = JSON.parse(r.condicao_proposta || '{}'); return c.descricao || c.nome || null; } catch(_) { return r.condicao_proposta || null; } })();
+    // Condicao de pagamento — parseia JSON completo com parcelas
+    let condObj = null;
+    try { condObj = JSON.parse(r.condicao_proposta || 'null'); } catch(_) {}
+    const condNome = condObj ? (condObj.descricao || condObj.nome || null) : (r.condicao_proposta || null);
+    const condParcelasHtml = (() => {
+      if (!condObj?.parcelas?.length) return condNome ? `<div style="margin-top:8px"><b>Condição:</b> ${condNome}</div>` : '';
+      const totalCond = condObj.parcelas.reduce((s, g) => {
+        const qtd = parseInt(g.qtd) || 1;
+        const v = g.valor_rs != null ? (g.tipo_valor === '%' ? g.valor_rs : g.valor_rs) : (g.valor || 0);
+        return s + v;
+      }, 0);
+      const linhas = condObj.parcelas.map(g => {
+        const qtd = parseInt(g.qtd) || 1;
+        const titulo = g.titulo || 'Parcela';
+        const valorUnit = g.valor_rs != null
+          ? (g.tipo_valor === '%' ? g.valor_rs / qtd : g.valor_rs)
+          : (g.valor || 0);
+        const subtotal = valorUnit * qtd;
+        return `<tr>
+          <td style="padding:5px 8px;border-bottom:1px solid #eee">${titulo}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:center">${qtd}x</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right">${fmt(valorUnit)}</td>
+          <td style="padding:5px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${fmt(subtotal)}</td>
+        </tr>`;
+      }).join('');
+      return `<div style="margin-top:10px">
+        ${condNome ? `<div style="font-size:12px;font-weight:700;margin-bottom:6px;color:#1e3a5f">${condNome}</div>` : ''}
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:#f0f4fa">
+            <th style="padding:5px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#555">Tipo</th>
+            <th style="padding:5px 8px;text-align:center;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#555">Qtd</th>
+            <th style="padding:5px 8px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#555">Valor Unit.</th>
+            <th style="padding:5px 8px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#555">Subtotal</th>
+          </tr></thead>
+          <tbody>${linhas}</tbody>
+          <tfoot><tr style="background:#f0f4fa;font-weight:700">
+            <td colspan="3" style="padding:6px 8px;text-align:right">Total</td>
+            <td style="padding:6px 8px;text-align:right;color:#1e3a5f">${fmt(r.valor_total || r.valor)}</td>
+          </tfoot>
+        </table>
+      </div>`;
+    })();
 
     return `<div class="ficha${i > 0 ? ' quebra' : ''}">
       <div class="ficha-header">
@@ -10397,8 +10438,7 @@ function _fichaHtml(rows, empNome, titulo, baseUrl) {
           <div><b>Área:</b> ${r.area_m2 ? `${r.area_m2} m²` : '—'}</div>
           <div><b>Status:</b> ${statusLabel[r.status] || s(r.status)}</div>
           <div><b>Data:</b> ${d(r.data_venda)}</div>
-          <div style="margin-top:4px"><b>Valor:</b> ${fmt(r.valor_total || r.valor)}</div>
-          ${cond ? `<div><b>Condição:</b> ${cond}</div>` : ''}
+          <div style="margin-top:4px"><b>Valor Total:</b> ${fmt(r.valor_total || r.valor)}</div>
         </div>
       </div>
 
@@ -10418,6 +10458,11 @@ function _fichaHtml(rows, empNome, titulo, baseUrl) {
         ${r.nome_pai ? `<div><b>Nome do Pai:</b> ${r.nome_pai}</div>` : ''}
         ${r.nome_mae ? `<div><b>Nome da Mãe:</b> ${r.nome_mae}</div>` : ''}
         ${r.pessoa_juridica ? `<div style="margin-top:8px"><b>CNPJ:</b> ${s(r.cnpj)} — ${s(r.razao_social)}</div>` : ''}
+      </div>
+
+      <div class="secao">
+        <div class="secao-titulo">Condições de Pagamento</div>
+        ${condParcelasHtml || '<div style="color:#888;font-size:12px">Não informado</div>'}
       </div>
 
       <div class="secao">
@@ -10486,10 +10531,10 @@ function _fichaHtml(rows, empNome, titulo, baseUrl) {
 </body></html>`;
 }
 
-// GET /fichas/:empId — lista de reservas com links por lote (admin)
+// GET /fichas/:empId — lista de reservas com links por lote (admin/incorporador)
 app.get('/fichas/:empId', autenticar, (req, res) => {
   const u = req.usuario;
-  if (!u || !['admin','gestor'].includes(u.perfil)) return res.status(403).send('Acesso restrito');
+  if (!u || !['admin','gestor','incorporador'].includes(u.perfil)) return res.status(403).send('Acesso restrito');
   const empId = parseInt(req.params.empId);
   const emp = db.prepare("SELECT nome FROM empreendimentos WHERE id=?").get(empId);
   if (!emp) return res.status(404).send('Empreendimento não encontrado');
@@ -10559,7 +10604,7 @@ app.get('/fichas/:empId', autenticar, (req, res) => {
 // GET /ficha/venda/:vendaId — ficha individual (admin)
 app.get('/ficha/venda/:vendaId', autenticar, (req, res) => {
   const u = req.usuario;
-  if (!u || !['admin','gestor'].includes(u.perfil)) return res.status(403).send('Acesso restrito');
+  if (!u || !['admin','gestor','incorporador'].includes(u.perfil)) return res.status(403).send('Acesso restrito');
   const row = db.prepare(`
     SELECT v.id as venda_id, v.lead_id, v.status, v.data_venda, v.valor, v.valor_total, v.condicao_proposta, v.observacoes,
       u.quadra, u.lote, u.area_m2,
@@ -10583,10 +10628,10 @@ app.get('/ficha/venda/:vendaId', autenticar, (req, res) => {
   res.send(_fichaHtml([row], row.emp_nome, `Ficha — ${row.quadra ? `Q${row.quadra} ` : ''}L${row.lote} | ${row.lead_nome || 'Sem cliente'}`, base));
 });
 
-// GET /fichas/:empId/todas — todas as fichas em uma página (admin, para impressão em lote)
+// GET /fichas/:empId/todas — todas as fichas em uma página (admin/incorporador, para impressão em lote)
 app.get('/fichas/:empId/todas', autenticar, (req, res) => {
   const u = req.usuario;
-  if (!u || !['admin','gestor'].includes(u.perfil)) return res.status(403).send('Acesso restrito');
+  if (!u || !['admin','gestor','incorporador'].includes(u.perfil)) return res.status(403).send('Acesso restrito');
   const empId = parseInt(req.params.empId);
   const emp = db.prepare("SELECT nome FROM empreendimentos WHERE id=?").get(empId);
   if (!emp) return res.status(404).send('Empreendimento não encontrado');
