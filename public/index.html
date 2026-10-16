@@ -12663,8 +12663,8 @@ async function gerarTabelaVendas(empId, params, emp) {
         const num = extractNum(String(u.lote || ''));
         return `<div style="position:absolute;left:${u.mapa_x}%;top:${u.mapa_y}%;transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;background:${cor};border:2.5px solid rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;color:#fff;font-size:8px;font-weight:900;box-shadow:0 2px 6px rgba(0,0,0,.65);-webkit-print-color-adjust:exact;print-color-adjust:exact">${num}</div>`;
       }).join('');
-    espelhoHtml = `<div style="position:relative;width:100%">
-      <img src="${mapaImagem}" style="width:100%;height:auto;display:block;border-radius:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact" alt="Planta">
+    espelhoHtml = `<div style="position:relative;display:inline-block;max-height:155mm;overflow:visible">
+      <img src="${mapaImagem}" style="max-height:155mm;width:auto;max-width:100%;display:block;border-radius:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact" alt="Planta">
       ${marcadores}
     </div>`;
   } else {
@@ -12709,8 +12709,6 @@ async function gerarTabelaVendas(empId, params, emp) {
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, Helvetica, sans-serif; background: #fff; color: #111; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-scheme: light; }
   @page { size: A4 landscape; margin: ${isLoteamento ? '3mm 5mm' : '8mm 10mm'}; }
-  @page espelho { size: A4 ${usarMapaImagem ? 'portrait' : 'landscape'}; margin: 5mm 6mm; }
-  .pagina-espelho { page: espelho; }
   @media print { .no-print { display: none !important; } * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 
   .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: ${isLoteamento ? '3px' : '10px'}; padding-bottom: ${isLoteamento ? '3px' : '8px'}; border-bottom: 3px solid #111; }
@@ -12819,7 +12817,7 @@ ${obsLines.length ? `<div class="obs-box">
   <ul>${obsLines.map(l=>`<li>${l}</li>`).join('')}</ul>
 </div>` : ''}
 
-<div class="pagina-espelho" style="page-break-before:always;padding-top:8px">
+<div style="page-break-before:always;padding-top:8px;display:flex;flex-direction:column;min-height:calc(100vh - 20px)">
   <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #111;padding-bottom:4px;margin-bottom:8px">
     <span style="font-size:${isLoteamento?'11px':'15px'};font-weight:900;color:#000">Espelho de Vendas — ${params.nome}</span>
     <span style="font-size:${isLoteamento?'7px':'9px'};color:#374151">${params.data}</span>
@@ -12830,12 +12828,13 @@ ${obsLines.length ? `<div class="obs-box">
     <span style="font-size:9px;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#dc2626"></span>Vendido (${nVend})</span>
     ${nIndisp?`<span style="font-size:9px;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#94a3b8"></span>Indisponível (${nIndisp})</span>`:''}
   </div>
-  ${espelhoHtml}
-</div>
-
-<div class="r2x-footer">
-  <span>Tabela emitida pelo sistema de gestão comercial próprio da <strong>R2X Lançamentos Imobiliários</strong></span>
-  <span>${params.data}</span>
+  <div style="flex:1;display:flex;justify-content:center;align-items:flex-start">
+    ${espelhoHtml}
+  </div>
+  <div class="r2x-footer" style="margin-top:6px">
+    <span>Tabela emitida pelo sistema de gestão comercial próprio da <strong>R2X Lançamentos Imobiliários</strong></span>
+    <span>${params.data}</span>
+  </div>
 </div>
 
 <button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
