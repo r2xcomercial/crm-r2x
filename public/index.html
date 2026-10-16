@@ -3042,7 +3042,7 @@ async function loadPainelData() {
 // ─── VENDAS ───────────────────────────────────────────────────────────────────
 
 // Estado persistente dos filtros de vendas
-window._vendasFiltros = window._vendasFiltros || { mes: '', emp: '', incorporador: '', corretor: '' };
+window._vendasFiltros = window._vendasFiltros || { mes: '', emp: '', incorporador: '', corretor: '', status: 'ativo' };
 
 async function renderVendas(filter = '') {
   const [vr, cr, er, lr, clr] = await Promise.all([get('/api/vendas'), get('/api/corretores'), get('/api/empreendimentos'), get('/api/leads'), get('/api/clientes')]);
@@ -3056,6 +3056,11 @@ async function renderVendas(filter = '') {
   if (f.emp)         vendas = vendas.filter(v => String(v.empreendimento_id) === f.emp);
   if (f.incorporador) vendas = vendas.filter(v => String(v.cliente_id) === f.incorporador);
   if (f.corretor)    vendas = vendas.filter(v => String(v.corretor_id) === f.corretor);
+  // Por padrão mostra só vendas confirmadas (ativo + distrato); 'todos' mostra tudo
+  if (f.status !== 'todos') {
+    const permitidos = f.status === 'distrato' ? ['distrato'] : ['ativo', 'distrato'];
+    vendas = vendas.filter(v => permitidos.includes(v.status));
+  }
 
   // Opções de mês (baseado em todas as vendas, não filtradas)
   const meses = [...new Set((vr.data||[]).map(v => v.data_venda?.slice(0,7)).filter(Boolean))].sort().reverse();
@@ -3074,7 +3079,7 @@ async function renderVendas(filter = '') {
   const corOpts2 = `<option value="">Todos os corretores</option>` +
     (cr.data||[]).map(c => `<option value="${c.id}" ${f.corretor===String(c.id)?'selected':''}>${c.nome}</option>`).join('');
 
-  const temFiltro = f.mes || f.emp || f.incorporador || f.corretor;
+  const temFiltro = f.mes || f.emp || f.incorporador || f.corretor || f.status !== 'ativo';
 
   const totalVGV = vendas.filter(v => v.status==='ativo').reduce((s, v) => s + v.valor, 0);
   const totalR2X = vendas.filter(v => v.status==='ativo').reduce((s, v) => s + (v.comissao_r2x || 0), 0);
@@ -3088,11 +3093,16 @@ async function renderVendas(filter = '') {
     <!-- Filtros -->
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;background:var(--navy2);border:1px solid var(--border);border-radius:10px;padding:12px 16px">
       <span style="font-size:12px;color:var(--text2);font-weight:600;white-space:nowrap">🔍 Filtrar:</span>
+      <select onchange="window._vendasFiltros.status=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;width:auto">
+        <option value="ativo" ${f.status==='ativo'?'selected':''}>🏆 Vendas confirmadas</option>
+        <option value="distrato" ${f.status==='distrato'?'selected':''}>↩️ Distratos</option>
+        <option value="todos" ${f.status==='todos'?'selected':''}>Todos (incl. reservas)</option>
+      </select>
       <select onchange="window._vendasFiltros.mes=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;width:auto">${mesOpts}</select>
       <select onchange="window._vendasFiltros.emp=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;width:auto">${empOpts}</select>
       <select onchange="window._vendasFiltros.incorporador=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;width:auto">${incOpts}</select>
       <select onchange="window._vendasFiltros.corretor=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;width:auto">${corOpts2}</select>
-      ${temFiltro ? `<button onclick="window._vendasFiltros={mes:'',emp:'',incorporador:'',corretor:''};renderVendas()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
+      ${temFiltro ? `<button onclick="window._vendasFiltros={mes:'',emp:'',incorporador:'',corretor:'',status:'ativo'};renderVendas()" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(239,68,68,.4);background:none;color:var(--danger);font-size:12px;cursor:pointer">✕ Limpar</button>` : ''}
     </div>
 
     <div class="table-card">
@@ -13274,6 +13284,9 @@ async function abrirUnidade(unidadeId, empId) {
           ${USUARIO.perfil === 'admin' && reservaInfo.id ? `<button onclick="abrirEdicaoReserva(${reservaInfo.id},${reservaInfo.lead_id||'null'},${reservaInfo.corretor_id||'null'},${empId})"
             style="flex:1;min-width:140px;padding:7px;border-radius:7px;border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.1);color:#fbbf24;font-size:12px;cursor:pointer;font-weight:600">
             ✏️ Editar Reserva</button>` : ''}
+          ${USUARIO.perfil === 'admin' && reservaInfo.id && u.status === 'reservado' ? `<button onclick="confirmarVendaDireta(${reservaInfo.id},${reservaInfo.lead_id||'null'},${empId})"
+            style="flex:1;min-width:140px;padding:7px;border-radius:7px;border:none;background:#16a34a;color:#fff;font-size:12px;cursor:pointer;font-weight:700">
+            ✅ Confirmar Venda</button>` : ''}
         </div>
         ${!isPre && u.status === 'reservado' ? (() => {
           if (u.tem_comprovante) {
@@ -25777,6 +25790,27 @@ async function salvarEdicaoReserva(vendaId, empId, converterParaVenda = false) {
     setTimeout(() => { closeModal(); if (typeof verEspelho === 'function') verEspelho(empId); }, 1000);
   } else {
     if (msg) { msg.style.color = '#f87171'; msg.textContent = '❌ ' + (j.error || 'Erro ao salvar'); }
+  }
+}
+
+async function confirmarVendaDireta(vendaId, leadId, empId) {
+  if (!leadId) {
+    toast('⚠️ Abra "Editar Reserva" e vincule um cliente antes de confirmar a venda.', 'warn');
+    return;
+  }
+  if (!confirm('Confirmar venda? O status da reserva será alterado para Venda Confirmada e o cliente para Vendido.')) return;
+  const r = await fetch(`/api/admin/vendas/${vendaId}/editar-reserva`, {
+    method: 'PATCH',
+    headers: { 'x-crm-token': TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ converter_para_venda: true }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (r.ok) {
+    toast('🏆 Venda confirmada com sucesso!');
+    closeModal();
+    if (typeof verEspelho === 'function') verEspelho(empId);
+  } else {
+    toast('❌ ' + (j.error || 'Erro ao confirmar venda'), 'error');
   }
 }
 
