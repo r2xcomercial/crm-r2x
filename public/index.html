@@ -12634,37 +12634,73 @@ async function gerarTabelaVendas(empId, params, emp) {
 
   // ── Espelho de vendas ──
   const corSt = st => st==='vendido'?'#dc2626':st==='reservado'?'#d97706':st==='indisponivel'?'#94a3b8':'#16a34a';
-  const quadrasMap = {};
-  unidades.forEach(u => {
-    const q = u.quadra != null ? String(u.quadra) : '—';
-    if (!quadrasMap[q]) quadrasMap[q] = [];
-    quadrasMap[q].push(u);
-  });
-  const quadrasOrdenadas = Object.keys(quadrasMap).sort((a,b) => {
-    const na=parseFloat(a), nb=parseFloat(b);
-    if (!isNaN(na)&&!isNaN(nb)) return na-nb;
-    return a.localeCompare(b,'pt-BR',{numeric:true});
-  });
-  const espelhoHtml = quadrasOrdenadas.map(q => {
-    const lotes = quadrasMap[q].slice().sort((a,b)=>{
-      const la=parseFloat(String(a.lote||'').replace(/\D/g,'')||'0');
-      const lb=parseFloat(String(b.lote||'').replace(/\D/g,'')||'0');
-      return la-lb;
-    });
-    return `<div style="margin-bottom:12px">
-      <div style="font-size:9px;font-weight:800;color:#374151;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Quadra ${q}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:3px">
-        ${lotes.map(u=>{
-          const cor=corSt(u.status||'disponivel');
-          const num=extractNum(String(u.lote||''));
-          const area=u.area_m2?`${u.area_m2}m²`:'';
-          return `<div title="${u.status||'disponivel'}" style="width:38px;height:38px;border-radius:5px;background:${cor};display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:800;line-height:1.2">
-            <span>${num}</span>${area?`<span style="font-size:7px;opacity:.85">${area}</span>`:''}
-          </div>`;
-        }).join('')}
-      </div>
+
+  // Tenta buscar mapa com imagem + coordenadas
+  let mapaImagem = null, mapaUnits = null;
+  try {
+    const mr = await get(`/api/empreendimentos/${empId}/mapa`);
+    if (mr?.data?.imagem) {
+      mapaImagem = mr.data.imagem;
+      mapaUnits  = mr.data.units || [];
+    }
+  } catch(_) {}
+
+  // Verifica se há coordenadas suficientes (ao menos 30% das unidades mapeadas)
+  const comPos = (mapaUnits || []).filter(u => u.mapa_x != null && u.mapa_y != null);
+  const usarMapaImagem = mapaImagem && comPos.length > 0 && comPos.length >= Math.ceil(unidades.length * 0.3);
+
+  let espelhoHtml;
+
+  if (usarMapaImagem) {
+    // Mescla status atual com posições do mapa (mapa pode ter subset de unidades)
+    const statusById = {};
+    unidades.forEach(u => { statusById[u.id] = u.status || 'disponivel'; });
+    const marcadores = mapaUnits
+      .filter(u => u.mapa_x != null && u.mapa_y != null)
+      .map(u => {
+        const st  = statusById[u.id] || u.status || 'disponivel';
+        const cor = corSt(st);
+        const num = extractNum(String(u.lote || ''));
+        return `<div style="position:absolute;left:${u.mapa_x}%;top:${u.mapa_y}%;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;background:${cor};border:2px solid rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:7.5px;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,.5)">${num}</div>`;
+      }).join('');
+    espelhoHtml = `<div style="position:relative;width:100%;max-height:460px;overflow:hidden;border-radius:8px">
+      <img src="${mapaImagem}" style="width:100%;display:block;border-radius:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact" alt="Planta">
+      ${marcadores}
     </div>`;
-  }).join('');
+  } else {
+    // Fallback: grade de quadras coloridas
+    const quadrasMap = {};
+    unidades.forEach(u => {
+      const q = u.quadra != null ? String(u.quadra) : '—';
+      if (!quadrasMap[q]) quadrasMap[q] = [];
+      quadrasMap[q].push(u);
+    });
+    const quadrasOrdenadas = Object.keys(quadrasMap).sort((a,b) => {
+      const na=parseFloat(a), nb=parseFloat(b);
+      if (!isNaN(na)&&!isNaN(nb)) return na-nb;
+      return a.localeCompare(b,'pt-BR',{numeric:true});
+    });
+    espelhoHtml = `<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">${quadrasOrdenadas.map(q => {
+      const lotes = quadrasMap[q].slice().sort((a,b)=>{
+        const la=parseFloat(String(a.lote||'').replace(/\D/g,'')||'0');
+        const lb=parseFloat(String(b.lote||'').replace(/\D/g,'')||'0');
+        return la-lb;
+      });
+      return `<div style="margin-bottom:12px">
+        <div style="font-size:9px;font-weight:800;color:#374151;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Quadra ${q}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:3px">
+          ${lotes.map(u=>{
+            const cor=corSt(u.status||'disponivel');
+            const num=extractNum(String(u.lote||''));
+            const area=u.area_m2?`${u.area_m2}m²`:'';
+            return `<div title="${u.status||'disponivel'}" style="width:38px;height:38px;border-radius:5px;background:${cor};display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:800;line-height:1.2">
+              <span>${num}</span>${area?`<span style="font-size:7px;opacity:.85">${area}</span>`:''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+  }
 
   const html = `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8">
@@ -12792,9 +12828,7 @@ ${obsLines.length ? `<div class="obs-box">
     <span style="font-size:9px;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#dc2626"></span>Vendido (${nVend})</span>
     ${nIndisp?`<span style="font-size:9px;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#94a3b8"></span>Indisponível (${nIndisp})</span>`:''}
   </div>
-  <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
-    ${espelhoHtml}
-  </div>
+  ${espelhoHtml}
 </div>
 
 <div class="r2x-footer">
