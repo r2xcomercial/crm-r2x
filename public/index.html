@@ -4997,6 +4997,7 @@ function openEmpModal(e = {}) {
       <div class="form-group"><label>Nº de Unidades</label><input id="f-units" type="number" value="${e.num_unidades||''}"></div>
       <div class="form-group"><label>VGV Estimado (R$)</label><input id="f-vgv" type="number" value="${e.vgv_estimado||''}"></div>
       <div class="form-group"><label>% Comissão R2X</label><input id="f-pct" type="number" step="0.01" min="0" max="100" value="${e.percentual_r2x||''}" placeholder="ex: 1.5"></div>
+      <div class="form-group"><label>% Comissão Corretor <span style="font-size:10px;color:var(--text2);font-weight:400">(padrão por venda)</span></label><input id="f-pct-corretor" type="number" step="0.01" min="0" max="100" value="${e.comissao_corretor_pct||''}" placeholder="ex: 6"></div>
       <div class="form-group"><label>Data de Lançamento</label><input id="f-launch" type="date" value="${e.data_lancamento||''}"></div>
       <div class="form-group"><label>Início das Vendas</label><input id="f-vendas" type="date" value="${e.data_inicio_vendas||''}"></div>
       <div class="form-group span2"><label>Observações</label><textarea id="f-obs">${e.observacoes||''}</textarea></div>
@@ -5263,6 +5264,7 @@ function openEmpModal(e = {}) {
       status: v('f-status'), endereco: v('f-end'), cidade: v('f-cidade'), estado: v('f-estado'),
       num_unidades: parseInt(v('f-units'))||null, vgv_estimado: parseFloat(v('f-vgv'))||null,
       percentual_r2x: parseFloat(v('f-pct'))||null,
+      comissao_corretor_pct: parseFloat(v('f-pct-corretor'))||null,
       data_lancamento: v('f-launch'), data_inicio_vendas: v('f-vendas'), observacoes: v('f-obs'),
       comarca: v('f-comarca')||null,
       matricula_registro: v('f-matricula')||null,

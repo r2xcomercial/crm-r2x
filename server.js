@@ -959,7 +959,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     vendedora_nome, vendedora_qualificacao,
     prazo_entrega_meses, inicio_obra_previsto, valor_cub, patrimonio_afetacao,
     condicao_pagamento_padrao, logo_base64, maps_url, drive_url, social_url, fase_lancamento,
-    config_ver_tabela, config_reservar, config_visivel, modo_reserva } = req.body;
+    config_ver_tabela, config_reservar, config_visivel, modo_reserva, comissao_corretor_pct } = req.body;
   const cpPadrao = condicao_pagamento_padrao && Array.isArray(condicao_pagamento_padrao) && condicao_pagamento_padrao.length > 0
     ? JSON.stringify(condicao_pagamento_padrao) : null;
   db.prepare(`UPDATE empreendimentos SET
@@ -969,7 +969,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     vendedora_nome=?,vendedora_qualificacao=?,
     prazo_entrega_meses=?,inicio_obra_previsto=?,valor_cub=?,
     patrimonio_afetacao=?,condicao_pagamento_padrao=?,logo_base64=?,maps_url=?,drive_url=?,social_url=?,fase_lancamento=?,
-    config_ver_tabela=?,config_reservar=?,config_visivel=?,modo_reserva=?
+    config_ver_tabela=?,config_reservar=?,config_visivel=?,modo_reserva=?,comissao_corretor_pct=?
     WHERE id=?`).run(
     cliente_id, nome, tipo||'loteamento', endereco, cidade, estado, num_unidades, vgv_estimado,
     status, data_lancamento, data_inicio_vendas, observacoes, percentual_r2x||null,
@@ -982,6 +982,7 @@ app.put("/api/empreendimentos/:id", (req, res) => {
     config_reservar !== undefined ? (config_reservar ? 1 : 0) : 1,
     config_visivel !== undefined ? (config_visivel ? 1 : 0) : 1,
     modo_reserva||'pre_reserva_pix',
+    parseFloat(comissao_corretor_pct)||null,
     req.params.id);
   ok(res, {});
 });
@@ -4158,12 +4159,17 @@ app.put('/api/vendas/:id/kanban-status', autenticar, (req, res) => {
 
   // Ao aprovar ou ativar: preenche comissões automaticamente se ainda estiverem nulas
   if (['aprovado','ativo'].includes(novoStatus) && !venda.percentual_r2x) {
-    const emp = db.prepare('SELECT percentual_r2x FROM empreendimentos WHERE id=?').get(venda.empreendimento_id);
+    const emp = db.prepare('SELECT percentual_r2x, comissao_corretor_pct FROM empreendimentos WHERE id=?').get(venda.empreendimento_id);
     const valorBase = venda.valor_total || venda.valor || 0;
     if (emp?.percentual_r2x) {
       const pctR2X = parseFloat(emp.percentual_r2x);
       updates.push('percentual_r2x=?', 'comissao_r2x=?');
       params.push(pctR2X, valorBase * pctR2X / 100);
+    }
+    if (emp?.comissao_corretor_pct && !venda.comissao_corretor_pct) {
+      const pctCor = parseFloat(emp.comissao_corretor_pct);
+      updates.push('comissao_corretor_pct=?', 'comissao_corretor_valor=?', 'comissao_corretor_status=?');
+      params.push(pctCor, valorBase * pctCor / 100, 'pendente');
     }
   }
 
@@ -5775,6 +5781,7 @@ try { db.exec("ALTER TABLE empreendimentos ADD COLUMN config_ver_tabela INTEGER 
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN config_reservar INTEGER NOT NULL DEFAULT 1"); } catch(_) {}
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN config_visivel INTEGER NOT NULL DEFAULT 1"); } catch(_) {}
 try { db.exec("ALTER TABLE empreendimentos ADD COLUMN modo_reserva TEXT NOT NULL DEFAULT 'pre_reserva_pix'"); } catch(_) {}
+try { db.exec("ALTER TABLE empreendimentos ADD COLUMN comissao_corretor_pct REAL DEFAULT NULL"); } catch(_) {}
 try { db.exec(`CREATE TABLE IF NOT EXISTS org_nodes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   parent_id INTEGER,
