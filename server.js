@@ -2933,16 +2933,25 @@ app.get("/api/leads/por-telefone/:telefone", (req, res) => {
 
 app.get("/api/vendas", (req, res) => {
   let sql = `
-    SELECT v.*, l.nome as lead_nome, l.telefone as lead_telefone,
+    SELECT v.*,
+           l.nome as lead_nome, l.telefone as lead_telefone,
            c.nome as corretor_nome, e.nome as empreendimento_nome,
-           cl.razao_social as cliente_nome,
-           vg.numero as vaga_numero, vg.bloco as vaga_bloco, vg.tipo as vaga_tipo
+           COALESCE(v.cliente_id, e.cliente_id) as cliente_id,
+           COALESCE(cl.razao_social, cl2.razao_social) as cliente_nome,
+           vg.numero as vaga_numero, vg.bloco as vaga_bloco, vg.tipo as vaga_tipo,
+           COALESCE(NULLIF(v.imovel,''),
+             CASE WHEN u.lote IS NOT NULL THEN
+               'Lote ' || u.lote || CASE WHEN u.quadra IS NOT NULL AND u.quadra != '' THEN ' · Q' || u.quadra ELSE '' END
+             END
+           ) as imovel
     FROM vendas v
     LEFT JOIN leads l ON l.id = v.lead_id
     LEFT JOIN corretores c ON c.id = v.corretor_id
     LEFT JOIN empreendimentos e ON e.id = v.empreendimento_id
     LEFT JOIN clientes cl ON cl.id = v.cliente_id
+    LEFT JOIN clientes cl2 ON cl2.id = e.cliente_id
     LEFT JOIN vagas_garagem vg ON vg.id = v.vaga_id
+    LEFT JOIN unidades u ON u.id = v.unidade_id
     WHERE 1=1
   `;
   const params = [];
