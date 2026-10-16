@@ -4196,6 +4196,8 @@ app.put('/api/vendas/:id/kanban-status', autenticar, (req, res) => {
 
   if (novoStatus === 'ativo') {
     _logUnidade(venda.unidade_id, 'reservado', 'vendido', u, vendaId, 'Contrato ativo');
+    // Gera crédito a receber no financeiro ao chegar no Contrato
+    try { sincronizarComissaoVenda(vendaId); } catch(e) { console.error('sincronizarComissaoVenda:', e.message); }
   } else if (venda.status === 'ativo') {
     _logUnidade(venda.unidade_id, 'vendido', 'reservado', u, vendaId, 'Saiu do contrato (movimento regressivo)');
   }
