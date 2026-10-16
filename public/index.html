@@ -3128,8 +3128,10 @@ async function renderVendas(filter = '') {
               <td>${v.cliente_nome||'—'}</td>
               <td>
                 ${v.status === 'distrato'
-                  ? `<span class="badge badge-red">distrato</span>${v.distrato_data ? `<div style="font-size:10px;color:var(--text2);margin-top:2px">${fmtDate(v.distrato_data)}</div>` : ''}`
-                  : `<span class="badge ${v.status==='ativo'?'badge-green':'badge-yellow'}">${v.status}</span>`}
+                  ? `<span class="badge badge-red">Distrato</span>${v.distrato_data ? `<div style="font-size:10px;color:var(--text2);margin-top:2px">${fmtDate(v.distrato_data)}</div>` : ''}`
+                  : v.status === 'aprovado'
+                    ? `<span class="badge badge-green">✅ Venda</span>`
+                    : `<span class="badge badge-green">📄 Contrato</span>`}
               </td>
               <td style="white-space:nowrap">
                 ${v.comissao_corretor_pct ? `
