@@ -10527,7 +10527,7 @@ function _fichaHtml(rows, empNome, titulo, baseUrl, token) {
       <div class="secao secao-docs">
         <div class="secao-titulo" style="display:flex;align-items:center;justify-content:space-between">
           <span>Documentos Anexados</span>
-          ${zipUrl ? `<a href="#" onclick="this.href='${baseUrl}/fichas/documentos-zip/${r.venda_id}${tkParam}&_='+Date.now();return true;" style="font-size:11px;font-weight:700;color:#1a56db;text-decoration:none;background:#e8f0fe;border:1px solid #c5d6f8;border-radius:6px;padding:4px 10px;white-space:nowrap">📥 Baixar todos (ZIP)</a>` : ''}
+          ${zipUrl ? `<a href="${zipUrl}" download style="font-size:11px;font-weight:700;color:#1a56db;text-decoration:none;background:#e8f0fe;border:1px solid #c5d6f8;border-radius:6px;padding:4px 10px;white-space:nowrap">📥 BAIXAR TODOS (ZIP)</a>` : ''}
         </div>
         <div class="docs-grid">${docsConteudo}</div>
       </div>`;
@@ -10872,7 +10872,7 @@ app.get('/fichas/documentos-zip/:vendaId', autenticar, (req, res) => {
   const row = db.prepare(`
     SELECT v.lead_id, u.quadra, u.lote, l.nome as lead_nome
     FROM vendas v
-    JOIN unidades u ON u.id = v.unidade_id
+    LEFT JOIN unidades u ON u.id = v.unidade_id
     LEFT JOIN leads l ON l.id = v.lead_id
     WHERE v.id = ?
   `).get(vendaId);
