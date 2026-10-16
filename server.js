@@ -3660,7 +3660,7 @@ app.patch('/api/admin/vendas/:id/editar-reserva', autenticar, soAdmin, (req, res
   const { lead_id, corretor_id, condicao_proposta, valor_negociado, converter_para_venda } = req.body;
   const venda = db.prepare("SELECT id, lead_id, corretor_id, unidade_id, empreendimento_id, status, valor FROM vendas WHERE id=?").get(vendaId);
   if (!venda) return err(res, 'Venda não encontrada', 404);
-  if (!['pre_reserva','reserva','proposta','ativo'].includes(venda.status)) return err(res, 'Esta venda não pode ser editada', 400);
+  if (!['pre_reserva','reserva','proposta','aprovado','ativo'].includes(venda.status)) return err(res, 'Esta venda não pode ser editada', 400);
 
   const novoLead = lead_id != null ? parseInt(lead_id) || null : venda.lead_id;
   const novoCorretor = corretor_id != null ? parseInt(corretor_id) || null : venda.corretor_id;
