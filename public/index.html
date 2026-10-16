@@ -3056,9 +3056,9 @@ async function renderVendas(filter = '') {
   if (f.emp)         vendas = vendas.filter(v => String(v.empreendimento_id) === f.emp);
   if (f.incorporador) vendas = vendas.filter(v => String(v.cliente_id) === f.incorporador);
   if (f.corretor)    vendas = vendas.filter(v => String(v.corretor_id) === f.corretor);
-  // Por padrão mostra só vendas confirmadas (ativo + distrato); 'todos' mostra tudo
+  // Por padrão mostra só vendas confirmadas (ativo + aprovado + distrato); 'todos' mostra tudo
   if (f.status !== 'todos') {
-    const permitidos = f.status === 'distrato' ? ['distrato'] : ['ativo', 'distrato'];
+    const permitidos = f.status === 'distrato' ? ['distrato'] : ['ativo', 'aprovado', 'distrato'];
     vendas = vendas.filter(v => permitidos.includes(v.status));
   }
 
@@ -3094,7 +3094,7 @@ async function renderVendas(filter = '') {
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;background:var(--navy2);border:1px solid var(--border);border-radius:10px;padding:12px 16px">
       <span style="font-size:12px;color:var(--text2);font-weight:600;white-space:nowrap">🔍 Filtrar:</span>
       <select onchange="window._vendasFiltros.status=this.value;renderVendas()" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:12px;cursor:pointer;width:auto">
-        <option value="ativo" ${f.status==='ativo'?'selected':''}>🏆 Vendas confirmadas</option>
+        <option value="ativo" ${f.status==='ativo'?'selected':''}>🏆 Vendas (aprovadas + ativas)</option>
         <option value="distrato" ${f.status==='distrato'?'selected':''}>↩️ Distratos</option>
         <option value="todos" ${f.status==='todos'?'selected':''}>Todos (incl. reservas)</option>
       </select>
