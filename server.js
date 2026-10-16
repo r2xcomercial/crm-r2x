@@ -7235,6 +7235,36 @@ app.get('/api/admin/migrar-leads-pasta', autenticar, soAdmin, (req, res) => {
 });
 
 // POST: executa a migração (faz backup automático antes)
+// POST /api/admin/backfill-comissao-corretor — preenche comissao_corretor nas vendas que estão nulas
+app.post('/api/admin/backfill-comissao-corretor', autenticar, soAdmin, (req, res) => {
+  const { empreendimento_id } = req.body;
+  const empFilter = empreendimento_id ? 'AND v.empreendimento_id=?' : '';
+  const params = empreendimento_id ? [empreendimento_id] : [];
+
+  const vendas = db.prepare(`
+    SELECT v.id, v.valor_total, v.valor, v.empreendimento_id, e.comissao_corretor_pct
+    FROM vendas v
+    JOIN empreendimentos e ON e.id = v.empreendimento_id
+    WHERE v.status IN ('aprovado','ativo')
+      AND v.comissao_corretor_pct IS NULL
+      AND e.comissao_corretor_pct IS NOT NULL
+      ${empFilter}
+  `).all(...params);
+
+  let atualizadas = 0;
+  const stmt = db.prepare("UPDATE vendas SET comissao_corretor_pct=?, comissao_corretor_valor=?, comissao_corretor_status=COALESCE(comissao_corretor_status,'pendente') WHERE id=?");
+  db.transaction(() => {
+    for (const v of vendas) {
+      const base = v.valor_total || v.valor || 0;
+      const pct = parseFloat(v.comissao_corretor_pct);
+      stmt.run(pct, base * pct / 100, v.id);
+      atualizadas++;
+    }
+  })();
+
+  ok(res, { atualizadas, detalhes: vendas.map(v => v.id) });
+});
+
 app.post('/api/admin/migrar-leads-pasta', autenticar, soAdmin, (req, res) => {
   try {
     // Backup antes de qualquer alteração
