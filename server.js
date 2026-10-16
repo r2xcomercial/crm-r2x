@@ -4155,6 +4155,18 @@ app.put('/api/vendas/:id/kanban-status', autenticar, (req, res) => {
   const params = [novoStatus];
   if (condicao_proposta) { updates.push('condicao_proposta=?'); params.push(JSON.stringify(condicao_proposta)); }
   if (novoStatus === 'ativo') { updates.push('data_venda=?'); params.push(new Date().toISOString().slice(0,10)); }
+
+  // Ao aprovar ou ativar: preenche comissões automaticamente se ainda estiverem nulas
+  if (['aprovado','ativo'].includes(novoStatus) && !venda.percentual_r2x) {
+    const emp = db.prepare('SELECT percentual_r2x FROM empreendimentos WHERE id=?').get(venda.empreendimento_id);
+    const valorBase = venda.valor_total || venda.valor || 0;
+    if (emp?.percentual_r2x) {
+      const pctR2X = parseFloat(emp.percentual_r2x);
+      updates.push('percentual_r2x=?', 'comissao_r2x=?');
+      params.push(pctR2X, valorBase * pctR2X / 100);
+    }
+  }
+
   params.push(vendaId);
 
   db.transaction(() => {
