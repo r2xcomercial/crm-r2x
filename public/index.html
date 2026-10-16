@@ -25504,12 +25504,12 @@ async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) 
         <div style="font-size:10px;color:var(--text2);margin-top:3px">Valor atual: R$ ${Number(vendaAtual.valor_total || vendaAtual.valor || 0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
       </div>
 
-      ${vendaAtual.lead_id ? `<div style="margin-bottom:14px">
+      <div style="margin-bottom:14px">
         <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px">📎 Documentos do Cliente</label>
         <div id="er-docs-list" style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px">
-          <span style="font-size:11px;color:var(--text2)">Carregando...</span>
+          ${vendaAtual.lead_id ? '<span style="font-size:11px;color:var(--text2)">Carregando...</span>' : '<span style="font-size:11px;color:var(--text2)">Vincule um cliente acima para anexar documentos.</span>'}
         </div>
-        <div style="display:flex;gap:6px;align-items:center">
+        <div id="er-docs-upload-row" style="display:${vendaAtual.lead_id ? 'flex' : 'none'};gap:6px;align-items:center">
           <select id="er-doc-tipo" style="flex:1;background:var(--navy2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;padding:6px 8px">
             <option value="cnh">CNH / RG</option>
             <option value="comprovante_residencia">Comprovante de Residência</option>
@@ -25517,10 +25517,10 @@ async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) 
           </select>
           <label style="flex:1;padding:6px 10px;border-radius:7px;border:1px dashed var(--border);background:var(--navy2);color:var(--text2);font-size:12px;cursor:pointer;text-align:center;white-space:nowrap">
             📤 Anexar
-            <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style="display:none" onchange="erUploadDoc(${vendaAtual.lead_id},this)">
+            <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style="display:none" onchange="erUploadDoc(parseInt(document.getElementById('er-lead-id')?.value||'0')||null,this)">
           </label>
         </div>
-      </div>` : ''}
+      </div>
 
       <div style="display:flex;gap:8px">
         <button onclick="document.getElementById('edit-reserva-form').remove()"
@@ -25625,6 +25625,15 @@ function erSelecionar(tipo, id, display) {
   document.getElementById(`er-${tipo}-id`).value = id || '';
   document.getElementById(`er-${tipo}-input`).value = id ? display : '';
   document.getElementById(`er-${tipo}-lista`).style.display = 'none';
+  if (tipo === 'lead') {
+    const uploadRow = document.getElementById('er-docs-upload-row');
+    if (uploadRow) uploadRow.style.display = id ? 'flex' : 'none';
+    if (id) erCarregarDocs(id);
+    else {
+      const el = document.getElementById('er-docs-list');
+      if (el) el.innerHTML = '<span style="font-size:11px;color:var(--text2)">Vincule um cliente acima para anexar documentos.</span>';
+    }
+  }
 }
 
 function erLimpar(tipo) {
