@@ -3647,7 +3647,7 @@ app.delete('/api/pre-reserva/:vendaId', autenticar, (req, res) => {
 // PATCH /api/admin/vendas/:id/editar-reserva — altera cliente, corretor e/ou condição de pagamento sem cancelar (só admin)
 app.patch('/api/admin/vendas/:id/editar-reserva', autenticar, soAdmin, (req, res) => {
   const vendaId = parseInt(req.params.id);
-  const { lead_id, corretor_id, condicao_proposta, valor_negociado } = req.body;
+  const { lead_id, corretor_id, condicao_proposta, valor_negociado, converter_para_venda } = req.body;
   const venda = db.prepare("SELECT id, lead_id, corretor_id, unidade_id, empreendimento_id, status, valor FROM vendas WHERE id=?").get(vendaId);
   if (!venda) return err(res, 'Venda não encontrada', 404);
   if (!['pre_reserva','reserva','proposta','ativo'].includes(venda.status)) return err(res, 'Esta venda não pode ser editada', 400);
@@ -3664,32 +3664,49 @@ app.patch('/api/admin/vendas/:id/editar-reserva', autenticar, soAdmin, (req, res
   let novoValorTotal = undefined;
   let novoStatus = venda.status;
 
-  if (condicao_proposta !== undefined) {
+  if (converter_para_venda) {
+    novoStatus = 'ativo';
+  } else if (condicao_proposta !== undefined) {
     if (condicao_proposta === null) {
       cpJson = null;
-      // sem condição → volta para reserva/pre_reserva se estava como proposta
       if (venda.status === 'proposta') novoStatus = 'reserva';
     } else {
       cpJson = JSON.stringify(condicao_proposta);
       novoValorTotal = condicao_proposta.valor_total || venda.valor;
-      // com condição → promove para proposta se era reserva/pre_reserva
       if (['pre_reserva','reserva'].includes(venda.status)) novoStatus = 'proposta';
+    }
+  }
+
+  if (condicao_proposta !== undefined && converter_para_venda) {
+    if (condicao_proposta === null) {
+      cpJson = null;
+    } else {
+      cpJson = JSON.stringify(condicao_proposta);
+      novoValorTotal = condicao_proposta.valor_total || venda.valor;
     }
   }
 
   const updates = ["lead_id=?", "corretor_id=?", "status=?"];
   const params = [novoLead, novoCorretor, novoStatus];
   if (cpJson !== undefined) { updates.push("condicao_proposta=?"); params.push(cpJson); }
-  // valor_negociado tem precedência; caso contrário usa o calculado pela condição
   const vn = valor_negociado != null && !isNaN(parseFloat(valor_negociado)) ? parseFloat(valor_negociado) : null;
   const valorFinal = vn !== null ? vn : novoValorTotal;
   if (valorFinal !== undefined) { updates.push("valor_total=?"); params.push(valorFinal); }
   params.push(vendaId);
 
   db.prepare(`UPDATE vendas SET ${updates.join(',')} WHERE id=?`).run(...params);
-  _logUnidade(venda.unidade_id, venda.status, novoStatus, req.usuario, vendaId, `Admin editou reserva: lead_id=${novoLead}, corretor_id=${novoCorretor}, condicao=${cpJson ? 'definida' : 'removida'}${valor_negociado != null ? ', valor_negociado='+valor_negociado : ''}`);
+
+  // Ao converter para venda: atualiza status do lead para vendido
+  if (converter_para_venda && novoLead) {
+    db.prepare("UPDATE leads SET status='vendido', atualizado_em=datetime('now') WHERE id=? AND status NOT IN ('vendido','sem_venda','perdido')").run(novoLead);
+  }
+
+  _logUnidade(venda.unidade_id, venda.status, novoStatus, req.usuario, vendaId, converter_para_venda
+    ? `Admin converteu reserva para venda: lead_id=${novoLead}, corretor_id=${novoCorretor}`
+    : `Admin editou reserva: lead_id=${novoLead}, corretor_id=${novoCorretor}, condicao=${cpJson ? 'definida' : 'removida'}${valor_negociado != null ? ', valor_negociado='+valor_negociado : ''}`
+  );
   _broadcastRefresh(venda.empreendimento_id);
-  ok(res, { ok: true });
+  ok(res, { ok: true, convertido: !!converter_para_venda });
 });
 
 // GET /api/vendas/:id/comprovante — baixar/visualizar o comprovante

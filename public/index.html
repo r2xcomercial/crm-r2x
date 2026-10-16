@@ -25522,11 +25522,13 @@ async function abrirEdicaoReserva(vendaId, leadIdAtual, corretorIdAtual, empId) 
         </div>
       </div>
 
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="document.getElementById('edit-reserva-form').remove()"
-          style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;cursor:pointer;font-weight:600">Cancelar</button>
-        <button onclick="salvarEdicaoReserva(${vendaId},${empId})"
-          style="flex:2;padding:9px;border-radius:8px;border:none;background:#fbbf24;color:#1a1a1a;font-size:13px;cursor:pointer;font-weight:700">💾 Salvar alterações</button>
+          style="flex:1;min-width:100px;padding:9px;border-radius:8px;border:1px solid var(--border);background:var(--navy3);color:var(--text);font-size:13px;cursor:pointer;font-weight:600">Cancelar</button>
+        <button onclick="salvarEdicaoReserva(${vendaId},${empId},false)"
+          style="flex:1;min-width:120px;padding:9px;border-radius:8px;border:none;background:#fbbf24;color:#1a1a1a;font-size:13px;cursor:pointer;font-weight:700">💾 Salvar</button>
+        <button onclick="salvarEdicaoReserva(${vendaId},${empId},true)"
+          style="flex:2;min-width:160px;padding:9px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-size:13px;cursor:pointer;font-weight:700">✅ Confirmar Venda</button>
       </div>
       <div id="er-msg" style="font-size:12px;margin-top:8px;min-height:16px"></div>
     </div>`;
@@ -25725,15 +25727,21 @@ async function erUploadDoc(leadId, input) {
   input.value = '';
 }
 
-async function salvarEdicaoReserva(vendaId, empId) {
+async function salvarEdicaoReserva(vendaId, empId, converterParaVenda = false) {
   const leadId = document.getElementById('er-lead-id')?.value || null;
   const corretorId = document.getElementById('er-cor-id')?.value || null;
   const msg = document.getElementById('er-msg');
-  if (msg) msg.textContent = 'Salvando...';
+  if (msg) msg.textContent = converterParaVenda ? 'Confirmando venda...' : 'Salvando...';
+
+  if (converterParaVenda && !leadId) {
+    if (msg) { msg.style.color = '#f87171'; msg.textContent = '❌ Vincule um cliente antes de confirmar a venda'; }
+    return;
+  }
 
   const body = {
     lead_id: leadId ? parseInt(leadId) : null,
     corretor_id: corretorId ? parseInt(corretorId) : null,
+    ...(converterParaVenda && { converter_para_venda: true }),
   };
   const selCp = document.getElementById('er-condicao-idx');
   if (selCp) {
@@ -25762,7 +25770,10 @@ async function salvarEdicaoReserva(vendaId, empId) {
   });
   const j = await r.json().catch(() => ({}));
   if (r.ok) {
-    if (msg) { msg.style.color = '#4ade80'; msg.textContent = '✅ Salvo com sucesso!'; }
+    if (msg) {
+      msg.style.color = '#4ade80';
+      msg.textContent = j.convertido ? '🏆 Venda confirmada com sucesso!' : '✅ Salvo com sucesso!';
+    }
     setTimeout(() => { closeModal(); if (typeof verEspelho === 'function') verEspelho(empId); }, 1000);
   } else {
     if (msg) { msg.style.color = '#f87171'; msg.textContent = '❌ ' + (j.error || 'Erro ao salvar'); }
