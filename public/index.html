@@ -12632,6 +12632,40 @@ async function gerarTabelaVendas(empId, params, emp) {
     `${c.label||c.nParc+'x'}${c.juros>0?' c/ '+c.juros.toFixed(2)+'% a.m.':' sem juros'}`
   ).join(' · ');
 
+  // ── Espelho de vendas ──
+  const corSt = st => st==='vendido'?'#dc2626':st==='reservado'?'#d97706':st==='indisponivel'?'#94a3b8':'#16a34a';
+  const quadrasMap = {};
+  unidades.forEach(u => {
+    const q = u.quadra != null ? String(u.quadra) : '—';
+    if (!quadrasMap[q]) quadrasMap[q] = [];
+    quadrasMap[q].push(u);
+  });
+  const quadrasOrdenadas = Object.keys(quadrasMap).sort((a,b) => {
+    const na=parseFloat(a), nb=parseFloat(b);
+    if (!isNaN(na)&&!isNaN(nb)) return na-nb;
+    return a.localeCompare(b,'pt-BR',{numeric:true});
+  });
+  const espelhoHtml = quadrasOrdenadas.map(q => {
+    const lotes = quadrasMap[q].slice().sort((a,b)=>{
+      const la=parseFloat(String(a.lote||'').replace(/\D/g,'')||'0');
+      const lb=parseFloat(String(b.lote||'').replace(/\D/g,'')||'0');
+      return la-lb;
+    });
+    return `<div style="margin-bottom:12px">
+      <div style="font-size:9px;font-weight:800;color:#374151;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Quadra ${q}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:3px">
+        ${lotes.map(u=>{
+          const cor=corSt(u.status||'disponivel');
+          const num=extractNum(String(u.lote||''));
+          const area=u.area_m2?`${u.area_m2}m²`:'';
+          return `<div title="${u.status||'disponivel'}" style="width:38px;height:38px;border-radius:5px;background:${cor};display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:800;line-height:1.2">
+            <span>${num}</span>${area?`<span style="font-size:7px;opacity:.85">${area}</span>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
   const html = `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8">
 <title>Tabela de Vendas — ${params.nome}</title>
@@ -12746,6 +12780,22 @@ ${obsLines.length ? `<div class="obs-box">
   <h3>Informações e Condições</h3>
   <ul>${obsLines.map(l=>`<li>${l}</li>`).join('')}</ul>
 </div>` : ''}
+
+<div style="page-break-before:always;padding-top:10px">
+  <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #111;padding-bottom:4px;margin-bottom:10px">
+    <span style="font-size:${isLoteamento?'11px':'15px'};font-weight:900;color:#000">Espelho de Vendas — ${params.nome}</span>
+    <span style="font-size:${isLoteamento?'7px':'9px'};color:#374151">${params.data}</span>
+  </div>
+  <div style="display:flex;gap:14px;margin-bottom:12px;flex-wrap:wrap">
+    <span style="font-size:9px;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#16a34a"></span>Disponível (${nDisp})</span>
+    <span style="font-size:9px;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#d97706"></span>Reservado (${nRes})</span>
+    <span style="font-size:9px;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#dc2626"></span>Vendido (${nVend})</span>
+    ${nIndisp?`<span style="font-size:9px;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#94a3b8"></span>Indisponível (${nIndisp})</span>`:''}
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+    ${espelhoHtml}
+  </div>
+</div>
 
 <div class="r2x-footer">
   <span>Tabela emitida pelo sistema de gestão comercial próprio da <strong>R2X Lançamentos Imobiliários</strong></span>
