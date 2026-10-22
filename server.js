@@ -3403,7 +3403,18 @@ function sincronizarComissaoVenda(vendaId) {
   if (!pctUsado) return null;
 
   const comissao = parseFloat(((v.valor * pctUsado) / 100).toFixed(2));
-  const imovelPart = v.imovel ? `${v.imovel} — ` : '';
+
+  // Deriva descrição do imóvel: usa campo salvo ou busca na unidade
+  let imovelDesc = v.imovel || '';
+  if (!imovelDesc && v.unidade_id) {
+    const u = db.prepare("SELECT lote, quadra, area_m2 FROM unidades WHERE id=?").get(v.unidade_id);
+    if (u) {
+      imovelDesc = 'Lote ' + u.lote
+        + (u.quadra ? ' · Q' + u.quadra : '')
+        + (u.area_m2 ? ' (' + u.area_m2 + 'm²)' : '');
+    }
+  }
+  const imovelPart = imovelDesc ? `${imovelDesc} — ` : '';
   const descBase = `${imovelPart}${emp.nome}`;
 
   // Tenta ler parcelas de entrada (JSON: [{data, valor}, ...])
