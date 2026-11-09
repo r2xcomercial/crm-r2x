@@ -682,6 +682,21 @@ db.exec(`
     criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
     criado_por INTEGER
   );
+
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    usuario_id INTEGER,
+    usuario_email TEXT,
+    perfil    TEXT,
+    ip        TEXT,
+    metodo    TEXT,
+    rota      TEXT,
+    status    INTEGER,
+    duracao_ms INTEGER,
+    detalhe   TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log(ts);
 `);
 
 module.exports = db;

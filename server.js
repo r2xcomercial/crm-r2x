@@ -577,6 +577,39 @@ function soAdmin(req, res, next) {
   next();
 }
 
+// ─── AUDITORIA ────────────────────────────────────────────────────────────────
+// Registra operações sensíveis: métodos de escrita e rotas /api/admin/*
+const _auditInsert = db.prepare(
+  'INSERT INTO audit_log(usuario_id,usuario_email,perfil,ip,metodo,rota,status,duracao_ms,detalhe) VALUES(?,?,?,?,?,?,?,?,?)'
+);
+app.use((req, res, next) => {
+  const escrita  = ['POST','PUT','PATCH','DELETE'].includes(req.method);
+  const isAdmin  = req.path.startsWith('/api/admin/');
+  const isAuth   = req.path.startsWith('/api/auth/');
+  if (!escrita && !isAdmin && !isAuth) return next();
+
+  const inicio = Date.now();
+  const _end = res.end.bind(res);
+  res.end = function(...args) {
+    _end(...args);
+    try {
+      const u = req.usuario;
+      _auditInsert.run(
+        u?.id   || null,
+        u?.email|| null,
+        u?.perfil||null,
+        req.ip  || req.headers['x-forwarded-for'] || null,
+        req.method,
+        req.path.slice(0, 200),
+        res.statusCode,
+        Date.now() - inicio,
+        isAuth ? null : JSON.stringify(req.body || {}).slice(0, 500)
+      );
+    } catch(_) {}
+  };
+  next();
+});
+
 app.get('/api/usuarios', soAdmin, (req, res) => {
   const rows = db.prepare(`
     SELECT u.id, u.nome, u.email, u.perfil, u.corretor_id, u.cliente_id, u.ativo, u.criado_em,
@@ -7210,7 +7243,7 @@ app.post('/api/webhook/lead', (req, res) => {
 
 const uploadBackup = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } }); // 200 MB para backup
 
-app.get('/api/admin/backup', (req, res) => {
+app.get('/api/admin/backup', autenticar, soAdmin, (req, res) => {
   try {
     db.pragma('wal_checkpoint(TRUNCATE)');
     const dbPath = process.env.RAILWAY_VOLUME_MOUNT_PATH
@@ -7218,6 +7251,7 @@ app.get('/api/admin/backup', (req, res) => {
       : path.join(__dirname, 'crm.db');
     const data = fs.readFileSync(dbPath);
     const date = new Date().toISOString().slice(0, 10);
+    console.log(`[backup] Download por ${req.usuario.email} | IP: ${req.ip}`);
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="crm-backup-${date}.db"`);
     res.send(data);
@@ -7227,7 +7261,7 @@ app.get('/api/admin/backup', (req, res) => {
   }
 });
 
-app.post('/api/admin/restaurar', uploadBackup.single('backup'), (req, res) => {
+app.post('/api/admin/restaurar', autenticar, soAdmin, uploadBackup.single('backup'), (req, res) => {
   try {
     if (!req.file) return err(res, 'Arquivo não enviado');
     // Valida magic bytes do SQLite
@@ -9547,7 +9581,7 @@ app.get('/api/debora/stream', async (req, res) => {
 });
 
 // ─── ROLLBACK TEMPORÁRIO ──────────────────────────────────────────────────────
-app.get('/api/admin/rollback-unidades/:empId', autenticar, (req, res) => {
+app.get('/api/admin/rollback-unidades/:empId', autenticar, soAdmin, (req, res) => {
   const empId = parseInt(req.params.empId);
   const n = parseInt(req.query.n) || 50;
   const emp = db.prepare('SELECT id, nome FROM empreendimentos WHERE id=?').get(empId);
@@ -9555,7 +9589,7 @@ app.get('/api/admin/rollback-unidades/:empId', autenticar, (req, res) => {
   const units = db.prepare(`SELECT id, quadra, lote, status, preco FROM unidades WHERE empreendimento_id=? ORDER BY id DESC LIMIT ?`).all(empId, n);
   ok(res, { empreendimento: emp.nome, total_mostrado: units.length, aviso: 'Confirme os IDs e use DELETE /api/admin/rollback-unidades/:empId com body {ids:[...]}', units });
 });
-app.delete('/api/admin/rollback-unidades/:empId', autenticar, (req, res) => {
+app.delete('/api/admin/rollback-unidades/:empId', autenticar, soAdmin, (req, res) => {
   const empId = parseInt(req.params.empId);
   const ids = req.body.ids;
   if (!Array.isArray(ids) || ids.length === 0) return err(res, 'Informe ids[]', 400);
