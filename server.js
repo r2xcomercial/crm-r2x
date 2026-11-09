@@ -2481,7 +2481,7 @@ app.get("/api/leads", (req, res) => {
   if (status) { sql += " AND l.status=?"; params.push(status); }
   if (empreendimento_id) { sql += " AND l.empreendimento_id=?"; params.push(empreendimento_id); }
   sql += " ORDER BY l.criado_em DESC";
-  ok(res, db.prepare(sql).all(...params));
+  ok(res, aplicarMascara(db.prepare(sql).all(...params), req.usuario?.perfil));
 });
 
 app.get("/api/leads/:id", autenticar, (req, res) => {
@@ -2497,7 +2497,7 @@ app.get("/api/leads/:id", autenticar, (req, res) => {
   // Corretor só vê seus próprios leads
   if (req.usuario?.perfil === 'corretor' && lead.corretor_id !== req.usuario.corretor_id)
     return err(res, 'Acesso negado', 403);
-  ok(res, lead);
+  ok(res, aplicarMascara(lead, req.usuario?.perfil));
 });
 
 app.post("/api/leads", autenticar, (req, res) => {
@@ -3048,8 +3048,52 @@ app.get("/api/vendas", (req, res) => {
     sql += " AND v.corretor_id=?"; params.push(req.usuario.corretor_id);
   }
   sql += " ORDER BY v.data_venda DESC";
-  ok(res, db.prepare(sql).all(...params));
+  ok(res, aplicarMascara(db.prepare(sql).all(...params), req.usuario?.perfil));
 });
+
+// ─── MASCARAMENTO DE PII PARA CORRETORES (LGPD) ──────────────────────────────
+
+function mascaraTelefone(tel) {
+  if (!tel) return tel;
+  const digits = tel.replace(/\D/g, '');
+  if (digits.length < 10) return tel;
+  // Formato: (DD) 9.****-XXXX — mantém DDD e últimos 4 dígitos
+  const ddd = digits.slice(-10, -8);
+  const ultimos4 = digits.slice(-4);
+  return `(${ddd}) *.****-${ultimos4}`;
+}
+
+function mascaraEmail(email) {
+  if (!email) return email;
+  const [local, dominio] = email.split('@');
+  if (!dominio) return email;
+  return `${local[0] || ''}***@${dominio}`;
+}
+
+function mascaraCpf(cpf) {
+  if (!cpf) return cpf;
+  return cpf.replace(/\d(?=\d{2})/g, '*').replace(/(\*+)(\d{2})-(\d{2})/, '***.$1-**').slice(0, 14) || '***.***.***.***';
+}
+
+function mascararPII(obj) {
+  if (!obj) return obj;
+  const r = { ...obj };
+  if (r.telefone)          r.telefone          = mascaraTelefone(r.telefone);
+  if (r.lead_telefone)     r.lead_telefone     = mascaraTelefone(r.lead_telefone);
+  if (r.email)             r.email             = mascaraEmail(r.email);
+  if (r.cpf)               r.cpf               = '***.***.***-**';
+  if (r.lead_cpf)          r.lead_cpf          = '***.***.***-**';
+  if (r.rg)                r.rg                = '**.***.***-*';
+  if (r.representante_cpf) r.representante_cpf = '***.***.***-**';
+  if (r.representante_rg)  r.representante_rg  = '**.***.***-*';
+  if (r.cnpj)              r.cnpj              = '**.***.***/****-**';
+  return r;
+}
+
+function aplicarMascara(dados, perfil) {
+  if (perfil !== 'corretor') return dados;
+  return Array.isArray(dados) ? dados.map(mascararPII) : mascararPII(dados);
+}
 
 // ─── PAINEL DO CORRETOR ───────────────────────────────────────────────────────
 
@@ -3409,7 +3453,7 @@ app.get("/api/corretor/clientes", (req, res) => {
   const cpfsSeen = new Set(leadsAtrib.filter(l => l.cpf).map(l => l.cpf));
   const filtrados = proprios.filter(p => !p.cpf || !cpfsSeen.has(p.cpf));
   const todos = [...leadsAtrib, ...filtrados].sort((a,b) => (a.nome||'').localeCompare(b.nome||''));
-  ok(res, todos);
+  ok(res, aplicarMascara(todos, req.usuario?.perfil));
 });
 
 app.post("/api/corretor/clientes", (req, res) => {
