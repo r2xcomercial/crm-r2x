@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
 const path = require("path");
 const multer = require("multer");
 const XLSX = require("xlsx");
@@ -19,7 +20,42 @@ const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: proces
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }); // 8 MB máx
 
 const app = express();
-app.use(cors());
+
+// ─── CORS restrito ao domínio de produção ────────────────────────────────────
+const ORIGENS_PERMITIDAS = [
+  'https://crm-r2x-production.up.railway.app',
+  'http://localhost:3000',
+  'http://localhost:3001',
+];
+app.use(cors({
+  origin: (origin, cb) => {
+    // Permite requests sem origin (apps mobile, curl, Postman em dev)
+    if (!origin || ORIGENS_PERMITIDAS.includes(origin)) return cb(null, true);
+    cb(new Error('CORS: origem não permitida'));
+  },
+  credentials: true,
+}));
+
+// ─── Headers de segurança básicos ────────────────────────────────────────────
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+// ─── Rate limiting no login: 5 tentativas / 15 min por IP ────────────────────
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,   // só conta tentativas FALHAS
+  message: { ok: false, error: 'Muitas tentativas de login. Aguarde 15 minutos.' },
+  keyGenerator: (req) => req.ip || req.headers['x-forwarded-for'] || 'unknown',
+});
+
 app.use(express.json());
 
 // ─── SSE: broadcast de atualizações em tempo real ────────────────────────────
@@ -59,7 +95,7 @@ function _criarLoginCorretor(corretorId, nome, loginEmail) {
   }
 }
 
-const APIs_PUBLICAS = ["/api/corretores/publico", "/api/corretores/imobiliarias", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/", "/api/pluggy/webhook", "/api/setup-germania-r2x9k3m"];
+const APIs_PUBLICAS = ["/api/corretores/publico", "/api/corretores/imobiliarias", "/api/leads/whatsapp", "/api/auth/login", "/api/webhook/lead", "/api/portal/", "/api/pluggy/webhook", "/api/setup-germania-r2x9k3m", "/api/disponibilidade"];
 
 function autenticar(req, res, next) {
   // Rotas de fichas (não /api/) também precisam de auth via query token
@@ -495,15 +531,19 @@ app.get('/api/health', (req, res) => {
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', loginLimiter, (req, res) => {
   const { email, senha } = req.body;
   if (!email || !senha) return err(res, 'Email e senha obrigatórios');
   const u = db.prepare('SELECT * FROM usuarios WHERE LOWER(email)=LOWER(?) AND ativo=1').get(email.trim());
-  if (!u || hashSenha(senha, u.salt) !== u.senha_hash) return err(res, 'Credenciais inválidas', 401);
+  if (!u || hashSenha(senha, u.salt) !== u.senha_hash) {
+    console.warn(`[login] Falha — email: ${email} | IP: ${req.ip} | ${new Date().toISOString()}`);
+    return err(res, 'Credenciais inválidas', 401);
+  }
   const token = gerarToken();
-  const expira = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().replace('T',' ').slice(0,19);
+  const expira = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString().replace('T',' ').slice(0,19); // 12 horas
   db.prepare('INSERT INTO sessoes(token, usuario_id, expira_em) VALUES(?,?,?)').run(token, u.id, expira);
   db.prepare("DELETE FROM sessoes WHERE expira_em < datetime('now')").run();
+  console.log(`[login] OK — ${u.email} (${u.perfil}) | IP: ${req.ip} | expira: ${expira}`);
   ok(res, { token, nome: u.nome, email: u.email, perfil: u.perfil, corretor_id: u.corretor_id, cliente_id: u.cliente_id });
 });
 
@@ -2919,6 +2959,20 @@ app.post("/api/leads/whatsapp", (req, res) => {
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'novo','whatsapp')`)
     .run(nome, email||null, telefone, cidade, objetivo, faixa_investimento, prazo, empreendimento_interesse, empId, tipo||null, score||0, resumo||null, conversa_whatsapp);
   ok(res, { id: r.lastInsertRowid, criado: true });
+});
+
+// GET /api/disponibilidade — resumo público de unidades por empreendimento (uso: chatbot Débora)
+app.get("/api/disponibilidade", (req, res) => {
+  const emps = db.prepare("SELECT id, nome, espelho_slug FROM empreendimentos WHERE id IN (SELECT DISTINCT empreendimento_id FROM unidades)").all();
+  const result = emps.map(e => {
+    const rows = db.prepare("SELECT status FROM unidades WHERE empreendimento_id=?").all(e.id);
+    const total = rows.length;
+    const disponiveis = rows.filter(u => u.status === 'disponivel').length;
+    const ocupados = rows.filter(u => ['vendido','reservado','pre_reserva','proposta','ativo'].includes(u.status)).length;
+    return { id: e.id, nome: e.nome, slug: e.espelho_slug, total, disponiveis, ocupados };
+  });
+  ok(res, result);
+
 });
 
 // GET /api/leads/por-telefone/:telefone — busca lead e conversa whatsapp pelo número
