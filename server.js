@@ -13,6 +13,8 @@ const db = require("./database");
 const OpenAI = require("openai");
 const pdfParse = require("pdf-parse");
 const Anthropic = require("@anthropic-ai/sdk");
+const cron = require("node-cron");
+const { google } = require("googleapis");
 
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
 const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
@@ -11048,6 +11050,85 @@ app.get('/fichas/documentos-zip/:vendaId', autenticar, (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
   res.send(content);
 });
+
+// ─── BACKUP AUTOMÁTICO PARA GOOGLE DRIVE ─────────────────────────────────────
+
+async function fazerBackupGDrive() {
+  const credJson  = process.env.GDRIVE_CREDENTIALS;
+  const folderId  = process.env.GDRIVE_FOLDER_ID;
+  if (!credJson || !folderId) {
+    console.warn('[backup-gdrive] GDRIVE_CREDENTIALS ou GDRIVE_FOLDER_ID não configurados — backup ignorado');
+    return;
+  }
+
+  try {
+    const creds = JSON.parse(credJson);
+    const auth = new google.auth.JWT({
+      email: creds.client_email,
+      key: creds.private_key,
+      scopes: ['https://www.googleapis.com/auth/drive.file'],
+    });
+
+    const drive = google.drive({ version: 'v3', auth });
+
+    // Checkpoint WAL para garantir consistência do arquivo
+    db.pragma('wal_checkpoint(TRUNCATE)');
+
+    const dbPath = process.env.RAILWAY_VOLUME_MOUNT_PATH
+      ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'crm.db')
+      : path.join(__dirname, 'crm.db');
+
+    const dataBr = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+      .replace(/\//g, '-').replace(', ', '_').replace(/:/g, '-');
+    const nomeArquivo = `crm-r2x-backup-${dataBr}.db`;
+
+    // Upload para o Google Drive
+    const resposta = await drive.files.create({
+      requestBody: {
+        name: nomeArquivo,
+        parents: [folderId],
+      },
+      media: {
+        mimeType: 'application/octet-stream',
+        body: fs.createReadStream(dbPath),
+      },
+      fields: 'id,name,size',
+    });
+
+    console.log(`[backup-gdrive] OK — ${resposta.data.name} (${Math.round(resposta.data.size/1024)} KB) | id: ${resposta.data.id}`);
+
+    // Manter apenas os últimos 7 backups na pasta
+    const lista = await drive.files.list({
+      q: `'${folderId}' in parents and name contains 'crm-r2x-backup' and trashed=false`,
+      orderBy: 'createdTime desc',
+      fields: 'files(id,name,createdTime)',
+      pageSize: 50,
+    });
+
+    const arquivos = lista.data.files || [];
+    const aExcluir = arquivos.slice(7);
+    for (const arq of aExcluir) {
+      await drive.files.delete({ fileId: arq.id });
+      console.log(`[backup-gdrive] Removido backup antigo: ${arq.name}`);
+    }
+  } catch (e) {
+    console.error('[backup-gdrive] Erro:', e.message);
+  }
+}
+
+// Rota manual para admin forçar um backup imediato
+app.post('/api/admin/backup-gdrive', autenticar, soAdmin, async (req, res) => {
+  await fazerBackupGDrive();
+  ok(res, { mensagem: 'Backup enviado para o Google Drive.' });
+});
+
+// Agendamento diário às 03:00 (horário de Brasília = 06:00 UTC)
+cron.schedule('0 6 * * *', () => {
+  console.log('[backup-gdrive] Iniciando backup agendado...');
+  fazerBackupGDrive();
+}, { timezone: 'UTC' });
+
+// ─── INICIALIZAÇÃO ────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {
   console.log(`CRM R2X rodando em http://localhost:${PORT}`);
